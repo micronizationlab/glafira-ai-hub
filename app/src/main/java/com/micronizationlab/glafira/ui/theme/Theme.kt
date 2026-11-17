@@ -1,11 +1,9 @@
 package com.micronizationlab.glafira.ui.theme
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 
 private val IcqBlack = Color(0xFF000000)
 private val IcqGreen = Color(0xFF7EC850)
@@ -24,15 +22,10 @@ private val GlafiraColorScheme = darkColorScheme(
     onSurfaceVariant = IcqGray
 )
 
-private val GlafiraTypography = Typography(
-    defaultFontFamily = FontFamily.Monospace
-)
-
 @Composable
-fun GlafiraAiHubTheme(content: @Composable () -> Unit) {
+fun GlafiraAiHubTheme(content: ) -> Unit {
     MaterialTheme(
         colorScheme = GlafiraColorScheme,
-        typography = GlafiraTypography,
         content = content
     )
 }
