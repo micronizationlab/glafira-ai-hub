@@ -29,7 +29,7 @@ private val GlafiraTypography = Typography(
 )
 
 @Composable
-fun GlafiraAiHubTheme(content: ) -> Unit {
+fun GlafiraAiHubTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = GlafiraColorScheme,
         typography = GlafiraTypography,
