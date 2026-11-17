@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.micronizationlab.glafira.ui.theme.GlafiraAiHubTheme
 
 private val BackgroundBlack = Color(0xFF000000)
 private val IcqGreen = Color(0xFF7EC850)
@@ -28,9 +27,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            GlafiraAiHubTheme {
-                GlafiraMainScreen()
-            }
+            GlafiraMainScreen()
         }
     }
 }
