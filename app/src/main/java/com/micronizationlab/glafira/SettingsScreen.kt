@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 fun saveApiKey(context: Context, key: String): Boolean =
     EncryptedApiKeyStore.save(context, "gigachat_api_key", key)
@@ -422,7 +423,11 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(Modifier.padding(16.dp)) {
-                Text("ВЕРСИЯ ПРИЛОЖЕНИЯ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                GlafiraUpdateSection()
+
+        Spacer(Modifier.height(16.dp))
+
+        Text("ВЕРСИЯ ПРИЛОЖЕНИЯ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 Text("GLAFIRA AI HUB v1.0", color = Color(0xFF202020), fontSize = 14.sp)
                 Text("Sprint 10.0 — Биометрия", color = Tx, fontSize = 12.sp)
@@ -465,6 +470,85 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 TextButton(onClick = { showDeleteProjectConfirm = false }) { Text("ОТМЕНА", color = Tx) }
             }
         )
+    }
+}
+
+
+@Composable
+fun GlafiraUpdateSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var update by remember { mutableStateOf<GlafiraAppUpdate?>(null) }
+    var status by remember { mutableStateOf("Проверка обновлений доступна вручную") }
+    var busy by remember { mutableStateOf(false) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = GrD),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text("ОБНОВЛЕНИЕ GLAFIRA", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Обновление устанавливается поверх текущей версии. Чаты, настройки и локальные данные не должны удаляться.",
+                color = Tx, fontSize = 11.sp
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    status = "Проверяю наличие новой версии…"
+                    update = null
+                    scope.launch {
+                        try {
+                            update = GlafiraUpdater.checkForUpdate(context)
+                            status = update?.let { "Доступна версия ${it.versionName} (сборка ${it.versionCode})" }
+                                ?: "Установлена последняя опубликованная версия"
+                        } catch (error: Exception) {
+                            status = error.message ?: "Не удалось проверить обновления"
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (busy) "ПОДОЖДИ…" else "ПРОВЕРИТЬ ОБНОВЛЕНИЯ")
+            }
+            if (update != null) {
+                Spacer(Modifier.height(6.dp))
+                Button(
+                    enabled = !busy,
+                    onClick = {
+                        val selected = update ?: return@Button
+                        busy = true
+                        status = "Загружаю и проверяю APK…"
+                        scope.launch {
+                            try {
+                                GlafiraUpdater.downloadAndPromptInstall(context, selected)
+                                status = "Проверка завершена. Подтверди установку в системном окне Android."
+                            } catch (error: Exception) {
+                                status = error.message ?: "Не удалось подготовить обновление"
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = XpBlue, contentColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("ЗАГРУЗИТЬ И УСТАНОВИТЬ")
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(status, color = Tx, fontSize = 11.sp)
+            Text(
+                "Перед установкой проверяются SHA-256, package ID, версия и совпадение подписи с установленным приложением. Android всё равно запросит подтверждение.",
+                color = Tx, fontSize = 10.sp
+            )
+        }
     }
 }
 
