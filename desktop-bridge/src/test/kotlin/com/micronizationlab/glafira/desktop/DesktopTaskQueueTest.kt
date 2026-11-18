@@ -53,7 +53,8 @@ class DesktopTaskQueueTest {
         q.enqueue(task(id = "high", priority = 9))
         q.enqueue(task(id = "normal", priority = 5))
         assertEquals("high", q.claimNext()?.envelope?.taskId)
-        assertEquals("low", q.claimNext()?.envelope?.taskId.let { "low" })
+        assertEquals("normal", q.claimNext()?.envelope?.taskId)
+        assertEquals("low", q.claimNext()?.envelope?.taskId)
     }
 
     @Test
