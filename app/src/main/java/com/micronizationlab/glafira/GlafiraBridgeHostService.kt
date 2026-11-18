@@ -66,6 +66,7 @@ class GlafiraBridgeHostService : Service() {
                     GlafiraBridgePairingProtocol(pairingTicketStore!!),
                     GlafiraBridgeOwnerApprovalService(approvalStore!!)
                 ),
+                operationDispatcher = GlafiraBridgeOperationDispatcher(this),
                 addressRateLimiter = limiter,
                 deviceRateLimiter = deviceLimiter
             ).also { it.start(bindAddress, port) }
