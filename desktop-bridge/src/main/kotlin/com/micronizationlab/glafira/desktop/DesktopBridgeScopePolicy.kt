@@ -6,6 +6,8 @@ internal object DesktopBridgeScopePolicy {
         "conversation.read",
         "conversation.append",
         "approval.request",
+        "desktop.task.claim",
+        "desktop.task.result",
         "content.draft",
         "communications.send",
         "social.publish",
