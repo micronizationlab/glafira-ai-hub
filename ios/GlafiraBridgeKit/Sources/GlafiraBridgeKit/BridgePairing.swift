@@ -71,49 +71,25 @@ public enum BridgePairing {
     public static func submit(_ submission: BridgePairingSubmission,
                               invitation: BridgePairingInvitation,
                               client: PinnedBridgeHTTPSClient) async throws -> BridgePairingPendingResponse {
-        var request = URLRequest(url: URL(string: invitation.origin)!.appendingPathComponent("bridge/v1/pairing"))
-        request.httpMethod = "POST"
-        request.timeoutInterval = 15
-        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONEncoder().encode(submission)
-        // The client owns the pinned TLS session; pairing is unauthenticated at
-        // the Bridge layer but protected by a one-time capability proof.
-        let (data, response) = try await BridgePairingURLSession.shared.data(for: request, invitation: invitation)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 202 else {
+        guard invitation.expiresAtEpochMs > Int64(Date().timeIntervalSince1970 * 1_000) else {
             throw BridgeTransportError.invalidHTTPResponse
         }
-        let pending = try JSONDecoder().decode(BridgePairingPendingResponse.self, from: data)
-        guard pending.status == "PENDING_OWNER_APPROVAL" else { throw BridgeTransportError.invalidHTTPResponse }
-        return pending
-    }
-}
-
-private enum BridgePairingURLSession {
-    static let shared = PairingPinnedSession()
-}
-
-private final class PairingPinnedSession {
-    func data(for request: URLRequest, invitation: BridgePairingInvitation) async throws -> (Data, URLResponse) {
-        let transport = try PinnedBridgeHTTPSClient(origin: invitation.origin, certificateSHA256: invitation.certificateSHA256)
-        return try await transport.postPairing(request)
-    }
-}
-
-private extension PinnedBridgeHTTPSClient {
-    func postPairing(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        try await sessionForPairing().data(for: request)
+        return try await client.submitPairing(submission)
     }
 
-    func sessionForPairing() -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.urlCache = nil
-        configuration.httpCookieStorage = nil
-        return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+private extension Data {
+    init?(base64URLEncoded value: String) {
+        var normalized = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        let remainder = normalized.count % 4
+        if remainder != 0 { normalized += String(repeating: "=", count: 4 - remainder) }
+        self.init(base64Encoded: normalized)
+    }
+
+    func base64URLEncodedString() -> String {
+        base64EncodedString().replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
     }
 }
-
 private extension Data {
     init?(base64URLEncoded value: String) {
         var normalized = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
