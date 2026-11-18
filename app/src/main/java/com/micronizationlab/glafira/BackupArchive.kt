@@ -149,6 +149,9 @@ object BackupArchive {
 
     private fun applyStaged(context: Context, files: List<StagedFile>, safePreferences: JSONObject) {
         val targetRoot = context.filesDir.canonicalFile
+        val restoredPaths = files.map { it.relativePath }.toSet()
+
+        // Restore an exact snapshot: files created after the selected backup must not survive it.
         files.forEach { staged ->
             val target = File(targetRoot, staged.relativePath).canonicalFile
             require(target.path.startsWith(targetRoot.path + File.separator)) { "Недопустимый путь в архиве." }
@@ -164,6 +167,20 @@ object BackupArchive {
                 throw IllegalStateException("Не удалось восстановить файл ${staged.relativePath}")
             }
         }
+
+        context.filesDir.walkTopDown()
+            .filter { it.isFile && !it.name.endsWith(".restore-tmp") && !it.name.endsWith(".tmp") }
+            .forEach { existing ->
+                val canonical = existing.canonicalFile
+                require(canonical.path.startsWith(targetRoot.path + File.separator)) {
+                    "Обнаружен файл вне каталога данных приложения."
+                }
+                val relative = canonical.relativeTo(targetRoot).invariantSeparatorsPath
+                if (relative !in restoredPaths && !existing.delete()) {
+                    throw IllegalStateException("Не удалось удалить файл, отсутствующий в выбранной резервной копии: $relative")
+                }
+            }
+
         restoreSafePreferences(context, safePreferences)
     }
 
