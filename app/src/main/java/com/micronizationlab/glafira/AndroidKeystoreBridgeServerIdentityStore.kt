@@ -105,16 +105,6 @@ class AndroidKeystoreBridgeServerIdentityStore(context: Context) {
         }.getOrNull()
     }
 
-    @Synchronized
-    fun rotate(host: BridgeServerHost): BridgeServerIdentity {
-        val keyStore = loadKeyStore()
-        if (keyStore.containsAlias(KEY_ALIAS)) keyStore.deleteEntry(KEY_ALIAS)
-        check(preferences.edit().remove(KEY_HOST).remove(KEY_CERTIFICATE).commit()) {
-            "Unable to clear previous Bridge TLS identity metadata."
-        }
-        return getOrCreate(host)
-    }
-
     private fun buildIdentity(
         keyStore: KeyStore,
         certificate: X509Certificate,
