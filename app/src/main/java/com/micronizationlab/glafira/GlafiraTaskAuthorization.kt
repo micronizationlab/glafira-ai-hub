@@ -11,7 +11,7 @@ data class GlafiraTaskAuthorizationResult(
 
 /** Trusted owner-controlled grants and durable approval requests. Never source grants from model output. */
 interface GlafiraTaskGrantSource {
-    fun grantedScopes(projectId: String, origin: String): Set<String>
+    fun grantedScopes(task: GlafiraTask): Set<String>
     fun approvalGrant(task: GlafiraTask, actionSummary: String, nowMillis: Long): ToolApprovalGrant?
     fun requestApproval(task: GlafiraTask, actionSummary: String, nowMillis: Long): Boolean
 }
@@ -32,7 +32,7 @@ class RegistryBackedGlafiraTaskAuthorizer(
             JSONObject(task.payload).optString("actionSummary").trim()
         }.getOrDefault("")
         val requiredScopes = definition.requiredScopes + task.requiredScopes
-        val ownerScopes = grants.grantedScopes(task.projectId, task.origin)
+        val ownerScopes = grants.grantedScopes(task)
         val missingScopes = !ownerScopes.containsAll(requiredScopes)
         val requiresApproval = GlafiraToolRegistry.requiresOwnerApproval(definition.risk)
 
