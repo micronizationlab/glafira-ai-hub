@@ -34,15 +34,31 @@ enum class VoiceStyleProfile {
     WORK_FORMAL_ORIGINAL
 }
 
-data class VoiceAudio(
-    val bytes: ByteArray,
+class VoiceAudio(
+    bytes: ByteArray,
     val mimeType: String,
     val providerProvenance: String
 ) {
+    // Audio is treated as untrusted provider output: callers never receive the backing array.
+    private val content = bytes.copyOf()
+
+    val bytes: ByteArray
+        get() = content.copyOf()
+
     init {
-        require(bytes.isNotEmpty()) { "Голосовой модуль вернул пустой аудиофайл." }
-        require(mimeType.isNotBlank()) { "Не указан MIME-тип аудио." }
+        require(content.isNotEmpty() && content.size <= MAX_AUDIO_BYTES) {
+            "Размер аудио должен быть от 1 байта до 25 МБ."
+        }
+        require(mimeType in SUPPORTED_AUDIO_MIME_TYPES) { "Неподдерживаемый MIME-тип аудио." }
         require(providerProvenance.isNotBlank()) { "Не указано происхождение сгенерированного аудио." }
+    }
+
+    companion object {
+        const val MAX_AUDIO_BYTES = 25 * 1024 * 1024
+        val SUPPORTED_AUDIO_MIME_TYPES = setOf(
+            "audio/aac", "audio/mp4", "audio/mpeg", "audio/ogg",
+            "audio/wav", "audio/webm", "audio/3gpp"
+        )
     }
 }
 
