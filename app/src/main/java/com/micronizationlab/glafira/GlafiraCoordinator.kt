@@ -34,10 +34,12 @@ object GlafiraCoordinator {
             .orEmpty().split(",").mapNotNull { value ->
                 runCatching { ProviderId.valueOf(value) }.getOrNull()
             }.toSet()
-        val availablePeers = ProviderId.values().filter {
-            it != primaryProvider && it in approvedPeerIds && isProviderConfigured(context, it) &&
-                it != ProviderId.YANDEX
-        }
+        val configuredPeers = ProviderId.values().filter { isProviderConfigured(context, it) }
+        val availablePeers = GlafiraCorePolicy.selectAllowedPeers(
+            primaryProvider,
+            configuredPeers,
+            approvedPeerIds
+        )
         if (availablePeers.isEmpty()) {
             return callAiProvider(context, primaryProvider, history, systemPrompt)
         }
