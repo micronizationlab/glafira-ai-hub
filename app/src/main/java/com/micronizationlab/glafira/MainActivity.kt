@@ -100,7 +100,7 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    val authKey = "ВСТАВЬ_СЮДА_СВОЙ_AUTHORIZATION_KEY"
+    val authKey = "MDFhMWVjMGQtMmY5ZS03MzYxLTkxYmItZGQ1NjkyMzE0OTNkOmMyZTJlMzU4LWY0MTktNGRjMS05MWE0LTUyNjNlMjJhNzYyNA=="
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
