@@ -142,8 +142,10 @@ object DesktopBridgeCredentialVault {
 
     fun load(path: Path, passphrase: CharArray): DesktopBridgeVaultEntry {
         require(passphrase.size >= 12)
+        val fileSize = Files.size(path)
+        require(fileSize in 1..MAX_FILE_BYTES) { "Credential vault file size is invalid." }
         val bytes = Files.readAllBytes(path)
-        require(bytes.size in 1..MAX_FILE_BYTES)
+        require(bytes.size.toLong() == fileSize && bytes.size in 1..MAX_FILE_BYTES)
         val input = DataInputStream(ByteArrayInputStream(bytes))
         require(input.readInt() == MAGIC && input.readInt() == VERSION) { "Unsupported credential vault." }
         val iterations = input.readInt()
