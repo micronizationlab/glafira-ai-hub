@@ -54,3 +54,11 @@ A small on-device model is an optional assistant for short, low-risk tasks and o
 - Vault data and provider secrets never enter model context.
 - No secret-bearing data is included in Android backups.
 - Model download, provider use and any data-sharing policy are visible to the user.
+
+## Technical references
+
+- Android AI solution overview: https://developer.android.com/ai/overview
+- LiteRT-LM Android runtime: https://ai.google.dev/edge/litert-lm/android
+- LiteRT-LM model/runtime samples: https://github.com/google-ai-edge/LiteRT-LM
+
+The older MediaPipe LLM Inference API is maintenance-only; new on-device model work should target LiteRT-LM rather than starting a new integration on MediaPipe.
