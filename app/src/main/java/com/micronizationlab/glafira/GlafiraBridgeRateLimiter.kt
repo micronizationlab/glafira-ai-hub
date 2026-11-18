@@ -33,7 +33,7 @@ class GlafiraBridgeRateLimiter(
 
     @Synchronized
     fun tryAcquire(identity: String, nowNanos: Long = System.nanoTime()): Boolean {
-        if (!isValidIdentity(identity) || nowNanos <= 0L) return false
+        if (!isValidIdentity(identity)) return false
 
         evictIdle(nowNanos)
         val bucket = buckets[identity]
