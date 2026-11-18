@@ -233,7 +233,7 @@ class GlafiraBridgeTlsHttpServer(
                     return
                 }
                 // Only a fully authenticated, scoped, non-replayed ACCEPTED request reaches Core execution.
-                // PENDING_APPROVAL remains a queue decision and is never executed here.
+                // Action approval requests fail closed until their durable owner queue is wired.
                 val response = if (admitted.status == GlafiraBridgeStatus.ACCEPTED) {
                     operationDispatcher.dispatch(request)
                 } else admitted
