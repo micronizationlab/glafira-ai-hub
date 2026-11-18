@@ -8,6 +8,7 @@ import com.google.gson.JsonPrimitive
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import java.io.StringReader
+import java.math.BigDecimal
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 
@@ -83,7 +84,7 @@ object GlafiraBridgePairingJsonCodec {
             result
         }
         JsonToken.STRING -> JsonPrimitive(reader.nextString())
-        JsonToken.NUMBER -> JsonPrimitive(reader.nextString())
+        JsonToken.NUMBER -> JsonPrimitive(BigDecimal(reader.nextString()))
         JsonToken.BOOLEAN -> JsonPrimitive(reader.nextBoolean())
         JsonToken.NULL -> { reader.nextNull(); JsonNull.INSTANCE }
         else -> throw IllegalArgumentException("Unexpected JSON token.")
