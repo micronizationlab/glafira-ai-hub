@@ -13,7 +13,7 @@ import java.time.Instant
  * SQLite-backed governed memory. Content, provenance and tags are encrypted as one
  * payload; searchable metadata is limited to scope/type/status/classification/times.
  */
-class GlafiraSqliteMemoryRepository(
+internal class GlafiraSqliteMemoryRepository(
     private val database: GlafiraCoreDatabase,
     private val crypto: GlafiraMemoryCrypto,
     private val policyEngine: CorePolicyEngine,
