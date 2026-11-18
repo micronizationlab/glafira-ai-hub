@@ -32,4 +32,29 @@ class GooglePasswordCsvImporterTest {
         }.exceptionOrNull()
         assertTrue(error?.message?.contains("password") == true)
     }
+    @Test
+    fun rejectsDuplicateHeadersInsteadOfSilentlyChoosingOne() {
+        val csv = "name,url,username,password,password\\nSite,https://site.example,user,pw,pw2\\n"
+        val error = runCatching {
+            GooglePasswordCsvImporter.parse(ByteArrayInputStream(csv.toByteArray()))
+        }.exceptionOrNull()
+        assertTrue(error?.message?.contains("повторяются") == true)
+    }
+
+    @Test
+    fun credentialIdentityUsesTitleWhenWebsiteIsMissing() {
+        val first = VaultEntry("1", "Personal mail", "user@example.com", "one", "", "", 1)
+        val same = VaultEntry("2", "Personal mail", "USER@example.com", "two", "", "", 2)
+        val different = VaultEntry("3", "Work mail", "user@example.com", "three", "", "", 3)
+        assertEquals(VaultEntryIdentity.key(first), VaultEntryIdentity.key(same))
+        assertTrue(VaultEntryIdentity.key(first) != VaultEntryIdentity.key(different))
+    }
+
+    @Test
+    fun credentialIdentityNormalizesUrlAndUsername() {
+        val first = VaultEntry("1", "Shop", "Alice", "one", "https://shop.example/", "", 1)
+        val second = VaultEntry("2", "Shop", "alice", "two", "shop.example", "", 2)
+        assertEquals(VaultEntryIdentity.key(first), VaultEntryIdentity.key(second))
+    }
+
 }
