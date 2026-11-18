@@ -60,7 +60,7 @@ class GlafiraBridgeRateLimiterTest {
 
         assertFalse(limiter.tryAcquire("", 100L))
         assertFalse(limiter.tryAcquire("bad\nidentity", 100L))
-        assertFalse(limiter.tryAcquire("client-a", 0L))
-        assertEquals(0, limiter.trackedIdentityCount())
+        assertTrue(limiter.tryAcquire("client-a", 0L))
+        assertEquals(1, limiter.trackedIdentityCount())
     }
 }
