@@ -31,6 +31,9 @@ Private testing is a project context, not by itself proof of permission to clone
 9. **Cloud-first file library:** user-uploaded source audio and other large files must live in a user-controlled cloud drive (Google Drive or Yandex Disk), not permanently in the phone's or desktop's internal storage. Local storage is limited to temporary cache/working files and must have configurable cleanup.
 10. The cloud-drive integration must support both Google Drive and Yandex Disk through provider adapters. Both providers are part of the approved architecture; account connection and activation are deferred until after the Core and secure Bridge foundation is ready.
 11. GLAFIRA must not silently upload files to a cloud provider. The user explicitly connects the account, chooses the provider and library folder, and can inspect/revoke access.
+12. **Mandatory Yandex Alice integration:** GLAFIRA must be designed to work with Yandex Alice as an important voice-assistant integration, not merely as an optional future idea. The exact supported interaction path must be validated against currently available official Yandex interfaces and the user's account capabilities; do not assume Alice can directly ingest arbitrary audio files or control GLAFIRA without a supported integration surface.
+13. **Free-tier-first constraint:** the initial design and implementation must target the user's existing ordinary Yandex account and available free features, without requiring paid Yandex subscriptions or paid cloud infrastructure. If a desired Alice or cloud feature requires a paid plan, clearly identify the limitation and propose a free alternative before asking the user to pay.
+14. The user has an ordinary password for Yandex services. Never request that password in chat, store it in project files, or transmit it to ChatGPT. Account linking must use the official authorization flow (such as OAuth/device authorization where supported); store tokens only in secure platform storage and allow revocation.
 12. Store only the minimum file metadata and references in GLAFIRA Core's index; keep OAuth tokens/credentials in secure platform storage and never in Git, logs, prompts, or shared engineering memory.
 13. Access to cloud files must be mediated by Core authorization and audited. Use least-privilege scopes, short-lived access where supported, and avoid exposing permanent public links.
 14. Upload, download, rename, delete, synchronization, quota errors, offline behavior, and account disconnection must be handled explicitly. Deleting a local cache must not delete the cloud original; cloud deletion requires a clear user action and confirmation.
@@ -95,6 +98,7 @@ Private testing is a project context, not by itself proof of permission to clone
 - A cloud-backed library is the canonical store for uploaded source files; local storage is only a bounded cache.
 - Both Google Drive and Yandex Disk are supported by tested provider adapters.
 - The user can later connect either or both accounts, select library folders, and revoke access.
+- A documented and tested Yandex Alice integration path works within the user's available free account capabilities, or clearly documents any unavoidable provider limitation and a no-cost alternative.
 - Cloud file access is Core-authorized, least-privilege, and auditable.
 - A documented comparison of candidate models and licenses.
 - Repeatable quality and performance tests with baseline metrics.
@@ -108,6 +112,7 @@ Private testing is a project context, not by itself proof of permission to clone
 1. Continue the existing backup, Core hardening, and secure Bridge work as the higher priority.
 2. Design the cloud-library abstraction and secure Bridge file-transfer contract; do not hard-code a single provider.
 3. Keep both Google Drive and Yandex Disk in scope; defer account connection until after Core and secure Bridge are ready.
+4. Treat Yandex Alice integration as mandatory; research supported official interfaces and free-tier constraints before implementation.
 4. Ask the user to identify reference recordings and confirm their provenance and permitted use.
 5. Clarify whether the first experiment should be audio analysis only or authorized synthesis of new speech in the reference voice.
 6. Inventory available local hardware and choose a no-paid-infrastructure-first evaluation path.
