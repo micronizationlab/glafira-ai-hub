@@ -1,5 +1,9 @@
 name: GLAFIRA AI HUB Android Build
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches:
