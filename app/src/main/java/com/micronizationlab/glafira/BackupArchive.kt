@@ -295,7 +295,9 @@ object BackupArchive {
             allowed.forEach { (key, value) ->
                 val safeKey = key == "glafira_primary_provider" ||
                     key == "peer_consultation_enabled" ||
-                    key.startsWith("peer_consultation_enabled_")
+                    key.startsWith("peer_consultation_enabled_") ||
+                    key == "peer_consultation_providers" ||
+                    key.startsWith("peer_consultation_providers_")
                 if (safeKey && (value is String || value is Boolean || value is Int || value is Long || value is Float)) {
                     put(key, value)
                 }
@@ -308,7 +310,8 @@ object BackupArchive {
         val editor = preferences.edit()
         preferences.all.keys.filter {
             it == "glafira_primary_provider" || it == "peer_consultation_enabled" ||
-                it.startsWith("peer_consultation_enabled_")
+                it.startsWith("peer_consultation_enabled_") ||
+                it == "peer_consultation_providers" || it.startsWith("peer_consultation_providers_")
         }.forEach { editor.remove(it) }
         val keys = values.keys()
         while (keys.hasNext()) {
