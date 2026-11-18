@@ -81,6 +81,46 @@ class GlafiraCorePersistenceTest {
         assertNull(access)
     }
 
+
+    @Test
+    fun agentWithoutTrustedRoleCannotRequestAgentMemory() = runBlocking {
+        val factory = CoreAccessContextFactory(
+            identityProvider = object : CoreIdentityProvider {
+                override suspend fun currentActor() = CoreActor("agent-2", CoreActorType.AGENT)
+            },
+            policyEngine = allowPolicy()
+        )
+
+        val access = factory.forMemory(
+            projectId = ProjectIdentifier("project-1"),
+            requestedScopes = setOf(MemoryScopeType.PROJECT, MemoryScopeType.AGENT),
+            maximumClassification = CoreDataClassification.INTERNAL
+        )
+
+        assertNull(access)
+    }
+
+    @Test
+    fun policyRequiringOwnerApprovalDoesNotIssueMemoryContext() = runBlocking {
+        val factory = CoreAccessContextFactory(
+            identityProvider = object : CoreIdentityProvider {
+                override suspend fun currentActor() = CoreActor("owner-1", CoreActorType.OWNER)
+            },
+            policyEngine = object : CorePolicyEngine {
+                override suspend fun evaluate(request: CorePolicyRequest) =
+                    CorePolicyDecision(allowed = true, reasonCode = "APPROVAL_REQUIRED", requiresOwnerApproval = true)
+            }
+        )
+
+        val access = factory.forMemory(
+            projectId = ProjectIdentifier("project-1"),
+            requestedScopes = setOf(MemoryScopeType.PROJECT),
+            maximumClassification = CoreDataClassification.CONFIDENTIAL
+        )
+
+        assertNull(access)
+    }
+
     private fun allowPolicy() = object : CorePolicyEngine {
         override suspend fun evaluate(request: CorePolicyRequest) =
             CorePolicyDecision(allowed = true, reasonCode = "TEST_ALLOWED")
