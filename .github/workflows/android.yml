@@ -37,7 +37,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: Run Unit Tests
-        run: gradle testDebugUnitTest :desktop-bridge:test
+        run: gradle testDebugUnitTest :desktop-bridge:test :desktop-bridge:installDist
 
       - name: Build Debug APK
         run: gradle assembleDebug
@@ -47,5 +47,13 @@ jobs:
         with:
           name: glafira-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Desktop Bridge CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-desktop-bridge-cli
+          path: desktop-bridge/build/install/desktop-bridge/
           if-no-files-found: error
           retention-days: 14
