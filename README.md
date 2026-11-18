@@ -20,3 +20,12 @@ The multi-channel social communications role and connector architecture are desc
 ## Specialist Roles
 
 Additional role definitions for Accountant, Medical/Scientific Consultant, Lawyer and Commercial Director are in [SPECIALIST_ROLES.md](docs/SPECIALIST_ROLES.md).
+
+
+## Intelligence Center
+
+The hybrid model, professional skill exchange, knowledge, evaluation and owner-approved learning architecture is described in [GLAFIRA_INTELLIGENCE_CENTER.md](docs/GLAFIRA_INTELLIGENCE_CENTER.md).
+
+## Backup and Recovery
+
+Mandatory encrypted backup, free cloud destinations and cross-device recovery are specified in [GLAFIRA_BACKUP_AND_RECOVERY.md](docs/GLAFIRA_BACKUP_AND_RECOVERY.md).
