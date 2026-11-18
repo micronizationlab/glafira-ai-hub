@@ -18,10 +18,13 @@ object GlafiraCoordinator {
         context: Context,
         primaryProvider: ProviderId,
         history: List<Msg>,
-        systemPrompt: String
+        systemPrompt: String,
+        projectId: String? = null
     ): String {
+        val consultationKey = projectId?.let { "peer_consultation_enabled_$it" }
+            ?: "peer_consultation_enabled"
         val peerConsultationEnabled = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-            .getBoolean("peer_consultation_enabled", false)
+            .getBoolean(consultationKey, false)
         if (!peerConsultationEnabled || history.isEmpty()) {
             return callAiProvider(context, primaryProvider, history, systemPrompt)
         }
