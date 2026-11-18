@@ -60,7 +60,7 @@ fun main() {
             operation = operation,
             payload = payload
         )
-        println("Bridge status: \${response.status}")
+        println("Bridge status: ${response.status}")
         response.errorCode?.let { println("Error code: $it") }
         response.result.forEach { (key, value) ->
             println("$key: $value")
@@ -86,7 +86,7 @@ private fun pairAndImport(
         deviceLabel = "GLAFIRA Desktop",
         requestedScopes = scopes
     )
-    println("Pairing status: \${result.status}")
+    println("Pairing status: ${result.status}")
     println("Now approve this Desktop on Android and select the actual granted scopes.")
     val credentialBundle = readHiddenText(
         console,
