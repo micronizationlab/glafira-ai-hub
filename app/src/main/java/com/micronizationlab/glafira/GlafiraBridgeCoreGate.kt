@@ -12,6 +12,7 @@ enum class GlafiraBridgeAuthorizationError {
     DEVICE_MISMATCH,
     AUTHENTICATION_FAILED,
     UNKNOWN_TOOL,
+    APPROVAL_NOT_REQUIRED,
     SCOPE_DENIED
 }
 
@@ -52,17 +53,8 @@ object GlafiraBridgeCoreGate {
                 return denied(GlafiraBridgeAuthorizationError.SCOPE_DENIED)
             val targetTool = GlafiraToolRegistry.find(request.payload.getValue("toolId"))
                 ?: return denied(GlafiraBridgeAuthorizationError.UNKNOWN_TOOL)
-            if (!GlafiraToolRegistry.requiresOwnerApproval(targetTool.risk)) {
-                return GlafiraBridgeAuthorizationResult(
-                    GlafiraBridgeResponse(
-                        GlafiraBridgeProtocol.CURRENT_VERSION,
-                        request.requestId,
-                        GlafiraBridgeStatus.FAILED,
-                        errorCode = "OWNER_APPROVAL_NOT_REQUIRED_FOR_TARGET"
-                    ),
-                    GlafiraBridgeAuthorizationError.UNKNOWN_TOOL
-                )
-            }
+            if (!GlafiraToolRegistry.requiresOwnerApproval(targetTool.risk))
+                return denied(GlafiraBridgeAuthorizationError.APPROVAL_NOT_REQUIRED)
             return GlafiraBridgeAuthorizationResult(
                 GlafiraBridgeResponse(
                     GlafiraBridgeProtocol.CURRENT_VERSION,
