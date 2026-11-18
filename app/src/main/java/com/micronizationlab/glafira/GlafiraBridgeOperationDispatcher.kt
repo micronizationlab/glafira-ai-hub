@@ -93,7 +93,7 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
 
     private fun conversationFile(projectId: String, conversationId: String): File {
         require(isAllowedConversationId(projectId, conversationId))
-        val file = File(filesRoot, "chat_$conversationId.json").canonicalFile
+        val file = File(filesRoot, "chat_$conversationId.json")
         require(isDirectChild(file))
         return file
     }
@@ -144,8 +144,12 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
         }
     }
 
-    private fun isDirectChild(file: File): Boolean =
-        file.canonicalFile.parentFile == filesRoot
+    private fun isDirectChild(file: File): Boolean {
+        val normalized = file.absoluteFile.normalize()
+        return normalized.parentFile == filesRoot &&
+            !Files.isSymbolicLink(normalized.toPath()) &&
+            normalized.canonicalFile == normalized
+    }
 
     private fun succeeded(request: GlafiraBridgeRequest, result: Map<String, String>) =
         GlafiraBridgeResponse(
