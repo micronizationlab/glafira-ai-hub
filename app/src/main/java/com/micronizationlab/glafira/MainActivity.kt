@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -228,6 +229,15 @@ fun ContactList(
     var iaExpanded by remember { mutableStateOf(true) }
     var aiExpanded by remember { mutableStateOf(true) }
 
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    var isOnline by remember { mutableStateOf(cm.activeNetwork != null) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            isOnline = cm.activeNetwork != null
+            delay(2000)
+        }
+    }
+
     val list = remember(context, refreshKey) {
         listOf(
             A("ГЛАФИРА", "Главный координатор", isProviderConfigured(context, ProviderId.GIGACHAT), "🤖",
@@ -387,9 +397,12 @@ fun ContactList(
         }
 
         Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            StatusFlower(true, 8.dp)
+            StatusFlower(isOnline, 8.dp)
             Spacer(Modifier.width(6.dp))
-            Text("ONLINE | ${currentProject.name}", color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+            Text(
+                if (isOnline) "ONLINE | ${currentProject.name}" else "OFFLINE | ${currentProject.name}",
+                color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace
+            )
         }
     }
 }
