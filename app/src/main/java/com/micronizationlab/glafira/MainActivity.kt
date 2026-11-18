@@ -32,7 +32,8 @@ import java.io.File
 import java.net.URL
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
-import java.util.UUID
+import java.text.SimpleDateFormat
+import java.util.*
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
@@ -43,6 +44,7 @@ val GrD = Color(0xFF151515)
 val Tx = Color(0xFF888888)
 
 data class A(val n: String, val d: String, val on: Boolean, val emoji: String)
+data class Msg(val text: String, val isUser: Boolean, val time: String)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,14 +56,22 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun App() {
     var currentAgent by remember { mutableStateOf<A?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
+
     Surface(Modifier.fillMaxSize(), color = Bg) {
-        if (currentAgent == null) ContactList { currentAgent = it }
-        else ChatScreen(agent = currentAgent!!, onBack = { currentAgent = null })
+        when {
+            showSettings -> SettingsScreen(onBack = { showSettings = false })
+            currentAgent == null -> ContactList(
+                onAgentClick = { currentAgent = it },
+                onSettingsClick = { showSettings = true }
+            )
+            else -> ChatScreen(agent = currentAgent!!, onBack = { currentAgent = null })
+        }
     }
 }
 
 @Composable
-fun ContactList(onAgentClick: (A) -> Unit) {
+fun ContactList(onAgentClick: (A) -> Unit, onSettingsClick: () -> Unit) {
     val list = listOf(
         A("ГЛАФИРА", "Главный координатор", true, "🤖"),
         A("АНАЛИТИК", "Исследование и анализ", true, "📊"),
@@ -70,7 +80,7 @@ fun ContactList(onAgentClick: (A) -> Unit) {
     Column {
         Row(Modifier.fillMaxWidth().background(GrD).padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
             Text("GLAFIRA AI HUB", color = Gr, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-            Text("⚙️", fontSize = 20.sp, modifier = Modifier.clickable {})
+            Text("⚙️", fontSize = 20.sp, modifier = Modifier.clickable { onSettingsClick() })
         }
         LazyColumn(Modifier.weight(1f)) {
             items(list) { a ->
@@ -98,29 +108,33 @@ fun ContactList(onAgentClick: (A) -> Unit) {
 fun ChatScreen(agent: A, onBack: () -> Unit) {
     val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
-    // Загружаем историю при старте
     var messages by remember { mutableStateOf(loadHistory(context, agent.n)) }
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-
-    val authKey = "MDFhMWVjMGQtMmY5ZS03MzYxLTkxYmItZGQ1NjkyMzE0OTNkOmMyZTJlMzU4LWY0MTktNGRjMS05MWE0LTUyNjNlMjJhNzYyNA=="
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
             Text(agent.emoji, fontSize = 20.sp)
             Spacer(Modifier.width(8.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(agent.n, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 Text(if (agent.on) "Online" else "Offline", color = Tx, fontSize = 10.sp)
             }
+            Text("🗑️", fontSize = 18.sp, modifier = Modifier.clickable {
+                messages = emptyList()
+                saveHistory(context, agent.n, emptyList())
+            })
         }
 
         LazyColumn(Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(messages) { (text, isUser) ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-                    Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (isUser) GrD else Gr.copy(alpha = 0.15f)).border(1.dp, if (isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(12.dp)) {
-                        Text(text, color = if (isUser) Color.White else Gr, fontSize = 14.sp)
+            items(messages) { msg ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
+                    Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
+                        Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f)).border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(12.dp)) {
+                            Text(msg.text, color = if (msg.isUser) Color.White else Gr, fontSize = 14.sp)
+                        }
+                        Text(msg.time, color = Tx, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
             }
@@ -143,18 +157,19 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
                 onClick = {
                     if (inputText.isNotBlank() && !isLoading) {
                         val userMsg = inputText
-                        val updatedMessages = messages + (userMsg to true)
+                        val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                        val updatedMessages = messages + Msg(userMsg, true, timeNow)
                         messages = updatedMessages
-                        saveHistory(context, agent.n, updatedMessages) // Сохраняем на телефон
+                        saveHistory(context, agent.n, updatedMessages)
                         inputText = ""
                         isLoading = true
                         
                         scope.launch {
-                            // Отправляем всю историю, чтобы ИИ помнил контекст
-                            val reply = callGigaChatWithTrustedCert(context, authKey, updatedMessages)
-                            val finalMessages = updatedMessages + (reply to false)
+                            val reply = callGigaChatWithTrustedCert(context, updatedMessages)
+                            val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                            val finalMessages = updatedMessages + Msg(reply, false, replyTime)
                             messages = finalMessages
-                            saveHistory(context, agent.n, finalMessages) // Сохраняем ответ
+                            saveHistory(context, agent.n, finalMessages)
                             isLoading = false
                         }
                     }
@@ -167,35 +182,39 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
     }
 }
 
-// --- ФУНКЦИИ ДЛЯ СОХРАНЕНИЯ ИСТОРИИ В ФАЙЛ ---
-fun saveHistory(context: Context, agentName: String, history: List<Pair<String, Boolean>>) {
+// --- СОХРАНЕНИЕ ИСТОРИИ ---
+fun saveHistory(context: Context, agentName: String, history: List<Msg>) {
     val file = File(context.filesDir, "chat_$agentName.json")
     val jsonArray = JSONArray()
     history.forEach { 
         jsonArray.put(JSONObject().apply { 
-            put("text", it.first)
-            put("isUser", it.second) 
+            put("text", it.text)
+            put("isUser", it.isUser)
+            put("time", it.time)
         }) 
     }
     file.writeText(jsonArray.toString())
 }
 
-fun loadHistory(context: Context, agentName: String): List<Pair<String, Boolean>> {
+fun loadHistory(context: Context, agentName: String): List<Msg> {
     val file = File(context.filesDir, "chat_$agentName.json")
     if (!file.exists()) return emptyList()
-    val list = mutableListOf<Pair<String, Boolean>>()
+    val list = mutableListOf<Msg>()
     try {
         val jsonArray = JSONArray(file.readText())
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.getJSONObject(i)
-            list.add(obj.getString("text") to obj.getBoolean("isUser"))
+            list.add(Msg(obj.getString("text"), obj.getBoolean("isUser"), obj.optString("time", "")))
         }
     } catch (e: Exception) { }
     return list
 }
 
-// --- ФУНКЦИЯ ЗАПРОСА К GIGACHAT С КОНТЕКСТОМ ---
-suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, history: List<Pair<String, Boolean>>): String = withContext(Dispatchers.IO) {
+// --- ЗАПРОС К GIGACHAT (Ключ берется из настроек) ---
+suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>): String = withContext(Dispatchers.IO) {
+    val authKey = loadApiKey(context)
+    if (authKey.isBlank()) return@withContext "Ошибка: Ключ API не найден. Зайдите в настройки (шестеренка) и вставьте ключ."
+
     try {
         val certFactory = CertificateFactory.getInstance("X.509")
         val certInputStream = context.assets.open("russian_trusted_root_ca.crt")
@@ -240,12 +259,11 @@ suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, histo
         chatConn.setRequestProperty("Authorization", "Bearer $accessToken")
         chatConn.doOutput = true
 
-        // Формируем массив сообщений для GigaChat
         val messagesArray = JSONArray()
-        history.forEach { (text, isUser) ->
+        history.forEach { msg ->
             messagesArray.put(JSONObject().apply { 
-                put("role", if (isUser) "user" else "assistant") 
-                put("content", text) 
+                put("role", if (msg.isUser) "user" else "assistant") 
+                put("content", msg.text) 
             })
         }
 
