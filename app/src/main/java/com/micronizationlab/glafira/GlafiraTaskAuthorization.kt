@@ -43,7 +43,7 @@ class RegistryBackedGlafiraTaskAuthorizer(
             )
         }
 
-        val grant = if (requiresApproval) grants.approvalGrant(task, actionSummary, nowMillis) else null
+        val grant = if (!missingScopes && (requiresApproval || actionSummary.isNotBlank())) grants.approvalGrant(task, actionSummary, nowMillis) else null
         if (missingScopes || (requiresApproval && grant == null)) {
             val queued = runCatching {
                 grants.requestApproval(task, actionSummary, nowMillis)
