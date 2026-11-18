@@ -198,7 +198,14 @@ fun BackupSettingsSection() {
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
-                        onClick = { BackupScheduler.runNow(context, wifiOnly); status = "Запрос на внеплановую резервную копию отправлен." },
+                        onClick = {
+                            if (EncryptedApiKeyStore.save(context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY, passphrase)) {
+                                BackupScheduler.runNow(context, wifiOnly)
+                                status = "Запрос на внеплановую резервную копию отправлен."
+                            } else {
+                                status = "Не удалось сохранить пароль резервной копии."
+                            }
+                        },
                         enabled = !busy && folderUri != null && passphrase.length >= 12,
                         modifier = Modifier.weight(1f)
                     ) { Text("Сохранить сейчас") }
