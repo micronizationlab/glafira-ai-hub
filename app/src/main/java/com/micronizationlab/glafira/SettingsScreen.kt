@@ -142,7 +142,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                             Text("ПРЕДПРОСМОТР · ИЗВЕСТНЫЕ СЕКРЕТЫ МАСКИРУЮТСЯ", color = Gr, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Text(approval.reviewDetails, color = Tx, fontSize = 10.sp)
                         }
-                        Text("Проект: ${approval.task.projectId}", color = Tx, fontSize = 10.sp)
+                        Text("Проект: ${approval.task.projectId} · источник: ${approval.task.origin}", color = Tx, fontSize = 10.sp)
                         Text("Запрашиваемые полномочия: ${approval.requestedScopes.sorted().joinToString()}", color = Tx, fontSize = 10.sp)
                         Text("Подтверждение разрешит эти области только для этого задания; одноразовый допуск истечёт через 10 минут.",
                             color = Tx, fontSize = 10.sp)
