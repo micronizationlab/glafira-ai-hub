@@ -7,7 +7,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import java.net.InetAddress
@@ -20,7 +19,6 @@ class GlafiraBridgeHostService : Service() {
     private var host: GlafiraBridgeTlsHttpServer? = null
     private var approvalStore: AndroidKeystoreBridgePairingApprovalStore? = null
     private var replayGuard: GlafiraBridgeReplayGuard? = null
-    private var multicastLock: WifiManager.MulticastLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -58,7 +56,6 @@ class GlafiraBridgeHostService : Service() {
                 admission = GlafiraBridgeRequestAdmission(approvalStore!!, replayGuard!!),
                 addressRateLimiter = limiter
             ).also { it.start(bindAddress, port) }
-            acquireMulticastLock()
             updateNotification("Защищённый локальный канал активен: $address:$port")
             START_NOT_STICKY
         } catch (_: Exception) {
@@ -135,19 +132,9 @@ class GlafiraBridgeHostService : Service() {
         }
     }
 
-    private fun acquireMulticastLock() {
-        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
-        multicastLock = wifi.createMulticastLock("glafira-bridge-nsd").apply {
-            setReferenceCounted(false)
-            acquire()
-        }
-    }
-
     private fun stopHost() {
         runCatching { host?.close() }
         host = null
-        runCatching { multicastLock?.release() }
-        multicastLock = null
         runCatching { approvalStore?.close() }
         approvalStore = null
         runCatching { replayGuard?.close() }
