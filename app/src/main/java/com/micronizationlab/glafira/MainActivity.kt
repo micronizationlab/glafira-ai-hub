@@ -568,11 +568,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     }
 
     fun startVoiceInput() {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!hasPermission) {
-            ToastHelper.short(context, "Нужно разрешение на микрофон")
+        if (ContextCompat.checkSelfPermission(
+                context, Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ToastHelper.short(context, "Разрешение на микрофон не предоставлено")
             return
         }
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
@@ -590,6 +590,27 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         } catch (e: Exception) {
             isListening = false
             ToastHelper.short(context, "Не удалось запустить распознавание")
+        }
+    }
+
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            startVoiceInput()
+        } else {
+            ToastHelper.short(context, "Без разрешения микрофона голосовой ввод недоступен")
+        }
+    }
+
+    fun requestOrStartVoiceInput() {
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            startVoiceInput()
+        } else {
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -794,7 +815,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             if (!isSearching) {
                 Row(Modifier.fillMaxWidth().background(GrD).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        Modifier.size(36.dp).border(1.dp, if (isListening) Red else Gr, RoundedCornerShape(2.dp)).clickable { startVoiceInput() },
+                        Modifier.size(36.dp).border(1.dp, if (isListening) Red else Gr, RoundedCornerShape(2.dp)).clickable { requestOrStartVoiceInput() },
                         contentAlignment = Alignment.Center
                     ) { Text(if (isListening) "🔴" else "🎤", fontSize = 16.sp) }
                     Spacer(Modifier.width(6.dp))
