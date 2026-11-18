@@ -28,7 +28,7 @@
 
 - Repository access contexts have internal constructors.
 - `CoreAccessContextFactory` obtains the actor from `CoreIdentityProvider`, intersects requested memory scopes with a fixed actor-type ceiling, and checks policy before issuing a context.
-- The repository rechecks policy for reads, writes and deletes. Agent-created records must carry matching actor provenance; only OWNER can confirm memory.
+- The repository rechecks policy for reads, writes, deletes and the paired Trace write. Agent-created records must carry matching actor provenance; only OWNER can confirm memory.
 - Agents cannot obtain OWNER scope from the factory.
 - The application still needs to connect a production `CoreIdentityProvider` to the authenticated owner/session boundary. Until that wiring exists, no autonomous agent should be given a repository access context.
 
@@ -36,6 +36,7 @@
 
 - Trace is appended to the same SQLite database.
 - Sanitization is enforced at the repository append boundary, not only by the service.
+- Direct Trace writes must match the authenticated actor and pass the explicit WRITE_TRACE policy action; memory mutations pre-authorize their paired Trace event before the shared transaction.
 - Only a fixed allow-list of metadata keys and simple token values is persisted. Unknown keys, free text, emails, phone-like values and recognized token patterns are dropped/redacted.
 - Event append from a memory write occurs in the same SQLite transaction as the memory mutation.
 - Reads are project-scoped through an internally issued `TraceAccessContext`.
