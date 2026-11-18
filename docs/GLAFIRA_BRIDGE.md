@@ -2,6 +2,13 @@
 
 Status: architecture started; no live connection is deployed yet.
 
+## Owner-approved decisions
+
+- Android and Desktop are equal, independent clients sharing one logical Glafira Core and common project memory.
+- Core hardening and the ChatGPT connection path take priority over desktop UI implementation.
+- Bridge must serve both device-to-Core synchronization and the explicitly authorized ChatGPT integration; these are separate interfaces with separate identities and scopes.
+- No rented server, paid relay or public endpoint is deployed without the owner's separate approval.
+
 ## Purpose
 
 Glafira Bridge is the authenticated exchange layer between GLAFIRA AI HUB clients (Android and Desktop), the Glafira Core coordinator, configured model providers and approved external tool connectors.
@@ -57,6 +64,15 @@ Every response includes:
 
 Commands are proposals until Core authorizes and the tool broker confirms execution. Retries must be idempotent. Unknown protocol versions and unknown operations fail closed.
 
+## Shared memory synchronization
+
+- Core owns canonical project/conversation records and version metadata.
+- Android and Desktop maintain encrypted, bounded offline caches and append-only pending outboxes; neither client is the master.
+- Every mutation includes stable event ID, device ID, project scope, schema version, base version and idempotency key.
+- Core deduplicates retries and returns canonical event order/version.
+- Non-conflicting changes can be accepted automatically. Conflicts in user-authored text must be surfaced or resolved by a documented deterministic merge; destructive/security state never uses last-write-wins.
+- Device secrets, API keys and OAuth refresh tokens are device-bound and excluded from shared memory/backups unless a separately reviewed secure credential-transfer design is approved.
+
 ## Security boundaries
 
 - Owner remains final authority; Glafira Core coordinates; model providers have no tool authority.
@@ -73,14 +89,14 @@ GigaChat is a provider adapter selected by Core policy, not a controller of Glaf
 
 ## Delivery phases
 
-1. Define protocol schemas, threat model and local mock transport.
-2. Add device registry, one-time pairing, credential storage and revocation.
-3. Implement Android and Desktop client transport with heartbeat, reconnect and idempotent queue.
-4. Connect transport to Core coordinator and approval queue.
-5. Add audit events, scopes, data classification and redaction tests.
-6. Add official OpenAI API adapter for in-app model access (separate API credentials/billing).
-7. Add optional MCP server adapter for ChatGPT product connectivity; validate real connector setup and remote HTTPS reachability.
-8. Penetration/security review and multi-device acceptance.
+1. Complete Core authority, provider-routing, context isolation, typed tool registry, approval and audit contracts.
+2. Define Bridge protocol schemas, threat model and local mock transport against those Core contracts.
+3. Add device registry, one-time pairing, credential storage and revocation.
+4. Implement Android and Desktop client transport with heartbeat, reconnect and idempotent queue.
+5. Implement canonical project memory sync, versioning, offline outbox and conflict handling.
+6. Add an official OpenAI API adapter for in-app model access (separate API credentials/billing).
+7. Add an optional MCP server adapter for ChatGPT product connectivity; validate real connector setup and remote HTTPS reachability.
+8. Security review and multi-device acceptance.
 
 ## Acceptance criteria
 
@@ -91,4 +107,5 @@ GigaChat is a provider adapter selected by Core policy, not a controller of Glaf
 - Approval grants are bound to one project, tool and exact action summary and expire.
 - Provider data-sharing policy is enforced before every provider call.
 - MCP exposes only explicitly allowlisted tools and reports pending approval rather than bypassing it.
-- Android and Desktop can exchange project messages and task state over the approved transport.
+- Android and Desktop converge on canonical project memory and task state after reconnect.
+- Conflicts are visible and recoverable; no destructive state is silently overwritten.
