@@ -112,6 +112,7 @@ class GlafiraSqliteMemoryRepository(
             }
             val db = database.readableDatabase
             val records = mutableListOf<CoreMemoryRecord>()
+            val now = Instant.now()
             db.query(
                 TABLE, null,
                 "scope_type IN ($scopePlaceholders) AND $statusClause",
@@ -121,7 +122,10 @@ class GlafiraSqliteMemoryRepository(
                     val metadata = cursor.toMetadata()
                     if (!canAccessScope(metadata.scopeType, metadata.scopeId, access)) continue
                     if (metadata.classification.ordinal > access.maximumClassification.ordinal) continue
-                    if (!query.includeExpired && metadata.expiresAt?.isBefore(Instant.now()) == true) continue
+                    if (!query.includeExpired &&
+                        (metadata.status == MemoryStatus.EXPIRED ||
+                            metadata.expiresAt?.isBefore(now) == true ||
+                            metadata.validFrom?.isAfter(now) == true)) continue
                     if (query.kinds.isNotEmpty() && metadata.kind !in query.kinds) continue
                     val decision = policyEngine.evaluate(
                         policyRequest(access, CoreAction.READ_MEMORY, metadata.classification, metadata.id.value)
@@ -196,8 +200,14 @@ class GlafiraSqliteMemoryRepository(
             if (changed != 1) return@withContext MemoryWriteResult.Rejected("MEMORY_CONCURRENT_MODIFICATION")
             traceService.recordInTransaction(
                 db,
-                memoryEvent(updated, access, if (updated.status == MemoryStatus.CONFIRMED)
-                    CoreTraceEventType.MEMORY_CONFIRMED else CoreTraceEventType.MEMORY_UPDATED)
+                memoryEvent(
+                    updated, access,
+                    when (updated.status) {
+                        MemoryStatus.CONFIRMED -> CoreTraceEventType.MEMORY_CONFIRMED
+                        MemoryStatus.DISPUTED -> CoreTraceEventType.MEMORY_DISPUTED
+                        else -> CoreTraceEventType.MEMORY_UPDATED
+                    }
+                )
             )
             db.setTransactionSuccessful()
             MemoryWriteResult.Stored(id)
