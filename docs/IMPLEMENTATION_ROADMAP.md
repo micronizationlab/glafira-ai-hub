@@ -13,6 +13,13 @@ Goal: make Glafira a reliable coordinator for the entire AI office. Core is the 
 5. Add tool permission scopes, approval gates, audit trail and safe handoff for unsupported actions.
 6. Add coordinator tests: routing, provider failures, secret redaction, peer selection, context boundaries, approval behavior and final synthesis.
 7. Add health/diagnostics so the owner can see why a model or tool was selected and whether an operation actually completed.
+8. Make unified operational memory part of Core: owner, project, agent, conversation and working scopes; provenance, confidence, classification, expiry, owner correction/export/deletion and policy-filtered retrieval.
+9. Define provider-independent agent contracts and one shared executor; roles never grant permissions by themselves.
+10. Add an independent Reviewer with ACCEPT/REVISE/REJECT/ESCALATE outcomes, deterministic checks, bounded revision cycles and fail-closed behavior.
+11. Add a structured, redacted, project-scoped Trace/Audit event stream for tasks, memory, reviews, policy, approvals, providers and tools.
+12. Add Core acceptance tests for scope isolation, memory lifecycle, reviewer boundaries, secret redaction, trace continuity and backup/restore consistency.
+
+Foundation contracts are specified in [GLAFIRA CORE — Foundation Technical Specification](GLAFIRA_CORE_FOUNDATION_SPEC.md). A specification is not implementation evidence.
 
 No external irreversible action (send, publish, purchase, delete, alter business records) without explicit approval or a narrowly scoped owner policy.
 
@@ -40,13 +47,14 @@ No rented server or paid backend is required for the initial implementation. And
 6. Add SMM, Accountant, Medical/Scientific Consultant, Lawyer and Commercial Director roles, then further roles such as Analyst and Procurement/Logistics as prioritized by the owner.
 7. Voice and role behavior must not change facts, permissions, privacy or authority.
 
-## Priority 4 — Unified Memory and Knowledge
+## Priority 4 — Knowledge Ingestion and Retrieval Extensions
 
-1. Add a unified, searchable memory architecture with explicit separation between owner, project, agent and conversation memory.
-2. Provide owner-visible inspection, correction, export and deletion controls; track provenance, timestamps and confidence.
-3. Support shared project knowledge without leaking restricted data across projects or agents.
-4. Add document, file, website and connector ingestion with hybrid retrieval, citations and scheduled re-indexing.
-5. Add context compaction and long-running task summaries while preserving durable facts and decisions.
+Unified operational memory is a Priority 1 GLAFIRA Core responsibility and is specified in [GLAFIRA CORE — Foundation Technical Specification](GLAFIRA_CORE_FOUNDATION_SPEC.md). This later priority covers source-document knowledge, not a second memory system.
+
+1. Add document, file, website and connector ingestion with hybrid retrieval, citations and scheduled re-indexing.
+2. Support shared project knowledge without leaking restricted data across projects or agents.
+3. Add context compaction and long-running task summaries while preserving durable facts and decisions.
+4. Preserve source metadata, jurisdiction/date, access policy and citations for retrieved knowledge.
 
 ## Priority 5 — Multi-Agent Workforce
 
@@ -148,7 +156,9 @@ These are roadmap capabilities, not a claim that they are already implemented. E
 - The cloud worker uploads a new timestamped archive, reads it back and verifies it before deleting older current copies; steady state is one current archive. If the provider refuses deletion, it keeps the verified new copy and records a cleanup warning. The selected folder can be a Google Drive or Yandex Disk document provider when exposed by an installed app. This is not a direct Drive/Yandex REST OAuth adapter.
 - Still required for Backup & Recovery: real-device/provider acceptance testing, permission-expiry and quota failure tests, clean-device restore test, status notifications, and optional email fallback. WorkManager timing is best-effort.
 - GLAFIRA Core hardening has started: cross-provider consultation is owner opt-in and disabled by default; common tokens/passwords/contact details are pattern-redacted; the primary model can return a direct answer from the planning call to avoid duplicate requests; Council synthesis now follows the configured primary model.
-- Still required for GLAFIRA Core: field-level data-sharing classifications, broader coordinator tests, timeout/cancellation/fallback policy, context-boundary tests, typed tool registry, approval engine and audit trail.
+- Still required for GLAFIRA Core: field-level data-sharing classifications, broader coordinator tests, timeout/cancellation/fallback policy, context-boundary tests, typed tool registry, approval engine, unified operational memory, independent Reviewer and structured Trace/Audit. Their contracts are specified but not yet implemented by the new specification PR.
 - Voice runtime and SMM/social connectors remain specifications until implemented and tested.
 
 - Restore semantics hardened: selected backup now replaces the app-private file snapshot, including removing files created after that backup; safety snapshot rollback remains in place. Requires device acceptance tests.
+- Latest observed PR #35 validation: Android Unit Tests passed, but Android Emulator Integration Tests failed because the emulator did not finish booting before timeout. This is an infrastructure/test-run failure, not a passing restore acceptance; rerun and investigate before merge.
+- PR #37 WorkManager integration remains draft and unmerged; its latest observed CI runs were still in progress at the time of this roadmap update.

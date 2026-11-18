@@ -7,6 +7,10 @@ The target authority model and secure tool-execution roadmap are documented in
 [GLAFIRA Core: autonomy, tools and credential security](docs/GLAFIRA_CORE_SECURITY_AND_TOOLS.md).
 
 
+## GLAFIRA Core Foundation Specification
+
+The Core memory model, agent contracts, independent Reviewer, Trace/Audit format, policy invariants and acceptance gates are specified in [GLAFIRA_CORE_FOUNDATION_SPEC.md](docs/GLAFIRA_CORE_FOUNDATION_SPEC.md).
+
 ## Optional Voice Assistant Plugin
 
 The separately enabled speech input/output module, voice and delivery profiles, consent safeguards, and implementation phases are described in [VOICE_ASSISTANT_PLUGIN.md](docs/VOICE_ASSISTANT_PLUGIN.md).
