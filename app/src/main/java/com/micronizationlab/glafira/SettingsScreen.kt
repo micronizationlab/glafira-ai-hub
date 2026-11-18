@@ -42,6 +42,10 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
+    var peerConsultationEnabled by remember {
+        mutableStateOf(context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+            .getBoolean("peer_consultation_enabled", false))
+    }
 
     LaunchedEffect(isSaved) {
         if (isSaved) primaryProvider = loadGlafiraPrimaryProvider(context)
@@ -203,6 +207,32 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 if (configuredProviders.isEmpty()) {
                     Text("Сначала подключи хотя бы одну модель выше.", color = Tx, fontSize = 10.sp)
                 }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("НЕЗАВИСИМЫЕ МОДЕЛИ-СОВЕТНИКИ", color = Color(0xFF202020), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Если включено, Глафира может передавать до 12 последних сообщений другим подключённым моделям для независимой проверки. Типичные API-токены, пароли, email и телефоны маскируются, но это не гарантирует удаление всех персональных данных. По умолчанию выключено.",
+                        color = Tx, fontSize = 11.sp
+                    )
+                }
+                Switch(
+                    checked = peerConsultationEnabled,
+                    onCheckedChange = { enabled ->
+                        peerConsultationEnabled = enabled
+                        context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+                            .edit().putBoolean("peer_consultation_enabled", enabled).apply()
+                    }
+                )
             }
         }
 
