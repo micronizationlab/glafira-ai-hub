@@ -17,6 +17,8 @@ final class BridgeCredentialBundleTests: XCTestCase {
         var object: [String: Any] = [
             "format": "GLAFIRA_BRIDGE_CREDENTIAL_V1",
             "origin": origin ?? self.origin,
+            "approvalId": "approval-1234567890",
+            "ticketId": "ticket-1234567890",
             "deviceId": "ios-device-0001",
             "hmacSecretBase64Url": (secret ?? self.secret).base64EncodedString()
                 .replacingOccurrences(of: "+", with: "-")
@@ -33,6 +35,8 @@ final class BridgeCredentialBundleTests: XCTestCase {
         let parsed = try OwnerApprovedBridgeCredentialBundle.parse(
             bundle(), expectedOrigin: origin,
             expectedCertificateSHA256: pin,
+            expectedApprovalId: "approval-1234567890",
+            expectedTicketId: "ticket-1234567890",
             requestedScopes: ["project.read", "conversation.read"]
         )
         XCTAssertEqual(parsed.origin, origin)
@@ -44,11 +48,13 @@ final class BridgeCredentialBundleTests: XCTestCase {
     func testRejectsOriginOrCertificatePinMismatch() throws {
         XCTAssertThrowsError(try OwnerApprovedBridgeCredentialBundle.parse(
             bundle(), expectedOrigin: "https://192.168.1.21:47321",
-            expectedCertificateSHA256: pin, requestedScopes: ["project.read"]
+            expectedCertificateSHA256: pin,
+            expectedApprovalId: "approval-1234567890", expectedTicketId: "ticket-1234567890", requestedScopes: ["project.read"]
         ))
         XCTAssertThrowsError(try OwnerApprovedBridgeCredentialBundle.parse(
             bundle(), expectedOrigin: origin,
             expectedCertificateSHA256: String(repeating: "b", count: 64),
+            expectedApprovalId: "approval-1234567890", expectedTicketId: "ticket-1234567890",
             requestedScopes: ["project.read"]
         ))
     }
@@ -68,6 +74,7 @@ final class BridgeCredentialBundleTests: XCTestCase {
         XCTAssertThrowsError(try OwnerApprovedBridgeCredentialBundle.parse(
             bundle(secret: Data(repeating: 0x01, count: 31)),
             expectedOrigin: origin, expectedCertificateSHA256: pin,
+            expectedApprovalId: "approval-1234567890", expectedTicketId: "ticket-1234567890",
             requestedScopes: ["project.read"]
         ))
         XCTAssertThrowsError(try OwnerApprovedBridgeCredentialBundle.parse(
