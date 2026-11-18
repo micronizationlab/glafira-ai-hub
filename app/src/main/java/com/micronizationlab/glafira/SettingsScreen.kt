@@ -66,7 +66,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             ProviderKeyField(
                 label = "GigaChat (Authorization Key)",
                 value = gigachatKey,
-                onValueChange = { gigachatKey = it; isSaved = false },
+                onValueChange = { gigachatKey = it; isSaved = false; saveError = false },
                 configured = gigachatKey.isNotBlank()
             )
         }
@@ -87,37 +87,37 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             ProviderKeyField(
                 label = "ChatGPT (OpenAI API Key, sk-...)",
                 value = openaiKey,
-                onValueChange = { openaiKey = it; isSaved = false },
+                onValueChange = { openaiKey = it; isSaved = false; saveError = false },
                 configured = openaiKey.isNotBlank()
             )
             ProviderKeyField(
                 label = "DeepSeek API Key",
                 value = deepseekKey,
-                onValueChange = { deepseekKey = it; isSaved = false },
+                onValueChange = { deepseekKey = it; isSaved = false; saveError = false },
                 configured = deepseekKey.isNotBlank()
             )
             ProviderKeyField(
                 label = "Grok (xAI API Key)",
                 value = grokKey,
-                onValueChange = { grokKey = it; isSaved = false },
+                onValueChange = { grokKey = it; isSaved = false; saveError = false },
                 configured = grokKey.isNotBlank()
             )
             ProviderKeyField(
                 label = "Алиса (Yandex Cloud API Key)",
                 value = yandexKey,
-                onValueChange = { yandexKey = it; isSaved = false },
+                onValueChange = { yandexKey = it; isSaved = false; saveError = false },
                 configured = yandexKey.isNotBlank()
             )
             ProviderKeyField(
                 label = "Google Gemini API Key (есть бесплатный тариф)",
                 value = geminiKey,
-                onValueChange = { geminiKey = it; isSaved = false },
+                onValueChange = { geminiKey = it; isSaved = false; saveError = false },
                 configured = geminiKey.isNotBlank()
             )
             ProviderKeyField(
                 label = "OpenRouter API Key (бесплатные модели)",
                 value = openRouterKey,
-                onValueChange = { openRouterKey = it; isSaved = false },
+                onValueChange = { openRouterKey = it; isSaved = false; saveError = false },
                 configured = openRouterKey.isNotBlank()
             )
         }
@@ -126,13 +126,16 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
         Button(
             onClick = {
-                val saved = saveApiKey(context, gigachatKey.trim()) &&
-                    saveProviderKey(context, ProviderId.OPENAI, openaiKey) &&
-                    saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey) &&
-                    saveProviderKey(context, ProviderId.GROK, grokKey) &&
-                    saveProviderKey(context, ProviderId.YANDEX, yandexKey) &&
-                    saveProviderKey(context, ProviderId.GEMINI, geminiKey) &&
+                val saveResults = listOf(
+                    saveApiKey(context, gigachatKey.trim()),
+                    saveProviderKey(context, ProviderId.OPENAI, openaiKey),
+                    saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey),
+                    saveProviderKey(context, ProviderId.GROK, grokKey),
+                    saveProviderKey(context, ProviderId.YANDEX, yandexKey),
+                    saveProviderKey(context, ProviderId.GEMINI, geminiKey),
                     saveProviderKey(context, ProviderId.OPENROUTER, openRouterKey)
+                )
+                val saved = saveResults.all { it }
                 isSaved = saved
                 saveError = !saved
             },
