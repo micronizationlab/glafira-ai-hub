@@ -10,7 +10,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: deepseek-review-${{ github.event.pull_request.number }}
+  group: deepseek-review-\${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -18,21 +18,24 @@ jobs:
     name: Review PR diff with DeepSeek
     runs-on: ubuntu-latest
     steps:
-      - name: Check API key
+      - name: Check API key availability
+        id: key
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_API_KEY: \${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           if [ -z "$DEEPSEEK_API_KEY" ]; then
-            echo "::error::Add DEEPSEEK_API_KEY to repository Actions secrets."
-            exit 1
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::DeepSeek review skipped. Add DEEPSEEK_API_KEY in Settings → Secrets and variables → Actions."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Get pull request diff
-        id: diff
+        if: steps.key.outputs.available == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: \${{ github.token }}
+          GH_REPO: \${{ github.repository }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
         run: |
           gh api "repos/$GH_REPO/pulls/$PR_NUMBER" -H "Accept: application/vnd.github+json" --jq '.diff_url' > diff_url.txt
           DIFF_URL="$(cat diff_url.txt)"
@@ -50,17 +53,18 @@ jobs:
           diff = p.read_text(errors="replace")
           limit = 60000
           if len(diff) > limit:
-              diff = diff[:limit] + "\\n\\n[DIFF TRUNCATED: review only the first 60,000 characters.]"
+              diff = diff[:limit] + "\n\n[DIFF TRUNCATED: review only the first 60,000 characters.]"
           Path("pr.diff").write_text(diff)
           print(f"Prepared diff: {len(diff)} characters")
           PY
 
       - name: Ask DeepSeek to review
+        if: steps.key.outputs.available == 'true'
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          DEEPSEEK_API_KEY: \${{ secrets.DEEPSEEK_API_KEY }}
+          PR_TITLE: \${{ github.event.pull_request.title }}
+          PR_BODY: \${{ github.event.pull_request.body }}
+          PR_URL: \${{ github.event.pull_request.html_url }}
         run: |
           python3 - <<'PY'
           import json, os
@@ -80,7 +84,7 @@ jobs:
           user = f"""PR: {os.environ.get('PR_TITLE','')}
           Description: {os.environ.get('PR_BODY','')}
           URL: {os.environ.get('PR_URL','')}
-          
+
           Review the following unified diff:
           <untrusted_diff>
           {diff}
@@ -109,15 +113,16 @@ jobs:
           review = choices[0].get("message", {}).get("content", "").strip()
           if not review:
               raise SystemExit("DeepSeek returned an empty review.")
-          Path("review.md").write_text("## DeepSeek automated review\\n\\n" + review)
+          Path("review.md").write_text("## DeepSeek automated review\n\n" + review)
           print(f"Review generated: {len(review)} characters")
           PY
 
       - name: Publish review to pull request
+        if: steps.key.outputs.available == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: \${{ github.token }}
+          GH_REPO: \${{ github.repository }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
         run: |
           gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments" \
             -X POST \
