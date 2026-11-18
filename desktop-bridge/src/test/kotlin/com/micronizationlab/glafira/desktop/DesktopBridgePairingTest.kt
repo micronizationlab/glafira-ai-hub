@@ -43,6 +43,31 @@ class DesktopBridgePairingTest {
         assertEquals(64, session.enrollment.proofHex.length)
     }
 
+    @Test fun strictOwnerBundleParserRejectsDuplicateUnknownAndMissingKeys() {
+        val expected = setOf("format", "origin")
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            DesktopBridgeJson.parseExactObject(
+                """{"format":"GLAFIRA","format":"OTHER","origin":"https://192.168.1.20"}""",
+                1024,
+                expected
+            )
+        }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            DesktopBridgeJson.parseExactObject(
+                """{"format":"GLAFIRA","origin":"https://192.168.1.20","extra":true}""",
+                1024,
+                expected
+            )
+        }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            DesktopBridgeJson.parseExactObject(
+                """{"format":"GLAFIRA"}""",
+                1024,
+                expected
+            )
+        }
+    }
+
     @Test fun rejectsMalformedCapabilityAndScope() {
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
             DesktopBridgePairing.createEnrollmentRequest("ticket_identifier_123", "bad", "Desktop", emptySet())
