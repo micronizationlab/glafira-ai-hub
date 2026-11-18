@@ -16,7 +16,7 @@ public struct BridgeDeviceCredential: Equatable, Sendable {
               }) else {
             throw BridgeCredentialStoreError.invalidDeviceIdentifier
         }
-        guard hmacSecret.count >= 32 else {
+        guard hmacSecret.count == 32 else {
             throw BridgeCredentialStoreError.invalidSecret
         }
         self.deviceId = deviceId
