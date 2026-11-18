@@ -20,11 +20,17 @@ object GlafiraCoordinator {
         history: List<Msg>,
         systemPrompt: String
     ): String {
+        val peerConsultationEnabled = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+            .getBoolean("peer_consultation_enabled", false)
+        if (!peerConsultationEnabled || history.isEmpty()) {
+            return callAiProvider(context, primaryProvider, history, systemPrompt)
+        }
+
         val availablePeers = ProviderId.values().filter {
             it != primaryProvider && isProviderConfigured(context, it) &&
                 it != ProviderId.YANDEX
         }
-        if (availablePeers.isEmpty() || history.isEmpty()) {
+        if (availablePeers.isEmpty()) {
             return callAiProvider(context, primaryProvider, history, systemPrompt)
         }
 
@@ -40,7 +46,7 @@ object GlafiraCoordinator {
         )
 
         if (!plan.shouldConsult || plan.providers.isEmpty()) {
-            return callAiProvider(context, primaryProvider, history, systemPrompt)
+            return plan.directAnswer ?: callAiProvider(context, primaryProvider, history, systemPrompt)
         }
 
         val question = safeHistory.lastOrNull { it.isUser }?.text.orEmpty()
@@ -110,7 +116,8 @@ object GlafiraCoordinator {
 
     private data class ConsultationPlan(
         val shouldConsult: Boolean,
-        val providers: List<ProviderId>
+        val providers: List<ProviderId>,
+        val directAnswer: String? = null
     )
 
     private suspend fun requestConsultationPlan(
@@ -126,14 +133,15 @@ object GlafiraCoordinator {
 
             Ты также автономный координатор ИИ-офиса.
             Перед ответом оцени, нужна ли независимая проверка коллег.
-            Для простого бытового вопроса отвечай самостоятельно.
+            Для простого вопроса и задач, где дополнительная проверка не принесёт пользы,
+            верни consult=false и положи полноценный ответ пользователю в поле answer.
             Для сложной аналитики, программирования, стратегического выбора,
             существенной неопределённости или проверки критичных выводов можно
-            запросить до двух независимых мнений.
+            запросить до двух независимых мнений. В этом случае answer оставь пустым.
             Доступные коллеги: $providerNames.
             Верни только JSON без Markdown:
-            {"consult":true,"providers":["OPENAI","DEEPSEEK"]}
-            или {"consult":false,"providers":[]}
+            {"consult":true,"providers":["OPENAI","DEEPSEEK"],"answer":""}
+            или {"consult":false,"providers":[],"answer":"Полный ответ пользователю"}
             Выбирай только из списка доступных коллег.
         """.trimIndent()
 
@@ -160,7 +168,8 @@ object GlafiraCoordinator {
                     if (size >= MAX_PEERS) break
                 }
             }
-            ConsultationPlan(shouldConsult, selected)
+            val directAnswer = json.optString("answer").takeIf { it.isNotBlank() }
+            ConsultationPlan(shouldConsult, selected, directAnswer)
         }.getOrDefault(ConsultationPlan(false, emptyList()))
     }
 
@@ -172,7 +181,12 @@ object GlafiraCoordinator {
             Regex("(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]{12,}"),
             Regex("(?i)(api[_ -]?key\\s*[:=]\\s*)[^\\s,;]{8,}"),
             Regex("(?i)(password\\s*[:=]\\s*)[^\\s,;]{4,}"),
-            Regex("(?i)(пароль\\s*[:=]\\s*)[^\\s,;]{4,}")
+            Regex("(?i)(пароль\\s*[:=]\\s*)[^\\s,;]{4,}"),
+            Regex("(?i)\\b(?:ghp_|gho_|github_pat_)[A-Za-z0-9_]{20,}\\b"),
+            Regex("\\bAKIA[0-9A-Z]{16}\\b"),
+            Regex("\\b[0-9]{8,}:[A-Za-z0-9_-]{25,}\\b"),
+            Regex("(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"),
+            Regex("(?<!\\d)\\+?\\d[\\d ()-]{8,}\\d(?!\\d)")
         )
         patterns.forEach { pattern ->
             safe = pattern.replace(safe) { match ->
