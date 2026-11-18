@@ -127,18 +127,19 @@ class DesktopBridgeHttpsClient(
             .build()
 
         val response = try {
-            client.send(httpRequest, HttpResponse.BodyHandlers.ofByteArray())
+            client.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream())
         } catch (error: InterruptedException) {
             Thread.currentThread().interrupt()
             throw IOException("Bridge request was interrupted.", error)
         }
         if (response.statusCode() !in setOf(200, 202)) {
+            response.body().close()
             throw IOException("Bridge HTTPS request failed with status ${response.statusCode()}.")
         }
-        if (response.body().size > MAX_RESPONSE_BYTES) {
-            throw IOException("Bridge response exceeds the size limit.")
+        val responseBytes = response.body().use {
+            DesktopBridgeHttpBody.readBounded(it, MAX_RESPONSE_BYTES)
         }
-        return decodeResponse(response.body(), requestId)
+        return decodeResponse(responseBytes, requestId)
     }
 
     private fun pinnedSslContext(expectedPin: ByteArray): SSLContext {
