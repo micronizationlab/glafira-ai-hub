@@ -53,32 +53,11 @@ class GlafiraBackupWorker(
                 copyRemoteToLocal(applicationContext, uploadedRemote, verifyCopy)
                 val verified = BackupArchive.verify(verifyCopy, recoveryPassphrase)
 
-                val previousCurrent = folder.listFiles()
+                val staleCopies = folder.listFiles()
                     .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != uploadedRemote.uri }
-                    .maxByOrNull { it.lastModified() }
-                val weekKey = SimpleDateFormat("YYYY-'W'ww", Locale.US).format(Date())
-                val weeklyName = "GLAFIRA-weekly-$weekKey.glb"
-                if (previousCurrent != null && folder.findFile(weeklyName) == null) {
-                    val weekly = folder.createFile("application/octet-stream", weeklyName)
-                        ?: error("Не удалось создать контрольную недельную копию.")
-                    try {
-                        copyRemoteToRemote(applicationContext, previousCurrent, weekly)
-                        copyRemoteToLocal(applicationContext, weekly, verifyCopy)
-                        BackupArchive.verify(verifyCopy, recoveryPassphrase)
-                    } catch (error: Exception) {
-                        weekly.delete()
-                        throw error
-                    }
-                }
-
-                folder.listFiles()
-                    .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != temporaryRemote.uri }
-                    .forEach { oldCopy ->
-                        // The newly uploaded and verified copy is already durable.
-                        // If a provider refuses deletion, retain the extra copy rather than risk data loss.
-                        oldCopy.delete()
-                    }
+                val undeletedCopies = staleCopies.filterNot { it.delete() }
                 temporaryRemote = null
+                
 
                 folder.listFiles()
                     .filter { it.name?.startsWith("GLAFIRA-weekly-") == true && it.name != weeklyName }
@@ -86,8 +65,15 @@ class GlafiraBackupWorker(
                 prefs.edit()
                     .putLong(KEY_LAST_SUCCESS, System.currentTimeMillis())
                     .putLong(KEY_LAST_SIZE, archive.length())
-                    .putString(KEY_LAST_STATUS, "Резервная копия загружена и проверена")
-                    .remove(KEY_LAST_ERROR)
+                    .putString(
+                        KEY_LAST_STATUS,
+                        if (undeletedCopies.isEmpty()) "Резервная копия загружена и проверена"
+                        else "Новая копия проверена, но старые файлы не удалось удалить"
+                    )
+                    .also { editor ->
+                        if (undeletedCopies.isEmpty()) editor.remove(KEY_LAST_ERROR)
+                        else editor.putString(KEY_LAST_ERROR, "Облачный провайдер не удалил ${undeletedCopies.size} старых копий. Проверь папку вручную.")
+                    }
                     .apply()
                 Result.success()
             } finally {
