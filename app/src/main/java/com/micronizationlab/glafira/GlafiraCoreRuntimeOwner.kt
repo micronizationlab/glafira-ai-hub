@@ -16,15 +16,11 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     private val preferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
     val taskStore = GlafiraTaskStore(appContext)
+    private val ownerApprovalStore = GlafiraCoreOwnerApprovalStore(taskStore)
 
     private val executor = GlafiraCoreTaskExecutor(
         queue = taskStore,
-        authorizer = GlafiraTaskAuthorizer { _, _ ->
-            GlafiraTaskAuthorizationResult(
-                GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
-                "OWNER_POLICY_NOT_CONFIGURED"
-            )
-        },
+        authorizer = RegistryBackedGlafiraTaskAuthorizer(ownerApprovalStore),
         handlers = emptyList()
     )
 
@@ -51,6 +47,27 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         check(isEnabled) { "GLAFIRA autonomous runtime is paused by owner." }
         return executor.executeNext()
     }
+
+    fun pendingOwnerApprovals(): List<GlafiraPendingActionApproval> =
+        ownerApprovalStore.pendingApprovals()
+
+    fun approveOwnerAction(
+        taskId: String,
+        selectedScopes: Set<String>,
+        ownerSession: GlafiraCoreOwnerSession
+    ): GlafiraCoreOwnerApprovalMutation {
+        val result = ownerApprovalStore.approve(taskId, selectedScopes, ownerSession)
+        if (result == GlafiraCoreOwnerApprovalMutation.APPROVED && isEnabled) {
+            GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+        }
+        return result
+    }
+
+    fun rejectOwnerAction(
+        taskId: String,
+        ownerSession: GlafiraCoreOwnerSession
+    ): GlafiraCoreOwnerApprovalMutation =
+        ownerApprovalStore.reject(taskId, ownerSession)
 
     companion object {
         private const val PREFERENCES = "glafira_core_runtime"
