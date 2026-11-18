@@ -224,7 +224,7 @@ data class BridgeServerHost private constructor(
             val parts = value.split('.')
             require(parts.size == 4 && parts.all { part ->
                 part.isNotEmpty() && part.length <= 3 && part.all(Char::isDigit) &&
-                    part.toIntOrNull() in 0..255
+                    part.toIntOrNull()?.let { it in 0..255 } == true
             }) { "Bridge IP identity must be a valid IPv4 address." }
             return BridgeServerHost(value, BridgeServerHostKind.IP_ADDRESS)
         }
