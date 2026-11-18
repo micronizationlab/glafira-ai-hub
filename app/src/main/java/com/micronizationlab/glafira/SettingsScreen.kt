@@ -138,6 +138,9 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         Text(approval.task.taskType, color = Color(0xFF202020), fontSize = 13.sp,
                             fontWeight = FontWeight.Bold)
                         Text(approval.actionSummary, color = Tx, fontSize = 11.sp)
+                        if (approval.reviewDetails.isNotBlank()) {
+                            Text(approval.reviewDetails, color = Tx, fontSize = 10.sp)
+                        }
                         Text("Проект: ${approval.task.projectId}", color = Tx, fontSize = 10.sp)
                         Text("Запрашиваемые полномочия: ${approval.requestedScopes.sorted().joinToString()}", color = Tx, fontSize = 10.sp)
                         Text("Подтверждение разрешит эти области для проекта и источника; само действие получит одноразовый допуск на 10 минут.",
