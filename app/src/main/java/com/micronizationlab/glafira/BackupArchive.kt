@@ -326,7 +326,7 @@ object BackupArchive {
                 value is Boolean -> editor.putBoolean(key, value)
             }
         }
-        editor.commit()
+        check(editor.commit()) { "Не удалось восстановить настройки приложения." }
     }
 
     private fun collectFiles(root: File): List<File> {
