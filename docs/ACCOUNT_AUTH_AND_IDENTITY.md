@@ -7,7 +7,7 @@ GLAFIRA is a multi-user product. Each person has an independent account, profile
 The initial experience is an owner-controlled invitation:
 1. The owner creates an invitation bound to one email address, with an expiry and one use.
 2. The user enters the email and one-time activation code/password supplied by the owner.
-3. The invitation is validated by a trusted backend function. The code is never stored in the Android app, source code or an LLM prompt.
+3. The invitation is validated by a trusted Supabase Before User Created Auth Hook (a Postgres function is preferred for the first proof of concept). Supabase currently lists this hook on its Free plan. The code is stored only as a hash, is bound to the invited email, expires and can be redeemed once. It is never stored in the Android app, source code or an LLM prompt.
 4. The user verifies email and creates a personal password.
 5. The user completes a profile and chooses backup settings. Optional fields can be skipped.
 6. The user may later link Google ID, Yandex ID, or both as additional sign-in methods.
@@ -36,7 +36,8 @@ Minimum account profile:
 - verified email;
 - display name;
 - optional organization/business name;
-- optional business/postal address, clearly labelled and not required;
+- backup destination and selected cloud folder/email destination (the backup address);
+- optional business/contact address, clearly labelled and not required;
 - locale/time zone;
 - onboarding completion state;
 - created/updated timestamps.
