@@ -387,10 +387,13 @@ fun ContactList(
                     )
                 }
                 if (iaExpanded) {
-                    items(list.filter { it.group == AgentGroup.IA }) { a ->
-                        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
-                    }
-                }
+    items(
+        items = list.filter { it.group == AgentGroup.IA },
+        key = { it.n }
+    ) { a ->
+        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
+    }
+}
                 item { Spacer(Modifier.height(8.dp)) }
                 item {
                     GroupHeader(
@@ -401,10 +404,13 @@ fun ContactList(
                     )
                 }
                 if (aiExpanded) {
-                    items(list.filter { it.group == AgentGroup.AI }) { a ->
-                        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
-                    }
-                }
+    items(
+        items = list.filter { it.group == AgentGroup.AI },
+        key = { it.n }
+    ) { a ->
+        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
+    }
+}
             }
         }
 
