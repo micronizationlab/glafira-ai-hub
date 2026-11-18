@@ -715,7 +715,10 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     Text("📋", fontSize = 14.sp, modifier = Modifier.clickable {
                         copyToClipboard(context, messages.joinToString("\n") { m -> val who = if (m.isUser) "Вы" else agent.n; "[${m.date} ${m.time}] $who: ${m.text}" })
                     }.padding(end = 8.dp))
-                    Text("📤", fontSize = 14.sp, modifier = Modifier.clickable {\n                        pendingChatExport = buildChatExportText(project.name, agent.n, messages)\n                        chatExportLauncher.launch(suggestedChatExportFileName(project.name, agent.n))\n                    }.padding(end = 8.dp))
+                    Text("📤", fontSize = 14.sp, modifier = Modifier.clickable {
+                        pendingChatExport = buildChatExportText(project.name, agent.n, messages)
+                        chatExportLauncher.launch(suggestedChatExportFileName(project.name, agent.n))
+                    }.padding(end = 8.dp))
                     Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { showClearConfirm = true })
                 }
             }
