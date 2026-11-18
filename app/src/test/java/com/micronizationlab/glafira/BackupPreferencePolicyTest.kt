@@ -28,6 +28,7 @@ class BackupPreferencePolicyTest {
     @Test
     fun rejectsUnknownDuplicateAndMalformedProviderSelections() {
         assertFalse(BackupPreferencePolicy.isAllowedValue("glafira_primary_provider", "UNKNOWN"))
+        assertFalse(BackupPreferencePolicy.isAllowedValue("glafira_primary_provider", "YANDEX"))
         assertFalse(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers", "OPENAI,UNKNOWN"))
         assertFalse(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers", "OPENAI,OPENAI"))
         assertFalse(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers_project_a", "OPENAI,"))
