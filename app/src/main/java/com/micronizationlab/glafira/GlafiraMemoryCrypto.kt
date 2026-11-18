@@ -14,20 +14,52 @@ class GlafiraMemoryCrypto(context: Context) {
     @Suppress("unused")
     private val appContext = context.applicationContext
 
-    fun encrypt(memoryId: MemoryIdentifier, schemaVersion: Int, classification: CoreDataClassification, plaintext: ByteArray): ByteArray {
+    fun encrypt(
+        memoryId: MemoryIdentifier,
+        schemaVersion: Int,
+        scopeType: MemoryScopeType,
+        scopeId: String,
+        kind: MemoryKind,
+        classification: CoreDataClassification,
+        status: MemoryStatus,
+        confidence: Double,
+        confidenceBasis: MemoryConfidenceBasis,
+        createdAt: java.time.Instant,
+        updatedAt: java.time.Instant,
+        validFrom: java.time.Instant?,
+        expiresAt: java.time.Instant?,
+        plaintext: ByteArray
+    ): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-        cipher.updateAAD(aad(memoryId, schemaVersion, classification))
+        cipher.updateAAD(aad(memoryId, schemaVersion, scopeType, scopeId, kind, classification,
+            status, confidence, confidenceBasis, createdAt, updatedAt, validFrom, expiresAt))
         return cipher.iv + cipher.doFinal(plaintext)
     }
 
-    fun decrypt(memoryId: MemoryIdentifier, schemaVersion: Int, classification: CoreDataClassification, payload: ByteArray): ByteArray {
+    fun decrypt(
+        memoryId: MemoryIdentifier,
+        schemaVersion: Int,
+        scopeType: MemoryScopeType,
+        scopeId: String,
+        kind: MemoryKind,
+        classification: CoreDataClassification,
+        status: MemoryStatus,
+        confidence: Double,
+        confidenceBasis: MemoryConfidenceBasis,
+        createdAt: java.time.Instant,
+        updatedAt: java.time.Instant,
+        validFrom: java.time.Instant?,
+        expiresAt: java.time.Instant?,
+        payload: ByteArray
+    ): ByteArray {
         require(payload.size > IV_LENGTH + TAG_LENGTH_BYTES) { "Encrypted memory payload is truncated" }
         val iv = payload.copyOfRange(0, IV_LENGTH)
         val ciphertext = payload.copyOfRange(IV_LENGTH, payload.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(TAG_LENGTH_BITS, iv))
-        cipher.updateAAD(aad(memoryId, schemaVersion, classification))
+        cipher.updateAAD(aad(memoryId, schemaVersion, scopeType, scopeId, kind, classification,
+            status, confidence, confidenceBasis, createdAt, updatedAt, validFrom, expiresAt))
         return cipher.doFinal(ciphertext)
     }
 
@@ -50,8 +82,26 @@ class GlafiraMemoryCrypto(context: Context) {
         return generator.generateKey()
     }
 
-    private fun aad(memoryId: MemoryIdentifier, schemaVersion: Int, classification: CoreDataClassification): ByteArray =
-        "GLAFIRA-MEMORY|v1|$schemaVersion|$classification|${memoryId.value}".toByteArray(Charsets.UTF_8)
+    private fun aad(
+        memoryId: MemoryIdentifier,
+        schemaVersion: Int,
+        scopeType: MemoryScopeType,
+        scopeId: String,
+        kind: MemoryKind,
+        classification: CoreDataClassification,
+        status: MemoryStatus,
+        confidence: Double,
+        confidenceBasis: MemoryConfidenceBasis,
+        createdAt: java.time.Instant,
+        updatedAt: java.time.Instant,
+        validFrom: java.time.Instant?,
+        expiresAt: java.time.Instant?
+    ): ByteArray = listOf(
+        "GLAFIRA-MEMORY", "v1", schemaVersion.toString(), memoryId.value, scopeType.name,
+        scopeId, kind.name, classification.name, status.name, confidence.toString(),
+        confidenceBasis.name, createdAt.toString(), updatedAt.toString(),
+        validFrom?.toString().orEmpty(), expiresAt?.toString().orEmpty()
+    ).joinToString("|").toByteArray(Charsets.UTF_8)
 
     companion object {
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
