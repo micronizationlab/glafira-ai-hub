@@ -142,6 +142,62 @@ class GlafiraCoreTaskExecutorTest {
     }
 
     @Test
+    fun handlerExceptionIsPersistedAsRetryScheduled() = runBlocking {
+        val queue = FakeQueue(task())
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                throw IllegalStateException("temporary failure")
+            }),
+            clock = { 20_000L },
+            baseRetryDelayMillis = 1_000L,
+            maxRetryDelayMillis = 8_000L
+        )
+        val result = worker.executeNext()
+        assertEquals(GlafiraTaskExecutionStatus.RETRY_SCHEDULED, result.status)
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, queue.task?.state)
+        assertEquals(21_000L, queue.lastRetryAt)
+        assertEquals("HANDLER_ERROR:IllegalStateException", queue.task?.lastError)
+    }
+
+    @Test
+    fun waitingForNetworkIsPersistedWithoutRetryTimestamp() = runBlocking {
+        val queue = FakeQueue(task())
+        val result = executor(queue, outcome = GlafiraTaskExecutionOutcome.WaitingForNetwork).executeNext()
+        assertEquals(GlafiraTaskExecutionStatus.WAITING_FOR_NETWORK, result.status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_NETWORK, queue.task?.state)
+        assertNull(queue.task?.retryAtMillis)
+    }
+
+    @Test
+    fun retryLimitMovesTaskToFailed() = runBlocking {
+        val exhausted = task().copy(attemptCount = 5)
+        val queue = FakeQueue(exhausted)
+        val result = executor(
+            queue,
+            outcome = GlafiraTaskExecutionOutcome.RetryableFailure("still failing")
+        ).executeNext()
+        assertEquals(GlafiraTaskExecutionStatus.FAILED, result.status)
+        assertEquals(GlafiraTaskState.FAILED, queue.task?.state)
+        assertEquals("RETRY_LIMIT_REACHED:still failing", queue.task?.lastError)
+    }
+
+    @Test
+    fun ownerApprovalWaitIsDurableInQueueState() = runBlocking {
+        val queue = FakeQueue(task())
+        val result = executor(
+            queue,
+            authorization = GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER
+        ).executeNext()
+        assertEquals(GlafiraTaskExecutionStatus.WAITING_FOR_OWNER, result.status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.getTask("task-1")?.state)
+        assertNull(queue.task?.retryAtMillis)
+    }
+
+    @Test
     fun onlyRegisteredToolsCanHaveHandlers() {
         val queue = FakeQueue(task())
         val error = runCatching {
