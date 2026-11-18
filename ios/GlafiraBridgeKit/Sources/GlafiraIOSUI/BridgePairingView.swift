@@ -47,7 +47,7 @@ public struct BridgePairingView: View {
                     LabeledContent("Сервер", value: invitation.origin)
                     LabeledContent("Ticket ID", value: invitation.ticketId)
                     LabeledContent("TLS SHA-256", value: invitation.certificateSHA256)
-                    Text("Приглашение действительно до (Date(timeIntervalSince1970: Double(invitation.expiresAtEpochMs) / 1_000), style: .time).")
+                    Text("Приглашение действительно до \\(Date(timeIntervalSince1970: Double(invitation.expiresAtEpochMs) / 1_000), style: .time).")
                         .font(.caption)
                 }
             }
