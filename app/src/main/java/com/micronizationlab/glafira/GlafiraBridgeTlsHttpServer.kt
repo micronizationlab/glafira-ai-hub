@@ -353,7 +353,5 @@ class GlafiraBridgeTlsHttpServer(
         private const val HTTP_TOO_MANY_REQUESTS = 429
         private const val HTTP_FORBIDDEN = 403
         private const val HTTP_SERVICE_UNAVAILABLE = 503
-        private const val HTTP_FORBIDDEN = 403
-        private const val HTTP_SERVICE_UNAVAILABLE = 503
     }
 }
