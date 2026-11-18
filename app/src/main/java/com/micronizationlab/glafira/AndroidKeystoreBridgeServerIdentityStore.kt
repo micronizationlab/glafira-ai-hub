@@ -189,6 +189,9 @@ class AndroidKeystoreBridgeServerIdentityStore(context: Context) {
     private fun isValidIdentity(certificate: X509Certificate, host: BridgeServerHost): Boolean =
         runCatching {
             certificate.checkValidity()
+            require(certificate.publicKey.algorithm.equals("EC", ignoreCase = true))
+            require(certificate.basicConstraints == -1)
+            require(certificate.keyUsage?.getOrNull(0) == true)
             require(certificate.extendedKeyUsage?.contains(SERVER_AUTH_OID) == true)
             require(certificate.subjectAlternativeNames.orEmpty().any { entry ->
                 val type = entry.getOrNull(0) as? Int
