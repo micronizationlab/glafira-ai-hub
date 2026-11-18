@@ -25,6 +25,7 @@ class CoreAccessContextFactory(
         maximumClassification: CoreDataClassification
     ): MemoryAccessContext? {
         val actor = identityProvider.currentActor() ?: return null
+        if (!isSafePrincipal(actor.id)) return null
         val trustedRoleId = if (actor.type == CoreActorType.AGENT) {
             identityProvider.currentAgentRoleId()
         } else null
@@ -63,6 +64,7 @@ class CoreAccessContextFactory(
 
     suspend fun forTrace(projectIds: Set<ProjectIdentifier>): TraceAccessContext? {
         val actor = identityProvider.currentActor() ?: return null
+        if (!isSafePrincipal(actor.id) || projectIds.size > 100) return null
         val allowed = projectIds.filterTo(linkedSetOf()) { projectId ->
             val decision = policyEngine.evaluate(
                 CorePolicyRequest(
@@ -77,4 +79,8 @@ class CoreAccessContextFactory(
         if (allowed.isEmpty()) return null
         return TraceAccessContext(actor, allowed)
     }
+
+    private fun isSafePrincipal(value: String): Boolean =
+        value.matches(Regex("[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}")) &&
+            GlafiraSecretRedactor.redact(value) == value
 }
