@@ -177,7 +177,7 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
         )
 
         internal fun isAllowedConversationId(projectId: String, conversationId: String): Boolean {
-            val prefix = "\${projectId}_"
+            val prefix = "${projectId}_"
             if (!conversationId.startsWith(prefix)) return false
             val agentId = conversationId.removePrefix(prefix)
             return agentId in KNOWN_AGENT_IDS
