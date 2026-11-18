@@ -62,29 +62,33 @@ internal class DesktopTaskRuntime(
             }
             queue.transition(task.taskId, DesktopTaskState.ACCEPTED)
             queue.transition(task.taskId, DesktopTaskState.RUNNING)
-            val future = CompletableFuture.supplyAsync({
-                try {
-                    onProgress(task.taskId, 1, "started")
-                    val output = handler.execute(task)
-                    require(output.isNotBlank() && output.length <= MAX_RESULT_CHARS)
-                    val complete = queue.complete(task.taskId, output)
-                    DesktopAgentResult(task.taskId, complete.state, result = output)
-                } catch (error: Exception) {
-                    val code = error.javaClass.simpleName.uppercase().replace(Regex("[^A-Z0-9_]"), "_").take(48)
-                        .ifBlank { "AGENT_FAILED" }
-                    val failed = runCatching { queue.fail(task.taskId, code) }.getOrNull()
-                    DesktopAgentResult(task.taskId, failed?.state ?: DesktopTaskState.FAILED, errorCode = code)
-                }
-            }, workers).whenComplete { result, error ->
-                val finalResult = result ?: DesktopAgentResult(
-                    task.taskId, DesktopTaskState.FAILED,
-                    errorCode = error?.javaClass?.simpleName ?: "AGENT_FAILED"
-                )
-                active.remove(task.taskId)
-                runCatching { onResult(finalResult) }
-                slots.release()
-            }
+            val future = CompletableFuture<DesktopAgentResult>()
             active[task.taskId] = future
+            try {
+                workers.execute {
+                    val result = try {
+                        onProgress(task.taskId, 1, "started")
+                        val output = handler.execute(task)
+                        require(output.isNotBlank() && output.length <= MAX_RESULT_CHARS)
+                        val complete = queue.complete(task.taskId, output)
+                        DesktopAgentResult(task.taskId, complete.state, result = output)
+                    } catch (error: Exception) {
+                        val code = error.javaClass.simpleName.uppercase().replace(Regex("[^A-Z0-9_]"), "_").take(48)
+                            .ifBlank { "AGENT_FAILED" }
+                        val failed = runCatching { queue.fail(task.taskId, code) }.getOrNull()
+                        DesktopAgentResult(task.taskId, failed?.state ?: DesktopTaskState.FAILED, errorCode = code)
+                    }
+                    future.complete(result)
+                    active.remove(task.taskId)
+                    runCatching { onResult(result) }
+                    slots.release()
+                }
+            } catch (error: java.util.concurrent.RejectedExecutionException) {
+                active.remove(task.taskId)
+                runCatching { queue.fail(task.taskId, "WORKER_REJECTED") }
+                slots.release()
+                throw error
+            }
             started++
         }
         return started
