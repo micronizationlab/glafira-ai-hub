@@ -25,6 +25,14 @@ class GlafiraBridgeIngressPolicyTest {
     }
 
     @Test
+    fun acceptsOnlyExpectedHostHeader() {
+        assertTrue(GlafiraBridgeIngressPolicy.validateHostHeader("192.168.1.20:47321", "192.168.1.20:47321"))
+        assertTrue(GlafiraBridgeIngressPolicy.validateHostHeader("GLAFIRA.local:47321", "glafira.local:47321"))
+        assertFalse(GlafiraBridgeIngressPolicy.validateHostHeader(null, "192.168.1.20:47321"))
+        assertFalse(GlafiraBridgeIngressPolicy.validateHostHeader("192.168.1.21:47321", "192.168.1.20:47321"))
+    }
+
+    @Test
     fun acceptsJsonAndUtf8Only() {
         assertTrue(GlafiraBridgeIngressPolicy.validateContentType("application/json"))
         assertTrue(GlafiraBridgeIngressPolicy.validateContentType("Application/JSON; charset=UTF-8"))
