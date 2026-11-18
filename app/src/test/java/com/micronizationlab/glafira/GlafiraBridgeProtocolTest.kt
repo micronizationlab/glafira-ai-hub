@@ -34,6 +34,11 @@ class GlafiraBridgeProtocolTest {
         assertTrue(GlafiraBridgeProtocol.verifySignature(signed, secret))
     }
 
+    @Test fun acceptsTheExistingDefaultProjectIdentifier() {
+        val signed = GlafiraBridgeProtocol.sign(request().copy(projectId = "default"), secret)
+        assertNull(GlafiraBridgeProtocol.validate(signed, now))
+    }
+
     @Test fun rejectsUnsupportedProtocolVersion() {
         val signed = GlafiraBridgeProtocol.sign(request().copy(protocolVersion = 99), secret)
         assertEquals(
