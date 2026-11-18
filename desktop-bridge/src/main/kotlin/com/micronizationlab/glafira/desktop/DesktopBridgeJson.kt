@@ -27,6 +27,18 @@ internal object DesktopBridgeJson {
         return org.json.JSONObject(root.toString())
     }
 
+    fun stringField(json: org.json.JSONObject, key: String): String {
+        val value = json.get(key)
+        require(value is String)
+        return value
+    }
+
+    fun longFieldExact(json: org.json.JSONObject, key: String): Long {
+        val value = json.get(key)
+        require(value is Number)
+        return BigDecimal(value.toString()).longValueExact()
+    }
+
     private fun readValue(reader: JsonReader, depth: Int): JsonElement {
         require(depth <= MAX_DEPTH)
         return when (reader.peek()) {
