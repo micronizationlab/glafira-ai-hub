@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,54 +30,82 @@ fun loadApiKey(context: Context): String {
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    var keyInput by remember { mutableStateOf(loadApiKey(context)) }
+    var gigachatKey by remember { mutableStateOf(loadApiKey(context)) }
+    var openaiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENAI)) }
+    var deepseekKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.DEEPSEEK)) }
+    var grokKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GROK)) }
+    var yandexKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.YANDEX)) }
     var isSaved by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().background(Bg).padding(16.dp)) {
+    Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
             Text("НАСТРОЙКИ", color = Gr, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
-        
+
         Spacer(Modifier.height(24.dp))
-        
-        Text("Ключ авторизации GigaChat (Authorization Key):", color = Tx, fontSize = 14.sp)
+
+        Text("КЛЮЧИ ПРОВАЙДЕРОВ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.height(8.dp))
-        
-        TextField(
-            value = keyInput,
-            onValueChange = { keyInput = it; isSaved = false },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Вставьте ключ сюда...", color = Tx) },
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = GrD, unfocusedContainerColor = GrD,
-                focusedTextColor = Color.White, unfocusedTextColor = Color.White,
-                focusedIndicatorColor = Gr
-            )
+
+        ProviderKeyField(
+            label = "GigaChat (Authorization Key)",
+            value = gigachatKey,
+            onValueChange = { gigachatKey = it; isSaved = false },
+            configured = gigachatKey.isNotBlank()
         )
-        
+        ProviderKeyField(
+            label = "ChatGPT (OpenAI API Key, sk-...)",
+            value = openaiKey,
+            onValueChange = { openaiKey = it; isSaved = false },
+            configured = openaiKey.isNotBlank()
+        )
+        ProviderKeyField(
+            label = "DeepSeek API Key",
+            value = deepseekKey,
+            onValueChange = { deepseekKey = it; isSaved = false },
+            configured = deepseekKey.isNotBlank()
+        )
+        ProviderKeyField(
+            label = "Grok (xAI API Key)",
+            value = grokKey,
+            onValueChange = { grokKey = it; isSaved = false },
+            configured = grokKey.isNotBlank()
+        )
+        ProviderKeyField(
+            label = "Алиса (Yandex Cloud API Key)",
+            value = yandexKey,
+            onValueChange = { yandexKey = it; isSaved = false },
+            configured = yandexKey.isNotBlank()
+        )
+
         Spacer(Modifier.height(16.dp))
-        
+
         Button(
-            onClick = { saveApiKey(context, keyInput.trim()); isSaved = true },
+            onClick = {
+                saveApiKey(context, gigachatKey.trim())
+                saveProviderKey(context, ProviderId.OPENAI, openaiKey)
+                saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey)
+                saveProviderKey(context, ProviderId.GROK, grokKey)
+                saveProviderKey(context, ProviderId.YANDEX, yandexKey)
+                isSaved = true
+            },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Bg)
         ) {
-            Text("СОХРАНИТЬ", fontWeight = FontWeight.Bold)
+            Text("СОХРАНИТЬ ВСЕ КЛЮЧИ", fontWeight = FontWeight.Bold)
         }
-        
+
         if (isSaved) {
             Spacer(Modifier.height(8.dp))
-            Text("Ключ успешно сохранен!", color = Gr, fontSize = 12.sp)
+            Text("Ключи успешно сохранены!", color = Gr, fontSize = 12.sp)
         }
 
         Spacer(Modifier.height(32.dp))
 
-        // Кнопка копирования всей истории (берет последний активный чат из истории)
         Card(
             colors = CardDefaults.cardColors(containerColor = GrD),
             modifier = Modifier.fillMaxWidth().clickable {
-                // Находим все файлы истории и копируем последний измененный
                 val files = context.filesDir.listFiles { file -> file.name.startsWith("chat_") }
                 if (!files.isNullOrEmpty()) {
                     val latestFile = files.maxByOrNull { it.lastModified() }
@@ -98,9 +128,9 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
         }
-        
+
         Spacer(Modifier.height(16.dp))
-        
+
         Card(
             colors = CardDefaults.cardColors(containerColor = GrD),
             modifier = Modifier.fillMaxWidth()
@@ -108,13 +138,13 @@ fun SettingsScreen(onBack: () -> Unit) {
             Column(Modifier.padding(16.dp)) {
                 Text("ВЕРСИЯ ПРИЛОЖЕНИЯ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("GLAFIRA AI HUB v0.6", color = Color.White, fontSize = 14.sp)
-                Text("Sprint 6.0 — Поиск, Автоскролл, Экспорт", color = Tx, fontSize = 12.sp)
+                Text("GLAFIRA AI HUB v0.7", color = Color.White, fontSize = 14.sp)
+                Text("Sprint 7.0 — Мультипровайдерность (офлайн)", color = Tx, fontSize = 12.sp)
             }
         }
-        
-        Spacer(Modifier.weight(1f))
-        
+
+        Spacer(Modifier.height(24.dp))
+
         Text(
             text = "Очистить все данные приложения",
             color = Color.Red.copy(alpha = 0.7f),
@@ -131,6 +161,37 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
                 .padding(16.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
+@Composable
+fun ProviderKeyField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    configured: Boolean
+) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Tx, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Text(
+                if (configured) "✓ настроен" else "✗ не настроен",
+                color = if (configured) Gr else Color.Gray,
+                fontSize = 10.sp
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Вставьте ключ...", color = Tx, fontSize = 12.sp) },
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = GrD, unfocusedContainerColor = GrD,
+                focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                focusedIndicatorColor = Gr
+            )
         )
     }
 }
