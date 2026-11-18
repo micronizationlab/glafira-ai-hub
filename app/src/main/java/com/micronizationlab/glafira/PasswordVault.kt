@@ -53,7 +53,7 @@ internal class VaultCredentialLease(
     val password: CharArray
 ) : AutoCloseable {
     override fun close() {
-        password.fill('\\u0000')
+        password.fill('\u0000')
     }
 }
 
@@ -71,12 +71,12 @@ class VaultSession internal constructor(
      * Ambiguous matches fail closed. The lease is wiped after the callback returns.
      */
     @Synchronized
-    internal fun <T> withCredential(
+    internal fun withCredential(
         origin: String,
         username: String? = null,
         allowedHosts: Set<String>,
         block: (VaultCredentialLease) -> T
-    ): T {
+    ) {
         check(active) { "Хранилище заблокировано" }
         val requestedHost = canonicalHttpsHost(origin)
         val approvedHosts = allowedHosts.map(::canonicalHost).toSet()
@@ -94,7 +94,7 @@ class VaultSession internal constructor(
 
         val entry = matches.single()
         val lease = VaultCredentialLease(entry.title, entry.username, entry.password.toCharArray())
-        return try {
+        try {
             block(lease)
         } finally {
             lease.close()
