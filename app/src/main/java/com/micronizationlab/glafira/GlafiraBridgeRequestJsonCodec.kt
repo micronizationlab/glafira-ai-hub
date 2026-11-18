@@ -97,11 +97,12 @@ object GlafiraBridgeRequestJsonCodec {
         return value.toInt()
     }
 
-    private fun Number.toLongExact(): Long {
-        val value = toDouble()
-        require(value.isFinite() && value >= Long.MIN_VALUE.toDouble() &&
-            value <= Long.MAX_VALUE.toDouble() && value % 1.0 == 0.0
-        ) { "Bridge number must be an exact integer." }
-        return toLong()
-    }
+    private fun Number.toLongExact(): Long =
+        try {
+            java.math.BigDecimal(toString()).longValueExact()
+        } catch (_: ArithmeticException) {
+            throw IllegalArgumentException("Bridge number must be an exact integer.")
+        } catch (_: NumberFormatException) {
+            throw IllegalArgumentException("Bridge number must be an exact integer.")
+        }
 }
