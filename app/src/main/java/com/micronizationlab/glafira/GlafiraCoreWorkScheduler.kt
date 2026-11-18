@@ -18,7 +18,7 @@ object GlafiraCoreWorkScheduler {
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context.applicationContext)
-            .enqueueUniqueWork(UNIQUE_WORK, ExistingWorkPolicy.KEEP, request)
+            .enqueueUniqueWork(UNIQUE_WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     fun scheduleWhenOnline(context: Context) {
