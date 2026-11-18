@@ -28,6 +28,18 @@ data class VaultEntry(
     val updatedAt: Long
 )
 
+/** Stable identity used only to detect duplicate imported credentials. */
+internal object VaultEntryIdentity {
+    fun key(entry: VaultEntry): String {
+        val site = entry.website.trim().lowercase()
+            .removePrefix("https://").removePrefix("http://")
+            .trimEnd('/')
+        val account = entry.username.trim().lowercase()
+        val identity = site.ifBlank { entry.title.trim().lowercase() }
+        return "$identity|$account"
+    }
+}
+
 class VaultSession internal constructor(
     context: Context,
     private val keyBytes: ByteArray,
