@@ -159,7 +159,12 @@ fun App() {
                 val history = loadHistory(context, key)
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 val provider = runCatching { ProviderId.valueOf(pm.providerId) }.getOrDefault(ProviderId.GIGACHAT)
-                val reply = callAiProvider(context, provider, history + Msg(pm.text, true, pm.time, today), agentPrompt)
+                val pendingHistory = history + Msg(pm.text, true, pm.time, today)
+                val reply = if (pm.agentName == "ГЛАФИРА") {
+                    GlafiraCoordinator.respond(context, provider, pendingHistory, agentPrompt)
+                } else {
+                    callAiProvider(context, provider, pendingHistory, agentPrompt)
+                }
                 if (reply.startsWith("Ошибка сети")) {
                     remaining.add(pm)
                 } else {
@@ -597,7 +602,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         scope.launch {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
-            val reply = callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
+            val reply = if (agent.n == "ГЛАФИРА") {
+                GlafiraCoordinator.respond(context, agent.providerId, updatedMessages, fullPrompt)
+            } else {
+                callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
+            }
             val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
             if (reply.startsWith("Ошибка сети")) {
