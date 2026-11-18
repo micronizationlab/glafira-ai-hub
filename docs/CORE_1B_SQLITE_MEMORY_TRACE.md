@@ -8,7 +8,7 @@
 
 ### One Core SQLite database
 
-- `GlafiraCoreDatabase` owns `glafira_core.db`.
+- `GlafiraCoreDatabase` owns `glafira_core.db` under the app's private `filesDir`, so the existing file-based backup archive includes the database and its SQLite sidecar files.
 - Memory records and Trace events share the same database and transaction boundary.
 - WAL is enabled; SQLite secure-delete is requested.
 - Trace rows are append-only at the SQL layer (UPDATE/DELETE triggers reject mutations).
@@ -47,6 +47,7 @@
 - Search is bounded metadata filtering plus in-process decrypted text/tag matching; it is not semantic search.
 - Trace pagination cursor and retention controls are not yet implemented. Trace is append-only in this phase.
 - Keystore keys are device-bound and are not included in backups. A restored database on another device cannot decrypt the original device's memory payloads; owner reauthorization/re-encryption is required.
+- The database file and SQLite WAL/SHM sidecars are included by the existing `filesDir` backup walk. A coordinated checkpoint/close gate is still required before snapshot or restore while the live database is open.
 - Android Keystore encryption/decryption, SQLite transaction atomicity, WAL recovery, secure-delete behavior and backup/restore interaction require emulator/device instrumentation tests. The current CI workflow runs JVM unit tests and APK compilation, not those device acceptance tests.
 - `CoreIdentityProvider` must return identity from a verified app-owned session, never from agent/model-supplied fields.
 
