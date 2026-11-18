@@ -164,7 +164,7 @@ class GlafiraBridgePairingProtocol(
         }
 
         private fun canonicalProofMessage(ticketId: String, clientNonce: String): ByteArray =
-            "GLAFIRA-BRIDGE-PAIRING-V1\\u0000$ticketId\\u0000$clientNonce"
+            "GLAFIRA-BRIDGE-PAIRING-V1\u0000$ticketId\u0000$clientNonce"
                 .toByteArray(Charsets.UTF_8)
 
         private fun sha256(value: ByteArray): ByteArray =
