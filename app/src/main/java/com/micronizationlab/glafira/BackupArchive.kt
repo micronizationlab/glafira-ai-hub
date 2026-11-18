@@ -287,7 +287,12 @@ object BackupArchive {
     }
 
     private fun restoreSafePreferences(context: Context, values: JSONObject) {
-        val editor = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE).edit()
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val editor = preferences.edit()
+        preferences.all.keys.filter {
+            it == "glafira_primary_provider" || it == "peer_consultation_enabled" ||
+                it.startsWith("peer_consultation_enabled_")
+        }.forEach { editor.remove(it) }
         val keys = values.keys()
         while (keys.hasNext()) {
             val key = keys.next()
