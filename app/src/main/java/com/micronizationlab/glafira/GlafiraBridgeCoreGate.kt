@@ -13,6 +13,7 @@ enum class GlafiraBridgeAuthorizationError {
     AUTHENTICATION_FAILED,
     UNKNOWN_TOOL,
     APPROVAL_NOT_REQUIRED,
+    APPROVAL_QUEUE_UNAVAILABLE,
     SCOPE_DENIED
 }
 
@@ -55,17 +56,8 @@ object GlafiraBridgeCoreGate {
                 ?: return denied(GlafiraBridgeAuthorizationError.UNKNOWN_TOOL)
             if (!GlafiraToolRegistry.requiresOwnerApproval(targetTool.risk))
                 return denied(GlafiraBridgeAuthorizationError.APPROVAL_NOT_REQUIRED)
-            return GlafiraBridgeAuthorizationResult(
-                GlafiraBridgeResponse(
-                    GlafiraBridgeProtocol.CURRENT_VERSION,
-                    request.requestId,
-                    GlafiraBridgeStatus.PENDING_APPROVAL,
-                    result = mapOf(
-                        "toolId" to targetTool.id,
-                        "actionSummary" to request.payload.getValue("actionSummary")
-                    )
-                )
-            )
+            // Never report a pending approval until a durable owner-visible queue exists.
+            return denied(GlafiraBridgeAuthorizationError.APPROVAL_QUEUE_UNAVAILABLE)
         }
 
         val toolId = when (request.operation) {
