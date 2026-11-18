@@ -37,6 +37,13 @@ base64 -w 0 glafira-release.jks
 ```
 On macOS, use `base64 glafira-release.jks | tr -d '\\n'`. Paste the resulting value only into the repository secret field, never into chat, source code or an issue.
 
+On Windows PowerShell, copy the encoded value directly to the clipboard with:
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("glafira-release.jks")) | Set-Clipboard
+```
+Then open GitHub repository **Settings → Secrets and variables → Actions → New repository secret** and add the four secrets below. Do not send the keystore or passwords in this chat.
+
+
 The private keystore must never be committed to Git. Store these GitHub Actions repository secrets:
 
 - `GLAFIRA_KEYSTORE_BASE64` — base64-encoded owner-controlled JKS/PKCS12 keystore.
