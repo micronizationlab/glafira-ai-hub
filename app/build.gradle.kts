@@ -14,9 +14,29 @@ android {
         applicationId = "com.micronizationlab.glafira"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = providers.gradleProperty("glafiraVersionCode").orElse("1").get().toInt()
+        versionName = providers.gradleProperty("glafiraVersionName").orElse("0.1").get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("GLAFIRA_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("GLAFIRA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("GLAFIRA_KEY_ALIAS")
+                keyPassword = System.getenv("GLAFIRA_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            val hasReleaseKey = !System.getenv("GLAFIRA_KEYSTORE_PATH").isNullOrBlank()
+            if (hasReleaseKey) signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
     }
 
     buildFeatures {

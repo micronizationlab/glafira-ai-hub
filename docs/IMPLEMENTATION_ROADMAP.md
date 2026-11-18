@@ -37,6 +37,10 @@ Goal: protect user data before expanding the product.
 
 No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
 
+## Cross-cutting release requirement — In-App Updates
+
+The first owner-testable build must include an in-app update checker and verified APK installation over the existing package. Updates must preserve app data, use one stable owner-controlled signing key, verify the release digest/package/version/signature, and defer final installation confirmation to Android. See [In-App Update System](IN_APP_UPDATE_SYSTEM.md). The updater is not considered ready until the first and second signed builds pass an on-device update-and-data-preservation test.
+
 ## Priority 3 — Autonomous Runtime, Bridge, Roles and Voice
 
 1. Make role definitions executable and provider-independent.
