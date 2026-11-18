@@ -68,6 +68,15 @@ class DesktopBridgePairingTest {
         }
     }
 
+    @Test fun strictOwnerBundleParserRejectsCoercedFieldTypesAndFractionalExpiry() {
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            DesktopBridgeJson.stringField(org.json.JSONObject("""{"format":7}"""), "format")
+        }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            DesktopBridgeJson.longFieldExact(org.json.JSONObject("""{"expiresAtEpochMs":120.5}"""), "expiresAtEpochMs")
+        }
+    }
+
     @Test fun rejectsMalformedCapabilityAndScope() {
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
             DesktopBridgePairing.createEnrollmentRequest("ticket_identifier_123", "bad", "Desktop", emptySet())
