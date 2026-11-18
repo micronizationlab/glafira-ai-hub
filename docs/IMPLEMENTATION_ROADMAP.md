@@ -30,6 +30,20 @@ Goal: make Glafira a reliable coordinator for the entire AI office.
 
 No external irreversible action (send, publish, purchase, delete, alter business records) without explicit approval or a narrowly scoped owner policy.
 
+## Product Track — Glafira Bridge and GLAFIRA Desktop
+
+This is a new owner-requested product track. It depends on the Core authority model and does not reorder the owner's first priorities: finish backup acceptance, then harden Core, then expand desktop/mobile connectivity.
+
+1. Implement Glafira Bridge protocol, device registry, owner-approved pairing, revocation and idempotent task exchange.
+2. Build Windows-first Kotlin/Compose Desktop shell with classic ICQ-inspired project/contact list, chat windows and system-tray background mode.
+3. Reuse provider-neutral Core contracts; keep Android and Windows platform services separate.
+4. Synchronize projects, conversations, task state and approval requests across paired devices.
+5. Add an optional MCP adapter exposing only narrowly scoped approved tools to ChatGPT where a reachable HTTPS endpoint and supported connector are configured.
+6. Add official OpenAI API provider access separately; ChatGPT subscription does not include API usage.
+7. Complete security, reconnect, offline queue, duplicate-action and Windows device acceptance tests before release.
+
+A ChatGPT product connector and an OpenAI API model adapter are different integration paths. A local phone app cannot directly attach itself to an existing ChatGPT conversation. No public cloud relay or paid hosting is assumed without owner approval.
+
 ## Priority 3 — Employee Runtime, Roles and Voice
 
 1. Make role definitions executable and provider-independent.
@@ -91,5 +105,5 @@ No external irreversible action (send, publish, purchase, delete, alter business
 - GLAFIRA Core hardening has started: cross-provider consultation is owner opt-in and disabled by default; common tokens/passwords/contact details are pattern-redacted; the primary model can return a direct answer from the planning call to avoid duplicate requests; Council synthesis now follows the configured primary model.
 - Still required for GLAFIRA Core: field-level data-sharing classifications, broader coordinator tests, timeout/cancellation/fallback policy, context-boundary tests, typed tool registry, approval engine and audit trail.
 - Voice runtime and SMM/social connectors remain specifications until implemented and tested.
-
+- Glafira Bridge and GLAFIRA Desktop are now specified on the feature/glafira-desktop-bridge branch; no live bridge or desktop binary exists yet.
 - Restore semantics hardened: selected backup now replaces the app-private file snapshot, including removing files created after that backup; safety snapshot rollback remains in place. Requires device acceptance tests.
