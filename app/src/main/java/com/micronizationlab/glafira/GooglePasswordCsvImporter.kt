@@ -68,19 +68,30 @@ object GooglePasswordCsvImporter {
         }
     }
 
+    private class WipingByteArrayOutputStream : ByteArrayOutputStream() {
+        fun wipe() {
+            buf.fill(0)
+            reset()
+        }
+    }
+
     private fun readBounded(input: InputStream): ByteArray {
-        val output = ByteArrayOutputStream()
+        val output = WipingByteArrayOutputStream()
         val buffer = ByteArray(8192)
         var total = 0
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) break
-            total += count
-            require(total <= MAX_BYTES) { "CSV-файл больше 10 МБ. Разделите его на части." }
-            output.write(buffer, 0, count)
+        try {
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= MAX_BYTES) { "CSV-файл больше 10 МБ. Разделите его на части." }
+                output.write(buffer, 0, count)
+            }
+            return output.toByteArray()
+        } finally {
+            buffer.fill(0)
+            output.wipe()
         }
-        buffer.fill(0)
-        return output.toByteArray()
     }
 
     private fun parseCsv(source: String): List<List<String>> {
