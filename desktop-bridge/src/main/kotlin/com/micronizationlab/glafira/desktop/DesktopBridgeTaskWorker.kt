@@ -65,6 +65,7 @@ internal class DesktopBridgeTaskWorker(
                 queue.enqueue(task)
                 postTaskUpdate(task.taskId, "ACCEPTED", 0, "accepted", "none", "none")
             } catch (error: Exception) {
+                runCatching { queue.cancel(task.taskId) }
                 runCatching {
                     postTaskUpdate(task.taskId, "FAILED", 0, "desktop queue rejected task", "none", "DESKTOP_QUEUE_REJECTED")
                 }
