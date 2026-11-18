@@ -36,6 +36,10 @@ class GlafiraBridgeHostService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        if (host != null) {
+            updateNotification("Защищённый локальный канал уже запущен.")
+            return START_NOT_STICKY
+        }
 
         getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(HOST_RUNNING_KEY, false).putInt(HOST_PID_KEY, 0).commit()
