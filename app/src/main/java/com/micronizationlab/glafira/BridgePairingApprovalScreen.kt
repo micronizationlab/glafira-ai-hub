@@ -92,12 +92,26 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                             activity = activity,
                             onSuccess = {
                                 val now = System.currentTimeMillis()
-                                ownerSession = GlafiraBridgeOwnerSession(
+                                val session = GlafiraBridgeOwnerSession(
                                     UUID.randomUUID().toString(),
                                     now + OWNER_SESSION_LIFETIME_MS
                                 )
+                                ownerSession = session
                                 status = "Владелец подтверждён. Сессия действует 2 минуты."
                                 pending = service.pendingApprovals()
+                                val undelivered = service.pendingCredentialDeliveries(session, now).firstOrNull()
+                                if (undelivered != null) {
+                                    when (val recovered = service.claimCredentialDelivery(
+                                        undelivered.approvalId, session, now
+                                    )) {
+                                        is GlafiraBridgeDeliveryResult.Available -> {
+                                            delivery = recovered.delivery
+                                            deliveryText = null
+                                            status = "Найден невручённый ключ устройства. Завершите его передачу."
+                                        }
+                                        else -> status = "Очередь обновлена; не удалось восстановить выдачу: $recovered"
+                                    }
+                                }
                             },
                             onError = { status = "Проверка владельца не пройдена: $it" }
                         )
