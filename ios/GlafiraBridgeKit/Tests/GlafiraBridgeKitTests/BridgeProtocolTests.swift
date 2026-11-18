@@ -49,7 +49,7 @@ final class BridgeProtocolTests: XCTestCase {
     }
 
     func testSignatureRejectsTamperingAndShortSecret() throws {
-        let secret = Data((0..<32).map(UInt8.init))
+        let secret = Data((0..<32).map { UInt8($0) })
         let signed = try BridgeProtocol.sign(request(), secret: secret)
         let altered = BridgeRequest(
             requestId: signed.requestId,
