@@ -66,6 +66,36 @@ class GlafiraBridgeIngressPolicyTest {
     }
 
     @Test
+    fun rejectsDeclaredLengthMismatch() {
+        val result = GlafiraBridgeIngressPolicy.readBoundedBody(
+            ByteArrayInputStream(byteArrayOf(1, 2)), 3L, 128
+        )
+        assertEquals(
+            GlafiraBridgeIngressRejection.INVALID_CONTENT_LENGTH,
+            (result as GlafiraBridgeIngressBodyResult.Rejected).reason
+        )
+    }
+
+    @Test
+    fun makesProgressWhenStreamReturnsZeroForBulkRead() {
+        val delegate = ByteArrayInputStream(byteArrayOf(4, 5, 6))
+        var first = true
+        val unusual = object : InputStream() {
+            override fun read(): Int = delegate.read()
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (first) {
+                    first = false
+                    return 0
+                }
+                return delegate.read(buffer, offset, length)
+            }
+        }
+        val result = GlafiraBridgeIngressPolicy.readBoundedBody(unusual, -1L, 128)
+        assertTrue(result is GlafiraBridgeIngressBodyResult.Accepted)
+        assertArrayEquals(byteArrayOf(4, 5, 6), (result as GlafiraBridgeIngressBodyResult.Accepted).bytes)
+    }
+
+    @Test
     fun rejectsEmptyBodyAndInvalidLength() {
         val empty = GlafiraBridgeIngressPolicy.readBoundedBody(
             ByteArrayInputStream(byteArrayOf()), 0L, 128
