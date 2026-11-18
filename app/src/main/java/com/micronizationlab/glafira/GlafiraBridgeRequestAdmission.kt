@@ -15,7 +15,8 @@ class GlafiraBridgeRequestAdmission(
 ) {
     fun admit(
         request: GlafiraBridgeRequest,
-        nowEpochMs: Long = System.currentTimeMillis()
+        nowEpochMs: Long = System.currentTimeMillis(),
+        authenticatedDeviceRateLimit: ((String) -> Boolean)? = null
     ): GlafiraBridgeResponse {
         fun failed(code: String) = GlafiraBridgeResponse(
             protocolVersion = GlafiraBridgeProtocol.CURRENT_VERSION,
@@ -38,6 +39,10 @@ class GlafiraBridgeRequestAdmission(
         if (response.status != GlafiraBridgeStatus.ACCEPTED &&
             response.status != GlafiraBridgeStatus.PENDING_APPROVAL
         ) return response
+
+        if (authenticatedDeviceRateLimit != null &&
+            !authenticatedDeviceRateLimit(credential.deviceId)
+        ) return failed("DEVICE_RATE_LIMITED")
 
         return when (
             replayGuard.claim(
