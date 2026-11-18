@@ -14,6 +14,6 @@ let package = Package(
     targets: [
         .target(name: "GlafiraBridgeKit"),
         .target(name: "GlafiraIOSUI", dependencies: ["GlafiraBridgeKit"]),
-        .testTarget(name: "GlafiraBridgeKitTests", dependencies: ["GlafiraBridgeKit"])
+        .testTarget(name: "GlafiraBridgeKitTests", dependencies: ["GlafiraBridgeKit", "GlafiraIOSUI"])
     ]
 )
