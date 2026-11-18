@@ -24,7 +24,7 @@ class GlafiraBridgePairingJsonCodecTest {
     @Test fun rejectsDuplicateUnknownAndMissingFields() {
         val encoded = String(GlafiraBridgePairingJsonCodec.encode(request), Charsets.UTF_8)
         assertThrows(IllegalArgumentException::class.java) {
-            decode(encoded.replaceFirst("{", "{\"ticketId\":\"duplicate_value\",")
+            decode(encoded.replaceFirst("{", "{\"ticketId\":\"duplicate_value\","))
         }
         assertThrows(IllegalArgumentException::class.java) {
             decode(encoded.replace("\"platform\":\"DESKTOP\",", ""))
