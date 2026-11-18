@@ -63,7 +63,8 @@ object BackupArchive {
             put("appId", context.packageName)
             put("fileCount", sourceFiles.size)
             put("totalBytes", totalBytes)
-            put("excluded", JSONArray().put("API keys").put("OAuth tokens").put("password vault secrets").put("Android Keystore keys"))
+            put("excluded", JSONArray().put("API keys").put("OAuth tokens").put("device-bound Android Keystore keys"))
+            put("safePreferences", collectSafePreferences(context))
             put("files", JSONArray().apply {
                 sourceFiles.forEach { file ->
                     put(JSONObject().apply {
@@ -124,7 +125,7 @@ object BackupArchive {
             throw error
         }
         try {
-            applyStaged(context, extracted.files)
+            applyStaged(context, extracted.files, extracted.safePreferences)
             return extracted.verification
         } catch (restoreError: Exception) {
             val rollback = decryptToStaging(safetySnapshot, passphrase)
@@ -133,7 +134,7 @@ object BackupArchive {
                 extracted.files.map { it.relativePath }.filter { it !in safePaths }.forEach { relative ->
                     File(context.filesDir, relative).delete()
                 }
-                applyStaged(context, rollback.files)
+                applyStaged(context, rollback.files, rollback.safePreferences)
             } catch (rollbackError: Exception) {
                 restoreError.addSuppressed(rollbackError)
             } finally {
@@ -146,7 +147,7 @@ object BackupArchive {
         }
     }
 
-    private fun applyStaged(context: Context, files: List<StagedFile>) {
+    private fun applyStaged(context: Context, files: List<StagedFile>, safePreferences: JSONObject) {
         val targetRoot = context.filesDir.canonicalFile
         files.forEach { staged ->
             val target = File(targetRoot, staged.relativePath).canonicalFile
@@ -163,13 +164,15 @@ object BackupArchive {
                 throw IllegalStateException("Не удалось восстановить файл ${staged.relativePath}")
             }
         }
+        restoreSafePreferences(context, safePreferences)
     }
 
     private data class StagedFile(val relativePath: String, val file: File)
     private data class StagedArchive(
         val directory: File,
         val files: List<StagedFile>,
-        val verification: BackupVerification
+        val verification: BackupVerification,
+        val safePreferences: JSONObject
     )
 
     private fun decryptToStaging(file: File, passphrase: CharArray): StagedArchive {
@@ -259,13 +262,46 @@ object BackupArchive {
                         parsed.optString("createdAt"),
                         stagedFiles.size,
                         totalBytes
-                    )
+                    ),
+                    parsed.optJSONObject("safePreferences") ?: JSONObject()
                 )
             }
         } catch (error: Exception) {
             staging.deleteRecursively()
             throw error
         }
+    }
+
+    private fun collectSafePreferences(context: Context): JSONObject {
+        val allowed = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE).all
+        return JSONObject().apply {
+            allowed.forEach { (key, value) ->
+                val safeKey = key == "glafira_primary_provider" ||
+                    key == "peer_consultation_enabled" ||
+                    key.startsWith("peer_consultation_enabled_")
+                if (safeKey && (value is String || value is Boolean || value is Int || value is Long || value is Float)) {
+                    put(key, value)
+                }
+            }
+        }
+    }
+
+    private fun restoreSafePreferences(context: Context, values: JSONObject) {
+        val editor = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE).edit()
+        val keys = values.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val safeKey = key == "glafira_primary_provider" ||
+                key == "peer_consultation_enabled" ||
+                key.startsWith("peer_consultation_enabled_")
+            if (!safeKey) continue
+            val value = values.opt(key)
+            when {
+                key == "glafira_primary_provider" && value is String -> editor.putString(key, value)
+                value is Boolean -> editor.putBoolean(key, value)
+            }
+        }
+        editor.commit()
     }
 
     private fun collectFiles(root: File): List<File> {
