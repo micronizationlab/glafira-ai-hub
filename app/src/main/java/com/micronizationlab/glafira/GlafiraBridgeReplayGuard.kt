@@ -55,7 +55,7 @@ class GlafiraBridgeReplayGuard(
         authenticatedDeviceId: String,
         idempotencyKey: String,
         expiresAtEpochMs: Long,
-        nowEpochMs: Long = System.currentTimeMillis()
+        nowEpochMs: Long
     ): BridgeReplayClaim {
         if (!isIdentifier(authenticatedDeviceId) || !isIdentifier(idempotencyKey) ||
             expiresAtEpochMs <= nowEpochMs
