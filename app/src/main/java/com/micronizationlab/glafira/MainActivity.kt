@@ -411,7 +411,7 @@ fun ContactList(
 @Composable
 fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val context = LocalContext.current
-    var inputText by remember { mutableStateOf("") }
+    var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.n)) }
     val historyKey = "${project.id}_${agent.n}"
     var messages by remember { mutableStateOf(loadHistory(context, historyKey)) }
     var isLoading by remember { mutableStateOf(false) }
@@ -422,6 +422,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var pinned by remember { mutableStateOf(loadPinned(context, historyKey)) }
     var showPinnedPanel by remember { mutableStateOf(false) }
     var messageActionIndex by remember { mutableStateOf<Int?>(null) }
+    var showClearConfirm by remember { mutableStateOf(false) }
+    var expandedMessages by remember { mutableStateOf(setOf<Int>()) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -439,6 +441,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         val updatedMessages = messages + Msg(text, true, timeNow)
         messages = updatedMessages
         saveHistory(context, historyKey, updatedMessages)
+        clearDraft(context, project.id, agent.n)
         isLoading = true
         scope.launch {
             val projectContext = buildProjectContext(context, project.id, agent.n)
@@ -483,19 +486,20 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         Column {
                             Text(agent.n, color = Gr, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                             Text(
-                                if (agent.on) "Online · ${agent.providerId.displayName}" else "Offline",
+                                if (agent.on) "Online · ${agent.providerId.displayName} · ${messages.size} сообщ." else "Offline",
                                 color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace
                             )
                         }
                     }
+                    Text("⬆", fontSize = 14.sp, color = Gr, modifier = Modifier.clickable { scope.launch { listState.animateScrollToItem(0) } }.padding(end = 8.dp))
                     Text("📌", fontSize = 14.sp, modifier = Modifier.clickable { showPinnedPanel = !showPinnedPanel }.padding(end = 8.dp))
                     Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 8.dp))
                     Text("↗", fontSize = 16.sp, color = Gr, modifier = Modifier.clickable { showTransferDialog = true }.padding(end = 8.dp))
+                    Text("📋", fontSize = 14.sp, modifier = Modifier.clickable {
+                        copyToClipboard(context, messages.joinToString("\n") { m -> val who = if (m.isUser) "Вы" else agent.n; "[${m.time}] $who: ${m.text}" })
+                    }.padding(end = 8.dp))
                     Text("📤", fontSize = 14.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 8.dp))
-                    Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
-                        messages = emptyList(); saveHistory(context, historyKey, emptyList())
-                        pinned = emptySet(); savePinned(context, historyKey, emptySet())
-                    })
+                    Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { showClearConfirm = true })
                 }
             }
 
@@ -528,10 +532,17 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             }
 
             LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (searchQuery.isBlank() && messages.isNotEmpty()) {
+                    item {
+                        Text("— ${dateLabel(messages.first().time)} —", color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
                 items(displayedMessages.size) { displayIdx ->
                     val msg = displayedMessages[displayIdx]
                     val realIdx = messages.indexOf(msg)
                     val isPinned = realIdx in pinned
+                    val isExpanded = realIdx in expandedMessages
+                    val isLong = isLongMessage(msg.text)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
                         Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
                             val shape = if (msg.isUser) {
@@ -549,7 +560,22 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                     )
                                     .padding(horizontal = 10.dp, vertical = 8.dp)
                             ) {
-                                Text(msg.text, color = if (msg.isUser) Color.White else Gr, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                                Column {
+                                    Text(
+                                        if (isLong && !isExpanded) collapsedText(msg.text) else msg.text,
+                                        color = if (msg.isUser) Color.White else Gr,
+                                        fontSize = 12.sp, fontFamily = FontFamily.Monospace
+                                    )
+                                    if (isLong) {
+                                        Text(
+                                            if (isExpanded) "Свернуть" else "Показать полностью",
+                                            color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace,
+                                            modifier = Modifier.clickable {
+                                                expandedMessages = if (isExpanded) expandedMessages - realIdx else expandedMessages + realIdx
+                                            }.padding(top = 4.dp)
+                                        )
+                                    }
+                                }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 if (isPinned) Text("📌 ", fontSize = 8.sp)
@@ -558,7 +584,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         }
                     }
                 }
-                if (isLoading) { item { TypingIndicator() } }
+                if (isLoading) { item { TypingIndicator(agentName = agent.n) } }
                 if (isSearching && displayedMessages.isEmpty()) { item { Text("Ничего не найдено", color = Tx, modifier = Modifier.padding(12.dp), fontSize = 12.sp) } }
                 if (!isLoading && displayedMessages.isNotEmpty() && !displayedMessages.last().isUser && searchQuery.isBlank()) {
                     item { QuickActionsRow(onAction = { sendMessage(it) }) }
@@ -568,7 +594,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             if (!isSearching) {
                 Row(Modifier.fillMaxWidth().background(GrD).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     TextField(
-                        value = inputText, onValueChange = { inputText = it },
+                        value = inputText,
+                        onValueChange = {
+                            inputText = it
+                            saveDraft(context, project.id, agent.n, it)
+                        },
                         placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f).padding(end = 6.dp),
                         colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Line)
@@ -585,6 +615,25 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     ) { Text("➤", color = Gr, fontSize = 16.sp) }
                 }
             }
+        }
+
+        if (showClearConfirm) {
+            AlertDialog(
+                onDismissRequest = { showClearConfirm = false },
+                title = { Text("Очистить чат?", color = Bg) },
+                text = { Text("Все сообщения и закрепления в этом чате будут удалены безвозвратно.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        clearChat(context, historyKey)
+                        messages = emptyList()
+                        pinned = emptySet()
+                        showClearConfirm = false
+                    }) { Text("УДАЛИТЬ", color = Red) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearConfirm = false }) { Text("ОТМЕНА", color = Tx) }
+                }
+            )
         }
 
         if (messageActionIndex != null) {
@@ -691,14 +740,14 @@ fun QuickActionsRow(onAction: (String) -> Unit) {
 }
 
 @Composable
-fun TypingIndicator() {
+fun TypingIndicator(agentName: String = "Глафира") {
     val infiniteTransition = rememberInfiniteTransition()
     val alpha1 by infiniteTransition.animateFloat(0.2f, 1f, infiniteRepeatable(tween(600, easing = LinearEasing), RepeatMode.Reverse))
     val alpha2 by infiniteTransition.animateFloat(0.2f, 1f, infiniteRepeatable(tween(600, delayMillis = 200, easing = LinearEasing), RepeatMode.Reverse))
     val alpha3 by infiniteTransition.animateFloat(0.2f, 1f, infiniteRepeatable(tween(600, delayMillis = 400, easing = LinearEasing), RepeatMode.Reverse))
 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(4.dp)) {
-        Text("печатает", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Text("$agentName печатает", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.width(2.dp))
         Text(".", color = Gr.copy(alpha = alpha1), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Text(".", color = Gr.copy(alpha = alpha2), fontSize = 16.sp, fontWeight = FontWeight.Bold)
