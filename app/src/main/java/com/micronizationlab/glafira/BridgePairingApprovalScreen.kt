@@ -42,7 +42,8 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var deliveryText by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("Для просмотра и подтверждения устройств подтвердите личность владельца.") }
     var isBusy by remember { mutableStateOf(false) }
-    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }\n    var hostRunning by remember { mutableStateOf(false) }
+    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }
+    var hostRunning by remember { mutableStateOf(false) }
     var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
 
     LaunchedEffect(context) {
