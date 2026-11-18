@@ -85,11 +85,16 @@ class GlafiraCoreTaskExecutor(
             GlafiraTaskAuthorizationStatus.DENIED ->
                 return fail(task, authorization.reason ?: "AUTHORIZATION_DENIED")
             GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER -> {
-                val changed = queue.transition(
-                    task.taskId, setOf(GlafiraTaskState.RUNNING),
-                    GlafiraTaskState.WAITING_FOR_OWNER, nowMillis,
-                    lastError = authorization.reason
-                )
+                val currentState = queue.getTask(task.taskId)?.state
+                val changed = when (currentState) {
+                    GlafiraTaskState.WAITING_FOR_OWNER -> true
+                    GlafiraTaskState.RUNNING -> queue.transition(
+                        task.taskId, setOf(GlafiraTaskState.RUNNING),
+                        GlafiraTaskState.WAITING_FOR_OWNER, nowMillis,
+                        lastError = authorization.reason
+                    )
+                    else -> false
+                }
                 return GlafiraTaskExecutionResult(
                     task.taskId,
                     if (changed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
