@@ -5,6 +5,7 @@ import com.google.gson.reflect.TypeToken
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.PosixFilePermission
 
 internal enum class DesktopTaskState {
     QUEUED, DISPATCHED, ACCEPTED, RUNNING, SUCCEEDED, FAILED, CANCELLED, EXPIRED
@@ -221,10 +222,21 @@ internal class DesktopTaskQueue(
     private fun writeAll(records: List<DesktopTaskRecord>) {
         val temp = file.resolveSibling(file.fileName.toString() + ".tmp")
         Files.writeString(temp, gson.toJson(records))
+        setOwnerOnly(temp)
         try {
             Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
             Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING)
+        }
+        setOwnerOnly(file)
+    }
+
+    private fun setOwnerOnly(path: Path) {
+        runCatching {
+            Files.setPosixFilePermissions(
+                path,
+                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+            )
         }
     }
 
