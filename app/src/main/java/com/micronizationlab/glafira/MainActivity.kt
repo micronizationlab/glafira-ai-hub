@@ -83,6 +83,33 @@ fun App() {
     val context = LocalContext.current
     var projects by remember { mutableStateOf(loadProjects(context)) }
     var currentProject by remember { mutableStateOf(projects.first()) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        val queue = loadPendingQueue(context)
+        if (queue.isNotEmpty()) {
+            val remaining = mutableListOf<PendingMessage>()
+            queue.forEach { pm ->
+                val agentPrompt = when (pm.agentName) {
+                    "ГЛАФИРА" -> "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу."
+                    "АНАЛИТИК" -> "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен."
+                    "ПРОГРАММИСТ" -> "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение."
+                    "GigaChat" -> "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке."
+                    else -> "Ты — помощник."
+                }
+                val key = "${pm.projectId}_${pm.agentName}"
+                val history = loadHistory(context, key)
+                val reply = callGigaChatWithTrustedCert(context, history + Msg(pm.text, true, pm.time), agentPrompt)
+                if (reply.startsWith("Ошибка сети")) {
+                    remaining.add(pm)
+                } else {
+                    val updated = history + Msg(pm.text, true, pm.time) + Msg(reply, false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()))
+                    saveHistory(context, key, updated)
+                }
+            }
+            savePendingQueue(context, remaining)
+        }
+    }
 
     Surface(Modifier.fillMaxSize(), color = Bg) {
         when {
@@ -471,9 +498,17 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                     val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
                                     val reply = callGigaChatWithTrustedCert(context, updatedMessages, fullPrompt)
                                     val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                                    val finalMessages = updatedMessages + Msg(reply, false, replyTime)
-                                    messages = finalMessages
-                                    saveHistory(context, historyKey, finalMessages)
+                                    if (reply.startsWith("Ошибка сети")) {
+                                        addToPendingQueue(context, PendingMessage(project.id, agent.n, userMsg, timeNow))
+                                        val queuedMsg = Msg("⏳ Сообщение в очереди. Отправится при появлении сети.", false, replyTime)
+                                        val finalMessages = updatedMessages + queuedMsg
+                                        messages = finalMessages
+                                        saveHistory(context, historyKey, finalMessages)
+                                    } else {
+                                        val finalMessages = updatedMessages + Msg(reply, false, replyTime)
+                                        messages = finalMessages
+                                        saveHistory(context, historyKey, finalMessages)
+                                    }
                                     isLoading = false
                                 }
                             }
