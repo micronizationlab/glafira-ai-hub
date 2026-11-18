@@ -29,7 +29,7 @@ Private testing is a project context, not by itself proof of permission to clone
 7. Keep source recordings, derived datasets, model weights, and evaluation reports separate, access-controlled, and traceable.
 8. Do not represent a style approximation as an exact voice clone.
 9. **Cloud-first file library:** user-uploaded source audio and other large files must live in a user-controlled cloud drive (Google Drive or Yandex Disk), not permanently in the phone's or desktop's internal storage. Local storage is limited to temporary cache/working files and must have configurable cleanup.
-10. The cloud-drive integration must be provider-neutral so Google Drive and Yandex Disk can be supported through adapters. The user has not yet selected the initial provider.
+10. The cloud-drive integration must support both Google Drive and Yandex Disk through provider adapters. Both providers are part of the approved architecture; account connection and activation are deferred until after the Core and secure Bridge foundation is ready.
 11. GLAFIRA must not silently upload files to a cloud provider. The user explicitly connects the account, chooses the provider and library folder, and can inspect/revoke access.
 12. Store only the minimum file metadata and references in GLAFIRA Core's index; keep OAuth tokens/credentials in secure platform storage and never in Git, logs, prompts, or shared engineering memory.
 13. Access to cloud files must be mediated by Core authorization and audited. Use least-privilege scopes, short-lived access where supported, and avoid exposing permanent public links.
@@ -43,8 +43,9 @@ Private testing is a project context, not by itself proof of permission to clone
 - Record permission/license/rights status and allowed uses.
 - Define whether the target is analysis only, authorized voice cloning, or both.
 - Define language, sample rate, duration, audio quality, target devices, latency, and offline requirements.
-- Select Google Drive or Yandex Disk as the first cloud-library provider; retain an adapter contract for the other provider.
-- Let the user select a dedicated library folder and review the requested permissions before connecting.
+- Implement and test adapters for both Google Drive and Yandex Disk.
+- Defer connecting user accounts until the Core and secure Bridge foundation is ready.
+- When connection is introduced, let the user connect either or both accounts, select dedicated library folders, and review requested permissions.
 
 ### VL-1 — Cloud file library and audio corpus
 - Implement a provider-neutral cloud storage interface with Google Drive and Yandex Disk adapters.
@@ -92,7 +93,8 @@ Private testing is a project context, not by itself proof of permission to clone
 - A documented, reproducible corpus workflow with provenance and rights status.
 - No private audio or secrets committed to the repository.
 - A cloud-backed library is the canonical store for uploaded source files; local storage is only a bounded cache.
-- The user can choose and connect Google Drive or Yandex Disk, select the library folder, and revoke access.
+- Both Google Drive and Yandex Disk are supported by tested provider adapters.
+- The user can later connect either or both accounts, select library folders, and revoke access.
 - Cloud file access is Core-authorized, least-privilege, and auditable.
 - A documented comparison of candidate models and licenses.
 - Repeatable quality and performance tests with baseline metrics.
@@ -105,7 +107,7 @@ Private testing is a project context, not by itself proof of permission to clone
 
 1. Continue the existing backup, Core hardening, and secure Bridge work as the higher priority.
 2. Design the cloud-library abstraction and secure Bridge file-transfer contract; do not hard-code a single provider.
-3. Ask the user to choose which provider to connect first: Google Drive or Yandex Disk.
+3. Keep both Google Drive and Yandex Disk in scope; defer account connection until after Core and secure Bridge are ready.
 4. Ask the user to identify reference recordings and confirm their provenance and permitted use.
 5. Clarify whether the first experiment should be audio analysis only or authorized synthesis of new speech in the reference voice.
 6. Inventory available local hardware and choose a no-paid-infrastructure-first evaluation path.
