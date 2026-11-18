@@ -42,6 +42,18 @@ object GlafiraToolRegistry {
             ToolRiskLevel.READ_ONLY, setOf("project.read")
         ),
         GlafiraToolDefinition(
+            "conversation.read", "Чтение переписки", "Чтение разрешённой переписки проекта.",
+            ToolRiskLevel.READ_ONLY, setOf("conversation.read")
+        ),
+        GlafiraToolDefinition(
+            "conversation.append", "Добавление сообщения в переписку", "Добавление сообщения в историю проекта.",
+            ToolRiskLevel.DRAFT, setOf("conversation.append")
+        ),
+        GlafiraToolDefinition(
+            "approval.request", "Запрос подтверждения владельца", "Передача владельцу точного описания действия для решения.",
+            ToolRiskLevel.DRAFT, setOf("approval.request")
+        ),
+        GlafiraToolDefinition(
             "content.draft", "Подготовка черновика", "Создание черновика текста без публикации.",
             ToolRiskLevel.DRAFT, setOf("content.draft")
         ),
