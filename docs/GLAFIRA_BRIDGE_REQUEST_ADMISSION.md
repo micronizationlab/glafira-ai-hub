@@ -14,3 +14,6 @@ A missing paired-device record, duplicate key, replay-store capacity exhaustion 
 The request's device ID is only a lookup hint. Trust comes from the locally stored credential, and the Core gate compares it with the signed request identity. Never construct or populate the credential store from unauthenticated request data.
 
 This admission pipeline still does not execute tools, persist an owner approval queue, issue approval grants, or provide a network transport. The future host must call this pipeline before dispatching any operation and must persist execution state separately to recover safely from crashes after an idempotency claim.
+
+
+Android CI is configured to run for pull requests targeting feature branches as well as `main`, so this integration can be built and tested before any merge into the production branch.
