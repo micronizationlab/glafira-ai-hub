@@ -149,7 +149,7 @@ class GlafiraBridgeTlsHttpServer(
                     return
                 }
                 val expectedHost = if (boundPort == 443) identity.host else "${identity.host}:$boundPort"
-                if (!headers["host"].equals(expectedHost, ignoreCase = true)) {
+                if (!GlafiraBridgeIngressPolicy.validateHostHeader(headers["host"], expectedHost)) {
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_HOST"))
                     return
                 }
