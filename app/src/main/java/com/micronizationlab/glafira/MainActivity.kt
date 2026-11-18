@@ -171,7 +171,7 @@ fun App() {
         }
     }
 
-    Surface(Modifier.fillMaxSize(), color = Bg) {
+    Surface(Modifier.fillMaxSize(), color = Color(0xFF202020)) {
         when {
             showSettings -> SettingsScreen(
                 onBack = {
@@ -353,7 +353,7 @@ fun ContactList(
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("GLAFIRA AI HUB", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text("ICQ-style agent messenger", color = Color.White.copy(alpha = 0.82f), fontSize = 9.sp)
+                Text("СЕТЬ АГЕНТОВ · 2003", color = Color.White.copy(alpha = 0.88f), fontSize = 9.sp)
             }
             Text("—  □  ×", color = Color.White, fontSize = 12.sp)
         }
@@ -398,7 +398,7 @@ fun ContactList(
         if (showDeleteConfirm) {
             AlertDialog(
                 onDismissRequest = { showDeleteConfirm = false },
-                title = { Text("Удалить проект?", color = Bg) },
+                title = { Text("Удалить проект?", color = Color(0xFF202020)) },
                 text = { Text("Все чаты в этом проекте будут безвозвратно удалены.") },
                 confirmButton = {
                     TextButton(onClick = { onProjectDelete(currentProject); showDeleteConfirm = false; showProjectMenu = false }) {
@@ -414,7 +414,7 @@ fun ContactList(
         if (showAddDialog) {
             AlertDialog(
                 onDismissRequest = { showAddDialog = false },
-                title = { Text("Новый проект", color = Bg) },
+                title = { Text("Новый проект", color = Color(0xFF202020)) },
                 text = { TextField(value = newProjectName, onValueChange = { newProjectName = it }, placeholder = { Text("Название...") }) },
                 confirmButton = {
                     TextButton(onClick = {
@@ -428,7 +428,7 @@ fun ContactList(
             val agent = notConfiguredAgent!!
             AlertDialog(
                 onDismissRequest = { notConfiguredAgent = null },
-                title = { Text("${agent.n} не настроен", color = Bg) },
+                title = { Text("${agent.n} не настроен", color = Color(0xFF202020)) },
                 text = {
                     Column {
                         Text("Провайдер ${agent.providerId.displayName} пока не подключён.")
@@ -794,7 +794,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         if (showClearConfirm) {
             AlertDialog(
                 onDismissRequest = { showClearConfirm = false },
-                title = { Text("Очистить чат?", color = Bg) },
+                title = { Text("Очистить чат?", color = Color(0xFF202020)) },
                 text = { Text("Все сообщения и закрепления в этом чате будут удалены безвозвратно.") },
                 confirmButton = {
                     TextButton(onClick = {
@@ -815,7 +815,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             val msg = if (idx < messages.size) messages[idx] else null
             AlertDialog(
                 onDismissRequest = { messageActionIndex = null },
-                title = { Text("Действие", color = Bg) },
+                title = { Text("Действие", color = Color(0xFF202020)) },
                 text = {
                     Column {
                         if (msg != null) {
@@ -856,7 +856,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             ).filter { it.first != agent.n }
             AlertDialog(
                 onDismissRequest = { showTransferDialog = false },
-                title = { Text("Передать агенту", color = Bg) },
+                title = { Text("Передать агенту", color = Color(0xFF202020)) },
                 text = {
                     Column {
                         Text("Последние 5 сообщений будут переданы выбранному агенту в этот же проект.", color = Tx, fontSize = 12.sp)
