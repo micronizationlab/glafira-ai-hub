@@ -77,7 +77,7 @@ internal object GlafiraTraceSanitizer {
     }
 }
 
-class GlafiraSqliteTraceRepository(
+internal class GlafiraSqliteTraceRepository(
     private val database: GlafiraCoreDatabase
 ) : TraceRepository {
 
@@ -211,16 +211,38 @@ class GlafiraSqliteTraceRepository(
 
 /** Applies sanitization before every append, including memory writes in their transaction. */
 class GlafiraTraceService(
-    private val repository: GlafiraSqliteTraceRepository
+    private val repository: GlafiraSqliteTraceRepository,
+    private val identityProvider: CoreIdentityProvider,
+    private val policyEngine: CorePolicyEngine
 ) : TraceService {
     override suspend fun record(event: CoreTraceEvent) {
+        val actor = identityProvider.currentActor()
+            ?: throw SecurityException("Authenticated actor is required to write Trace")
+        if (event.actor != actor) {
+            throw SecurityException("Trace actor does not match authenticated identity")
+        }
+        val projectId = event.projectId
+            ?: throw SecurityException("Project-scoped Trace event is required")
+        val decision = policyEngine.evaluate(
+            CorePolicyRequest(actor, projectId, CoreAction.WRITE_TRACE, event.dataClassification, event.eventId.value)
+        )
+        if (!decision.allowed || decision.requiresOwnerApproval) {
+            throw SecurityException("Trace write denied by policy")
+        }
         repository.append(event)
     }
 
     override suspend fun query(query: TraceQuery, access: TraceAccessContext): TracePage =
         repository.query(query, access)
 
-    internal fun recordInTransaction(db: SQLiteDatabase, event: CoreTraceEvent) {
+    internal fun recordInTransaction(
+        db: SQLiteDatabase,
+        event: CoreTraceEvent,
+        expectedActor: CoreActor
+    ) {
+        if (event.actor != expectedActor || event.projectId == null) {
+            throw SecurityException("Trace actor or project does not match the trusted memory operation")
+        }
         repository.appendInTransaction(db, event)
     }
 }
