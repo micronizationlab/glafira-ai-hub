@@ -85,11 +85,13 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
             Button(
                 onClick = {
                     try {
+                        if (!configured) {
+                            require(masterPassword == confirmPassword) { "Пароли не совпадают" }
+                        }
                         val chars = masterPassword.toCharArray()
                         val opened = if (configured) {
                             VaultSession.unlock(context, chars)
                         } else {
-                            require(masterPassword == confirmPassword) { "Пароли не совпадают" }
                             VaultSession.create(context, chars)
                         }
                         session = opened
