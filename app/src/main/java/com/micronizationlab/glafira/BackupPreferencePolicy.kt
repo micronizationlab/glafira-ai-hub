@@ -3,6 +3,14 @@ package com.micronizationlab.glafira
 /** Single source of truth for backup-safe preference export and restore. */
 internal object BackupPreferencePolicy {
     private val providerNames = ProviderId.values().map { it.name }.toSet()
+    private val primaryProviderNames = setOf(
+        ProviderId.GIGACHAT.name,
+        ProviderId.OPENAI.name,
+        ProviderId.DEEPSEEK.name,
+        ProviderId.GROK.name,
+        ProviderId.GEMINI.name,
+        ProviderId.OPENROUTER.name
+    )
 
     fun isAllowedKey(key: String): Boolean =
         key == "glafira_primary_provider" ||
@@ -22,7 +30,7 @@ internal object BackupPreferencePolicy {
 
     fun isAllowedValue(key: String, value: Any?): Boolean = when {
         key == "glafira_primary_provider" ->
-            value is String && value in providerNames
+            value is String && value in primaryProviderNames
         key == "peer_consultation_providers" ||
             isProjectScopedKey(key, "peer_consultation_providers_") ->
             value is String && isProviderSelection(value)
