@@ -20,6 +20,8 @@ internal object GlafiraTraceSanitizer {
         "itemCount", "schemaVersion", "reviewVerdict", "independence", "operation",
         "queueDepth", "resultCode", "componentVersion", "toolId"
     )
+    private const val MAX_ATTRIBUTES = 32
+    private const val MAX_EVIDENCE_REFS = 50
     private val safeToken = Regex("[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}")
     private fun isSafeIdentifier(value: String) =
         value.matches(safeToken) && GlafiraSecretRedactor.redact(value) == value
@@ -46,7 +48,8 @@ internal object GlafiraTraceSanitizer {
         }
 
         val attributes = linkedMapOf<String, String>()
-        event.safeAttributes.forEach { (key, value) ->
+        if (event.safeAttributes.size > MAX_ATTRIBUTES) redacted = true
+        event.safeAttributes.entries.take(MAX_ATTRIBUTES).forEach { (key, value) ->
             if (key !in allowedAttributeKeys) {
                 redacted = true
             } else {
@@ -58,7 +61,7 @@ internal object GlafiraTraceSanitizer {
                 }
             }
         }
-        val evidence = event.evidenceRefs.mapNotNull(::safe)
+        val evidence = event.evidenceRefs.take(MAX_EVIDENCE_REFS).mapNotNull(::safe)
         if (evidence.size != event.evidenceRefs.size) redacted = true
         return event.copy(
             component = safe(event.component) ?: "REDACTED",
