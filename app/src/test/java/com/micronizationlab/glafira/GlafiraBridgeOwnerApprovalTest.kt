@@ -119,6 +119,7 @@ class GlafiraBridgeOwnerApprovalTest {
         var issuedScopes: Set<String> = emptySet()
         var persistedSecret: ByteArray? = null
         private var claimedBy: String? = null
+        private var claimedUntilEpochMs: Long = 0L
         private var acknowledged = false
 
         override fun enqueue(candidate: GlafiraBridgePendingApproval): Boolean {
@@ -158,17 +159,20 @@ class GlafiraBridgeOwnerApprovalTest {
 
         override fun claimDelivery(
             approvalId: String,
-            ownerSessionId: String
+            ownerSessionId: String,
+            ownerSessionExpiresAtEpochMs: Long,
+            nowEpochMs: Long
         ): GlafiraBridgeDeliveryResult {
             val record = pending[approvalId] ?: return GlafiraBridgeDeliveryResult.NotFound
             if (record.status != GlafiraBridgeApprovalStatus.APPROVED) {
                 return GlafiraBridgeDeliveryResult.NotApproved
             }
             if (acknowledged) return GlafiraBridgeDeliveryResult.AlreadyAcknowledged
-            if (claimedBy != null && claimedBy != ownerSessionId) {
-                return GlafiraBridgeDeliveryResult.ClaimedByAnotherOwnerSession
-            }
+            if (claimedBy != null && claimedBy != ownerSessionId &&
+                claimedUntilEpochMs > nowEpochMs
+            ) return GlafiraBridgeDeliveryResult.ClaimedByAnotherOwnerSession
             claimedBy = ownerSessionId
+            claimedUntilEpochMs = ownerSessionExpiresAtEpochMs
             return GlafiraBridgeDeliveryResult.Available(
                 GlafiraBridgeCredentialDelivery(
                     approvalId,
