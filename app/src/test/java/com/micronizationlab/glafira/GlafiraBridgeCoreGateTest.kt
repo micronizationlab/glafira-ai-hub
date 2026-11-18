@@ -65,6 +65,35 @@ class GlafiraBridgeCoreGateTest {
         assertEquals(GlafiraBridgeStatus.ACCEPTED, allowed.response.status)
     }
 
+    @Test fun desktopTaskClaimAndResultRequireSeparateGrantedScopes() {
+        val claim = signed(GlafiraBridgeOperation.DESKTOP_TASK_CLAIM)
+        val claimDenied = GlafiraBridgeCoreGate.authorize(
+            claim, "device-0001", secret, emptySet(), nowEpochMs = now
+        )
+        assertEquals(GlafiraBridgeAuthorizationError.SCOPE_DENIED, claimDenied.error)
+        val claimAllowed = GlafiraBridgeCoreGate.authorize(
+            claim, "device-0001", secret, setOf("desktop.task.claim"), nowEpochMs = now
+        )
+        assertEquals(GlafiraBridgeStatus.ACCEPTED, claimAllowed.response.status)
+
+        val result = signed(
+            GlafiraBridgeOperation.DESKTOP_TASK_RESULT,
+            mapOf(
+                "taskId" to "task-0001", "state" to "SUCCEEDED",
+                "progressPercent" to "100", "progressMessage" to "completed",
+                "result" to "analysis", "errorCode" to "none"
+            )
+        )
+        val resultDenied = GlafiraBridgeCoreGate.authorize(
+            result, "device-0001", secret, setOf("desktop.task.claim"), nowEpochMs = now
+        )
+        assertEquals(GlafiraBridgeAuthorizationError.SCOPE_DENIED, resultDenied.error)
+        val resultAllowed = GlafiraBridgeCoreGate.authorize(
+            result, "device-0001", secret, setOf("desktop.task.result"), nowEpochMs = now
+        )
+        assertEquals(GlafiraBridgeStatus.ACCEPTED, resultAllowed.response.status)
+    }
+
     @Test fun approvalRequestFailsClosedUntilDurableOwnerQueueExists() {
         val request = signed(
             GlafiraBridgeOperation.APPROVAL_REQUEST,
