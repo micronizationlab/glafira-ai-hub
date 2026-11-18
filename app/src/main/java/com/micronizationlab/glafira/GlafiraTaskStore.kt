@@ -61,6 +61,7 @@ class GlafiraTaskStore(context: Context) :
         throw IllegalStateException("Downgrading the GLAFIRA task database is not supported.")
     }
 
+    @Synchronized
     override fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
         GlafiraTaskPolicy.validate(task)
         val values = task.toContentValues()
@@ -79,6 +80,7 @@ class GlafiraTaskStore(context: Context) :
         return GlafiraTaskEnqueueResult(existing, false)
     }
 
+    @Synchronized
     override fun getTask(taskId: String): GlafiraTask? =
         readableDatabase.query(
             TABLE_TASKS,
@@ -91,6 +93,7 @@ class GlafiraTaskStore(context: Context) :
             "1"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.toTask() else null }
 
+    @Synchronized
     fun listTasks(
         states: Set<GlafiraTaskState> = emptySet(),
         limit: Int = 100
@@ -120,6 +123,7 @@ class GlafiraTaskStore(context: Context) :
      * Atomically claims one eligible task and increments its attempt count.
      * A worker crash after this point is recovered by a later Core recovery pass.
      */
+    @Synchronized
     override fun claimNext(nowMillis: Long): GlafiraTask? {
         val db = writableDatabase
         db.beginTransaction()
@@ -169,6 +173,7 @@ class GlafiraTaskStore(context: Context) :
      * Compare-and-set transition. Callers must supply the states they observed;
      * illegal state transitions are rejected before SQLite is modified.
      */
+    @Synchronized
     override fun transition(
         taskId: String,
         expectedStates: Set<GlafiraTaskState>,
@@ -286,6 +291,7 @@ class GlafiraTaskStore(context: Context) :
      * Checkpoints SQLite and exports the closed, consistent database file.
      * The caller must hold GlafiraCoreMaintenanceGate for the whole snapshot operation.
      */
+    @Synchronized
     internal fun exportConsistentSnapshot(destination: File) {
         val db = writableDatabase
         db.rawQuery("PRAGMA wal_checkpoint(FULL)", null).use { cursor ->
@@ -311,6 +317,7 @@ class GlafiraTaskStore(context: Context) :
      * Installs a previously verified database snapshot with a same-directory rollback file.
      * The caller must hold GlafiraCoreMaintenanceGate and keep Core dispatch paused.
      */
+    @Synchronized
     internal fun restoreConsistentSnapshot(snapshot: File) {
         require(snapshot.isFile && snapshot.length() > 0L) { "Core database snapshot is missing." }
         validateDatabaseSnapshot(snapshot)
