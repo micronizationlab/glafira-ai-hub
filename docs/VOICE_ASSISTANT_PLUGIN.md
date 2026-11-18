@@ -106,3 +106,10 @@ The requested private target is a voice-and-delivery recreation of performer Shu
 - If documented authorization is obtained, the plugin may use an appropriate provider workflow to analyze the authorized recordings and create the voice profile and delivery behavior, subject to provider terms.
 - Until then, the plugin may offer only a clearly distinct, original voice using broad non-identifying characteristics; it must not claim to be Shura Karetny or reproduce his recognizable voice.
 - The user-facing settings remain only enable/disable and change plugin; consent and provenance checks are enforced internally, not exposed as a collection of tuning controls.
+
+
+## Implementation checkpoint — 2026-11-18
+
+A provider-independent `VoiceProfilePolicy` contract and unit tests are present. A provider-neutral Voice runtime contract has now also been added on the separate `feature/glafira-voice-policy` branch: plugin capability discovery, STT/TTS adapter interfaces, owner opt-in (disabled by default), explicit session lifecycle, microphone-permission gate for STT sessions, bounded audio/text payloads, consent-policy enforcement before synthesis, and mandatory AI-generated speech disclosure metadata. Mock-provider tests cover disabled-by-default behavior, microphone permission, consent blocking and session invalidation.
+
+This remains a runtime contract, not a finished voice feature. Android microphone capture, audio playback, provider adapters/SDKs, profile storage, consent-evidence workflow, provider credential adapters and physical-device audio tests are not implemented. No voice cloning or real audio generation is enabled by this change.
