@@ -27,6 +27,7 @@ import org.json.JSONObject
 class GlafiraBridgeTlsHttpServer(
     private val identity: BridgeServerIdentity,
     private val admission: GlafiraBridgeRequestAdmission,
+    private val enrollmentCoordinator: GlafiraBridgeEnrollmentCoordinator,
     private val addressRateLimiter: GlafiraBridgeRateLimiter
 ) : AutoCloseable {
     @Volatile private var running = false
@@ -175,6 +176,40 @@ class GlafiraBridgeTlsHttpServer(
                     return
                 }
 
+                if (target == GlafiraBridgeIngressPolicy.PAIRING_PATH) {
+                    val pairing = try {
+                        GlafiraBridgePairingJsonCodec.decode(accepted.bytes)
+                    } catch (_: Exception) {
+                        writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_PAIRING_ENVELOPE"))
+                        return
+                    }
+                    val result = enrollmentCoordinator.receiveVerifiedEnrollmentProof(
+                        ticketId = pairing.ticketId,
+                        clientNonce = pairing.clientNonce,
+                        proofHex = pairing.proofHex,
+                        deviceLabel = pairing.deviceLabel,
+                        platform = pairing.platform,
+                        requestedScopes = pairing.requestedScopes
+                    )
+                    when (result) {
+                        is GlafiraBridgeEnrollmentSubmission.Pending -> {
+                            val body = JSONObject().apply {
+                                put("status", "PENDING_OWNER_APPROVAL")
+                                put("approvalId", result.approval.approvalId)
+                                put("receivedAtEpochMs", result.approval.receivedAtEpochMs)
+                            }.toString().toByteArray(Charsets.UTF_8)
+                            writeResponse(client, HTTP_ACCEPTED, body)
+                        }
+                        is GlafiraBridgeEnrollmentSubmission.Rejected ->
+                            writeResponse(client, HTTP_FORBIDDEN, errorResponse("PAIRING_${result.error.name}"))
+                        GlafiraBridgeEnrollmentSubmission.InvalidMetadata ->
+                            writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_PAIRING_METADATA"))
+                        GlafiraBridgeEnrollmentSubmission.QueueStorageError ->
+                            writeResponse(client, HTTP_SERVICE_UNAVAILABLE, errorResponse("PAIRING_QUEUE_UNAVAILABLE"))
+                    }
+                    return
+                }
+
                 val request = try {
                     GlafiraBridgeRequestJsonCodec.decode(accepted.bytes)
                 } catch (_: Exception) {
@@ -269,6 +304,8 @@ class GlafiraBridgeTlsHttpServer(
             HTTP_TOO_MANY_REQUESTS -> "Too Many Requests"
             HTTP_FORBIDDEN -> "Forbidden"
             HTTP_SERVICE_UNAVAILABLE -> "Service Unavailable"
+            HTTP_FORBIDDEN -> "Forbidden"
+            HTTP_SERVICE_UNAVAILABLE -> "Service Unavailable"
             else -> "Error"
         }
         val headers = "HTTP/1.1 $status $reason\r
@@ -310,6 +347,8 @@ class GlafiraBridgeTlsHttpServer(
         private const val HTTP_UNSUPPORTED_MEDIA = 415
         private const val HTTP_REQUEST_TIMEOUT = 408
         private const val HTTP_TOO_MANY_REQUESTS = 429
+        private const val HTTP_FORBIDDEN = 403
+        private const val HTTP_SERVICE_UNAVAILABLE = 503
         private const val HTTP_FORBIDDEN = 403
         private const val HTTP_SERVICE_UNAVAILABLE = 503
     }
