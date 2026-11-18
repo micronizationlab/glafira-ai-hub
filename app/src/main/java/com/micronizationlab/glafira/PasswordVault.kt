@@ -29,7 +29,8 @@ data class VaultEntry(
 
 class VaultSession internal constructor(
     context: Context,
-    private val keyBytes: ByteArray
+    private val keyBytes: ByteArray,
+    private val salt: ByteArray
 ) {
     private val file = File(context.filesDir, FILE_NAME)
     private var active = true
@@ -85,6 +86,7 @@ class VaultSession internal constructor(
         val encrypted = cipher.doFinal(array.toString().toByteArray(Charsets.UTF_8))
         val envelope = JSONObject().apply {
             put("version", 1)
+            put("salt", Base64.encodeToString(salt, Base64.NO_WRAP))
             put("iv", Base64.encodeToString(iv, Base64.NO_WRAP))
             put("data", Base64.encodeToString(encrypted, Base64.NO_WRAP))
         }
@@ -122,14 +124,9 @@ class VaultSession internal constructor(
             require(!exists(context)) { "Хранилище уже создано" }
             val salt = ByteArray(16).also(random::nextBytes)
             val key = deriveKey(masterPassword, salt)
-            val session = VaultSession(context, key)
+            val session = VaultSession(context, key, salt)
             try {
                 session.saveEntries(emptyList())
-                File(context.filesDir, FILE_NAME).writeText(
-                    JSONObject(File(context.filesDir, FILE_NAME).readText()).put(
-                        "salt", Base64.encodeToString(salt, Base64.NO_WRAP)
-                    ).toString()
-                )
                 return session
             } catch (error: Exception) {
                 session.lock()
@@ -148,7 +145,7 @@ class VaultSession internal constructor(
                 require(envelope.optInt("version") == 1) { "Неизвестная версия хранилища" }
                 val salt = Base64.decode(envelope.getString("salt"), Base64.NO_WRAP)
                 val key = deriveKey(masterPassword, salt)
-                val session = VaultSession(context, key)
+                val session = VaultSession(context, key, salt)
                 try {
                     session.loadEntries() // Authenticate password before exposing session.
                     return session
