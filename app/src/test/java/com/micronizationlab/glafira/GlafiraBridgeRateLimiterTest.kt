@@ -51,7 +51,7 @@ class GlafiraBridgeRateLimiterTest {
 
         assertTrue(limiter.tryAcquire("client-a", 100L))
         assertFalse(limiter.tryAcquire("client-a", 99L))
-        assertFalse(limiter.tryAcquire("client-a", 101L).not())
+        assertTrue(limiter.tryAcquire("client-a", 101L))
     }
 
     @Test
