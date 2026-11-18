@@ -18,14 +18,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 fun saveApiKey(context: Context, key: String) {
-    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    prefs.edit().putString("gigachat_api_key", key).commit()
+    EncryptedApiKeyStore.save(context, "gigachat_api_key", key)
 }
 
-fun loadApiKey(context: Context): String {
-    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    return prefs.getString("gigachat_api_key", "") ?: ""
-}
+fun loadApiKey(context: Context): String =
+    EncryptedApiKeyStore.load(context, "gigachat_api_key")
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
