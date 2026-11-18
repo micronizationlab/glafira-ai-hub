@@ -49,6 +49,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var isBusy by remember { mutableStateOf(false) }
     var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }
     var hostRunning by remember { mutableStateOf(false) }
+    var observedHostError by remember { mutableStateOf<String?>(null) }
     var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
     var invitationClipboardText by remember { mutableStateOf<String?>(null) }
     // DisposableEffect is keyed only by Activity; read the latest secret and clipboard values on disposal.
@@ -57,9 +58,13 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     val currentInvitationClipboardText by rememberUpdatedState(invitationClipboardText)
 
     fun startBridgeHost() {
+        observedHostError = null
         runCatching { GlafiraBridgeHostService.startFromOwnerAction(context, hostAddress.trim()) }
-            .onSuccess { status = "Запрос на запуск сервера отправлен. Проверьте постоянное уведомление Android." }
-            .onFailure { status = "Не удалось запустить сервер: проверьте IPv4 адрес и разрешения Android." }
+            .onSuccess { status = "Команда запуска отправлена. Ожидаем подтверждения запуска службы…" }
+            .onFailure { failure ->
+                status = "Не удалось отправить команду запуска: " +
+                    (failure.message ?: failure.javaClass.simpleName)
+            }
     }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -76,6 +81,11 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
             )
             hostRunning = hostState.getBoolean(GlafiraBridgeHostService.HOST_RUNNING_KEY, false) &&
                 hostState.getInt(GlafiraBridgeHostService.HOST_PID_KEY, 0) == android.os.Process.myPid()
+            val startupError = hostState.getString(GlafiraBridgeHostService.HOST_ERROR_KEY, null)
+            if (startupError != null && startupError != observedHostError) {
+                observedHostError = startupError
+                status = "Служба Bridge не запустилась: " + startupError
+            }
             delay(1_000)
         }
     }
