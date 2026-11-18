@@ -17,9 +17,8 @@ fun isProviderConfigured(context: Context, id: ProviderId): Boolean {
     return loadProviderKey(context, id).isNotBlank()
 }
 
-fun saveProviderKey(context: Context, id: ProviderId, key: String) {
+fun saveProviderKey(context: Context, id: ProviderId, key: String): Boolean =
     EncryptedApiKeyStore.save(context, id.prefKey, key.trim())
-}
 
 fun loadProviderKey(context: Context, id: ProviderId): String {
     if (id == ProviderId.GIGACHAT) return loadApiKey(context)
