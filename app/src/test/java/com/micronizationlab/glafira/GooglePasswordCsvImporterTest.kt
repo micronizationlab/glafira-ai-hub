@@ -34,7 +34,7 @@ class GooglePasswordCsvImporterTest {
     }
     @Test
     fun rejectsDuplicateHeadersInsteadOfSilentlyChoosingOne() {
-        val csv = "name,url,username,password,password\\nSite,https://site.example,user,pw,pw2\\n"
+        val csv = "name,url,username,password,password\nSite,https://site.example,user,pw,pw2\n"
         val error = runCatching {
             GooglePasswordCsvImporter.parse(ByteArrayInputStream(csv.toByteArray()))
         }.exceptionOrNull()
