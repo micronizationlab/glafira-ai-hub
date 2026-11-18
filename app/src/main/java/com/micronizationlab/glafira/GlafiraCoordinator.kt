@@ -101,7 +101,7 @@ object GlafiraCoordinator {
         }
 
         if (peerResults.isEmpty()) {
-            return callAiProvider(context, primaryProvider, history, coordinatorPrompt)
+            return callAiProvider(context, primaryProvider, enrichedHistory, coordinatorPrompt)
         }
 
         val councilContext = buildString {
