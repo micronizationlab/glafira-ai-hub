@@ -65,6 +65,15 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
         window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose {
             if (previousSecure == false) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            delivery?.hmacSecret?.fill(0)
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            if (deliveryText != null &&
+                clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+                    ?.coerceToText(context)?.toString() == deliveryText
+            ) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+            }
+            invitation = null
             store.close()
             ticketStore.close()
         }
