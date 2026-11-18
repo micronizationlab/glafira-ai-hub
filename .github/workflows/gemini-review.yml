@@ -107,7 +107,7 @@ jobs:
               "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096}
           }, ensure_ascii=False))
           PY
-          curl --fail --silent --show-error https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent \
+          curl --fail --silent --show-error https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent \
             -H "x-goog-api-key: $API_KEY" \
             -H "Content-Type: application/json" \
             --data-binary @request.json -o response.json
