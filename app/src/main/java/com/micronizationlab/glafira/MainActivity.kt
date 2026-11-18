@@ -241,14 +241,15 @@ fun StatusFlower(isOnline: Boolean, size: Dp = 8.dp) {
 @Composable
 fun GroupHeader(title: String, count: Int, expanded: Boolean, onToggle: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(GrD).clickable { onToggle() }.padding(horizontal = 8.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().clickable { onToggle() }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(if (expanded) "▼" else "▶", color = Gr, fontSize = 10.sp)
-        Spacer(Modifier.width(6.dp))
-        Text(title, color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Text(title, color = GlafiraColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.weight(1f))
-        Text("$count", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Text("$count", color = Tx, fontSize = 12.sp)
+        Spacer(Modifier.width(10.dp))
+        Text(if (expanded) "−" else "+", color = Gr, fontSize = 18.sp, fontWeight = FontWeight.Medium)
     }
 }
 
