@@ -5,6 +5,8 @@ import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.IDN
+import java.net.URI
 import java.security.SecureRandom
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -40,6 +42,21 @@ internal object VaultEntryIdentity {
     }
 }
 
+/**
+ * Short-lived credential view. The password is held as a mutable character array
+ * and wiped when the lease closes. Callers must never log, persist or send it to an
+ * AI provider; use it only at the approved destination.
+ */
+internal class VaultCredentialLease(
+    val title: String,
+    val username: String,
+    val password: CharArray
+) : AutoCloseable {
+    override fun close() {
+        password.fill('\\u0000')
+    }
+}
+
 class VaultSession internal constructor(
     context: Context,
     private val keyBytes: ByteArray,
@@ -47,6 +64,53 @@ class VaultSession internal constructor(
 ) {
     private val file = File(context.filesDir, FILE_NAME)
     private var active = true
+
+    /**
+     * Supplies one exact-origin credential to a trusted in-process adapter.
+     * allowedHosts must come from owner-approved app state, never from model output.
+     * Ambiguous matches fail closed. The lease is wiped after the callback returns.
+     */
+    @Synchronized
+    internal fun <T> withCredential(
+        origin: String,
+        username: String? = null,
+        allowedHosts: Set<String>,
+        block: (VaultCredentialLease) -> T
+    ): T {
+        check(active) { "Хранилище заблокировано" }
+        val requestedHost = canonicalHttpsHost(origin)
+        val approvedHosts = allowedHosts.map(::canonicalHost).toSet()
+        require(requestedHost in approvedHosts) { "Для этого сайта не выданы полномочия." }
+
+        val matches = loadEntries().filter { entry ->
+            val entryHost = runCatching { canonicalHttpsHost(entry.website) }.getOrNull()
+            entryHost == requestedHost &&
+                (username == null || entry.username.equals(username, ignoreCase = true))
+        }
+        require(matches.size == 1) {
+            if (matches.isEmpty()) "Учётная запись для сайта не найдена."
+            else "Для сайта найдено несколько учётных записей; укажи логин."
+        }
+
+        val entry = matches.single()
+        val lease = VaultCredentialLease(entry.title, entry.username, entry.password.toCharArray())
+        return try {
+            block(lease)
+        } finally {
+            lease.close()
+        }
+    }
+
+    private fun canonicalHttpsHost(value: String): String {
+        val uri = URI(value.trim())
+        require(uri.scheme.equals("https", ignoreCase = true))
+        require(!uri.host.isNullOrBlank() && uri.rawUserInfo == null)
+        require(uri.rawQuery == null && uri.rawFragment == null)
+        return canonicalHost(uri.host)
+    }
+
+    private fun canonicalHost(value: String): String =
+        IDN.toASCII(value.trim().trimEnd('.')).lowercase()
 
     @Synchronized
     fun loadEntries(): List<VaultEntry> {
