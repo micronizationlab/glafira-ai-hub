@@ -250,14 +250,18 @@ class GlafiraCoreOwnerApprovalStore(
             }, "task_id = ? AND status = ? AND expires_at > ?",
                 arrayOf(taskId, PENDING, nowMillis.toString()))
             if (changed == 1) {
-                db.update("core_tasks", ContentValues().apply {
+                val taskChanged = db.update("core_tasks", ContentValues().apply {
                     put("state", GlafiraTaskState.FAILED.databaseValue)
                     put("updated_at", nowMillis)
                     put("last_error", "OWNER_REJECTED")
                 }, "task_id = ? AND state = ?",
                     arrayOf(taskId, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue))
-                result = GlafiraCoreOwnerApprovalMutation.REJECTED
-                db.setTransactionSuccessful()
+                if (taskChanged == 1) {
+                    result = GlafiraCoreOwnerApprovalMutation.REJECTED
+                    db.setTransactionSuccessful()
+                } else {
+                    result = GlafiraCoreOwnerApprovalMutation.ALREADY_DECIDED
+                }
             }
             }
         } finally {
