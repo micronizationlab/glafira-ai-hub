@@ -160,7 +160,6 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
 
 suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, prompt: String): String = withContext(Dispatchers.IO) {
     try {
-        // 1. Читаем сертификат из assets
         val certFactory = CertificateFactory.getInstance("X.509")
         val certInputStream = context.assets.open("russian_trusted_root_ca.crt")
 
@@ -175,7 +174,6 @@ suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, promp
         sslContext.init(null, tmf.trustManagers, null)
         val socketFactory = sslContext.socketFactory
 
-        // 2. Получаем Access Token (scope=PERS, как ты подтвердил)
         val tokenUrl = URL("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
         val tokenConn = tokenUrl.openConnection() as HttpsURLConnection
         tokenConn.sslSocketFactory = socketFactory
@@ -197,7 +195,6 @@ suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, promp
         val tokenResponse = tokenConn.inputStream.bufferedReader().readText()
         val accessToken = JSONObject(tokenResponse).getString("access_token")
 
-        // 3. Отправляем сообщение
         val chatUrl = URL("https://api.giga.chat/v1/chat/completions")
         val chatConn = chatUrl.openConnection() as HttpsURLConnection
         chatConn.sslSocketFactory = socketFactory
@@ -208,7 +205,7 @@ suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, promp
         chatConn.doOutput = true
 
         val chatBody = JSONObject().apply {
-            put("model", "GigaChat")
+            put("model", "GigaChat-2")
             put("messages", org.json.JSONArray().apply {
                 put(JSONObject().apply { put("role", "user"); put("content", prompt) })
             })
