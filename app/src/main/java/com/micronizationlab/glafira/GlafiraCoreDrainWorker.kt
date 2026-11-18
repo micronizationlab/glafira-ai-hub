@@ -40,12 +40,14 @@ class GlafiraCoreDrainWorker(
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            Result.retry()
+            if (runAttemptCount >= MAX_WORKER_ATTEMPTS - 1) Result.failure()
+            else Result.retry()
         }
     }
 
     companion object {
         private const val MAX_TASKS_PER_RUN = 8
+        private const val MAX_WORKER_ATTEMPTS = 5
         private const val RETRY_DELAY_MILLIS = 30_000L
     }
 }
