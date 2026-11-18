@@ -84,4 +84,26 @@ class VoiceAssistantTest {
         assertEquals(VoiceStyleProfile.WORK_FORMAL_ORIGINAL, runtime.styleFor(true))
         assertEquals(VoiceStyleProfile.PERSONAL_INFORMAL_ORIGINAL, runtime.styleFor(false))
     }
+    @Test
+    fun voiceAudioCopiesInputAndReturnedBytes() {
+        val source = byteArrayOf(1, 2, 3)
+        val audio = VoiceAudio(source, "audio/mpeg", "test-provider")
+        source[0] = 9
+
+        val firstRead = audio.bytes
+        assertEquals(1, firstRead[0])
+        firstRead[1] = 9
+        assertEquals(2, audio.bytes[1])
+    }
+
+    @Test
+    fun voiceAudioRejectsUnsupportedMimeTypeAndEmptyProvenance() {
+        assertThrows(IllegalArgumentException::class.java) {
+            VoiceAudio(byteArrayOf(1), "application/octet-stream", "test-provider")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            VoiceAudio(byteArrayOf(1), "audio/mpeg", " ")
+        }
+    }
+
 }
