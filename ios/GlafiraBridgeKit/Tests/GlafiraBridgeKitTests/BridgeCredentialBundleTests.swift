@@ -40,6 +40,8 @@ final class BridgeCredentialBundleTests: XCTestCase {
             requestedScopes: ["project.read", "conversation.read"]
         )
         XCTAssertEqual(parsed.origin, origin)
+        XCTAssertEqual(parsed.approvalId, "approval-1234567890")
+        XCTAssertEqual(parsed.ticketId, "ticket-1234567890")
         XCTAssertEqual(parsed.deviceId, "ios-device-0001")
         XCTAssertEqual(parsed.hmacSecret, secret)
         XCTAssertEqual(parsed.grantedScopes, ["project.read"])
