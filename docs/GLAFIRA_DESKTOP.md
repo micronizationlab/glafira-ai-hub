@@ -2,6 +2,13 @@
 
 Status: project started; specification only until implementation and acceptance tests pass.
 
+## Owner-approved product decisions
+
+- Android and Desktop are independent, first-class clients. Neither is the permanent master; either can continue work and both use the same Glafira Core authority and synchronized project memory.
+- Glafira Core is the single logical authority for policy, project isolation, provider routing, permissions and audit. Multiple physical Core replicas, if introduced later, must use explicit synchronization and conflict rules rather than silently diverging.
+- The next development priority after required backup acceptance is GLAFIRA Core hardening and the ChatGPT integration path. Desktop UI implementation follows the Core/Bridge contracts; do not let the desktop shell displace Core work.
+- Desktop is Windows-first and ICQ-inspired, with opt-in background tray operation.
+
 ## Product goal
 
 Build a Windows-first desktop companion for GLAFIRA AI HUB with the compact, friendly interaction model of classic ICQ (early 2000s), while preserving modern security, accessibility and reliability. It is a separate desktop application, not an Android screen stretched onto a PC.
@@ -33,6 +40,16 @@ Build a Windows-first desktop companion for GLAFIRA AI HUB with the compact, fri
 5. Local security: OS credential store / DPAPI-backed secret protection on Windows; never reuse Android Keystore APIs on desktop.
 6. Provider adapters: configured LLM providers are called through Glafira Core policy, not directly from UI components.
 
+## Shared memory and multi-device consistency
+
+- Both clients read and write the same logical project memory through Core APIs; neither maintains a private authoritative copy.
+- Each client keeps only a bounded encrypted offline cache and an outbox of pending changes.
+- Messages and commands carry stable IDs, device IDs, project IDs, schema versions and idempotency keys.
+- Core assigns canonical ordering/version metadata. Clients reconcile using server/Core versions; do not use last-write-wins for destructive or security-sensitive state.
+- Conflicts in user-authored content must be surfaced for resolution or merged only with a documented deterministic strategy.
+- Device-bound credentials and secrets are never copied as shared memory. Reauthorize credentials separately on each device.
+- A device may continue local drafting and queued non-destructive work offline; external actions wait for Core authorization and connectivity.
+
 ## Background operation
 
 - Use a single application process with a tray-resident lifecycle; do not create an always-on hidden microphone listener.
@@ -54,8 +71,8 @@ Build a Windows-first desktop companion for GLAFIRA AI HUB with the compact, fri
 ## Delivery phases
 
 0. Specification and architecture review.
-1. Desktop shell: window, project/contact list, chat view, settings, tray lifecycle and CI build.
-2. Shared Core boundary: extract provider-neutral contracts without destabilizing Android.
+1. Core contracts and Bridge authorization/sync design, coordinated with Core hardening.
+2. Desktop shell: window, project/contact list, chat view, settings, tray lifecycle and CI build.
 3. Pairing and Bridge transport: device enrollment, authenticated sessions, heartbeat, reconnect and revocation.
 4. Project/chat synchronization, offline queue and conflict handling.
 5. Notifications, task status and owner approval inbox.
@@ -70,6 +87,8 @@ Build a Windows-first desktop companion for GLAFIRA AI HUB with the compact, fri
 - Restart/reconnect does not duplicate messages or execute queued actions twice.
 - A revoked device cannot reconnect.
 - Project boundaries and provider sharing rules are enforced by tests.
+- Android and Desktop converge on the same canonical project/conversation state after reconnect.
+- Conflicting edits are not silently discarded.
 - No external write executes without the required approval.
 - No microphone capture occurs without a user-started voice session.
 - App clearly reports offline state, pending work and failed synchronization.
