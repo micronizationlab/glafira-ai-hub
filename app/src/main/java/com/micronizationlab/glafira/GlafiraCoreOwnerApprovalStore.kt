@@ -65,40 +65,73 @@ class GlafiraCoreOwnerApprovalStore(
         val definition = GlafiraToolRegistry.find(task.taskType) ?: return false
         val hash = GlafiraToolRegistry.actionHash(task, actionSummary)
         val requestedScopes = (definition.requiredScopes + task.requiredScopes).sorted()
-        val existing = db.query(
-            "core_action_approvals", arrayOf("action_hash", "status", "grant_expires_at"),
-            "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
-        ).use { cursor ->
-            if (cursor.moveToFirst()) Triple(
-                cursor.getString(0), cursor.getString(1),
-                if (cursor.isNull(2)) 0L else cursor.getLong(2)
-            ) else null
+        val database = db
+        var queued = false
+        database.beginTransaction()
+        try {
+            val currentTask = taskStore.getTask(task.taskId) ?: return false
+            if (currentTask.state != GlafiraTaskState.RUNNING &&
+                currentTask.state != GlafiraTaskState.WAITING_FOR_OWNER
+            ) return false
+
+            val existing = database.query(
+                "core_action_approvals", arrayOf("action_hash", "status", "grant_expires_at"),
+                "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
+            ).use { cursor ->
+                if (cursor.moveToFirst()) Triple(
+                    cursor.getString(0), cursor.getString(1),
+                    if (cursor.isNull(2)) 0L else cursor.getLong(2)
+                ) else null
+            }
+            if (existing != null) {
+                if (existing.first != hash || existing.second == REJECTED) return false
+                if (existing.second == APPROVED && existing.third > nowMillis) return false
+            }
+
+            val values = ContentValues().apply {
+                put("task_id", task.taskId)
+                put("project_id", task.projectId)
+                put("tool_id", task.taskType)
+                put("action_hash", hash)
+                put("requested_scopes", JSONArray(requestedScopes).toString())
+                put("requested_at", nowMillis)
+                put("expires_at", Long.MAX_VALUE)
+                put("status", PENDING)
+                putNull("approved_at")
+                putNull("grant_expires_at")
+                putNull("decided_by")
+            }
+            val approvalChanged = if (existing == null) {
+                database.insertWithOnConflict(
+                    "core_action_approvals", null, values, SQLiteDatabase.CONFLICT_IGNORE
+                ).let { if (it == -1L) 0 else 1 }
+            } else {
+                database.update(
+                    "core_action_approvals", values,
+                    "task_id = ? AND status IN (?, ?, ?, ?)",
+                    arrayOf(task.taskId, EXPIRED, CONSUMED, APPROVED, PENDING)
+                )
+            }
+            val taskChanged = database.update(
+                "core_tasks",
+                ContentValues().apply {
+                    put("state", GlafiraTaskState.WAITING_FOR_OWNER.databaseValue)
+                    put("updated_at", nowMillis)
+                    put("last_error", "OWNER_APPROVAL_REQUIRED")
+                },
+                "task_id = ? AND state IN (?, ?)",
+                arrayOf(
+                    task.taskId,
+                    GlafiraTaskState.RUNNING.databaseValue,
+                    GlafiraTaskState.WAITING_FOR_OWNER.databaseValue
+                )
+            )
+            queued = approvalChanged == 1 && taskChanged == 1
+            if (queued) database.setTransactionSuccessful()
+        } finally {
+            database.endTransaction()
         }
-        if (existing != null) {
-            if (existing.first != hash || existing.second == REJECTED) return false
-            if (existing.second == PENDING) return true
-            if (existing.second == APPROVED && existing.third > nowMillis) return true
-        }
-        val values = ContentValues().apply {
-            put("task_id", task.taskId)
-            put("project_id", task.projectId)
-            put("tool_id", task.taskType)
-            put("action_hash", hash)
-            put("requested_scopes", JSONArray(requestedScopes).toString())
-            put("requested_at", nowMillis)
-            put("expires_at", Long.MAX_VALUE)
-            put("status", PENDING)
-            putNull("approved_at")
-            putNull("grant_expires_at")
-            putNull("decided_by")
-        }
-        return if (existing == null) {
-            db.insertWithOnConflict("core_action_approvals", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
-        } else {
-            db.update("core_action_approvals", values,
-                "task_id = ? AND status IN (?, ?, ?)",
-                arrayOf(task.taskId, EXPIRED, CONSUMED, APPROVED)) == 1
-        }
+        return queued
     }
 
     @Synchronized
