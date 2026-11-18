@@ -18,6 +18,7 @@ import java.util.Locale
 class GlafiraBridgeOperationDispatcher(context: Context) {
     private val appContext = context.applicationContext
     private val filesRoot = appContext.filesDir.canonicalFile
+    private val desktopTasks = GlafiraDesktopTaskStore(appContext)
 
     fun dispatch(request: GlafiraBridgeRequest): GlafiraBridgeResponse {
         return try {
@@ -69,6 +70,24 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                 }
                 GlafiraBridgeOperation.APPROVAL_REQUEST ->
                     failed(request, "APPROVAL_QUEUE_NOT_CONNECTED")
+                GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> {
+                    val task = desktopTasks.claimNext()
+                    if (task == null) succeeded(request, mapOf("taskJson" to "none"))
+                    else succeeded(request, mapOf("taskJson" to task.toString()))
+                }
+                GlafiraBridgeOperation.DESKTOP_TASK_RESULT -> {
+                    val payload = request.payload
+                    val updated = desktopTasks.update(
+                        taskId = payload.getValue("taskId"),
+                        state = payload.getValue("state"),
+                        progressPercent = payload.getValue("progressPercent").toInt(),
+                        progressMessage = payload.getValue("progressMessage").takeUnless { it == "none" },
+                        result = payload.getValue("result").takeUnless { it == "none" },
+                        errorCode = payload.getValue("errorCode").takeUnless { it == "none" }
+                    )
+                    if (updated) succeeded(request, mapOf("taskId" to payload.getValue("taskId"), "updated" to "true"))
+                    else failed(request, "TASK_NOT_FOUND")
+                }
             }
         } catch (_: Exception) {
             failed(request, "OPERATION_FAILED")
