@@ -35,6 +35,14 @@ object GlafiraCoordinator {
         val enrichedHistory = withContext(Dispatchers.IO) {
             enrichWithWebAccess(context, history)
         }
+        val distributedAnswer = tryDesktopDelegation(
+            context = context,
+            primaryProvider = primaryProvider,
+            history = enrichedHistory,
+            systemPrompt = coordinatorPrompt,
+            projectId = projectId
+        )
+        if (distributedAnswer != null) return distributedAnswer
         val consultationKey = projectId?.let { "peer_consultation_enabled_$it" }
             ?: "peer_consultation_enabled"
         val coordinatorPrefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
@@ -138,6 +146,86 @@ object GlafiraCoordinator {
         }
     }
 
+
+    /**
+     * Delegate only clearly multi-step work and only when an authenticated Desktop heartbeat
+     * advertises the required capabilities. Ordinary chat remains on the existing fast path.
+     */
+    private suspend fun tryDesktopDelegation(
+        context: Context,
+        primaryProvider: ProviderId,
+        history: List<Msg>,
+        systemPrompt: String,
+        projectId: String?
+    ): String? {
+        val question = history.lastOrNull { it.isUser }?.text?.trim().orEmpty()
+        if (question.length < 180 || !Regex(
+                "(?i)(проанализируй|исследуй|разработай|спроектируй|сравни|подготовь план|проведи аудит|несколько этапов|комплексн)"
+            ).containsMatchIn(question)
+        ) return null
+
+        val store = GlafiraDesktopTaskStore(context.applicationContext)
+        if (store.nodeCapabilities() == null) return null
+
+        val safeHistory = history.takeLast(8).map { it.copy(text = GlafiraSecretRedactor.redact(it.text)) }
+        val plannerPrompt = """
+            $systemPrompt
+
+            Ты — планировщик GLAFIRA Core. Разбей сложную задачу на 1–4 независимые или
+            зависимые подзадачи для агентов GLAFIRA, ANALYST, PROGRAMMER, RESEARCHER.
+            Верни только JSON:
+            {"goal":"...","tasks":[{"id":"task1","title":"...","instruction":"...","executor":"ANALYST","dependsOn":[]}]}
+            Не включай секреты, пароли, API-ключи и приватные учётные данные.
+            Не создавай задачи для произвольного запуска команд или внешних изменений.
+            Учитывай зависимости; независимые задачи могут выполняться параллельно.
+        """.trimIndent()
+        val rawPlan = callAiProvider(context, primaryProvider, safeHistory, plannerPrompt)
+        if (rawPlan.startsWith("Ошибка")) return null
+        val start = rawPlan.indexOf('{')
+        val end = rawPlan.lastIndexOf('}')
+        if (start < 0 || end <= start) return null
+        val plan = runCatching {
+            GlafiraTaskPlanner.parseAndValidate(rawPlan.substring(start, end + 1))
+        }.getOrNull() ?: return null
+
+        val localFallback = GlafiraLocalTaskPort { task ->
+            GlafiraDistributedTaskResult(
+                taskId = task.taskId,
+                node = GlafiraExecutionNode.ANDROID,
+                succeeded = false,
+                errorCode = "ANDROID_FALLBACK_NOT_ENABLED_FOR_HEAVY_TASK"
+            )
+        }
+        val orchestrator = GlafiraDistributedTaskRuntimeFactory.create(
+            context = context,
+            localTaskPort = localFallback,
+            desktopCapabilities = { store.nodeCapabilities() },
+            safeAndroidCapabilities = emptySet()
+        )
+        val results = runCatching {
+            orchestrator.execute(projectId ?: "default", plan)
+        }.getOrNull() ?: return null
+        if (results.size != plan.tasks.size || results.any { !it.succeeded }) return null
+
+        val resultContext = buildString {
+            appendLine("Результаты выполнения подзадач на Desktop GLAFIRA:")
+            results.forEach { result ->
+                appendLine()
+                appendLine("Задача ${result.taskId}:")
+                appendLine(GlafiraSecretRedactor.redact(result.output.orEmpty()).take(5_000))
+            }
+            appendLine()
+            appendLine("Подготовь единый итоговый ответ. Отделяй проверенные результаты от предположений.")
+        }
+        val finalHistory = safeHistory + Msg(resultContext, true, "")
+        val answer = callAiProvider(
+            context,
+            primaryProvider,
+            finalHistory,
+            systemPrompt + "\nТы — главный координатор. Синтезируй результаты Desktop-агентов."
+        )
+        return answer.takeIf { !it.startsWith("Ошибка API") && !it.startsWith("Ошибка сети") }
+    }
 
     private fun enrichWithWebAccess(context: Context, history: List<Msg>): List<Msg> {
         val question = history.lastOrNull { it.isUser }?.text?.trim().orEmpty()
