@@ -87,6 +87,26 @@ class GlafiraBridgeProtocolTest {
         )
     }
 
+    @Test fun acceptsDesktopTaskClaimWithoutPayload() {
+        val signed = GlafiraBridgeProtocol.sign(
+            request(GlafiraBridgeOperation.DESKTOP_TASK_CLAIM), secret
+        )
+        assertNull(GlafiraBridgeProtocol.validate(signed, now))
+    }
+
+    @Test fun desktopTaskResultRequiresAllBoundedFields() {
+        val signed = GlafiraBridgeProtocol.sign(
+            request(
+                GlafiraBridgeOperation.DESKTOP_TASK_RESULT,
+                mapOf("taskId" to "task-0001", "state" to "SUCCEEDED")
+            ), secret
+        )
+        assertEquals(
+            GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD,
+            GlafiraBridgeProtocol.validate(signed, now)
+        )
+    }
+
     @Test fun rejectsUnknownPayloadField() {
         val signed = GlafiraBridgeProtocol.sign(
             request(payload = mapOf("unexpected" to "value")), secret
