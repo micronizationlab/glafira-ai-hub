@@ -46,6 +46,9 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
     var coreRuntimeEnabled by remember { mutableStateOf(GlafiraCoreRuntimeOwner.get(context).isEnabled) }
+    var ownerApprovals by remember { mutableStateOf(GlafiraCoreRuntimeOwner.get(context).pendingOwnerApprovals()) }
+    var ownerApprovalMessage by remember { mutableStateOf<String?>(null) }
+    val ownerActivity = context as? androidx.fragment.app.FragmentActivity
     var peerConsultationEnabled by remember(peerConsultationKey) {
         mutableStateOf(context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
             .getBoolean(peerConsultationKey, false))
@@ -107,6 +110,79 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             color = Tx,
             fontSize = 10.sp
         )
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("ОДОБРЕНИЕ ДЕЙСТВИЙ ВЛАДЕЛЬЦЕМ", color = Gr, fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.weight(1f))
+                    TextButton(onClick = {
+                        ownerApprovals = GlafiraCoreRuntimeOwner.get(context).pendingOwnerApprovals()
+                    }) { Text("ОБНОВИТЬ") }
+                }
+                Text(
+                    "Рискованные действия и запросы недостающих полномочий сохраняются в Core SQLite. Подтверждение требует биометрии или системного PIN-кода.",
+                    color = Tx, fontSize = 10.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                if (ownerApprovals.isEmpty()) {
+                    Text("Ожидающих подтверждения действий нет.", color = Tx, fontSize = 11.sp)
+                } else {
+                    ownerApprovals.forEach { approval ->
+                        HorizontalDivider(color = Line)
+                        Spacer(Modifier.height(8.dp))
+                        Text(approval.task.taskType, color = Color(0xFF202020), fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold)
+                        Text(approval.actionSummary, color = Tx, fontSize = 11.sp)
+                        Text("Проект: ${approval.task.projectId}", color = Tx, fontSize = 10.sp)
+                        Text("Запрашиваемые полномочия: ${approval.requestedScopes.sorted().joinToString()}", color = Tx, fontSize = 10.sp)
+                        Text("Подтверждение разрешит эти области для проекта и источника; само действие получит одноразовый допуск на 10 минут.",
+                            color = Tx, fontSize = 10.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    val activity = ownerActivity
+                                    if (activity == null) {
+                                        ownerApprovalMessage = "Для подтверждения требуется активное окно GLAFIRA."
+                                    } else {
+                                        authenticateCoreOwner(activity, onSuccess = { session ->
+                                            val result = GlafiraCoreRuntimeOwner.get(context).approveOwnerAction(
+                                                approval.task.taskId, approval.requestedScopes, session
+                                            )
+                                            ownerApprovalMessage = result.name
+                                            ownerApprovals = GlafiraCoreRuntimeOwner.get(context).pendingOwnerApprovals()
+                                        }, onError = { ownerApprovalMessage = it })
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White)
+                            ) { Text("ПОДТВЕРДИТЬ") }
+                            OutlinedButton(onClick = {
+                                val activity = ownerActivity
+                                if (activity == null) {
+                                    ownerApprovalMessage = "Для отклонения требуется активное окно GLAFIRA."
+                                } else {
+                                    authenticateCoreOwner(activity, onSuccess = { session ->
+                                        val result = GlafiraCoreRuntimeOwner.get(context).rejectOwnerAction(
+                                            approval.task.taskId, session
+                                        )
+                                        ownerApprovalMessage = result.name
+                                        ownerApprovals = GlafiraCoreRuntimeOwner.get(context).pendingOwnerApprovals()
+                                    }, onError = { ownerApprovalMessage = it })
+                                }
+                            }) { Text("ОТКЛОНИТЬ") }
+                        }
+                    }
+                }
+                ownerApprovalMessage?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, color = Gr, fontSize = 10.sp)
+                }
+            }
+        }
 
         Spacer(Modifier.height(18.dp))
 
