@@ -81,7 +81,7 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                         }
                     }
                     val maxParallel = request.payload.getValue("maxParallelTasks").toInt()
-                    val task = desktopTasks.claimNext(capabilities, maxParallel)
+                    val task = desktopTasks.claimNext(capabilities, maxParallel, request.deviceId)
                     if (task == null) succeeded(request, mapOf("taskJson" to "none"))
                     else succeeded(request, mapOf("taskJson" to task.toString()))
                 }
@@ -89,6 +89,7 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                     val payload = request.payload
                     val updated = desktopTasks.update(
                         taskId = payload.getValue("taskId"),
+                        deviceId = request.deviceId,
                         state = payload.getValue("state"),
                         progressPercent = payload.getValue("progressPercent").toInt(),
                         progressMessage = payload.getValue("progressMessage").takeUnless { it == "none" },
