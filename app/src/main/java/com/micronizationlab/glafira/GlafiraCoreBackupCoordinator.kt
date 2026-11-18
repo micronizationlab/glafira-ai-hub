@@ -67,7 +67,7 @@ class GlafiraCoreBackupCoordinator(
                     throw restoreError
                 }
             } finally {
-                if (restoreCompleted || rollbackCompleted) {
+                if (restoreCompleted || rollbackCompleted || safetyArchive == null) {
                     File(appContext.filesDir, CORE_DATABASE_SNAPSHOT_DIRECTORY).deleteRecursively()
                     safetyDatabase.delete()
                     safetyArchive?.delete()
