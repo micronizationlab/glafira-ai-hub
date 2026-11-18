@@ -49,7 +49,16 @@ public final class OwnerBiometricAuthenticator {
 
     private func map(_ error: NSError?) -> OwnerAuthenticationError {
         guard let error else { return .unavailable }
-        return map(LAError(_nsError: error))
+        switch LAError.Code(rawValue: error.code) {
+        case .biometryNotAvailable, .biometryNotEnrolled, .biometryLockout, .passcodeNotSet:
+            return .unavailable
+        case .userCancel, .appCancel, .systemCancel:
+            return .cancelled
+        case .none:
+            return .systemError(code: error.code)
+        default:
+            return .systemError(code: error.code)
+        }
     }
 
     private func map(_ error: LAError) -> OwnerAuthenticationError {
@@ -59,7 +68,7 @@ public final class OwnerBiometricAuthenticator {
         case .userCancel, .appCancel, .systemCancel:
             return .cancelled
         default:
-            return .systemError(code: error.errorCode)
+            return .systemError(code: error.code.rawValue)
         }
     }
 }
