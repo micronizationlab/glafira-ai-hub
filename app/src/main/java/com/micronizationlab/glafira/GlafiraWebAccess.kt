@@ -6,6 +6,8 @@ import java.net.IDN
 import java.net.InetAddress
 import java.net.URI
 import java.net.URL
+import java.net.URLEncoder
+import org.json.JSONObject
 import java.nio.charset.Charset
 
 /**
@@ -169,4 +171,103 @@ object GlafiraWebPageReader {
             WebAccessResult.Failure(error.message ?: "Неизвестная ошибка чтения сайта.")
         }
     }
+}
+
+
+data class WebSearchResult(
+    val title: String,
+    val url: String,
+    val snippet: String,
+    val source: String = "Brave Search"
+)
+
+sealed class WebSearchResponse {
+    data class Success(val results: List<WebSearchResult>) : WebSearchResponse()
+    data class Failure(val reason: String) : WebSearchResponse()
+}
+
+/**
+ * Brave Search adapter. The subscription token is read only from encrypted
+ * Android Keystore-backed preferences and is never included in prompts/logs.
+ */
+object GlafiraBraveSearchProvider {
+    private const val KEY_PREF = "web_search_api_key"
+    private const val ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+    private const val MAX_BYTES = 512_000
+
+    fun isConfigured(context: android.content.Context): Boolean =
+        EncryptedApiKeyStore.load(context, KEY_PREF).isNotBlank()
+
+    fun search(
+        context: android.content.Context,
+        query: String,
+        count: Int = 8
+    ): WebSearchResponse {
+        if (query.isBlank()) return WebSearchResponse.Failure("Укажи поисковый запрос.")
+        if (query.length > 500) return WebSearchResponse.Failure("Поисковый запрос слишком длинный.")
+        val token = EncryptedApiKeyStore.load(context, KEY_PREF)
+        if (token.isBlank()) return WebSearchResponse.Failure(
+            "Поиск не настроен: добавь Brave Search API key в настройках GLAFIRA."
+        )
+        var connection: HttpURLConnection? = null
+        return try {
+            val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+            val safeCount = count.coerceIn(1, 10)
+            connection = (URL("$ENDPOINT?q=$encoded&count=$safeCount").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10_000
+                readTimeout = 15_000
+                instanceFollowRedirects = false
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("X-Subscription-Token", token)
+                setRequestProperty("User-Agent", "GLAFIRA-AI-HUB/1.0")
+            }
+            val status = connection.responseCode
+            require(status in 200..299) {
+                when (status) {
+                    401, 403 -> "Brave Search отклонил ключ. Проверь API key и доступ к тарифу."
+                    429 -> "Превышен лимит запросов Brave Search. Попробуй позже."
+                    else -> "Поисковый провайдер ответил HTTP $status."
+                }
+            }
+            val length = connection.contentLengthLong
+            require(length < 0 || length <= MAX_BYTES) { "Ответ поиска слишком большой." }
+            val bytes = connection.inputStream.use { input ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(8_192)
+                var total = 0
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    total += n
+                    require(total <= MAX_BYTES) { "Ответ поиска превышает лимит." }
+                    output.write(buffer, 0, n)
+                }
+                output.toByteArray()
+            }
+            val json = JSONObject(String(bytes, Charsets.UTF_8))
+            val web = json.optJSONObject("web")?.optJSONArray("results")
+            val results = buildList {
+                if (web != null) for (i in 0 until web.length()) {
+                    val item = web.optJSONObject(i) ?: continue
+                    val url = item.optString("url")
+                    val title = item.optString("title")
+                    if (url.isBlank() || title.isBlank()) continue
+                    add(WebSearchResult(
+                        title = title.take(500),
+                        url = url.take(2_048),
+                        snippet = item.optString("description").take(2_000)
+                    ))
+                }
+            }
+            WebSearchResponse.Success(results)
+        } catch (error: Exception) {
+            WebSearchResponse.Failure(error.message ?: "Не удалось выполнить поиск.")
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    fun saveApiKey(context: android.content.Context, key: String): Boolean =
+        EncryptedApiKeyStore.save(context, KEY_PREF, key.trim())
 }
