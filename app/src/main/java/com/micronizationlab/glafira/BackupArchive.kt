@@ -221,6 +221,7 @@ object BackupArchive {
                 var manifest: JSONObject? = null
                 var totalBytes = 0L
                 var entries = 0
+                val archiveEntryNames = mutableSetOf<String>()
                 ZipInputStream(BufferedInputStream(CipherInputStream(input, cipher))).use { zip ->
                     var entry = zip.nextEntry
                     while (entry != null) {
@@ -228,6 +229,7 @@ object BackupArchive {
                         entries++
                         require(entries <= MAX_FILES + 1) { "В архиве слишком много файлов." }
                         val name = entry.name
+                        require(archiveEntryNames.add(name)) { "Повторная запись в архиве: $name" }
                         require(!name.startsWith("/") && !name.contains("\\") &&
                             name.split("/").none { it == ".." || it.isBlank() }) { "Обнаружен небезопасный путь в архиве." }
                         if (name == "manifest.json") {
@@ -265,12 +267,22 @@ object BackupArchive {
                 val expected = parsed.getJSONArray("files")
                 require(expected.length() == stagedFiles.size) { "Количество файлов не совпадает с manifest." }
                 val stagedByPath = stagedFiles.associateBy { it.relativePath }
+                val manifestPaths = mutableSetOf<String>()
                 for (index in 0 until expected.length()) {
                     val item = expected.getJSONObject(index)
                     val relative = item.getString("path")
+                    require(relative.isNotBlank() && !relative.startsWith("/") &&
+                        !relative.contains("\\") &&
+                        relative.split("/").none { it == ".." || it.isBlank() }) {
+                        "Недопустимый путь в manifest."
+                    }
+                    require(manifestPaths.add(relative)) { "Повторный путь в manifest: $relative" }
                     val staged = stagedByPath[relative] ?: error("В архиве отсутствует файл $relative")
                     require(staged.file.length() == item.getLong("size")) { "Размер файла не совпадает: $relative" }
                     require(sha256(staged.file) == item.getString("sha256")) { "Контрольная сумма не совпадает: $relative" }
+                }
+                require(manifestPaths == stagedByPath.keys) {
+                    "Состав файлов архива не совпадает с manifest."
                 }
                 return StagedArchive(
                     staging,
@@ -293,12 +305,7 @@ object BackupArchive {
         val allowed = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE).all
         return JSONObject().apply {
             allowed.forEach { (key, value) ->
-                val safeKey = key == "glafira_primary_provider" ||
-                    key == "peer_consultation_enabled" ||
-                    key.startsWith("peer_consultation_enabled_") ||
-                    key == "peer_consultation_providers" ||
-                    key.startsWith("peer_consultation_providers_")
-                if (safeKey && (value is String || value is Boolean || value is Int || value is Long || value is Float)) {
+                if (BackupPreferencePolicy.isAllowedValue(key, value)) {
                     put(key, value)
                 }
             }
@@ -308,22 +315,18 @@ object BackupArchive {
     private fun restoreSafePreferences(context: Context, values: JSONObject) {
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val editor = preferences.edit()
-        preferences.all.keys.filter {
-            it == "glafira_primary_provider" || it == "peer_consultation_enabled" ||
-                it.startsWith("peer_consultation_enabled_") ||
-                it == "peer_consultation_providers" || it.startsWith("peer_consultation_providers_")
-        }.forEach { editor.remove(it) }
+        preferences.all.keys.filter(BackupPreferencePolicy::isAllowedKey)
+            .forEach { editor.remove(it) }
         val keys = values.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            val safeKey = key == "glafira_primary_provider" ||
-                key == "peer_consultation_enabled" ||
-                key.startsWith("peer_consultation_enabled_")
-            if (!safeKey) continue
+            if (!BackupPreferencePolicy.isAllowedKey(key)) continue
             val value = values.opt(key)
             when {
-                key == "glafira_primary_provider" && value is String -> editor.putString(key, value)
-                value is Boolean -> editor.putBoolean(key, value)
+                BackupPreferencePolicy.isStringKey(key) && value is String ->
+                    editor.putString(key, value)
+                BackupPreferencePolicy.isBooleanKey(key) && value is Boolean ->
+                    editor.putBoolean(key, value)
             }
         }
         check(editor.commit()) { "Не удалось восстановить настройки приложения." }
