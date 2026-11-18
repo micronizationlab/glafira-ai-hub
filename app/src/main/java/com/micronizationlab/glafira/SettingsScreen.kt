@@ -40,6 +40,12 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var showDeleteProjectConfirm by remember { mutableStateOf(false) }
     var exportResult by remember { mutableStateOf<String?>(null) }
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
+    var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
+    var primaryProviderMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isSaved) {
+        if (isSaved) primaryProvider = loadGlafiraPrimaryProvider(context)
+    }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(
@@ -152,6 +158,52 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 color = if (isSaved) Gr else Red,
                 fontSize = 12.sp
             )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text("ГЛАВНЫЙ МОЗГ ГЛАФИРЫ", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Это основная модель-координатор. Глафира может самостоятельно советоваться с другими подключёнными моделями.",
+                    color = Tx, fontSize = 11.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                val configuredProviders = configuredGlafiraProviders(context)
+                Box {
+                    OutlinedButton(
+                        onClick = { primaryProviderMenu = true },
+                        enabled = configuredProviders.isNotEmpty()
+                    ) {
+                        Text(primaryProvider.displayName)
+                        Text("  ▾")
+                    }
+                    DropdownMenu(
+                        expanded = primaryProviderMenu,
+                        onDismissRequest = { primaryProviderMenu = false }
+                    ) {
+                        configuredProviders.forEach { provider ->
+                            DropdownMenuItem(
+                                text = { Text(provider.displayName) },
+                                onClick = {
+                                    if (saveGlafiraPrimaryProvider(context, provider)) {
+                                        primaryProvider = provider
+                                    }
+                                    primaryProviderMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+                if (configuredProviders.isEmpty()) {
+                    Text("Сначала подключи хотя бы одну модель выше.", color = Tx, fontSize = 10.sp)
+                }
+            }
         }
 
         Spacer(Modifier.height(32.dp))
