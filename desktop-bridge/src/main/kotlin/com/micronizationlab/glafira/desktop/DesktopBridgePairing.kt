@@ -88,18 +88,18 @@ fun DesktopBridgePairing.fromInvitationBundle(
             "serverCertificateSha256", "expiresAtEpochMs"
         )
     )
-    require(json.getString("format") == "GLAFIRA_BRIDGE_INVITATION_V1")
-    val expiry = json.getLong("expiresAtEpochMs")
+    require(DesktopBridgeJson.stringField(json, "format") == "GLAFIRA_BRIDGE_INVITATION_V1")
+    val expiry = DesktopBridgeJson.longFieldExact(json, "expiresAtEpochMs")
     require(expiry > nowEpochMs && expiry - nowEpochMs <= GlafiraPairingMaximumLifetimeMs)
-    val origin = json.getString("origin")
+    val origin = DesktopBridgeJson.stringField(json, "origin")
     val uri = java.net.URI(origin)
     require(uri.scheme.equals("https", true) && !uri.host.isNullOrBlank())
     require(uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")
     require(uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null)
-    val pin = json.getString("serverCertificateSha256")
+    val pin = DesktopBridgeJson.stringField(json, "serverCertificateSha256")
     require(pin.matches(Regex("[0-9a-fA-F]{64}")))
-    val ticketId = json.getString("ticketId")
-    val capability = json.getString("pairingCapability")
+    val ticketId = DesktopBridgeJson.stringField(json, "ticketId")
+    val capability = DesktopBridgeJson.stringField(json, "pairingCapability")
     return DesktopBridgePairingSession(
         origin,
         pin.lowercase(),
