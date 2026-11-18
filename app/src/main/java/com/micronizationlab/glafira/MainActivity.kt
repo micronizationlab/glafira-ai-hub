@@ -21,6 +21,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.UUID
 
 val Bg = Color(0xFF000000)
 val Gr = Color(0xFF7EC850)
@@ -38,19 +45,13 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun App() {
-    // Состояние: какой экран открыт (null = список, иначе = имя агента)
     var currentAgent by remember { mutableStateOf<A?>(null) }
-
     Surface(Modifier.fillMaxSize(), color = Bg) {
-        if (currentAgent == null) {
-            ContactList(onAgentClick = { currentAgent = it })
-        } else {
-            ChatScreen(agent = currentAgent!!, onBack = { currentAgent = null })
-        }
+        if (currentAgent == null) ContactList { currentAgent = it }
+        else ChatScreen(agent = currentAgent!!, onBack = { currentAgent = null })
     }
 }
 
-// ---------------- ЭКРАН СПИСКА КОНТАКТОВ ----------------
 @Composable
 fun ContactList(onAgentClick: (A) -> Unit) {
     val list = listOf(
@@ -58,13 +59,11 @@ fun ContactList(onAgentClick: (A) -> Unit) {
         A("АНАЛИТИК", "Исследование и анализ", true, "📊"),
         A("ПРОГРАММИСТ", "Код и технические задачи", false, "💻")
     )
-    
     Column {
         Row(Modifier.fillMaxWidth().background(GrD).padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
             Text("GLAFIRA AI HUB", color = Gr, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             Text("⚙️", fontSize = 20.sp, modifier = Modifier.clickable {})
         }
-        
         LazyColumn(Modifier.weight(1f)) {
             items(list) { a ->
                 Row(Modifier.fillMaxWidth().clickable { onAgentClick(a) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -81,21 +80,23 @@ fun ContactList(onAgentClick: (A) -> Unit) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(GrD))
             }
         }
-        
         Row(Modifier.fillMaxWidth().background(GrD).padding(8.dp), Arrangement.Center) {
             Text("СЕТЬ: ONLINE | ПРОЕКТОВ: 1", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
 
-// ---------------- ЭКРАН ЧАТА ----------------
 @Composable
 fun ChatScreen(agent: A, onBack: () -> Unit) {
     var inputText by remember { mutableStateOf("") }
-    var messages by remember { mutableStateOf(listOf<Pair<String, Boolean>>()) } // Pair(Текст, ОтКого(юзер/бот))
+    var messages by remember { mutableStateOf(listOf<Pair<String, Boolean>>()) }
+    var isLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    // ВСТАВЬ СЮДА СВОЙ КЛЮЧ АВТОРИЗАЦИИ GIGACHAT
+    val authKey = "ВСТАВЬ_СЮДА_СВОЙ_AUTHORIZATION_KEY"
 
     Column(Modifier.fillMaxSize()) {
-        // Верхняя панель чата
         Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
             Text(agent.emoji, fontSize = 20.sp)
@@ -106,47 +107,41 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
             }
         }
 
-        // Область сообщений
         LazyColumn(Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(messages) { (text, isUser) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isUser) GrD else Gr.copy(alpha = 0.15f))
-                            .border(1.dp, if (isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                            .padding(12.dp)
-                    ) {
+                    Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (isUser) GrD else Gr.copy(alpha = 0.15f)).border(1.dp, if (isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(12.dp)) {
                         Text(text, color = if (isUser) Color.White else Gr, fontSize = 14.sp)
                     }
                 }
             }
+            if (isLoading) {
+                item {
+                    Text("Глафира печатает...", color = Tx, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
         }
 
-        // Поле ввода
         Row(Modifier.fillMaxWidth().background(GrD).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             TextField(
                 value = inputText,
                 onValueChange = { inputText = it },
                 placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 14.sp) },
                 modifier = Modifier.weight(1f).padding(end = 8.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Bg,
-                    unfocusedContainerColor = Bg,
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedIndicatorColor = Gr,
-                    unfocusedIndicatorColor = Color.DarkGray
-                )
+                colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Color.DarkGray)
             )
             Button(
                 onClick = {
-                    if (inputText.isNotBlank()) {
-                        // Добавляем сообщение пользователя
-                        messages = messages + (inputText to true)
-                        // Простая заглушка ответа от бота (эхо)
-                        messages = messages + ("Я пока заглушка. Скоро научусь думать! (Вы сказали: $inputText)" to false)
+                    if (inputText.isNotBlank() && !isLoading) {
+                        val userMsg = inputText
+                        messages = messages + (userMsg to true)
                         inputText = ""
+                        isLoading = true
+                        scope.launch {
+                            val reply = callGigaChat(authKey, userMsg)
+                            messages = messages + (reply to false)
+                            isLoading = false
+                        }
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Bg)
@@ -154,5 +149,57 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
                 Text("➤", fontSize = 18.sp)
             }
         }
+    }
+}
+
+suspend fun callGigaChat(authKey: String, prompt: String): String = withContext(Dispatchers.IO) {
+    try {
+        // 1. Получаем Access Token
+        val tokenUrl = URL("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
+        val tokenConn = tokenUrl.openConnection() as HttpURLConnection
+        tokenConn.requestMethod = "POST"
+        tokenConn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+        tokenConn.setRequestProperty("Accept", "application/json")
+        tokenConn.setRequestProperty("RqUID", UUID.randomUUID().toString())
+        tokenConn.setRequestProperty("Authorization", "Basic $authKey")
+        tokenConn.doOutput = true
+
+        val tokenBody = "scope=GIGACHAT_API_PERS"
+        tokenConn.outputStream.use { it.write(tokenBody.toByteArray()) }
+
+        if (tokenConn.responseCode != 200) {
+            return@withContext "Ошибка токена: ${tokenConn.responseCode}. Проверь ключ."
+        }
+
+        val tokenResponse = tokenConn.inputStream.bufferedReader().readText()
+        val accessToken = JSONObject(tokenResponse).getString("access_token")
+
+        // 2. Отправляем сообщение с полученным токеном
+        val chatUrl = URL("https://api.giga.chat/v1/chat/completions")
+        val chatConn = chatUrl.openConnection() as HttpURLConnection
+        chatConn.requestMethod = "POST"
+        chatConn.setRequestProperty("Content-Type", "application/json")
+        chatConn.setRequestProperty("Accept", "application/json")
+        chatConn.setRequestProperty("Authorization", "Bearer $accessToken")
+        chatConn.doOutput = true
+
+        val chatBody = JSONObject().apply {
+            put("model", "GigaChat") // Базовая модель, доступная в Freemium
+            put("messages", org.json.JSONArray().apply {
+                put(JSONObject().apply { put("role", "user"); put("content", prompt) })
+            })
+        }.toString()
+
+        chatConn.outputStream.use { it.write(chatBody.toByteArray()) }
+
+        if (chatConn.responseCode == 200) {
+            val response = chatConn.inputStream.bufferedReader().readText()
+            val json = JSONObject(response)
+            json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+        } else {
+            "Ошибка API: ${chatConn.responseCode}. ${chatConn.errorStream?.bufferedReader()?.readText()}"
+        }
+    } catch (e: Exception) {
+        "Ошибка сети: ${e.message}"
     }
 }
