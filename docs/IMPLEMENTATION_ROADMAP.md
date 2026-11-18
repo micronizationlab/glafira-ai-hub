@@ -2,7 +2,7 @@
 
 This roadmap records the owner's priority order. Features remain on the roadmap even when they are not in the current sprint. A specification is not considered implemented until code, tests and an end-to-end acceptance check exist.
 
-## Priority 1 — Backup & Recovery (first)
+## Priority 1 — GLAFIRA Core (the brain and system authority)
 
 Goal: protect user data before expanding the product.
 
@@ -16,7 +16,8 @@ Goal: protect user data before expanding the product.
 
 No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
 
-## Priority 2 — GLAFIRA Core (the brain and system authority)
+
+## Priority 2 — Backup & Recovery (secondary)
 
 Goal: make Glafira a reliable coordinator for the entire AI office.
 
