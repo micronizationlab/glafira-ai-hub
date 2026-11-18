@@ -12,7 +12,7 @@ class GlafiraCoreOwnerAuthorizationTest {
         var requested: GlafiraTask? = null
         var requestedHash: String? = null
 
-        override fun grantedScopes(projectId: String, origin: String) = scopes
+        override fun grantedScopes(task: GlafiraTask) = scopes
         override fun approvalGrant(task: GlafiraTask, actionSummary: String, nowMillis: Long) = grant
         override fun requestApproval(task: GlafiraTask, actionSummary: String, nowMillis: Long): Boolean {
             requested = task
