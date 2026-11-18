@@ -8,6 +8,7 @@ import org.json.JSONObject
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 
+/** Endpoint defaults are deliberately centralized so provider model IDs can be updated without UI changes. */
 private data class CompatibleEndpoint(val url: String, val model: String)
 
 suspend fun callAiProvider(
