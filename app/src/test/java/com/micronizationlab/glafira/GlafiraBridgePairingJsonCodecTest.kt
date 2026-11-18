@@ -40,7 +40,7 @@ class GlafiraBridgePairingJsonCodecTest {
             decode(encoded.replace("\"deviceLabel\":\"GLAFIRA Desktop\"", "\"deviceLabel\":17"))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            decode(encoded.replace("[\"conversation.read\",\"project.read\"]", "[\"project.read\",\"project.read\"]"))
+            decode(encoded.replace("[\"conversation.read\",\"project.read\"]", "[\"conversation.read\",\"conversation.read\"]"))
         }
     }
 }
