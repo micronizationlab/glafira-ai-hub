@@ -130,6 +130,33 @@ class GlafiraBridgePairingProtocolTest {
         )
     }
 
+
+    @Test
+    fun concurrentProofSubmissionsCanConsumeTicketOnlyOnce() {
+        val protocol = GlafiraBridgePairingProtocol(FakeTicketStore(), DeterministicRandom())
+        val invitation = protocol.issueInvitation(now)
+        val nonce = nonce()
+        val proof = GlafiraBridgePairingProtocol.createClientProof(
+            invitation.ticketId, invitation.pairingCapability, nonce
+        )
+        val start = java.util.concurrent.CountDownLatch(1)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            val attempts = (1..2).map {
+                pool.submit<GlafiraBridgePairingResult> {
+                    start.await()
+                    protocol.verifyAndConsume(invitation.ticketId, nonce, proof, now + 1L)
+                }
+            }
+            start.countDown()
+            val results = attempts.map { it.get() }
+            assertEquals(1, results.count { it is GlafiraBridgePairingResult.Verified })
+            assertEquals(1, results.count { it is GlafiraBridgePairingResult.Rejected })
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     @Test
     fun ticketLifetimeCannotExceed120Seconds() {
         val protocol = GlafiraBridgePairingProtocol(FakeTicketStore())
