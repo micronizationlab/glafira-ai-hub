@@ -24,7 +24,7 @@ suspend fun callAiProvider(
     val endpoint = when (providerId) {
         ProviderId.OPENAI -> CompatibleEndpoint("https://api.openai.com/v1/chat/completions", "gpt-4o-mini")
         ProviderId.DEEPSEEK -> CompatibleEndpoint("https://api.deepseek.com/chat/completions", "deepseek-chat")
-        ProviderId.GROK -> CompatibleEndpoint("https://api.x.ai/v1/chat/completions", "grok-3-mini")
+        ProviderId.GROK -> CompatibleEndpoint("https://api.x.ai/v1/chat/completions", "grok-4.7")
         ProviderId.GEMINI -> CompatibleEndpoint("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-3.8-flash")
         ProviderId.OPENROUTER -> CompatibleEndpoint("https://openrouter.ai/api/v1/chat/completions", "openrouter/free")
         ProviderId.GIGACHAT -> return callGigaChatWithTrustedCert(context, history, systemPrompt)
@@ -42,7 +42,7 @@ suspend fun callAiProvider(
             connection = (URL(endpoint.url).openConnection() as HttpsURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 20_000
-                readTimeout = 90_000
+                readTimeout = if (providerId == ProviderId.GROK) 900_000 else 90_000
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Accept", "application/json")
