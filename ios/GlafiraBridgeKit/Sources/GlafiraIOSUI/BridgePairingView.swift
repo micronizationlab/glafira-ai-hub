@@ -8,6 +8,7 @@ public struct BridgePairingView: View {
     @State private var credentialText = ""
     @State private var deviceLabel = "GLAFIRA iPhone"
     @State private var requestedScopesText = "project.read"
+    @State private var submittedScopes: Set<String> = []
     @State private var invitation: BridgePairingInvitation?
     @State private var pending: BridgePairingPendingResponse?
     @State private var status = "Вставьте одноразовое приглашение, созданное на Android."
@@ -57,6 +58,7 @@ public struct BridgePairingView: View {
                 TextField("Запрашиваемые scopes через запятую", text: $requestedScopesText)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .disabled(pending != nil)
                 Button {
                     Task { await submitPairing() }
                 } label: {
@@ -96,6 +98,7 @@ public struct BridgePairingView: View {
             let parsed = try BridgePairingInvitation.parseAndroidBundle(Data(invitationText.utf8))
             invitation = parsed
             pending = nil
+            submittedScopes = []
             credentialText = ""
             status = "Приглашение проверено. Сервер и срок действия приняты; можно отправить запрос."
         } catch {
@@ -131,6 +134,7 @@ public struct BridgePairingView: View {
                 client: client
             )
             pending = response
+            submittedScopes = scopes
             status = "Запрос принят Android и ожидает ручного решения владельца. Approval ID сохранён для проверки пакета."
         } catch {
             status = "Не удалось отправить запрос: \(error.localizedDescription)"
@@ -149,7 +153,7 @@ public struct BridgePairingView: View {
                 expectedCertificateSHA256: invitation.certificateSHA256,
                 expectedApprovalId: pending.approvalId,
                 expectedTicketId: invitation.ticketId,
-                requestedScopes: requestedScopes
+                requestedScopes: submittedScopes
             )
             try await BridgeCredentialBundleImporter.importOwnerBundle(
                 bundle,
