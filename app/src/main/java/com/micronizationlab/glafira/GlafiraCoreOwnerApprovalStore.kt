@@ -13,10 +13,14 @@ class GlafiraCoreOwnerApprovalStore(
 ) : GlafiraTaskGrantSource {
 
     private val db: SQLiteDatabase
-        get() = taskStore.writableDatabase
+        get() = taskStore.writableDatabase.also(::ensureSchema)
 
     init {
-        db.execSQL(
+        ensureSchema(taskStore.writableDatabase)
+    }
+
+    private fun ensureSchema(database: SQLiteDatabase) {
+        database.execSQL(
             """CREATE TABLE IF NOT EXISTS core_action_approvals (
                 task_id TEXT PRIMARY KEY NOT NULL,
                 project_id TEXT NOT NULL,
@@ -31,7 +35,7 @@ class GlafiraCoreOwnerApprovalStore(
                 decided_by TEXT
             )""".trimIndent()
         )
-        db.execSQL("CREATE INDEX IF NOT EXISTS core_action_approval_status_idx ON core_action_approvals(status, requested_at)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS core_action_approval_status_idx ON core_action_approvals(status, requested_at)")
     }
 
     @Synchronized
