@@ -26,7 +26,7 @@ class GlafiraCoreBackupCoordinator(
     suspend fun restore(archive: File, passphrase: CharArray): BackupVerification =
         GlafiraCoreMaintenanceGate.withExclusive {
             // Reject legacy/incomplete archives before touching the current installation.
-            BackupArchive.verifyContains(archive, passphrase, CORE_DATABASE_SNAPSHOT_PATH)
+            BackupArchive.verifyContains(appContext, archive, passphrase, CORE_DATABASE_SNAPSHOT_PATH)
 
             val safetyDatabase = File(
                 appContext.cacheDir,
