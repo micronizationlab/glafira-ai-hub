@@ -49,19 +49,13 @@ For a non-cloned original voice, create a descriptive voice prompt and delivery 
 
 ## Plugin controls
 
-The plugin must be off by default and explicitly enabled by the owner.
-
-Suggested settings:
+The plugin must be off by default and explicitly enabled by the owner. Keep the owner-facing settings deliberately minimal:
 - Voice Assistant: Off / On
-- Input: push-to-talk / continuous listening (continuous listening requires a separate explicit permission)
-- Output: Off / On
-- Selected voice profile
-- Selected delivery profile
-- Speech rate and response verbosity
-- Interruptions / barge-in
-- Audio retention: off by default; configurable only with clear notice
-- Use microphone only while the relevant interaction is active
-- Test voice preview
+- Select / change the installed voice plugin
+
+Do not expose manual controls for pitch, timbre, pace, pauses, accent, emotion or delivery style. The selected plugin/model is responsible for analyzing its permitted source material and producing its configured voice and delivery. Show a simple connection/availability status.
+
+Microphone access is requested only when the owner starts a voice interaction. Do not add always-listening behavior to the minimal toggle. Audio retention remains off by default and must be clearly disclosed if a provider requires processing or storage.
 
 ## Runtime architecture
 
@@ -97,4 +91,8 @@ All API credentials are resolved through the existing secure credential architec
 
 ## Initial target use case
 
-The initial creative target is an original Russian-language male comedic conversational voice with a textured/raspy timbre, expressive pauses, lively timing, colloquial phrasing and theatrical delivery. This is a general creative direction only; it must remain recognizably distinct from Shura Karetny's actual voice and must not be presented as his voice or endorsement.
+The requested private target is a voice-and-delivery recreation of performer Shura Karetny, based on analysis of a substantial body of his recordings. Private use and an owner-only plugin toggle do not, by themselves, establish the performer's permission to create a recognizable synthetic replica. Therefore:
+- Do not scrape, ingest or train a recognizable clone from publicly available recordings without documented authorization from the performer or applicable rights holder.
+- If documented authorization is obtained, the plugin may use an appropriate provider workflow to analyze the authorized recordings and create the voice profile and delivery behavior, subject to provider terms.
+- Until then, the plugin may offer only a clearly distinct, original voice using broad non-identifying characteristics; it must not claim to be Shura Karetny or reproduce his recognizable voice.
+- The user-facing settings remain only enable/disable and change plugin; consent and provenance checks are enforced internally, not exposed as a collection of tuning controls.
