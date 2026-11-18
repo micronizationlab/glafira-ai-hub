@@ -17,6 +17,12 @@ internal class DesktopBridgeTaskWorker(
     maxParallelTasks: Int = DesktopTaskRuntime.DEFAULT_PARALLELISM,
     onResult: (DesktopAgentResult) -> Unit = {}
 ) : AutoCloseable {
+    init {
+        require(credentials.grantedScopes.containsAll(setOf("desktop.task.claim", "desktop.task.result"))) {
+            "Desktop task worker requires both owner-granted task Bridge scopes."
+        }
+    }
+
     private val advertisedCapabilities = handlers.keys.map(::capabilityForTaskType).toSet()
     private val runtime = DesktopTaskRuntime(
         queue = queue,
