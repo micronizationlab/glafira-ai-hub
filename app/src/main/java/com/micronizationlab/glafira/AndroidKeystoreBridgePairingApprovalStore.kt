@@ -219,6 +219,32 @@ class AndroidKeystoreBridgePairingApprovalStore(
     }
 
     @Synchronized
+    override fun listUndeliveredDeliveries(
+        limit: Int
+    ): List<GlafiraBridgePendingCredentialDelivery> {
+        if (limit !in 1..GlafiraBridgeOwnerApprovalService.MAX_PENDING_APPROVALS) return emptyList()
+        return runCatching {
+            readableDatabase.rawQuery(
+                """
+                SELECT d.approval_id, d.device_id
+                FROM $DELIVERIES d
+                INNER JOIN $APPROVALS a ON a.approval_id = d.approval_id
+                WHERE a.status = ? AND a.delivery_acknowledged = 0
+                ORDER BY a.received_at ASC
+                LIMIT ?
+                """.trimIndent(),
+                arrayOf(GlafiraBridgeApprovalStatus.APPROVED.name, limit.toString())
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        add(GlafiraBridgePendingCredentialDelivery(cursor.getString(0), cursor.getString(1)))
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    @Synchronized
     override fun claimDelivery(
         approvalId: String,
         ownerSessionId: String,
