@@ -183,7 +183,12 @@ object DesktopBridgeCredentialVault {
     }
 
     private fun validate(entry: DesktopBridgeVaultEntry) {
-        require(entry.origin.startsWith("https://") && entry.origin.length <= 512)
+        require(entry.origin.length <= 512)
+        val uri = java.net.URI(entry.origin)
+        require(uri.scheme.equals("https", true) && !uri.host.isNullOrBlank())
+        require(uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null)
+        require(uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")
+        require(uri.port == -1 || uri.port in 1..65_535)
         require(entry.deviceId.length in 8..128 && entry.deviceId.all { it.isLetterOrDigit() || it in "-_." })
         require(entry.hmacSecret.size == 32)
         require(entry.grantedScopes.isNotEmpty() && entry.grantedScopes.size <= 32)
