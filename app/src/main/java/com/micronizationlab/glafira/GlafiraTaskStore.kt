@@ -12,7 +12,7 @@ import org.json.JSONArray
  * Payloads are encrypted before they enter SQLite; task metadata remains queryable.
  */
 class GlafiraTaskStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION) {
+    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION), GlafiraTaskQueue {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
