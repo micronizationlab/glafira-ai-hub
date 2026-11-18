@@ -179,8 +179,17 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                 Text("ОДНОРАЗОВОЕ ПРИГЛАШЕНИЕ ДЛЯ DESKTOP", color = Gr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 Text("Создавайте приглашение после запуска локального сервера. Код действует не более 120 секунд и сам по себе не выдаёт прав.", color = Tx, fontSize = 10.sp)
                 Button(
-                    enabled = ownerSession?.isValid(System.currentTimeMillis()) == true,
+                    enabled = ownerSession?.isValid(System.currentTimeMillis()) == true &&
+                        context.getSharedPreferences(GlafiraBridgeHostService.HOST_STATE_PREFS, Context.MODE_PRIVATE)
+                            .getBoolean(GlafiraBridgeHostService.HOST_RUNNING_KEY, false),
                     onClick = {
+                        val hostRunning = context.getSharedPreferences(
+                            GlafiraBridgeHostService.HOST_STATE_PREFS, Context.MODE_PRIVATE
+                        ).getBoolean(GlafiraBridgeHostService.HOST_RUNNING_KEY, false)
+                        if (!hostRunning) {
+                            status = "Сначала запустите локальный сервер и дождитесь уведомления об активном канале."
+                            return@Button
+                        }
                         val connection = AndroidKeystoreBridgeServerIdentityStore(context).currentConnectionDetails()
                         if (connection == null) {
                             status = "Сначала запустите сервер, чтобы создать TLS fingerprint и адрес."
