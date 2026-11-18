@@ -60,6 +60,35 @@ class GlafiraCoreBackupInstrumentedTest {
         assertEquals(0, restored.attemptCount)
     }
 
+
+    @Test
+    fun retryScheduleAttemptCountAndIdempotencySurviveStoreReopen() {
+        store.enqueue(task())
+        val claimed = requireNotNull(store.claimNext(nowMillis = 2_000L))
+        assertEquals(1, claimed.attemptCount)
+        assertTrue(
+            store.transition(
+                "backup-task",
+                setOf(GlafiraTaskState.RUNNING),
+                GlafiraTaskState.RETRY_SCHEDULED,
+                nowMillis = 3_000L,
+                retryAtMillis = 9_000L,
+                lastError = "temporary"
+            )
+        )
+        val duplicate = store.enqueue(task())
+        assertTrue(!duplicate.inserted)
+        store.close()
+
+        store = GlafiraTaskStore(context)
+        val persisted = requireNotNull(store.getTask("backup-task"))
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, persisted.state)
+        assertEquals(1, persisted.attemptCount)
+        assertEquals(9_000L, persisted.retryAtMillis)
+        assertEquals("temporary", persisted.lastError)
+        assertTrue(!store.enqueue(task()).inserted)
+    }
+
     @Test
     fun backupRestoreRecoversCoreQueueStateAndPayload() = runBlocking {
         store.enqueue(task())
