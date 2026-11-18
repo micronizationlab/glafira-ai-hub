@@ -4,9 +4,12 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -43,7 +47,6 @@ val Gr = Color(0xFF7EC850)
 val GrD = Color(0xFF151515)
 val Tx = Color(0xFF888888)
 
-// Улучшенные описания и специфика
 data class A(
     val n: String, 
     val d: String, 
@@ -198,6 +201,7 @@ fun ContactList(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -222,6 +226,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         Text(if (agent.on) "Online" else "Offline", color = Tx, fontSize = 10.sp)
                     }
                 }
+                // Кнопка экспорта
+                Text("📤", fontSize = 18.sp, modifier = Modifier.clickable {
+                    exportChatToFile(context, project.name, agent.n, messages)
+                }.padding(end = 16.dp))
+                // Кнопка очистки
                 Text("🗑️", fontSize = 18.sp, modifier = Modifier.clickable {
                     messages = emptyList()
                     saveHistory(context, historyKey, emptyList())
@@ -232,7 +241,17 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 items(messages) { msg ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
                         Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
-                            Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f)).border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(12.dp)) {
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f))
+                                    .border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                    .combinedClickable(
+                                        onClick = {},
+                                        onLongClick = { copyToClipboard(context, msg.text) }
+                                    )
+                                    .padding(12.dp)
+                            ) {
                                 Text(msg.text, color = if (msg.isUser) Color.White else Gr, fontSize = 14.sp)
                             }
                             Text(msg.time, color = Tx, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
@@ -240,7 +259,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     }
                 }
                 if (isLoading) {
-                    item { Text("Глафира печатает...", color = Tx, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
+                    item { TypingIndicator() }
                 }
             }
 
@@ -282,22 +301,41 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     }
 }
 
-// Новый полноценный экран профиля
+// Анимированный индикатор печати
+@Composable
+fun TypingIndicator() {
+    val infiniteTransition = rememberInfiniteTransition()
+    val alpha1 by infiniteTransition.animateFloat(
+        initialValue = 0.2f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(600, easing = LinearEasing), repeatMode = RepeatMode.Reverse)
+    )
+    val alpha2 by infiniteTransition.animateFloat(
+        initialValue = 0.2f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(600, delayMillis = 200, easing = LinearEasing), repeatMode = RepeatMode.Reverse)
+    )
+    val alpha3 by infiniteTransition.animateFloat(
+        initialValue = 0.2f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(600, delayMillis = 400, easing = LinearEasing), repeatMode = RepeatMode.Reverse)
+    )
+
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
+        Text("Глафира печатает", color = Tx, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Spacer(Modifier.width(4.dp))
+        Text(".", color = Gr.copy(alpha = alpha1), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(".", color = Gr.copy(alpha = alpha2), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(".", color = Gr.copy(alpha = alpha3), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 @Composable
 fun ProfileScreen(agent: A, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Bg)) {
-        // Шапка профиля
         Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
             Text("Профиль агента", color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
 
-        // Контент профиля
-        Column(
-            Modifier.fillMaxSize().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Большой аватар
+        Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 Modifier.size(100.dp).clip(CircleShape).background(Gr.copy(alpha = 0.2f)).border(2.dp, Gr, CircleShape),
                 contentAlignment = Alignment.Center
@@ -306,12 +344,9 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
             }
             
             Spacer(Modifier.height(16.dp))
-            
             Text(agent.n, color = Gr, fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             Text(agent.d, color = Tx, fontSize = 14.sp)
-            
             Spacer(Modifier.height(8.dp))
-            
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(8.dp).clip(CircleShape).background(if (agent.on) Color.Green else Color.Gray))
                 Spacer(Modifier.width(4.dp))
@@ -319,12 +354,7 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(32.dp))
-            
-            // Описание
-            Card(
-                colors = CardDefaults.cardColors(containerColor = GrD),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Card(colors = CardDefaults.cardColors(containerColor = GrD), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text("ОПИСАНИЕ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
@@ -333,12 +363,7 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
             }
             
             Spacer(Modifier.height(16.dp))
-            
-            // Специфика
-            Card(
-                colors = CardDefaults.cardColors(containerColor = GrD),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Card(colors = CardDefaults.cardColors(containerColor = GrD), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text("СПЕЦИФИКА РАБОТЫ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
