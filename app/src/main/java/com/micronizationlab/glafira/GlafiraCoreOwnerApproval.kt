@@ -1,0 +1,57 @@
+package com.micronizationlab.glafira
+
+import androidx.biometric.BiometricPrompt
+import java.util.UUID
+
+/**
+ * Short-lived proof created only from a successful AndroidX BiometricPrompt callback.
+ * It is intentionally process-local and cannot be restored from backup or supplied by an agent.
+ */
+class GlafiraCoreOwnerSession private constructor(
+    val sessionId: String,
+    val expiresAtMillis: Long
+) {
+    internal fun isValid(nowMillis: Long): Boolean =
+        sessionId.length in 16..64 &&
+            expiresAtMillis > nowMillis &&
+            nowMillis > 0L
+
+    companion object {
+        internal fun fromAuthentication(
+            result: BiometricPrompt.AuthenticationResult,
+            nowMillis: Long = System.currentTimeMillis(),
+            lifetimeMillis: Long = 120_000L
+        ): GlafiraCoreOwnerSession {
+            // The result object is supplied only by BiometricPrompt.onAuthenticationSucceeded.
+            require(nowMillis > 0L && lifetimeMillis in 1_000L..300_000L)
+            result.authenticationType // Force use of a real platform authentication result.
+            return GlafiraCoreOwnerSession(
+                sessionId = UUID.randomUUID().toString(),
+                expiresAtMillis = nowMillis + lifetimeMillis
+            )
+        }
+    }
+}
+
+data class GlafiraPendingActionApproval(
+    val task: GlafiraTask,
+    val actionHash: String,
+    val requestedScopes: Set<String>,
+    val requestedAtMillis: Long,
+    val expiresAtMillis: Long
+) {
+    val actionSummary: String
+        get() = runCatching {
+            org.json.JSONObject(task.payload).optString("actionSummary").trim()
+        }.getOrDefault("")
+}
+
+enum class GlafiraCoreOwnerApprovalMutation {
+    APPROVED,
+    REJECTED,
+    NOT_FOUND,
+    ALREADY_DECIDED,
+    INVALID_SCOPE_SELECTION,
+    OWNER_AUTHENTICATION_REQUIRED,
+    STORAGE_ERROR
+}
