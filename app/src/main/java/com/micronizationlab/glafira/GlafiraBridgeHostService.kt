@@ -53,6 +53,12 @@ class GlafiraBridgeHostService : Service() {
                 refillTokensPerSecond = 0.33,
                 idleTimeoutNanos = 600_000_000_000L
             )
+            val deviceLimiter = GlafiraBridgeRateLimiter(
+                maxTrackedIdentities = 512,
+                bucketCapacity = 30,
+                refillTokensPerSecond = 0.5,
+                idleTimeoutNanos = 600_000_000_000L
+            )
             host = GlafiraBridgeTlsHttpServer(
                 identity = identity,
                 admission = GlafiraBridgeRequestAdmission(approvalStore!!, replayGuard!!),
@@ -60,7 +66,8 @@ class GlafiraBridgeHostService : Service() {
                     GlafiraBridgePairingProtocol(pairingTicketStore!!),
                     GlafiraBridgeOwnerApprovalService(approvalStore!!)
                 ),
-                addressRateLimiter = limiter
+                addressRateLimiter = limiter,
+                deviceRateLimiter = deviceLimiter
             ).also { it.start(bindAddress, port) }
             updateNotification("Защищённый локальный канал активен: $address:$port")
             START_NOT_STICKY
