@@ -33,7 +33,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: Run Unit Tests
-        run: gradle testDebugUnitTest
+        run: gradle testDebugUnitTest :desktop-bridge:test
 
       - name: Build Debug APK
         run: gradle assembleDebug
