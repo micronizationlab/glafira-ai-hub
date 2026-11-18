@@ -16,31 +16,31 @@ Goal: protect user data before expanding the product.
 
 No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
 
-## Priority 2 — GLAFIRA Core (the brain and system authority)
+## Priority 2 — GLAFIRA Core and ChatGPT integration (owner-confirmed next priority)
 
-Goal: make Glafira a reliable coordinator for the entire AI office.
+Goal: make Glafira a reliable coordinator and establish a secure, useful connection with ChatGPT.
 
-1. Define and enforce the authority model: owner is final decision-maker; Glafira coordinates; specialist agents advise and execute only within granted permissions; model providers are replaceable engines.
+1. Enforce the authority model: owner is final decision-maker; Glafira Core coordinates; specialist agents advise and execute only within granted permissions; model providers are replaceable engines.
 2. Stabilize provider registry, primary-model selection, fallback, timeout, retry, cancellation and error reporting.
-3. Improve consultation policy: call peers only when useful; never forward project-restricted data; primary Glafira model owns final synthesis.
-4. Implement context assembly with project isolation, role instructions, skill references and source citations.
-5. Add tool permission scopes, approval gates, audit trail and safe handoff for unsupported actions.
-6. Add coordinator tests: routing, provider failures, secret redaction, peer selection, context boundaries, approval behavior and final synthesis.
-7. Add health/diagnostics so the owner can see why a model or tool was selected and whether an operation actually completed.
+3. Implement context assembly with project isolation, role instructions, skill references and source citations.
+4. Define field-level data classification and provider-sharing policies; peer consultation remains explicit opt-in.
+5. Implement typed tool registry, permission scopes, owner approval gates, audit trail and safe handoff.
+6. Define and test two distinct ChatGPT paths: official OpenAI API provider adapter (API billing separate from ChatGPT subscription) and optional ChatGPT MCP connector (reachable HTTPS endpoint, supported account/client and explicit scopes).
+7. Add coordinator tests for routing, provider failures, secret redaction, peer selection, context boundaries, approvals and final synthesis.
+8. Add health/diagnostics so the owner can see why a model or tool was selected and whether an operation actually completed.
 
 No external irreversible action (send, publish, purchase, delete, alter business records) without explicit approval or a narrowly scoped owner policy.
 
 ## Product Track — Glafira Bridge and GLAFIRA Desktop
 
-This is a new owner-requested product track. It depends on the Core authority model and does not reorder the owner's first priorities: finish backup acceptance, then harden Core, then expand desktop/mobile connectivity.
+This owner-requested product track is active, but desktop UI implementation follows Core hardening and the initial ChatGPT integration design. It must not displace backup acceptance or Core work.
 
-1. Implement Glafira Bridge protocol, device registry, owner-approved pairing, revocation and idempotent task exchange.
-2. Build Windows-first Kotlin/Compose Desktop shell with classic ICQ-inspired project/contact list, chat windows and system-tray background mode.
-3. Reuse provider-neutral Core contracts; keep Android and Windows platform services separate.
-4. Synchronize projects, conversations, task state and approval requests across paired devices.
-5. Add an optional MCP adapter exposing only narrowly scoped approved tools to ChatGPT where a reachable HTTPS endpoint and supported connector are configured.
-6. Add official OpenAI API provider access separately; ChatGPT subscription does not include API usage.
-7. Complete security, reconnect, offline queue, duplicate-action and Windows device acceptance tests before release.
+1. Implement Bridge protocol, device registry, owner-approved pairing, revocation and idempotent task exchange.
+2. Make Android and Desktop equal independent clients of the same logical Core and canonical project memory.
+3. Implement versioned synchronization, encrypted offline caches, pending outboxes, conflict handling and deduplication.
+4. Build Windows-first Kotlin/Compose Desktop shell with classic ICQ-inspired project/contact list, chat windows and system-tray background mode.
+5. Add optional MCP adapter exposing only narrowly scoped approved tools to ChatGPT where a reachable HTTPS endpoint and supported connector are configured.
+6. Complete security, reconnect, offline queue, duplicate-action and Windows device acceptance tests before release.
 
 A ChatGPT product connector and an OpenAI API model adapter are different integration paths. A local phone app cannot directly attach itself to an existing ChatGPT conversation. No public cloud relay or paid hosting is assumed without owner approval.
 
@@ -105,5 +105,6 @@ A ChatGPT product connector and an OpenAI API model adapter are different integr
 - GLAFIRA Core hardening has started: cross-provider consultation is owner opt-in and disabled by default; common tokens/passwords/contact details are pattern-redacted; the primary model can return a direct answer from the planning call to avoid duplicate requests; Council synthesis now follows the configured primary model.
 - Still required for GLAFIRA Core: field-level data-sharing classifications, broader coordinator tests, timeout/cancellation/fallback policy, context-boundary tests, typed tool registry, approval engine and audit trail.
 - Voice runtime and SMM/social connectors remain specifications until implemented and tested.
-- Glafira Bridge and GLAFIRA Desktop are now specified on the feature/glafira-desktop-bridge branch; no live bridge or desktop binary exists yet.
+- Glafira Bridge and GLAFIRA Desktop are specified on the feature/glafira-desktop-bridge branch; no live bridge or desktop binary exists yet.
+- Android and Desktop are owner-approved as equal clients of one logical Core and shared project memory; Core hardening and ChatGPT integration precede desktop UI implementation.
 - Restore semantics hardened: selected backup now replaces the app-private file snapshot, including removing files created after that backup; safety snapshot rollback remains in place. Requires device acceptance tests.
