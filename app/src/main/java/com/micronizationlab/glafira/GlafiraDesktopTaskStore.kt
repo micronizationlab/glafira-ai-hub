@@ -11,6 +11,7 @@ import java.nio.file.StandardCopyOption
 internal class GlafiraDesktopTaskStore(context: Context) {
     private val file = File(context.applicationContext.filesDir, "desktop_task_queue.json")
     private val lock = Any()
+    private val nodeState = context.applicationContext.getSharedPreferences("glafira_desktop_node", Context.MODE_PRIVATE)
 
     fun enqueue(task: GlafiraDistributedTask): String = synchronized(lock) {
         validateTask(task)
@@ -37,7 +38,12 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         task.taskId
     }
 
-    fun claimNext(): JSONObject? = synchronized(lock) {
+    fun claimNext(supportedCapabilities: Set<String>, maxParallelTasks: Int): JSONObject? = synchronized(lock) {
+        require(supportedCapabilities.size <= 16 && supportedCapabilities.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
+        require(maxParallelTasks in 1..8)
+        nodeState.edit().putLong("last_seen_epoch_ms", System.currentTimeMillis())
+            .putStringSet("capabilities", supportedCapabilities.toSet())
+            .putInt("max_parallel_tasks", maxParallelTasks).apply()
         val records = read().toMutableList()
         val now = System.currentTimeMillis()
         records.forEach { item ->
@@ -55,7 +61,13 @@ internal class GlafiraDesktopTaskStore(context: Context) {
                 item.put("sequence", item.optLong("sequence") + 1)
             }
         }
-        val next = records.filter { it.optString("state") == "QUEUED" }
+        val next = records.filter { item ->
+                item.optString("state") == "QUEUED" &&
+                    runCatching {
+                        val required = item.getJSONArray("requiredCapabilities")
+                        (0 until required.length()).all { index -> supportedCapabilities.contains(required.getString(index)) }
+                    }.getOrDefault(false)
+            }
             .sortedWith(compareByDescending<JSONObject> { it.optInt("priority", 5) }
                 .thenBy { it.optLong("createdAtEpochMs") })
             .firstOrNull()
@@ -107,6 +119,18 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         if (errorCode != null) item.put("errorCode", errorCode)
         write(records)
         true
+    }
+
+    fun nodeCapabilities(maxAgeMs: Long = 45_000L): GlafiraNodeCapabilities? {
+        val now = System.currentTimeMillis()
+        val lastSeen = nodeState.getLong("last_seen_epoch_ms", 0L)
+        if (lastSeen <= 0L || now - lastSeen !in 0..maxAgeMs) return null
+        return GlafiraNodeCapabilities(
+            nodeId = "paired-desktop",
+            available = true,
+            maxParallelTasks = nodeState.getInt("max_parallel_tasks", 1).coerceIn(1, 8),
+            capabilities = nodeState.getStringSet("capabilities", emptySet()).orEmpty().toSet()
+        )
     }
 
     fun get(taskId: String): JSONObject? = synchronized(lock) {
