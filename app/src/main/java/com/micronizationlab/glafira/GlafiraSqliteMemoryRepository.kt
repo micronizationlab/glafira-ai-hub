@@ -446,7 +446,7 @@ class GlafiraSqliteMemoryRepository(
         targetId = record.id.value,
         resultCode = "OK",
         approvalRef = null,
-        dataClassification = CoreDataClassification.INTERNAL,
+        dataClassification = record.classification,
         redactionApplied = true,
         safeAttributes = mapOf(
             "scopeType" to record.scopeType.name,
