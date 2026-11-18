@@ -39,7 +39,7 @@ object GlafiraCoordinator {
             ?: "peer_consultation_enabled"
         val coordinatorPrefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val peerConsultationEnabled = coordinatorPrefs.getBoolean(consultationKey, false)
-        if (!peerConsultationEnabled || history.isEmpty()) {
+        if (!peerConsultationEnabled || enrichedHistory.isEmpty()) {
             return callAiProvider(context, primaryProvider, enrichedHistory, coordinatorPrompt)
         }
         val providerKey = projectId?.let { "peer_consultation_providers_$it" }
@@ -55,7 +55,7 @@ object GlafiraCoordinator {
             approvedPeerIds
         )
         if (availablePeers.isEmpty()) {
-            return callAiProvider(context, primaryProvider, history, coordinatorPrompt)
+            return callAiProvider(context, primaryProvider, enrichedHistory, coordinatorPrompt)
         }
 
         val safeHistory = enrichedHistory.takeLast(12).map { message ->
