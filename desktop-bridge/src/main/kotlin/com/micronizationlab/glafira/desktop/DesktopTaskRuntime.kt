@@ -98,8 +98,17 @@ internal class DesktopTaskRuntime(
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        workers.shutdownNow()
-        workers.awaitTermination(5, TimeUnit.SECONDS)
+        // Let already-claimed work finish and persist its result before interrupting workers.
+        workers.shutdown()
+        try {
+            if (!workers.awaitTermination(5, TimeUnit.SECONDS)) {
+                workers.shutdownNow()
+                workers.awaitTermination(5, TimeUnit.SECONDS)
+            }
+        } catch (_: InterruptedException) {
+            workers.shutdownNow()
+            Thread.currentThread().interrupt()
+        }
     }
 
     companion object {
