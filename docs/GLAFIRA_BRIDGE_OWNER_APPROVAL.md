@@ -42,16 +42,14 @@ The Android adapter, AndroidKeystoreBridgePairingApprovalStore, uses SQLite tran
 
 ## Current implementation boundary
 
-The platform-neutral approval service and policy tests define the workflow and storage contract. They do not yet provide:
-- Android SQLite/Keystore approval-store implementation;
-- Android owner approval/rejection UI;
-- trusted owner-authentication session issuer;
-- actual pairing controller wiring from verified enrollment into the queue;
-- end-to-end device credential delivery to a joining client;
-- Desktop client enrollment or a live TLS server.
+The platform-neutral approval service, policy tests, Android encrypted persistence adapter, and owner-facing biometric approval screen are implemented in the current Draft PR. They do not yet provide:
+- verified-enrollment controller wiring from the pairing protocol into the pending queue;
+- a joining-client credential import/handshake flow;
+- Desktop client enrollment;
+- a TLS server/listener, certificate provisioning or end-to-end LAN connection;
+- physical-device validation of Android Keystore/database behavior.
 
-Do not claim device pairing is complete until those components and physical-device tests pass.
-
+The owner screen is available in Android Settings under Security. Until a trusted transport submits verified enrollments, its pending queue will remain empty. Do not claim device pairing or live ChatGPT connectivity is complete.
 
 ## Android physical-device acceptance checklist
 
