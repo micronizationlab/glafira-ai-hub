@@ -1,6 +1,6 @@
 # GLAFIRA Bridge LAN TLS Host — implementation plan
 
-Status: design checkpoint. This document is not evidence that a listener, certificate issuer, or network endpoint exists.
+Status: partial implementation. Android Keystore-backed EC identity generation and a bounded private-LAN TLS socket acceptor now exist in code. This is not yet a complete HTTP Bridge host or an end-to-end connection.
 
 ## Security invariants
 
@@ -65,7 +65,7 @@ Rotation must be owner initiated and authenticated: create new key/certificate, 
 ## Current implementation status
 
 Implemented separately:
-- one-time pairing ticket/proof primitives and encrypted ticket storage;
+- one-time pairing ticket/proof primitives and encrypted ticket storage;\n- `GlafiraBridgeServerIdentity`: P-256 signing key generated in Android Keystore, self-signed X.509 leaf with explicit DNS/IP SAN, serverAuth EKU, digitalSignature key usage, 90-day validity, and SHA-256 fingerprint; only the public certificate is persisted;\n- `GlafiraBridgeTlsSocketListener`: explicit start/stop TLS socket acceptor, private/site-local or link-local address only, TLS 1.2/1.3, bounded worker pool, handshake/read timeouts, no automatic start;\n- strict UTF-8/JSON request codec with duplicate-key rejection, exact field allowlist, exact integer parsing and bounded envelope size;
 - pinned HTTPS Android client;
 - owner approval queue/UI and encrypted credential delivery outbox;
 - verified-enrollment coordinator;
@@ -79,4 +79,4 @@ Not implemented:
 - Desktop credential import/client transport;
 - end-to-end LAN validation.
 
-No listener or endpoint has been opened. No paid or hosted infrastructure has been created.
+No listener or endpoint has been opened. No paid or hosted infrastructure has been created.\n\n## Implementation checkpoint — 2026-11-18\n\nThe TLS identity and socket acceptor are implementation foundations, not a claim that the Android app currently starts a server. The acceptor receives a callback only after TLS handshake; the callback must implement the bounded HTTP contract and route each request to the correct pairing/admission coordinator. Do not expose the listener in UI or manifest as a production feature until the foreground-service lifecycle, route parser, admission wiring, physical-device Keystore test, and Android↔Desktop LAN test are complete.\n
