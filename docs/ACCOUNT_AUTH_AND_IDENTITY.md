@@ -104,3 +104,13 @@ Never print CSV rows, credentials, or passwords to logs, analytics, crash report
 6. Add multi-device recovery, token revocation, session management, deletion/export and security review.
 
 No production sign-in or mail/drive integration is considered complete until tested on real Android devices with revoked tokens, lost network, expired sessions, account linking collisions and cross-user isolation tests.
+
+## Migration from the current single-user app
+
+The current Android MVP stores projects, chat history, pinned items and the password vault in one app-private namespace. Before enabling multiple accounts:
+- move each user's files into an account-scoped directory keyed by immutable internal user UUID;
+- make Password Vault file names and backup manifests account-scoped;
+- keep a strict boundary between signed-in accounts on shared devices;
+- on sign-out, lock the vault, clear in-memory secrets and remove cached user data from active memory;
+- never merge local data into a different account merely because email addresses match;
+- define explicit export/migration for the existing local-only profile so current data is not lost.
