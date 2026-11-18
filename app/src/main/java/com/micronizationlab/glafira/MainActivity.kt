@@ -26,7 +26,9 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.URL
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
@@ -96,7 +98,8 @@ fun ContactList(onAgentClick: (A) -> Unit) {
 fun ChatScreen(agent: A, onBack: () -> Unit) {
     val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
-    var messages by remember { mutableStateOf(listOf<Pair<String, Boolean>>()) }
+    // Загружаем историю при старте
+    var messages by remember { mutableStateOf(loadHistory(context, agent.n)) }
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -140,12 +143,18 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
                 onClick = {
                     if (inputText.isNotBlank() && !isLoading) {
                         val userMsg = inputText
-                        messages = messages + (userMsg to true)
+                        val updatedMessages = messages + (userMsg to true)
+                        messages = updatedMessages
+                        saveHistory(context, agent.n, updatedMessages) // Сохраняем на телефон
                         inputText = ""
                         isLoading = true
+                        
                         scope.launch {
-                            val reply = callGigaChatWithTrustedCert(context, authKey, userMsg)
-                            messages = messages + (reply to false)
+                            // Отправляем всю историю, чтобы ИИ помнил контекст
+                            val reply = callGigaChatWithTrustedCert(context, authKey, updatedMessages)
+                            val finalMessages = updatedMessages + (reply to false)
+                            messages = finalMessages
+                            saveHistory(context, agent.n, finalMessages) // Сохраняем ответ
                             isLoading = false
                         }
                     }
@@ -158,7 +167,35 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
     }
 }
 
-suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, prompt: String): String = withContext(Dispatchers.IO) {
+// --- ФУНКЦИИ ДЛЯ СОХРАНЕНИЯ ИСТОРИИ В ФАЙЛ ---
+fun saveHistory(context: Context, agentName: String, history: List<Pair<String, Boolean>>) {
+    val file = File(context.filesDir, "chat_$agentName.json")
+    val jsonArray = JSONArray()
+    history.forEach { 
+        jsonArray.put(JSONObject().apply { 
+            put("text", it.first)
+            put("isUser", it.second) 
+        }) 
+    }
+    file.writeText(jsonArray.toString())
+}
+
+fun loadHistory(context: Context, agentName: String): List<Pair<String, Boolean>> {
+    val file = File(context.filesDir, "chat_$agentName.json")
+    if (!file.exists()) return emptyList()
+    val list = mutableListOf<Pair<String, Boolean>>()
+    try {
+        val jsonArray = JSONArray(file.readText())
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.getJSONObject(i)
+            list.add(obj.getString("text") to obj.getBoolean("isUser"))
+        }
+    } catch (e: Exception) { }
+    return list
+}
+
+// --- ФУНКЦИЯ ЗАПРОСА К GIGACHAT С КОНТЕКСТОМ ---
+suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, history: List<Pair<String, Boolean>>): String = withContext(Dispatchers.IO) {
     try {
         val certFactory = CertificateFactory.getInstance("X.509")
         val certInputStream = context.assets.open("russian_trusted_root_ca.crt")
@@ -188,8 +225,7 @@ suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, promp
         tokenConn.outputStream.use { it.write(tokenBody.toByteArray()) }
 
         if (tokenConn.responseCode != 200) {
-            val errorStream = tokenConn.errorStream?.bufferedReader()?.readText() ?: "нет тела ошибки"
-            return@withContext "Ошибка токена: ${tokenConn.responseCode}. $errorStream"
+            return@withContext "Ошибка токена: ${tokenConn.responseCode}"
         }
 
         val tokenResponse = tokenConn.inputStream.bufferedReader().readText()
@@ -204,11 +240,18 @@ suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, promp
         chatConn.setRequestProperty("Authorization", "Bearer $accessToken")
         chatConn.doOutput = true
 
+        // Формируем массив сообщений для GigaChat
+        val messagesArray = JSONArray()
+        history.forEach { (text, isUser) ->
+            messagesArray.put(JSONObject().apply { 
+                put("role", if (isUser) "user" else "assistant") 
+                put("content", text) 
+            })
+        }
+
         val chatBody = JSONObject().apply {
             put("model", "GigaChat-2")
-            put("messages", org.json.JSONArray().apply {
-                put(JSONObject().apply { put("role", "user"); put("content", prompt) })
-            })
+            put("messages", messagesArray)
         }.toString()
 
         chatConn.outputStream.use { it.write(chatBody.toByteArray()) }
@@ -218,7 +261,7 @@ suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, promp
             val json = JSONObject(response)
             json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         } else {
-            "Ошибка API: ${chatConn.responseCode}. ${chatConn.errorStream?.bufferedReader()?.readText()}"
+            "Ошибка API: ${chatConn.responseCode}"
         }
     } catch (e: Exception) {
         "Ошибка сети: ${e.message}"
