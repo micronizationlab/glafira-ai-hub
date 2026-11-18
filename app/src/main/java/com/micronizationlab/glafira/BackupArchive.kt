@@ -115,6 +115,23 @@ object BackupArchive {
         }
     }
 
+    /** Verifies the authenticated archive contains a required relative data path. */
+    fun verifyContains(file: File, passphrase: CharArray, relativePath: String): BackupVerification {
+        require(relativePath.isNotBlank() && !relativePath.startsWith("/") &&
+            relativePath.split("/").none { it == ".." || it.isBlank() }) {
+            "Недопустимый путь обязательного файла архива."
+        }
+        val extracted = decryptToStaging(file, passphrase)
+        try {
+            require(extracted.files.any { it.relativePath == relativePath }) {
+                "Архив не содержит обязательную базу GLAFIRA Core."
+            }
+            return extracted.verification
+        } finally {
+            extracted.directory.deleteRecursively()
+        }
+    }
+
     fun restore(context: Context, file: File, passphrase: CharArray): BackupVerification {
         // Keep a verified snapshot of the current state so a partial restore can be rolled back.
         val safetySnapshot = create(context, passphrase)
@@ -124,6 +141,7 @@ object BackupArchive {
             safetySnapshot.delete()
             throw error
         }
+        var safetySnapshotCanBeDeleted = true
         try {
             applyStaged(context, extracted.files, extracted.safePreferences)
             return extracted.verification
@@ -136,14 +154,18 @@ object BackupArchive {
                 }
                 applyStaged(context, rollback.files, rollback.safePreferences)
             } catch (rollbackError: Exception) {
+                safetySnapshotCanBeDeleted = false
                 restoreError.addSuppressed(rollbackError)
+                restoreError.addSuppressed(
+                    IllegalStateException("Safety archive retained for manual recovery: ${safetySnapshot.absolutePath}")
+                )
             } finally {
                 rollback.directory.deleteRecursively()
             }
             throw restoreError
         } finally {
             extracted.directory.deleteRecursively()
-            safetySnapshot.delete()
+            if (safetySnapshotCanBeDeleted) safetySnapshot.delete()
         }
     }
 
