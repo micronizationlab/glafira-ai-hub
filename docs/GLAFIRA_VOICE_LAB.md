@@ -28,6 +28,12 @@ Private testing is a project context, not by itself proof of permission to clone
 6. Never place API keys, credentials, private recordings, or unlicensed training datasets in Git.
 7. Keep source recordings, derived datasets, model weights, and evaluation reports separate, access-controlled, and traceable.
 8. Do not represent a style approximation as an exact voice clone.
+9. **Cloud-first file library:** user-uploaded source audio and other large files must live in a user-controlled cloud drive (Google Drive or Yandex Disk), not permanently in the phone's or desktop's internal storage. Local storage is limited to temporary cache/working files and must have configurable cleanup.
+10. The cloud-drive integration must be provider-neutral so Google Drive and Yandex Disk can be supported through adapters. The user has not yet selected the initial provider.
+11. GLAFIRA must not silently upload files to a cloud provider. The user explicitly connects the account, chooses the provider and library folder, and can inspect/revoke access.
+12. Store only the minimum file metadata and references in GLAFIRA Core's index; keep OAuth tokens/credentials in secure platform storage and never in Git, logs, prompts, or shared engineering memory.
+13. Access to cloud files must be mediated by Core authorization and audited. Use least-privilege scopes, short-lived access where supported, and avoid exposing permanent public links.
+14. Upload, download, rename, delete, synchronization, quota errors, offline behavior, and account disconnection must be handled explicitly. Deleting a local cache must not delete the cloud original; cloud deletion requires a clear user action and confirmation.
 
 ## Work packages
 
@@ -37,9 +43,15 @@ Private testing is a project context, not by itself proof of permission to clone
 - Record permission/license/rights status and allowed uses.
 - Define whether the target is analysis only, authorized voice cloning, or both.
 - Define language, sample rate, duration, audio quality, target devices, latency, and offline requirements.
+- Select Google Drive or Yandex Disk as the first cloud-library provider; retain an adapter contract for the other provider.
+- Let the user select a dedicated library folder and review the requested permissions before connecting.
 
-### VL-1 — Audio corpus and analysis
-- Build a local-only corpus workflow with metadata and checksums.
+### VL-1 — Cloud file library and audio corpus
+- Implement a provider-neutral cloud storage interface with Google Drive and Yandex Disk adapters.
+- Make the connected cloud folder the canonical library for original recordings and large derived assets.
+- Build a local metadata index with file IDs, provider, folder, checksum, size, media type, provenance, rights status, and processing status; do not store the full audio in the index.
+- Support resumable upload/download where available, integrity verification, duplicate detection, and safe retry behavior.
+- Use bounded temporary local cache for processing; show cache usage and provide cleanup controls.
 - Detect clipping, noise, silence, duplicates, and unsuitable segments.
 - Measure speech rate, pauses, pitch range, intonation contours, articulation, and prosody.
 - Produce a reproducible reference-speaker profile without exposing private source audio.
@@ -55,19 +67,23 @@ Private testing is a project context, not by itself proof of permission to clone
 - Prepare a reproducible dataset manifest and train/validation/test split.
 - Run experiments only with data whose use is authorized for the selected purpose.
 - Keep experiments isolated; version configs, model artifacts, and evaluation results.
+- Store large model artifacts in the selected cloud library or another explicitly approved storage location, not in Git.
 - Establish rollback and deletion procedures for datasets and checkpoints.
 
 ### VL-4 — GLAFIRA integration
 - Define a provider-neutral Voice API in Core.
 - Add speech input/output adapters for Android and Windows Desktop.
 - Route voice actions through Core policy and authorization.
-- Add user-visible controls for microphone, recording, playback, provider choice, and data handling.
+- Add user-visible controls for microphone, recording, playback, provider choice, cloud library, cache, and data handling.
 - Preserve text interaction as a complete fallback.
+- Provide an authorized Bridge file-transfer operation so ChatGPT can request selected files or derived excerpts from GLAFIRA; no automatic access to the entire cloud drive.
+- Transfer only user-selected or explicitly authorized files, with size limits, audit records, and clear confirmation for sensitive/external transfers.
 
 ### VL-5 — Quality, safety, and device testing
 - Test speech recognition and synthesis in Russian, including names and domain vocabulary.
 - Measure latency, memory/CPU/GPU use, battery impact, and offline behavior.
 - Test noisy environments, interruptions, long sessions, and recovery after errors.
+- Test cloud account connection/disconnection, permission scope, upload/download integrity, sync conflicts, quota limits, network loss, cache cleanup, and deletion semantics.
 - Test permissions, recording indicators, data deletion, and credential handling.
 - Run regression tests on both client platforms.
 
@@ -75,6 +91,9 @@ Private testing is a project context, not by itself proof of permission to clone
 
 - A documented, reproducible corpus workflow with provenance and rights status.
 - No private audio or secrets committed to the repository.
+- A cloud-backed library is the canonical store for uploaded source files; local storage is only a bounded cache.
+- The user can choose and connect Google Drive or Yandex Disk, select the library folder, and revoke access.
+- Cloud file access is Core-authorized, least-privilege, and auditable.
 - A documented comparison of candidate models and licenses.
 - Repeatable quality and performance tests with baseline metrics.
 - Core-mediated authorization and audit for voice-triggered agent actions.
@@ -85,11 +104,13 @@ Private testing is a project context, not by itself proof of permission to clone
 ## Dependencies and immediate next steps
 
 1. Continue the existing backup, Core hardening, and secure Bridge work as the higher priority.
-2. Ask the user to provide or identify the reference recordings and confirm their provenance and permitted use.
-3. Clarify whether the first experiment should be audio analysis only or authorized synthesis of new speech in the reference voice.
-4. Inventory available local hardware and choose a no-paid-infrastructure-first evaluation path.
-5. Create a separate implementation branch for Voice Lab only when the first technical work package is ready.
+2. Design the cloud-library abstraction and secure Bridge file-transfer contract; do not hard-code a single provider.
+3. Ask the user to choose which provider to connect first: Google Drive or Yandex Disk.
+4. Ask the user to identify reference recordings and confirm their provenance and permitted use.
+5. Clarify whether the first experiment should be audio analysis only or authorized synthesis of new speech in the reference voice.
+6. Inventory available local hardware and choose a no-paid-infrastructure-first evaluation path.
+7. Create a separate implementation branch for Voice Lab only when the first technical work package is ready.
 
 ## Current limitations
 
-This document records scope and requirements only. It does not mean a voice model has been trained, a dataset has been uploaded, or voice cloning/integration is already implemented.
+This document records scope and requirements only. It does not mean a cloud drive is connected, files have been uploaded, a voice model has been trained, or voice cloning/integration is already implemented.
