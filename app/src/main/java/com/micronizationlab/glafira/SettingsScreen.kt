@@ -241,6 +241,10 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             }
         }
 
+        Spacer(Modifier.height(24.dp))
+
+        BackupSettingsSection()
+
         Spacer(Modifier.height(32.dp))
 
         if (currentProject != null) {
