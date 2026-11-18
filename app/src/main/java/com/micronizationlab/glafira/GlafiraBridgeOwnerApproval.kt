@@ -46,6 +46,20 @@ data class GlafiraBridgeCredentialDelivery(
     val grantedScopes: Set<String>
 )
 
+/**
+ * Short-lived proof that the platform owner-authentication gate was passed.
+ * Only the trusted platform authentication adapter should construct this token.
+ */
+data class GlafiraBridgeOwnerSession internal constructor(
+    val sessionId: String,
+    val expiresAtEpochMs: Long
+) {
+    internal fun isValid(nowEpochMs: Long): Boolean =
+        sessionId.length in 16..128 &&
+            sessionId.all { it.isLetterOrDigit() || it in "-_." } &&
+            expiresAtEpochMs > nowEpochMs
+}
+
 sealed class GlafiraBridgeApprovalMutation {
     data class Approved(val deviceId: String) : GlafiraBridgeApprovalMutation()
     data object NotFound : GlafiraBridgeApprovalMutation()
@@ -122,16 +136,17 @@ class GlafiraBridgeOwnerApprovalService(
     }
 
     /**
-     * The caller must authenticate the owner and obtain the selected scopes from the
-     * owner UI. The LLM, candidate request and device cannot call this as owner.
+     * The caller must pass a short-lived owner session minted by the trusted platform
+     * authentication gate and obtain selected scopes from the owner UI. The LLM, candidate
+     * request and device cannot mint this session or call this as owner.
      */
     fun approve(
         approvalId: String,
         ownerSelectedScopes: Set<String>,
-        ownerAuthenticated: Boolean,
+        ownerSession: GlafiraBridgeOwnerSession,
         nowEpochMs: Long = System.currentTimeMillis()
     ): GlafiraBridgeApprovalMutation {
-        if (!ownerAuthenticated || !isValidApprovalId(approvalId) ||
+        if (!ownerSession.isValid(nowEpochMs) || !isValidApprovalId(approvalId) ||
             nowEpochMs <= 0L || !isValidScopes(ownerSelectedScopes)
         ) return GlafiraBridgeApprovalMutation.InvalidScopes
 
@@ -154,36 +169,32 @@ class GlafiraBridgeOwnerApprovalService(
 
     fun reject(
         approvalId: String,
-        ownerAuthenticated: Boolean,
+        ownerSession: GlafiraBridgeOwnerSession,
         nowEpochMs: Long = System.currentTimeMillis()
     ): Boolean {
-        if (!ownerAuthenticated || !isValidApprovalId(approvalId) || nowEpochMs <= 0L) return false
+        if (!ownerSession.isValid(nowEpochMs) || !isValidApprovalId(approvalId) || nowEpochMs <= 0L) return false
         return runCatching { store.reject(approvalId, nowEpochMs) }.getOrDefault(false)
     }
 
     fun claimCredentialDelivery(
         approvalId: String,
-        ownerSessionId: String,
-        ownerAuthenticated: Boolean
+        ownerSession: GlafiraBridgeOwnerSession,
+        nowEpochMs: Long = System.currentTimeMillis()
     ): GlafiraBridgeDeliveryResult {
-        if (!ownerAuthenticated || !isValidApprovalId(approvalId) ||
-            ownerSessionId.length !in 16..128 ||
-            !ownerSessionId.all { it.isLetterOrDigit() || it in "-_." }
-        ) return GlafiraBridgeDeliveryResult.NotApproved
-        return runCatching { store.claimDelivery(approvalId, ownerSessionId) }
+        if (!ownerSession.isValid(nowEpochMs) || !isValidApprovalId(approvalId)) {
+            return GlafiraBridgeDeliveryResult.NotApproved
+        }
+        return runCatching { store.claimDelivery(approvalId, ownerSession.sessionId) }
             .getOrDefault(GlafiraBridgeDeliveryResult.StorageError)
     }
 
     fun acknowledgeCredentialDelivery(
         approvalId: String,
-        ownerSessionId: String,
-        ownerAuthenticated: Boolean
+        ownerSession: GlafiraBridgeOwnerSession,
+        nowEpochMs: Long = System.currentTimeMillis()
     ): Boolean {
-        if (!ownerAuthenticated || !isValidApprovalId(approvalId) ||
-            ownerSessionId.length !in 16..128 ||
-            !ownerSessionId.all { it.isLetterOrDigit() || it in "-_." }
-        ) return false
-        return runCatching { store.acknowledgeDelivery(approvalId, ownerSessionId) }
+        if (!ownerSession.isValid(nowEpochMs) || !isValidApprovalId(approvalId)) return false
+        return runCatching { store.acknowledgeDelivery(approvalId, ownerSession.sessionId) }
             .getOrDefault(false)
     }
 
