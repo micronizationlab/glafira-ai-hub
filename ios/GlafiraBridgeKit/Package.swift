@@ -8,10 +8,12 @@ let package = Package(
         .macOS(.v13)
     ],
     products: [
-        .library(name: "GlafiraBridgeKit", targets: ["GlafiraBridgeKit"])
+        .library(name: "GlafiraBridgeKit", targets: ["GlafiraBridgeKit"]),
+        .library(name: "GlafiraIOSUI", targets: ["GlafiraIOSUI"])
     ],
     targets: [
         .target(name: "GlafiraBridgeKit"),
+        .target(name: "GlafiraIOSUI", dependencies: ["GlafiraBridgeKit"]),
         .testTarget(name: "GlafiraBridgeKitTests", dependencies: ["GlafiraBridgeKit"])
     ]
 )
