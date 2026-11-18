@@ -81,6 +81,12 @@ fun App() {
                     saveProjects(context, projects)
                     currentProject = newProj
                 },
+                onProjectDelete = { project ->
+                    projects = deleteProject(context, project, projects)
+                    if (currentProject.id == project.id) {
+                        currentProject = projects.first()
+                    }
+                },
                 onAgentClick = { currentAgent = it },
                 onSettingsClick = { showSettings = true }
             )
@@ -99,12 +105,14 @@ fun ContactList(
     currentProject: Project,
     onProjectSelect: (Project) -> Unit,
     onProjectAdd: (String) -> Unit,
+    onProjectDelete: (Project) -> Unit,
     onAgentClick: (A) -> Unit,
     onSettingsClick: () -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var showProjectMenu by remember { mutableStateOf(false) }
     var newProjectName by remember { mutableStateOf("") }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     val list = listOf(
         A("ГЛАФИРА", "Главный координатор", true, "🤖", 
@@ -128,10 +136,18 @@ fun ContactList(
                 }
                 DropdownMenu(expanded = showProjectMenu, onDismissRequest = { showProjectMenu = false }) {
                     projects.forEach { proj ->
-                        DropdownMenuItem(
-                            text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Bg) },
-                            onClick = { onProjectSelect(proj); showProjectMenu = false }
-                        )
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            DropdownMenuItem(
+                                text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Bg) },
+                                onClick = { onProjectSelect(proj); showProjectMenu = false },
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (projects.size > 1) {
+                                Text("✕", color = Color.Red, modifier = Modifier.clickable {
+                                    if (proj.id == currentProject.id) showDeleteConfirm = true
+                                }.padding(8.dp))
+                            }
+                        }
                     }
                 }
             }
@@ -139,6 +155,22 @@ fun ContactList(
             Text("+", color = Gr, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { showAddDialog = true })
             Spacer(Modifier.width(16.dp))
             Text("⚙️", fontSize = 20.sp, modifier = Modifier.clickable { onSettingsClick() })
+        }
+
+        if (showDeleteConfirm) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirm = false },
+                title = { Text("Удалить проект?", color = Bg) },
+                text = { Text("Все чаты в этом проекте будут безвозвратно удалены.") },
+                confirmButton = {
+                    TextButton(onClick = { onProjectDelete(currentProject); showDeleteConfirm = false; showProjectMenu = false }) {
+                        Text("Удалить", color = Color.Red)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirm = false }) { Text("Отмена", color = Tx) }
+                }
+            )
         }
 
         if (showAddDialog) {
@@ -185,19 +217,13 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var messages by remember { mutableStateOf(loadHistory(context, historyKey)) }
     var isLoading by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
-    
-    // СОСТОЯНИЯ ДЛЯ ПОИСКА
     var isSearching by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    
-    // ДЛЯ АВТОСКРОЛЛА
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // Фильтрация сообщений при поиске
     val displayedMessages = if (searchQuery.isBlank()) messages else messages.filter { it.text.contains(searchQuery, ignoreCase = true) }
 
-    // Эффект автоскролла при изменении количества сообщений
     LaunchedEffect(messages.size) {
         if (!isSearching && messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
@@ -208,20 +234,16 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
-            // Шапка чата
             Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (isSearching) {
-                    // Режим поиска
                     TextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
+                        value = searchQuery, onValueChange = { searchQuery = it },
                         placeholder = { Text("Поиск...", color = Tx, fontSize = 14.sp) },
                         modifier = Modifier.weight(1f),
                         colors = TextFieldDefaults.colors(focusedContainerColor = GrD, unfocusedContainerColor = GrD, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr)
                     )
                     Text("✕", color = Gr, fontSize = 20.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
                 } else {
-                    // Обычная шапка
                     Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
                     Row(Modifier.weight(1f).clickable { showProfile = true }, verticalAlignment = Alignment.CenterVertically) {
                         Text(agent.emoji, fontSize = 20.sp)
@@ -239,7 +261,6 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 }
             }
 
-            // Список сообщений
             LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(displayedMessages) { msg ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
@@ -259,7 +280,6 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 if (isSearching && displayedMessages.isEmpty()) { item { Text("Ничего не найдено", color = Tx, modifier = Modifier.padding(16.dp)) } }
             }
 
-            // Поле ввода
             if (!isSearching) {
                 Row(Modifier.fillMaxWidth().background(GrD).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     TextField(
@@ -352,7 +372,6 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
     }
 }
 
-// --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (остались без изменений) ---
 fun saveHistory(context: Context, key: String, history: List<Msg>) {
     val file = File(context.filesDir, "chat_$key.json")
     val jsonArray = JSONArray()
