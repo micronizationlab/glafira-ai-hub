@@ -58,12 +58,14 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-val Bg = Color(0xFF000000)
-val Gr = Color(0xFF7EC850)
-val GrD = Color(0xFF151515)
-val Tx = Color(0xFF888888)
-val Line = Color(0xFF2A2A2A)
-val Red = Color(0xFFCC3333)
+// Classic ICQ / Windows XP light palette
+val Bg = Color(0xFFF4F4F4)
+val Gr = Color(0xFF1767A8)
+val GrD = Color(0xFFE2E2E2)
+val Tx = Color(0xFF626262)
+val Line = Color(0xFFB8B8B8)
+val Red = Color(0xFFC62828)
+
 
 enum class AgentGroup(val title: String) {
     IA("ИНТЕЛЛЕКТУАЛЬНЫЕ АГЕНТЫ"),
@@ -211,7 +213,7 @@ fun App() {
 @Composable
 fun StatusFlower(isOnline: Boolean, size: Dp = 12.dp) {
     Canvas(Modifier.size(size)) {
-        val c = if (isOnline) Gr else Red
+        val c = if (isOnline) Color(0xFF55B84A) else Color(0xFF9A9A9A)
         val r = size.toPx() / 4f
         repeat(5) { i ->
             val angle = (i * 72f - 90f) * PI / 180
@@ -250,18 +252,18 @@ fun AgentRow(a: A, onClick: () -> Unit) {
     ) {
         Box(
             Modifier.size(40.dp).clip(CircleShape)
-                .background(if (a.on) Gr.copy(alpha = 0.15f) else Color.DarkGray.copy(alpha = 0.2f))
-                .border(1.dp, if (a.on) Gr else Color.DarkGray, CircleShape),
+                .background(Color.White)
+                .border(1.dp, if (a.on) Color(0xFF55B84A) else Color(0xFFB8B8B8), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(a.emoji, fontSize = 20.sp)
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(a.n, color = if (a.on) Gr else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Text(a.n, color = if (a.on) Color(0xFF202020) else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(
                 if (a.on) "${a.providerId.displayName} · готов" else "Не настроен",
-                color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace
+                color = Tx, fontSize = 10.sp
             )
         }
         StatusFlower(a.on, 12.dp)
@@ -340,7 +342,7 @@ fun ContactList(
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Проект: ", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
             Box {
                 Row(modifier = Modifier.clickable { showProjectMenu = true }, verticalAlignment = Alignment.CenterVertically) {
@@ -433,7 +435,7 @@ fun ContactList(
         }
 
         Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
-            LazyColumn(Modifier.fillMaxWidth(0.92f)) {
+            LazyColumn(Modifier.fillMaxWidth().background(Color.White).border(1.dp, Line)) {
                 item {
                     GroupHeader(
                         title = AgentGroup.IA.title,
@@ -600,7 +602,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         value = searchQuery, onValueChange = { searchQuery = it },
                         placeholder = { Text("Поиск...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f),
-                        colors = TextFieldDefaults.colors(focusedContainerColor = GrD, unfocusedContainerColor = GrD, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr)
+                        colors = TextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020), focusedIndicatorColor = Gr)
                     )
                     Text("✕", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
                 } else {
@@ -646,7 +648,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         m.text.take(80) + if (m.text.length > 80) "…" else "",
-                                        color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFF202020), fontSize = 10.sp,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text("✕", color = Red, fontSize = 12.sp, modifier = Modifier.clickable {
@@ -688,8 +690,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                             }
                             Box(
                                 Modifier.clip(shape)
-                                    .background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f))
-                                    .border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), shape)
+                                    .background(if (msg.isUser) Color(0xFFE5F0FA) else Color.White)
+                                    .border(1.dp, if (msg.isUser) Color(0xFF8BAFD0) else Color(0xFFB8C9D8), shape)
                                     .combinedClickable(
                                         onClick = {},
                                         onLongClick = { messageActionIndex = realIdx }
@@ -699,8 +701,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 Column {
                                     Text(
                                         if (isLong && !isExpanded) collapsedText(msg.text) else msg.text,
-                                        color = if (msg.isUser) Color.White else Gr,
-                                        fontSize = 12.sp, fontFamily = FontFamily.Monospace
+                                        color = Color(0xFF202020),
+                                        fontSize = 13.sp
                                     )
                                     if (isLong) {
                                         Text(
@@ -758,7 +760,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         },
                         placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f).padding(end = 6.dp),
-                        colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Line)
+                        colors = TextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020), focusedIndicatorColor = Gr, unfocusedIndicatorColor = Line)
                     )
                     Box(
                         Modifier.size(36.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable {
@@ -945,7 +947,7 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
                 Column(Modifier.padding(12.dp)) {
                     Text("ОПИСАНИЕ", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.height(6.dp))
-                    Text(agent.fullDesc, color = Color.White, fontSize = 11.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
+                    Text(agent.fullDesc, color = Color(0xFF202020), fontSize = 12.sp, lineHeight = 17.sp)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -953,7 +955,7 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
                 Column(Modifier.padding(12.dp)) {
                     Text("СПЕЦИФИКА РАБОТЫ", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.height(6.dp))
-                    Text(agent.prompt, color = Color.White, fontSize = 11.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
+                    Text(agent.prompt, color = Color(0xFF202020), fontSize = 12.sp, lineHeight = 17.sp)
                 }
             }
         }
