@@ -209,7 +209,8 @@ class GlafiraBridgeTlsHttpServer(
             val key = name.lowercase(Locale.ROOT)
             if (headers.containsKey(key)) return null
             val value = line.substring(colon + 1).trim()
-            if (value.any { it == '\r' || it == '\n' || it == '\u0000' }) return null
+            if (value.any { it == '\r' || it == '
+' || it == '\u0000' }) return null
             headers[key] = value
         }
         return null
@@ -265,14 +266,22 @@ class GlafiraBridgeTlsHttpServer(
             HTTP_TOO_LARGE -> "Payload Too Large"
             HTTP_UNSUPPORTED_MEDIA -> "Unsupported Media Type"
             HTTP_REQUEST_TIMEOUT -> "Request Timeout"
-            HTTP_TOO_MANY_REQUESTS -> "Too Many Requests"\n            HTTP_FORBIDDEN -> "Forbidden"\n            HTTP_SERVICE_UNAVAILABLE -> "Service Unavailable"
+            HTTP_TOO_MANY_REQUESTS -> "Too Many Requests"
+            HTTP_FORBIDDEN -> "Forbidden"
+            HTTP_SERVICE_UNAVAILABLE -> "Service Unavailable"
             else -> "Error"
         }
-        val headers = "HTTP/1.1 $status $reason\r\n" +
-            "Content-Type: application/json; charset=utf-8\r\n" +
-            "Content-Length: ${body.size}\r\n" +
-            "Connection: close\r\n" +
-            "Cache-Control: no-store\r\n\r\n"
+        val headers = "HTTP/1.1 $status $reason\r
+" +
+            "Content-Type: application/json; charset=utf-8\r
+" +
+            "Content-Length: ${body.size}\r
+" +
+            "Connection: close\r
+" +
+            "Cache-Control: no-store\r
+\r
+"
         socket.getOutputStream().apply {
             write(headers.toByteArray(Charsets.US_ASCII))
             write(body)
@@ -300,6 +309,8 @@ class GlafiraBridgeTlsHttpServer(
         private const val HTTP_TOO_LARGE = 413
         private const val HTTP_UNSUPPORTED_MEDIA = 415
         private const val HTTP_REQUEST_TIMEOUT = 408
-        private const val HTTP_TOO_MANY_REQUESTS = 429\n        private const val HTTP_FORBIDDEN = 403\n        private const val HTTP_SERVICE_UNAVAILABLE = 503
+        private const val HTTP_TOO_MANY_REQUESTS = 429
+        private const val HTTP_FORBIDDEN = 403
+        private const val HTTP_SERVICE_UNAVAILABLE = 503
     }
 }
