@@ -79,7 +79,13 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         require(current in setOf("QUEUED", "DISPATCHED", "ACCEPTED", "RUNNING")) {
             "Task is already terminal."
         }
-        require(state in setOf("ACCEPTED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"))
+        val allowedNext = when (current) {
+            "DISPATCHED" -> setOf("ACCEPTED", "FAILED")
+            "ACCEPTED" -> setOf("RUNNING", "FAILED", "CANCELLED")
+            "RUNNING" -> setOf("RUNNING", "SUCCEEDED", "FAILED", "CANCELLED")
+            else -> emptySet()
+        }
+        require(state in allowedNext) { "Invalid task state transition." }
         item.put("state", state)
         item.put("sequence", item.optLong("sequence") + 1)
         item.put("progressPercent", progressPercent)
