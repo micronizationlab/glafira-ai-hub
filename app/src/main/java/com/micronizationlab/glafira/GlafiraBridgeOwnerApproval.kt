@@ -46,6 +46,11 @@ data class GlafiraBridgeCredentialDelivery(
     val grantedScopes: Set<String>
 )
 
+data class GlafiraBridgePendingCredentialDelivery(
+    val approvalId: String,
+    val deviceId: String
+)
+
 /**
  * Short-lived proof that the platform owner-authentication gate was passed.
  * Only the trusted platform authentication adapter should construct this token.
@@ -97,6 +102,7 @@ interface GlafiraBridgePairingApprovalStore {
     ): GlafiraBridgeApprovalMutation
 
     fun reject(approvalId: String, rejectedAtEpochMs: Long): Boolean
+    fun listUndeliveredDeliveries(limit: Int): List<GlafiraBridgePendingCredentialDelivery>
 
     /** Repeated reads are allowed only for the same ownerSessionId until acknowledged. */
     fun claimDelivery(
@@ -176,6 +182,17 @@ class GlafiraBridgeOwnerApprovalService(
     ): Boolean {
         if (!ownerSession.isValid(nowEpochMs) || !isValidApprovalId(approvalId) || nowEpochMs <= 0L) return false
         return runCatching { store.reject(approvalId, nowEpochMs) }.getOrDefault(false)
+    }
+
+    fun pendingCredentialDeliveries(
+        ownerSession: GlafiraBridgeOwnerSession,
+        nowEpochMs: Long = System.currentTimeMillis(),
+        limit: Int = MAX_PENDING_APPROVALS
+    ): List<GlafiraBridgePendingCredentialDelivery> {
+        if (nowEpochMs <= 0L || !ownerSession.isValid(nowEpochMs) || limit !in 1..MAX_PENDING_APPROVALS) {
+            return emptyList()
+        }
+        return runCatching { store.listUndeliveredDeliveries(limit) }.getOrDefault(emptyList())
     }
 
     fun claimCredentialDelivery(
