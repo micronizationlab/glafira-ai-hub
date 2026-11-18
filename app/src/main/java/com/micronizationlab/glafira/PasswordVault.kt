@@ -44,7 +44,7 @@ class VaultSession internal constructor(
         val ciphertext = Base64.decode(envelope.getString("data"), Base64.NO_WRAP)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"), GCMParameterSpec(128, iv))
-        cipher.updateAAD(AAD)
+        cipher.updateAAD(AAD.toByteArray(Charsets.UTF_8))
         val plain = cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
         val array = JSONArray(plain)
         return buildList {
@@ -83,7 +83,7 @@ class VaultSession internal constructor(
         val iv = ByteArray(IV_LENGTH).also(random::nextBytes)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), GCMParameterSpec(128, iv))
-        cipher.updateAAD(AAD)
+        cipher.updateAAD(AAD.toByteArray(Charsets.UTF_8))
         val encrypted = cipher.doFinal(array.toString().toByteArray(Charsets.UTF_8))
         val envelope = JSONObject().apply {
             put("version", 1)
