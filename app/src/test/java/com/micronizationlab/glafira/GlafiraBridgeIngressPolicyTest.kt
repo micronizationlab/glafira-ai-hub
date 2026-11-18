@@ -30,6 +30,9 @@ class GlafiraBridgeIngressPolicyTest {
         assertTrue(GlafiraBridgeIngressPolicy.validateContentType("Application/JSON; charset=UTF-8"))
         assertFalse(GlafiraBridgeIngressPolicy.validateContentType("text/plain"))
         assertFalse(GlafiraBridgeIngressPolicy.validateContentType("application/json; charset=utf-16"))
+        assertFalse(GlafiraBridgeIngressPolicy.validateContentType(
+            "application/json; charset=utf-8; charset=utf-8"
+        ))
         assertFalse(GlafiraBridgeIngressPolicy.validateContentType(null))
     }
 
