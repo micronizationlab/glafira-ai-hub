@@ -64,10 +64,9 @@ class GlafiraMemoryCrypto(context: Context) {
         return cipher.doFinal(ciphertext)
     }
 
-    @Synchronized
-    private fun getOrCreateKey(): SecretKey {
+    private fun getOrCreateKey(): SecretKey = synchronized(KEY_LOCK) {
         val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return@synchronized it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
         generator.init(
             KeyGenParameterSpec.Builder(
@@ -80,13 +79,12 @@ class GlafiraMemoryCrypto(context: Context) {
                 .setKeySize(256)
                 .build()
         )
-        return generator.generateKey()
+        generator.generateKey()
     }
 
-    @Synchronized
-    private fun getExistingKey(): SecretKey {
+    private fun getExistingKey(): SecretKey = synchronized(KEY_LOCK) {
         val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+        keyStore.getKey(KEY_ALIAS, null) as? SecretKey
             ?: throw IllegalStateException("GLAFIRA memory encryption key is unavailable; owner recovery is required")
     }
 
@@ -112,6 +110,7 @@ class GlafiraMemoryCrypto(context: Context) {
     ).joinToString("|").toByteArray(Charsets.UTF_8)
 
     companion object {
+        private val KEY_LOCK = Any()
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
         private const val KEY_ALIAS = "glafira_core_memory_aes_v1"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
