@@ -100,7 +100,8 @@ class GlafiraBridgeTlsHttpServer(
                 if (running) running = false
                 break
             }
-            val remote = socket.inetAddress.hostAddress ?: run {
+            val remote = socket.inetAddress.hostAddress
+            if (remote == null) {
                 socket.close()
                 continue
             }
