@@ -102,21 +102,29 @@ class GlafiraBridgeOwnerApprovalTest {
         val service = GlafiraBridgeOwnerApprovalService(store)
         val queued = service.submitVerifiedEnrollment(candidate(emptySet()))!!
         service.approve(queued.approvalId, setOf("project.read"), ownerSession(), 2_000L)
+        val firstClaim = service.claimCredentialDelivery(
+            queued.approvalId, ownerSession("owner-session-0001"), 2_001L
+        )
+        assertTrue(firstClaim is GlafiraBridgeDeliveryResult.Available)
 
-        val pending = service.pendingCredentialDeliveries(ownerSession(), 2_001L)
+        // A later owner session can recover the unacknowledged delivery after the lease expires.
+        val recoveredSession = ownerSession("owner-session-0002", 20_000L)
+        val pending = service.pendingCredentialDeliveries(recoveredSession, 10_001L)
 
         assertEquals(1, pending.size)
         assertEquals(queued.approvalId, pending.single().approvalId)
         val delivery = service.claimCredentialDelivery(
             pending.single().approvalId,
-            ownerSession("owner-session-0002"),
-            2_001L
+            recoveredSession,
+            10_001L
         )
         assertTrue(delivery is GlafiraBridgeDeliveryResult.Available)
     }
 
-    private fun ownerSession(id: String = "owner-session-0001") =
-        GlafiraBridgeOwnerSession(id, 10_000L)
+    private fun ownerSession(
+        id: String = "owner-session-0001",
+        expiresAtEpochMs: Long = 10_000L
+    ) = GlafiraBridgeOwnerSession(id, expiresAtEpochMs)
 
     private fun expiredOwnerSession() =
         GlafiraBridgeOwnerSession("owner-session-expired", 1_999L)
