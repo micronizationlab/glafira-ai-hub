@@ -41,4 +41,5 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.material3)
     implementation("androidx.biometric:biometric:1.1.0")
+    testImplementation("junit:junit:4.13.2")
 }
