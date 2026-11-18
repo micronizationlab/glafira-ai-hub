@@ -72,7 +72,7 @@ internal class DesktopOllamaAgentExecutor(
 
     companion object {
         private const val MAX_RESPONSE_CHARS = 256_000
-        private const val MAX_OUTPUT_CHARS = 24_000
+        private const val MAX_OUTPUT_CHARS = 12_000
     }
 }
 
