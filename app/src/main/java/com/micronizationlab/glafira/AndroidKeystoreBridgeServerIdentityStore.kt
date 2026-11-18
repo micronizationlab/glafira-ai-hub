@@ -90,6 +90,22 @@ class AndroidKeystoreBridgeServerIdentityStore(context: Context) {
     }
 
     @Synchronized
+    fun currentConnectionDetails(port: Int = GlafiraBridgeTlsHttpServer.DEFAULT_PORT): BridgeServerConnectionDetails? {
+        if (port !in 1024..65_535) return null
+        val hostValue = preferences.getString(KEY_HOST, null) ?: return null
+        val encoded = preferences.getString(KEY_CERTIFICATE, null) ?: return null
+        return runCatching {
+            val host = BridgeServerHost.ipv4(hostValue)
+            val certificate = decodeCertificate(encoded)
+            require(isValidIdentity(certificate, host))
+            val fingerprint = MessageDigest.getInstance("SHA-256")
+                .digest(certificate.encoded)
+                .joinToString("") { "%02x".format(it) }
+            BridgeServerConnectionDetails("https://${host.value}:$port", fingerprint)
+        }.getOrNull()
+    }
+
+    @Synchronized
     fun rotate(host: BridgeServerHost): BridgeServerIdentity {
         val keyStore = loadKeyStore()
         if (keyStore.containsAlias(KEY_ALIAS)) keyStore.deleteEntry(KEY_ALIAS)
@@ -237,4 +253,10 @@ data class BridgeServerIdentity internal constructor(
     val certificateSha256: String,
     internal val keyManagers: Array<KeyManager>,
     internal val privateKeyAlgorithm: String
+)
+
+
+data class BridgeServerConnectionDetails(
+    val origin: String,
+    val certificateSha256: String
 )
