@@ -10,7 +10,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.WindowManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -19,6 +24,21 @@ import java.util.UUID
 @Composable
 fun PasswordVaultScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        var current: Context = view.context
+        var activity: Activity? = null
+        while (current is ContextWrapper) {
+            if (current is Activity) {
+                activity = current
+                break
+            }
+            current = current.baseContext
+        }
+        val window = activity?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+    }
     var session by remember { mutableStateOf<VaultSession?>(null) }
     var entries by remember { mutableStateOf<List<VaultEntry>>(emptyList()) }
     var masterPassword by remember { mutableStateOf("") }
