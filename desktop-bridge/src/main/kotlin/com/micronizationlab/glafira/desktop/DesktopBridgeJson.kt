@@ -36,7 +36,11 @@ internal object DesktopBridgeJson {
     fun longFieldExact(json: org.json.JSONObject, key: String): Long {
         val value = json.get(key)
         require(value is Number)
-        return BigDecimal(value.toString()).longValueExact()
+        return try {
+            BigDecimal(value.toString()).longValueExact()
+        } catch (error: ArithmeticException) {
+            throw IllegalArgumentException("JSON field must be an exact integer.", error)
+        }
     }
 
     private fun readValue(reader: JsonReader, depth: Int): JsonElement {
