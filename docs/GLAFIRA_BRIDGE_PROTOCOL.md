@@ -10,6 +10,7 @@ The Android code now defines a versioned request/response envelope with:
 - typed operation enum (project read, conversation read/append, approval request);
 - bounded issue/expiry timestamps;
 - per-operation payload allowlists and required fields;
+- an HMAC-SHA256 signing/verification primitive with constant-time signature comparison (the per-device secret storage and issuance layer is not implemented yet);
 - explicit response states, including `PENDING_APPROVAL`.
 
 The initial operation set deliberately excludes shell, arbitrary filesystem access, arbitrary URLs and generic code execution. Unknown payload fields, malformed identifiers, expired requests, oversized payloads and unsupported protocol versions fail validation.
