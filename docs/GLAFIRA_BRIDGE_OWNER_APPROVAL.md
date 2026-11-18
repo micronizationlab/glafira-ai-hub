@@ -1,6 +1,6 @@
 # GLAFIRA Bridge owner approval and device enrollment
 
-Status: platform-neutral domain contract, policy tests, and an Android SQLite/Keystore persistence adapter are implemented in the current Draft PR. The owner UI, trusted owner-authentication session issuer, and live Gateway wiring remain outstanding. Physical-device security validation has not yet been performed.
+Status: platform-neutral domain contract, policy tests, and an Android SQLite/Keystore persistence adapter are implemented in the current Draft PR. An Android owner-facing approval screen and biometric/device-credential-gated short-lived owner session are now implemented. Verified-enrollment controller wiring and live Gateway transport remain outstanding. Physical-device security validation has not yet been performed.
 
 ## Trust boundary
 
