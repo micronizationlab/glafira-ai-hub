@@ -1,5 +1,10 @@
 package com.micronizationlab.glafira
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -46,6 +51,19 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var hostRunning by remember { mutableStateOf(false) }
     var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
     var invitationClipboardText by remember { mutableStateOf<String?>(null) }
+
+    fun startBridgeHost() {
+        runCatching { GlafiraBridgeHostService.startFromOwnerAction(context, hostAddress.trim()) }
+            .onSuccess { status = "Запрос на запуск сервера отправлен. Проверьте постоянное уведомление Android." }
+            .onFailure { status = "Не удалось запустить сервер: проверьте IPv4 адрес и разрешения Android." }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startBridgeHost()
+        else status = "Без разрешения уведомлений сервер не сможет показать постоянный статус в панели Android."
+    }
 
     LaunchedEffect(context) {
         while (true) {
@@ -182,9 +200,10 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                     Button(
                         enabled = hostAddress.isNotBlank(),
                         onClick = {
-                            runCatching { GlafiraBridgeHostService.startFromOwnerAction(context, hostAddress.trim()) }
-                                .onSuccess { status = "Запрос на запуск сервера отправлен. Проверьте постоянное уведомление Android." }
-                                .onFailure { status = "Не удалось запустить сервер: проверьте IPv4 адрес и разрешения Android." }
+                            if (Build.VERSION.SDK_INT >= 33 &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                            ) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            else startBridgeHost()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Gr)
                     ) { Text("ЗАПУСТИТЬ") }
