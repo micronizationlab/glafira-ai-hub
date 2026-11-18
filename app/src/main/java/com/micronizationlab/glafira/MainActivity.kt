@@ -1,9 +1,17 @@
 package com.micronizationlab.glafira
 
+import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -13,7 +21,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,7 +75,7 @@ data class A(
     val providerId: ProviderId = ProviderId.GIGACHAT,
     val group: AgentGroup = AgentGroup.IA
 )
-data class Msg(val text: String, val isUser: Boolean, val time: String)
+data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,11 +108,12 @@ fun App() {
                 }
                 val key = "${pm.projectId}_${pm.agentName}"
                 val history = loadHistory(context, key)
-                val reply = callGigaChatWithTrustedCert(context, history + Msg(pm.text, true, pm.time), agentPrompt)
+                val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                val reply = callGigaChatWithTrustedCert(context, history + Msg(pm.text, true, pm.time, today), agentPrompt)
                 if (reply.startsWith("Ошибка сети")) {
                     remaining.add(pm)
                 } else {
-                    val updated = history + Msg(pm.text, true, pm.time) + Msg(reply, false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()))
+                    val updated = history + Msg(pm.text, true, pm.time, today) + Msg(reply, false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()), today)
                     saveHistory(context, key, updated)
                     SoundHelper.playIncoming()
                 }
@@ -115,10 +124,13 @@ fun App() {
 
     Surface(Modifier.fillMaxSize(), color = Bg) {
         when {
-            showSettings -> SettingsScreen(onBack = {
-                showSettings = false
-                statusRefresh++
-            })
+            showSettings -> SettingsScreen(
+                onBack = {
+                    showSettings = false
+                    statusRefresh++
+                },
+                currentProject = currentProject
+            )
             currentAgent == null -> ContactList(
                 projects = projects,
                 currentProject = currentProject,
@@ -424,8 +436,49 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var messageActionIndex by remember { mutableStateOf<Int?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
     var expandedMessages by remember { mutableStateOf(setOf<Int>()) }
+    var isListening by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        isListening = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val text = spoken?.firstOrNull().orEmpty()
+            if (text.isNotBlank()) {
+                inputText = (inputText + " " + text).trim()
+                saveDraft(context, project.id, agent.n, inputText)
+            }
+        }
+    }
+
+    fun startVoiceInput() {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) {
+            ToastHelper.short(context, "Нужно разрешение на микрофон")
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            ToastHelper.short(context, "Распознавание речи недоступно")
+            return
+        }
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Говорите...")
+        }
+        isListening = true
+        try {
+            speechLauncher.launch(intent)
+        } catch (e: Exception) {
+            isListening = false
+            ToastHelper.short(context, "Не удалось запустить распознавание")
+        }
+    }
 
     val displayedMessages = if (searchQuery.isBlank()) messages else messages.filter { it.text.contains(searchQuery, ignoreCase = true) }
 
@@ -437,8 +490,10 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
 
     fun sendMessage(text: String) {
         if (text.isBlank() || isLoading) return
-        val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        val updatedMessages = messages + Msg(text, true, timeNow)
+        val now = Date()
+        val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
+        val updatedMessages = messages + Msg(text, true, timeNow, today)
         messages = updatedMessages
         saveHistory(context, historyKey, updatedMessages)
         clearDraft(context, project.id, agent.n)
@@ -447,16 +502,17 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
             val reply = callGigaChatWithTrustedCert(context, updatedMessages, fullPrompt)
+            val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
             if (reply.startsWith("Ошибка сети")) {
                 addToPendingQueue(context, PendingMessage(project.id, agent.n, text, timeNow))
-                val queuedMsg = Msg("⏳ Сообщение в очереди. Отправится при появлении сети.", false, replyTime)
+                val queuedMsg = Msg("⏳ Сообщение в очереди. Отправится при появлении сети.", false, replyTime, replyDate)
                 val finalMessages = updatedMessages + queuedMsg
                 messages = finalMessages
                 saveHistory(context, historyKey, finalMessages)
                 SoundHelper.playIncoming()
             } else {
-                val finalMessages = updatedMessages + Msg(reply, false, replyTime)
+                val finalMessages = updatedMessages + Msg(reply, false, replyTime, replyDate)
                 messages = finalMessages
                 saveHistory(context, historyKey, finalMessages)
                 SoundHelper.playIncoming()
@@ -496,7 +552,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 8.dp))
                     Text("↗", fontSize = 16.sp, color = Gr, modifier = Modifier.clickable { showTransferDialog = true }.padding(end = 8.dp))
                     Text("📋", fontSize = 14.sp, modifier = Modifier.clickable {
-                        copyToClipboard(context, messages.joinToString("\n") { m -> val who = if (m.isUser) "Вы" else agent.n; "[${m.time}] $who: ${m.text}" })
+                        copyToClipboard(context, messages.joinToString("\n") { m -> val who = if (m.isUser) "Вы" else agent.n; "[${m.date} ${m.time}] $who: ${m.text}" })
                     }.padding(end = 8.dp))
                     Text("📤", fontSize = 14.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 8.dp))
                     Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { showClearConfirm = true })
@@ -534,7 +590,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (searchQuery.isBlank() && messages.isNotEmpty()) {
                     item {
-                        Text("— ${dateLabel(messages.first().time)} —", color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Text("— ${dateLabel(messages.first().date)} —", color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
                 items(displayedMessages.size) { displayIdx ->
@@ -543,6 +599,13 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     val isPinned = realIdx in pinned
                     val isExpanded = realIdx in expandedMessages
                     val isLong = isLongMessage(msg.text)
+                    val prevDate = if (realIdx > 0) messages[realIdx - 1].date else ""
+                    val showDateDivider = searchQuery.isBlank() && realIdx > 0 && prevDate != msg.date
+                    if (showDateDivider) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                            Text("— ${dateLabel(msg.date)} —", color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
                         Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
                             val shape = if (msg.isUser) {
@@ -593,6 +656,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
 
             if (!isSearching) {
                 Row(Modifier.fillMaxWidth().background(GrD).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(36.dp).border(1.dp, if (isListening) Red else Gr, RoundedCornerShape(2.dp)).clickable { startVoiceInput() },
+                        contentAlignment = Alignment.Center
+                    ) { Text(if (isListening) "🔴" else "🎤", fontSize = 16.sp) }
+                    Spacer(Modifier.width(6.dp))
                     TextField(
                         value = inputText,
                         onValueChange = {
@@ -694,7 +762,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                     }
                                     val targetKey = "${project.id}_$name"
                                     val targetHistory = loadHistory(context, targetKey).toMutableList()
-                                    val sysMsg = Msg("[Передано от ${agent.n}]:\n$transferText", false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()))
+                                    val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                                    val sysMsg = Msg("[Передано от ${agent.n}]:\n$transferText", false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()), today)
                                     targetHistory.add(sysMsg)
                                     saveHistory(context, targetKey, targetHistory)
                                     showTransferDialog = false
@@ -795,10 +864,23 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
     }
 }
 
+object ToastHelper {
+    fun short(context: Context, text: String) {
+        android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
 fun saveHistory(context: Context, key: String, history: List<Msg>) {
     val file = File(context.filesDir, "chat_$key.json")
     val jsonArray = JSONArray()
-    history.forEach { jsonArray.put(JSONObject().apply { put("text", it.text); put("isUser", it.isUser); put("time", it.time) }) }
+    history.forEach {
+        jsonArray.put(JSONObject().apply {
+            put("text", it.text)
+            put("isUser", it.isUser)
+            put("time", it.time)
+            put("date", it.date)
+        })
+    }
     file.writeText(jsonArray.toString())
 }
 
@@ -810,7 +892,14 @@ fun loadHistory(context: Context, key: String): List<Msg> {
         val jsonArray = JSONArray(file.readText())
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.getJSONObject(i)
-            list.add(Msg(obj.getString("text"), obj.getBoolean("isUser"), obj.optString("time", "")))
+            list.add(
+                Msg(
+                    obj.getString("text"),
+                    obj.getBoolean("isUser"),
+                    obj.optString("time", ""),
+                    obj.optString("date", "")
+                )
+            )
         }
     } catch (e: Exception) { }
     return list
