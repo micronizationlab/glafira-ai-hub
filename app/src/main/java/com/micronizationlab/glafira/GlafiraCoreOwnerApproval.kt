@@ -46,22 +46,25 @@ data class GlafiraPendingActionApproval(
             )
         }.getOrDefault("")
 
-    /** Only known review fields are surfaced; secret-like values are masked before display. */
+    /** Payload fields are shown to the owner with credential-like keys and values redacted. */
     val reviewDetails: String
         get() = runCatching {
             val json = org.json.JSONObject(task.payload)
-            val visibleKeys = setOf(
-                "recipient", "to", "destination", "url", "subject", "message", "content",
-                "amount", "currency", "recordId", "fileName", "title", "text", "body",
-                "target", "contact", "comment", "channel"
-            )
-            visibleKeys.sorted().mapNotNull { key ->
-                if (!json.has(key)) null else {
-                    val value = json.opt(key)?.toString().orEmpty().take(800)
-                    "$key: ${GlafiraOwnerApprovalPreviewRedactor.redact(value)}"
-                }
-            }.joinToString("\n")
-        }.getOrDefault("")
+            val secretKey = Regex("(?i).*(password|passphrase|secret|token|api.?key|authorization|credential|private.?key).*")
+            val keys = json.keys().asSequence().filterNot { secretKey.matches(it) }.sorted().toList()
+            val visible = keys.take(MAX_REVIEW_FIELDS).map { key ->
+                val value = json.opt(key)?.toString().orEmpty().take(MAX_REVIEW_FIELD_CHARS)
+                "$key: ${GlafiraOwnerApprovalPreviewRedactor.redact(value)}"
+            }.toMutableList()
+            val hidden = keys.size - visible.size
+            if (hidden > 0) visible += "[ЕЩЁ СКРЫТО ПОЛЕЙ: $hidden — проверьте исходное задание перед подтверждением]"
+            visible.joinToString("\\n")
+        }.getOrDefault("Не удалось безопасно прочитать детали задания.")
+
+    companion object {
+        private const val MAX_REVIEW_FIELDS = 24
+        private const val MAX_REVIEW_FIELD_CHARS = 800
+    }
 }
 
 enum class GlafiraCoreOwnerApprovalMutation {
