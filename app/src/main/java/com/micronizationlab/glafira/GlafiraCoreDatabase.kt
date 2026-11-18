@@ -3,6 +3,7 @@ package com.micronizationlab.glafira
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.io.File
 
 /**
  * The single durable Core database boundary. Memory and Trace share this file so
@@ -10,7 +11,12 @@ import android.database.sqlite.SQLiteOpenHelper
  * Future Core queue tables must be added here rather than creating another DB.
  */
 class GlafiraCoreDatabase(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION) {
+    SQLiteOpenHelper(
+        context.applicationContext,
+        File(context.applicationContext.filesDir, DATABASE_NAME).absolutePath,
+        null,
+        DATABASE_VERSION
+    ) {
 
     init {
         setWriteAheadLoggingEnabled(true)
