@@ -21,12 +21,15 @@ object GlafiraCoordinator {
         systemPrompt: String,
         projectId: String? = null
     ): String {
+        // Apply the same autonomy and capability-honesty rules to direct answers,
+        // consultation planning and the final synthesis.
+        val coordinatorPrompt = GlafiraAutonomyPolicy.apply(systemPrompt)
         val consultationKey = projectId?.let { "peer_consultation_enabled_$it" }
             ?: "peer_consultation_enabled"
         val coordinatorPrefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val peerConsultationEnabled = coordinatorPrefs.getBoolean(consultationKey, false)
         if (!peerConsultationEnabled || history.isEmpty()) {
-            return callAiProvider(context, primaryProvider, history, systemPrompt)
+            return callAiProvider(context, primaryProvider, history, coordinatorPrompt)
         }
         val providerKey = projectId?.let { "peer_consultation_providers_$it" }
             ?: "peer_consultation_providers"
@@ -41,7 +44,7 @@ object GlafiraCoordinator {
             approvedPeerIds
         )
         if (availablePeers.isEmpty()) {
-            return callAiProvider(context, primaryProvider, history, systemPrompt)
+            return callAiProvider(context, primaryProvider, history, coordinatorPrompt)
         }
 
         val safeHistory = history.takeLast(12).map { message ->
@@ -51,12 +54,12 @@ object GlafiraCoordinator {
             context = context,
             primaryProvider = primaryProvider,
             history = safeHistory,
-            systemPrompt = systemPrompt,
+            systemPrompt = coordinatorPrompt,
             availablePeers = availablePeers
         )
 
         if (!plan.shouldConsult || plan.providers.isEmpty()) {
-            return plan.directAnswer ?: callAiProvider(context, primaryProvider, history, systemPrompt)
+            return plan.directAnswer ?: callAiProvider(context, primaryProvider, history, coordinatorPrompt)
         }
 
         val question = safeHistory.lastOrNull { it.isUser }?.text.orEmpty()
@@ -87,7 +90,7 @@ object GlafiraCoordinator {
         }
 
         if (peerResults.isEmpty()) {
-            return callAiProvider(context, primaryProvider, history, systemPrompt)
+            return callAiProvider(context, primaryProvider, history, coordinatorPrompt)
         }
 
         val councilContext = buildString {
@@ -108,7 +111,7 @@ object GlafiraCoordinator {
             context,
             primaryProvider,
             safeHistory + Msg(councilContext, true, "", ""),
-            systemPrompt + "\nТы — главный координатор. Другие модели — твои советники, не начальники."
+            coordinatorPrompt + "\nТы — главный координатор. Другие модели — твои советники, не начальники."
         )
         return if (finalAnswer.startsWith("Ошибка API") || finalAnswer.startsWith("Ошибка сети")) {
             buildString {
@@ -182,5 +185,4 @@ object GlafiraCoordinator {
             ConsultationPlan(shouldConsult, selected, directAnswer)
         }.getOrDefault(ConsultationPlan(false, emptyList()))
     }
-
 }
