@@ -41,7 +41,7 @@ data class GlafiraPendingActionApproval(
 ) {
     val actionSummary: String
         get() = runCatching {
-            GlafiraSecretRedactor.redact(
+            GlafiraOwnerApprovalPreviewRedactor.redact(
                 org.json.JSONObject(task.payload).optString("actionSummary").trim()
             )
         }.getOrDefault("")
@@ -58,7 +58,7 @@ data class GlafiraPendingActionApproval(
             visibleKeys.sorted().mapNotNull { key ->
                 if (!json.has(key)) null else {
                     val value = json.opt(key)?.toString().orEmpty().take(800)
-                    "$key: ${GlafiraSecretRedactor.redact(value)}"
+                    "$key: ${GlafiraOwnerApprovalPreviewRedactor.redact(value)}"
                 }
             }.joinToString("\n")
         }.getOrDefault("")
@@ -72,4 +72,29 @@ enum class GlafiraCoreOwnerApprovalMutation {
     INVALID_SCOPE_SELECTION,
     OWNER_AUTHENTICATION_REQUIRED,
     STORAGE_ERROR
+}
+
+
+/** Masks credential material while preserving recipient and message text for owner review. */
+internal object GlafiraOwnerApprovalPreviewRedactor {
+    private val patterns = listOf(
+        Regex("(?i)\\bsk-[A-Za-z0-9_-]{12,}\\b"),
+        Regex("(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]{12,}"),
+        Regex("(?i)(api[_ -]?key\\s*[:=]\\s*)[^\\s,;]{8,}"),
+        Regex("(?i)(password\\s*[:=]\\s*)[^\\s,;]{4,}"),
+        Regex("(?i)(пароль\\s*[:=]\\s*)[^\\s,;]{4,}"),
+        Regex("(?i)\\b(?:ghp_|gho_|github_pat_)[A-Za-z0-9_]{20,}\\b"),
+        Regex("\\bAKIA[0-9A-Z]{16}\\b")
+    )
+
+    fun redact(value: String): String {
+        var safe = value
+        patterns.forEach { pattern ->
+            safe = pattern.replace(safe) { match ->
+                val prefix = match.groupValues.getOrNull(1).orEmpty()
+                prefix + "[СКРЫТО]"
+            }
+        }
+        return safe
+    }
 }
