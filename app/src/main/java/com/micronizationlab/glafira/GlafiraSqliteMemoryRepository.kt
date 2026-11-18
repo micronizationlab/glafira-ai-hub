@@ -122,10 +122,10 @@ class GlafiraSqliteMemoryRepository(
                     val metadata = cursor.toMetadata()
                     if (!canAccessScope(metadata.scopeType, metadata.scopeId, access)) continue
                     if (metadata.classification.ordinal > access.maximumClassification.ordinal) continue
+                    if (metadata.validFrom?.isAfter(now) == true) continue
                     if (!query.includeExpired &&
                         (metadata.status == MemoryStatus.EXPIRED ||
-                            metadata.expiresAt?.isBefore(now) == true ||
-                            metadata.validFrom?.isAfter(now) == true)) continue
+                            metadata.expiresAt?.isBefore(now) == true)) continue
                     if (query.kinds.isNotEmpty() && metadata.kind !in query.kinds) continue
                     val decision = policyEngine.evaluate(
                         policyRequest(access, CoreAction.READ_MEMORY, metadata.classification, metadata.id.value)
