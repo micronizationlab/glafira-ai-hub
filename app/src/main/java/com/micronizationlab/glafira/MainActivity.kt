@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
 fun App() {
     var currentAgent by remember { mutableStateOf<A?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var showCouncil by remember { mutableStateOf(false) }
     var statusRefresh by remember { mutableStateOf(0) }
     val context = LocalContext.current
     var projects by remember { mutableStateOf(loadProjects(context)) }
@@ -106,7 +107,7 @@ fun App() {
                 showBiometricPrompt(
                     activity = activity,
                     onSuccess = { unlocked = true },
-                    onError = { /* остаёмся на экране блокировки */ }
+                    onError = { }
                 )
             }
         }
@@ -174,6 +175,7 @@ fun App() {
                 },
                 currentProject = currentProject
             )
+            showCouncil -> CouncilScreen(onBack = { showCouncil = false })
             currentAgent == null -> ContactList(
                 projects = projects,
                 currentProject = currentProject,
@@ -192,7 +194,8 @@ fun App() {
                     }
                 },
                 onAgentClick = { currentAgent = it },
-                onSettingsClick = { showSettings = true }
+                onSettingsClick = { showSettings = true },
+                onCouncilClick = { showCouncil = true }
             )
             else -> ChatScreen(
                 agent = currentAgent!!,
@@ -273,7 +276,8 @@ fun ContactList(
     onProjectAdd: (String) -> Unit,
     onProjectDelete: (Project) -> Unit,
     onAgentClick: (A) -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onCouncilClick: () -> Unit
 ) {
     val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
@@ -356,6 +360,10 @@ fun ContactList(
                 }
             }
             Spacer(Modifier.weight(1f))
+            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onCouncilClick() }, contentAlignment = Alignment.Center) {
+                Text("🏛", fontSize = 12.sp)
+            }
+            Spacer(Modifier.width(6.dp))
             Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { showAddDialog = true }, contentAlignment = Alignment.Center) {
                 Text("+", color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
