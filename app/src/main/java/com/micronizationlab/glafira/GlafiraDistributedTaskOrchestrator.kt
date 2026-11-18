@@ -57,6 +57,7 @@ internal class GlafiraDistributedTaskOrchestrator(
     private val android: GlafiraLocalTaskPort,
     private val desktopCapabilities: () -> GlafiraNodeCapabilities?,
     private val safeAndroidCapabilities: Set<String>,
+    private val onTaskResult: (GlafiraDistributedTaskResult) -> Unit = {},
     private val clock: () -> Long = System::currentTimeMillis
 ) {
     suspend fun execute(
@@ -86,7 +87,7 @@ internal class GlafiraDistributedTaskOrchestrator(
                         expiresAtEpochMs = clock() + ttlMs
                     )
                     val desktopNode = desktopCapabilities()
-                    if (desktopNode != null && desktopNode.available &&
+                    val result = if (desktopNode != null && desktopNode.available &&
                         desktopNode.maxParallelTasks > 0 &&
                         desktopNode.capabilities.containsAll(required)
                     ) {
@@ -97,6 +98,8 @@ internal class GlafiraDistributedTaskOrchestrator(
                         }
                         android.execute(task)
                     }
+                    runCatching { onTaskResult(result) }
+                    result
                 }
             }.awaitAll()
             results += batchResults
