@@ -32,13 +32,14 @@ class GlafiraCoreBackupCoordinator(
                 appContext.cacheDir,
                 "glafira-core-safety-${System.currentTimeMillis()}.db"
             )
-            val safetyArchive: File
+            var safetyArchive: File? = null
             var restoreCompleted = false
             var rollbackCompleted = false
 
             try {
                 taskStore.exportConsistentSnapshot(safetyDatabase)
-                safetyArchive = createSnapshotArchive(passphrase)
+                val createdSafetyArchive = createSnapshotArchive(passphrase)
+                safetyArchive = createdSafetyArchive
 
                 try {
                     val verification = BackupArchive.restore(appContext, archive, passphrase)
@@ -51,7 +52,7 @@ class GlafiraCoreBackupCoordinator(
                     return@withExclusive verification
                 } catch (restoreError: Exception) {
                     try {
-                        BackupArchive.restore(appContext, safetyArchive, passphrase)
+                        BackupArchive.restore(appContext, createdSafetyArchive, passphrase)
                         taskStore.restoreConsistentSnapshot(safetyDatabase)
                         rollbackCompleted = true
                     } catch (rollbackError: Exception) {
@@ -59,7 +60,7 @@ class GlafiraCoreBackupCoordinator(
                         restoreError.addSuppressed(
                             IllegalStateException(
                                 "Файлы восстановления сохранены для ручного восстановления: " +
-                                    safetyArchive.absolutePath + " ; " + safetyDatabase.absolutePath
+                                    createdSafetyArchive.absolutePath + " ; " + safetyDatabase.absolutePath
                             )
                         )
                     }
@@ -69,7 +70,7 @@ class GlafiraCoreBackupCoordinator(
                 if (restoreCompleted || rollbackCompleted) {
                     File(appContext.filesDir, CORE_DATABASE_SNAPSHOT_DIRECTORY).deleteRecursively()
                     safetyDatabase.delete()
-                    if (::safetyArchive.isInitialized) safetyArchive.delete()
+                    safetyArchive?.delete()
                 } else if (safetyDatabase.length() == 0L) {
                     safetyDatabase.delete()
                 }
