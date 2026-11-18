@@ -69,7 +69,18 @@ object GlafiraBridgeIngressPolicy {
                 val remainingPlusOne = maxBytes - total + 1
                 val read = input.read(buffer, 0, minOf(buffer.size, remainingPlusOne))
                 if (read < 0) break
-                if (read == 0) continue
+                if (read == 0) {
+                    val single = input.read()
+                    if (single < 0) break
+                    if (total >= maxBytes) {
+                        return GlafiraBridgeIngressBodyResult.Rejected(
+                            GlafiraBridgeIngressRejection.BODY_TOO_LARGE
+                        )
+                    }
+                    output.write(single)
+                    total += 1
+                    continue
+                }
                 if (read > maxBytes - total) {
                     return GlafiraBridgeIngressBodyResult.Rejected(
                         GlafiraBridgeIngressRejection.BODY_TOO_LARGE
@@ -77,6 +88,11 @@ object GlafiraBridgeIngressPolicy {
                 }
                 output.write(buffer, 0, read)
                 total += read
+            }
+            if (declaredContentLength >= 0L && total.toLong() != declaredContentLength) {
+                return GlafiraBridgeIngressBodyResult.Rejected(
+                    GlafiraBridgeIngressRejection.INVALID_CONTENT_LENGTH
+                )
             }
             if (total == 0) GlafiraBridgeIngressBodyResult.Rejected(
                 GlafiraBridgeIngressRejection.EMPTY_BODY
