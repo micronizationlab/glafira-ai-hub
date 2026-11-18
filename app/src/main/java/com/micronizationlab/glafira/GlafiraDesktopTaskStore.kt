@@ -28,6 +28,7 @@ internal class GlafiraDesktopTaskStore(context: Context) {
             put("requiredCapabilities", JSONArray(task.requiredCapabilities.toList()))
             put("createdAtEpochMs", task.createdAtEpochMs)
             put("expiresAtEpochMs", task.expiresAtEpochMs)
+            put("priority", task.priority)
             put("state", "QUEUED")
             put("sequence", 0)
             put("progressPercent", 0)
@@ -98,6 +99,7 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         require(task.projectId.isNotBlank() && task.projectId.length <= 128)
         require(task.instruction.isNotBlank() && task.instruction.length <= 8_000)
         require(task.title.isNotBlank() && task.title.length <= 160)
+        require(task.priority in 0..9)
         require(task.requiredCapabilities.size <= 16 &&
             task.requiredCapabilities.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
         require(task.expiresAtEpochMs > System.currentTimeMillis())
