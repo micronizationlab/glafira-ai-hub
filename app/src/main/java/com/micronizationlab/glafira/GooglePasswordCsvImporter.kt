@@ -106,7 +106,7 @@ object GooglePasswordCsvImporter {
                 (char == '\n' || char == '\r') && !quoted -> {
                     row.add(field.toString())
                     field.setLength(0)
-                    if (row.any { it.isNotEmpty() }) rows.add(row)
+                    if (row.isNotEmpty()) rows.add(row)
                     row = mutableListOf()
                     if (char == '\r' && index + 1 < source.length && source[index + 1] == '\n') index++
                 }
