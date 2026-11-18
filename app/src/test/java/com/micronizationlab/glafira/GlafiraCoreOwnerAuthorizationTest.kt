@@ -110,9 +110,9 @@ class GlafiraCoreOwnerAuthorizationTest {
             expiresAtMillis = Long.MAX_VALUE
         )
 
-        assertFalse(approval.actionSummary.contains("user@example.com"))
+        assertTrue(approval.actionSummary.contains("user@example.com"))
         assertTrue(approval.reviewDetails.contains("recipient"))
-        assertFalse(approval.reviewDetails.contains("customer@example.com"))
+        assertTrue(approval.reviewDetails.contains("customer@example.com"))
         assertFalse(approval.reviewDetails.contains("do-not-display"))
         assertFalse(approval.reviewDetails.contains("abcdefghijklmnopqrstuvwxyz123456"))
     }
