@@ -45,16 +45,21 @@ class DesktopBridgePairingHttpClient(private val timeout: Duration = Duration.of
         val request = HttpRequest.newBuilder(uri.resolve("/bridge/v1/pairing")).timeout(timeout)
             .header("Content-Type", "application/json; charset=utf-8").header("Accept", "application/json")
             .header("Cache-Control", "no-store").POST(HttpRequest.BodyPublishers.ofByteArray(enrollment.toJsonBytes())).build()
-        val response = try { client.send(request, HttpResponse.BodyHandlers.ofByteArray()) }
+        val response = try { client.send(request, HttpResponse.BodyHandlers.ofInputStream()) }
         catch (error: InterruptedException) { Thread.currentThread().interrupt(); throw IOException("Bridge pairing was interrupted.", error) }
-        if (response.statusCode() != 202) throw IOException("Bridge pairing was rejected with HTTP ${response.statusCode()}.")
-        require(response.body().size <= 8 * 1024)
+        if (response.statusCode() != 202) {
+            response.body().close()
+            throw IOException("Bridge pairing was rejected with HTTP ${response.statusCode()}.")
+        }
+        val responseBytes = response.body().use { DesktopBridgeHttpBody.readBounded(it, MAX_PAIRING_RESPONSE_BYTES) }
         val json = JSONObject(Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(response.body())).toString())
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(responseBytes)).toString())
         require(json.getString("status") == "PENDING_OWNER_APPROVAL")
         val approvalId = json.getString("approvalId")
         require(approvalId.length in 16..128 && approvalId.all { it.isLetterOrDigit() || it in "-_" })
         val expires = json.optLong("expiresAtEpochMs").takeIf { it > 0L }
         return DesktopBridgePairingResponse(approvalId, "PENDING_OWNER_APPROVAL", expires)
     }
+
+    companion object { private const val MAX_PAIRING_RESPONSE_BYTES = 8 * 1024 }
 }
