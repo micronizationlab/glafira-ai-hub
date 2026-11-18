@@ -25,10 +25,11 @@ class CoreAccessContextFactory(
         maximumClassification: CoreDataClassification
     ): MemoryAccessContext? {
         val actor = identityProvider.currentActor() ?: return null
-        if (!isSafePrincipal(actor.id)) return null
+        if (!isSafePrincipal(actor.id) || !isSafePrincipal(projectId.value)) return null
         val trustedRoleId = if (actor.type == CoreActorType.AGENT) {
             identityProvider.currentAgentRoleId()
         } else null
+        if (trustedRoleId != null && !isSafePrincipal(trustedRoleId.value)) return null
         val actorCeiling = when (actor.type) {
             CoreActorType.OWNER, CoreActorType.SYSTEM -> MemoryScopeType.values().toSet()
             CoreActorType.AGENT -> setOf(
@@ -67,7 +68,8 @@ class CoreAccessContextFactory(
         maximumClassification: CoreDataClassification = CoreDataClassification.INTERNAL
     ): TraceAccessContext? {
         val actor = identityProvider.currentActor() ?: return null
-        if (!isSafePrincipal(actor.id) || projectIds.size > 100) return null
+        if (!isSafePrincipal(actor.id) || projectIds.size > 100 ||
+            projectIds.any { !isSafePrincipal(it.value) }) return null
         val allowed = projectIds.filterTo(linkedSetOf()) { projectId ->
             val decision = policyEngine.evaluate(
                 CorePolicyRequest(
