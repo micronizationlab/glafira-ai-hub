@@ -58,12 +58,15 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-val Bg = Color(0xFF000000)
-val Gr = Color(0xFF7EC850)
-val GrD = Color(0xFF151515)
-val Tx = Color(0xFF888888)
-val Line = Color(0xFF2A2A2A)
-val Red = Color(0xFFCC3333)
+// Classic ICQ / Windows XP light palette
+val Bg = Color(0xFFF4F4F4)
+val Gr = Color(0xFF1767A8)
+val GrD = Color(0xFFE2E2E2)
+val Tx = Color(0xFF626262)
+val Line = Color(0xFFB8B8B8)
+val Red = Color(0xFFC62828)
+val XpBlue = Color(0xFF2F73B7)
+
 
 enum class AgentGroup(val title: String) {
     IA("ИНТЕЛЛЕКТУАЛЬНЫЕ АГЕНТЫ"),
@@ -211,7 +214,7 @@ fun App() {
 @Composable
 fun StatusFlower(isOnline: Boolean, size: Dp = 12.dp) {
     Canvas(Modifier.size(size)) {
-        val c = if (isOnline) Gr else Red
+        val c = if (isOnline) Color(0xFF55B84A) else Color(0xFF9A9A9A)
         val r = size.toPx() / 4f
         repeat(5) { i ->
             val angle = (i * 72f - 90f) * PI / 180
@@ -245,23 +248,25 @@ fun GroupHeader(title: String, count: Int, expanded: Boolean, onToggle: () -> Un
 @Composable
 fun AgentRow(a: A, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        StatusFlower(a.on, 14.dp)
+        Spacer(Modifier.width(8.dp))
         Box(
-            Modifier.size(40.dp).clip(CircleShape)
-                .background(if (a.on) Gr.copy(alpha = 0.15f) else Color.DarkGray.copy(alpha = 0.2f))
-                .border(1.dp, if (a.on) Gr else Color.DarkGray, CircleShape),
+            Modifier.size(24.dp).clip(CircleShape)
+                .background(Color.White)
+                .border(1.dp, Line, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Text(a.emoji, fontSize = 20.sp)
+            Text(a.emoji, fontSize = 14.sp)
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
-            Text(a.n, color = if (a.on) Gr else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Text(a.n, color = if (a.on) Color(0xFF202020) else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(
                 if (a.on) "${a.providerId.displayName} · готов" else "Не настроен",
-                color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace
+                color = Tx, fontSize = 10.sp
             )
         }
         StatusFlower(a.on, 12.dp)
@@ -339,8 +344,20 @@ fun ContactList(
         )
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.fillMaxSize().background(Bg)) {
+        Row(
+            Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("✿", color = Color.White, fontSize = 17.sp)
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text("GLAFIRA AI HUB", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("СЕТЬ АГЕНТОВ · 2003", color = Color.White.copy(alpha = 0.88f), fontSize = 9.sp)
+            }
+            Text("—  □  ×", color = Color.White, fontSize = 12.sp)
+        }
+        Row(Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Проект: ", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
             Box {
                 Row(modifier = Modifier.clickable { showProjectMenu = true }, verticalAlignment = Alignment.CenterVertically) {
@@ -381,7 +398,7 @@ fun ContactList(
         if (showDeleteConfirm) {
             AlertDialog(
                 onDismissRequest = { showDeleteConfirm = false },
-                title = { Text("Удалить проект?", color = Bg) },
+                title = { Text("Удалить проект?", color = Color(0xFF202020)) },
                 text = { Text("Все чаты в этом проекте будут безвозвратно удалены.") },
                 confirmButton = {
                     TextButton(onClick = { onProjectDelete(currentProject); showDeleteConfirm = false; showProjectMenu = false }) {
@@ -397,7 +414,7 @@ fun ContactList(
         if (showAddDialog) {
             AlertDialog(
                 onDismissRequest = { showAddDialog = false },
-                title = { Text("Новый проект", color = Bg) },
+                title = { Text("Новый проект", color = Color(0xFF202020)) },
                 text = { TextField(value = newProjectName, onValueChange = { newProjectName = it }, placeholder = { Text("Название...") }) },
                 confirmButton = {
                     TextButton(onClick = {
@@ -411,7 +428,7 @@ fun ContactList(
             val agent = notConfiguredAgent!!
             AlertDialog(
                 onDismissRequest = { notConfiguredAgent = null },
-                title = { Text("${agent.n} не настроен", color = Bg) },
+                title = { Text("${agent.n} не настроен", color = Color(0xFF202020)) },
                 text = {
                     Column {
                         Text("Провайдер ${agent.providerId.displayName} пока не подключён.")
@@ -433,7 +450,7 @@ fun ContactList(
         }
 
         Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
-            LazyColumn(Modifier.fillMaxWidth(0.92f)) {
+            LazyColumn(Modifier.fillMaxWidth().background(Color.White).border(1.dp, Line)) {
                 item {
                     GroupHeader(
                         title = AgentGroup.IA.title,
@@ -472,7 +489,7 @@ fun ContactList(
             }
         }
 
-        Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             StatusFlower(isOnline, 8.dp)
             Spacer(Modifier.width(6.dp))
             Text(
@@ -594,13 +611,13 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (isSearching) {
                     TextField(
                         value = searchQuery, onValueChange = { searchQuery = it },
                         placeholder = { Text("Поиск...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f),
-                        colors = TextFieldDefaults.colors(focusedContainerColor = GrD, unfocusedContainerColor = GrD, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr)
+                        colors = TextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020), focusedIndicatorColor = Gr)
                     )
                     Text("✕", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
                 } else {
@@ -646,7 +663,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         m.text.take(80) + if (m.text.length > 80) "…" else "",
-                                        color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFF202020), fontSize = 10.sp,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text("✕", color = Red, fontSize = 12.sp, modifier = Modifier.clickable {
@@ -688,8 +705,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                             }
                             Box(
                                 Modifier.clip(shape)
-                                    .background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f))
-                                    .border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), shape)
+                                    .background(if (msg.isUser) Color(0xFFE5F0FA) else Color.White)
+                                    .border(1.dp, if (msg.isUser) Color(0xFF8BAFD0) else Color(0xFFB8C9D8), shape)
                                     .combinedClickable(
                                         onClick = {},
                                         onLongClick = { messageActionIndex = realIdx }
@@ -699,8 +716,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 Column {
                                     Text(
                                         if (isLong && !isExpanded) collapsedText(msg.text) else msg.text,
-                                        color = if (msg.isUser) Color.White else Gr,
-                                        fontSize = 12.sp, fontFamily = FontFamily.Monospace
+                                        color = Color(0xFF202020),
+                                        fontSize = 13.sp
                                     )
                                     if (isLong) {
                                         Text(
@@ -758,7 +775,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         },
                         placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f).padding(end = 6.dp),
-                        colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Line)
+                        colors = TextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020), focusedIndicatorColor = Gr, unfocusedIndicatorColor = Line)
                     )
                     Box(
                         Modifier.size(36.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable {
@@ -777,7 +794,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         if (showClearConfirm) {
             AlertDialog(
                 onDismissRequest = { showClearConfirm = false },
-                title = { Text("Очистить чат?", color = Bg) },
+                title = { Text("Очистить чат?", color = Color(0xFF202020)) },
                 text = { Text("Все сообщения и закрепления в этом чате будут удалены безвозвратно.") },
                 confirmButton = {
                     TextButton(onClick = {
@@ -798,7 +815,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             val msg = if (idx < messages.size) messages[idx] else null
             AlertDialog(
                 onDismissRequest = { messageActionIndex = null },
-                title = { Text("Действие", color = Bg) },
+                title = { Text("Действие", color = Color(0xFF202020)) },
                 text = {
                     Column {
                         if (msg != null) {
@@ -839,7 +856,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             ).filter { it.first != agent.n }
             AlertDialog(
                 onDismissRequest = { showTransferDialog = false },
-                title = { Text("Передать агенту", color = Bg) },
+                title = { Text("Передать агенту", color = Color(0xFF202020)) },
                 text = {
                     Column {
                         Text("Последние 5 сообщений будут переданы выбранному агенту в этот же проект.", color = Tx, fontSize = 12.sp)
@@ -923,9 +940,9 @@ fun TypingIndicator(agentName: String = "Глафира") {
 @Composable
 fun ProfileScreen(agent: A, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Bg)) {
-        Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("←", color = Gr, fontSize = 18.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
-            Text("Профиль агента", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Row(Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("←", color = Color.White, fontSize = 20.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
+            Text("ПРОФИЛЬ АГЕНТА", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
         Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(80.dp).clip(CircleShape).background(Gr.copy(alpha = 0.2f)).border(2.dp, Gr, CircleShape), contentAlignment = Alignment.Center) {
@@ -945,7 +962,7 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
                 Column(Modifier.padding(12.dp)) {
                     Text("ОПИСАНИЕ", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.height(6.dp))
-                    Text(agent.fullDesc, color = Color.White, fontSize = 11.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
+                    Text(agent.fullDesc, color = Color(0xFF202020), fontSize = 12.sp, lineHeight = 17.sp)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -953,7 +970,7 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
                 Column(Modifier.padding(12.dp)) {
                     Text("СПЕЦИФИКА РАБОТЫ", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.height(6.dp))
-                    Text(agent.prompt, color = Color.White, fontSize = 11.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
+                    Text(agent.prompt, color = Color(0xFF202020), fontSize = 12.sp, lineHeight = 17.sp)
                 }
             }
         }

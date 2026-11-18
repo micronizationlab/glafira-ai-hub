@@ -56,7 +56,7 @@ fun CouncilScreen(onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
-            Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("←", color = Gr, fontSize = 18.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
@@ -72,8 +72,8 @@ fun CouncilScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Что обсудить?", color = Tx, fontSize = 12.sp) },
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = GrD, unfocusedContainerColor = GrD,
-                    focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                    focusedContainerColor = Color.White, unfocusedContainerColor = Color.White,
+                    focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020),
                     focusedIndicatorColor = Gr
                 ),
                 maxLines = 4
@@ -118,7 +118,7 @@ fun CouncilScreen(onBack: () -> Unit) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Bg),
+                colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White),
                 enabled = question.isNotBlank() && !isLoading
             ) {
                 Text(if (isLoading) "СОВЕТ РАБОТАЕТ..." else "СОЗВАТЬ СОВЕТ", fontWeight = FontWeight.Bold)
@@ -140,7 +140,7 @@ fun CouncilScreen(onBack: () -> Unit) {
                                 Text(agent.name, color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                             }
                             Spacer(Modifier.height(6.dp))
-                            Text(answer, color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 16.sp)
+                            Text(answer, color = Color(0xFF202020), fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 16.sp)
                         }
                     }
                 } else if (isLoading) {

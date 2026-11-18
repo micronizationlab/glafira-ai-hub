@@ -43,9 +43,12 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
-            Text("НАСТРОЙКИ", color = Gr, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Row(
+            Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("←", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { onBack() }.padding(end = 14.dp))
+            Text("НАСТРОЙКИ", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
 
         Spacer(Modifier.height(24.dp))
@@ -120,7 +123,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 isSaved = true
             },
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Bg)
+            colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White)
         ) {
             Text("СОХРАНИТЬ ВСЕ КЛЮЧИ", fontWeight = FontWeight.Bold)
         }
@@ -140,7 +143,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         ) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Вход по отпечатку", color = Color.White, fontSize = 16.sp)
+                    Text("Вход по отпечатку", color = Color(0xFF202020), fontSize = 16.sp)
                     Text(
                         if (!canUseBiometric(context)) "Биометрия недоступна на устройстве"
                         else if (biometricEnabled) "Включено" else "Выключено",
@@ -183,7 +186,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                     Text("📦", fontSize = 24.sp)
                     Spacer(Modifier.width(16.dp))
                     Column {
-                        Text("Экспортировать проект", color = Color.White, fontSize = 16.sp)
+                        Text("Экспортировать проект", color = Color(0xFF202020), fontSize = 16.sp)
                         Text("Все чаты всех агентов в один файл", color = Tx, fontSize = 12.sp)
                     }
                 }
@@ -233,7 +236,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 Text("📋", fontSize = 24.sp)
                 Spacer(Modifier.width(16.dp))
                 Column {
-                    Text("Скопировать историю", color = Color.White, fontSize = 16.sp)
+                    Text("Скопировать историю", color = Color(0xFF202020), fontSize = 16.sp)
                     Text("Буфер обмена (последний изменённый чат)", color = Tx, fontSize = 12.sp)
                 }
             }
@@ -248,7 +251,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Column(Modifier.padding(16.dp)) {
                 Text("ВЕРСИЯ ПРИЛОЖЕНИЯ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("GLAFIRA AI HUB v1.0", color = Color.White, fontSize = 14.sp)
+                Text("GLAFIRA AI HUB v1.0", color = Color(0xFF202020), fontSize = 14.sp)
                 Text("Sprint 10.0 — Биометрия", color = Tx, fontSize = 12.sp)
             }
         }
@@ -277,7 +280,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     if (showDeleteProjectConfirm && currentProject != null) {
         AlertDialog(
             onDismissRequest = { showDeleteProjectConfirm = false },
-            title = { Text("Удалить историю проекта?", color = Bg) },
+            title = { Text("Удалить историю проекта?", color = Color(0xFF202020)) },
             text = { Text("Все чаты и закрепления проекта «${currentProject.name}» будут удалены безвозвратно. Сам проект останется.", color = Tx, fontSize = 12.sp) },
             confirmButton = {
                 TextButton(onClick = {
@@ -315,8 +318,8 @@ fun ProviderKeyField(
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("Вставьте ключ...", color = Tx, fontSize = 12.sp) },
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = GrD, unfocusedContainerColor = GrD,
-                focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                focusedContainerColor = Color.White, unfocusedContainerColor = Color.White,
+                focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020),
                 focusedIndicatorColor = Gr
             )
         )
