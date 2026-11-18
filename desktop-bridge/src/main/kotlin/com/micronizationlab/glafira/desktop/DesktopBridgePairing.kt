@@ -68,3 +68,39 @@ object DesktopBridgePairing {
         )
     }
 }
+
+
+data class DesktopBridgePairingSession(
+    val origin: String,
+    val serverCertificateSha256: String,
+    val enrollment: DesktopBridgeEnrollmentRequest
+)
+
+fun DesktopBridgePairing.fromInvitationBundle(
+    bundleJson: String,
+    deviceLabel: String,
+    requestedScopes: Set<String>,
+    nowEpochMs: Long = System.currentTimeMillis()
+): DesktopBridgePairingSession {
+    require(bundleJson.toByteArray(Charsets.UTF_8).size <= 8 * 1024)
+    val json = JSONObject(bundleJson)
+    require(json.getString("format") == "GLAFIRA_BRIDGE_INVITATION_V1")
+    val expiry = json.getLong("expiresAtEpochMs")
+    require(expiry > nowEpochMs && expiry - nowEpochMs <= GlafiraPairingMaximumLifetimeMs)
+    val origin = json.getString("origin")
+    val uri = java.net.URI(origin)
+    require(uri.scheme.equals("https", true) && !uri.host.isNullOrBlank())
+    require(uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")
+    require(uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null)
+    val pin = json.getString("serverCertificateSha256")
+    require(pin.matches(Regex("[0-9a-fA-F]{64}")))
+    val ticketId = json.getString("ticketId")
+    val capability = json.getString("pairingCapability")
+    return DesktopBridgePairingSession(
+        origin,
+        pin.lowercase(),
+        createEnrollmentRequest(ticketId, capability, deviceLabel, requestedScopes)
+    )
+}
+
+private const val GlafiraPairingMaximumLifetimeMs = 120_000L
