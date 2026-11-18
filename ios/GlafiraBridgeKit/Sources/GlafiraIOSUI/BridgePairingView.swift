@@ -88,7 +88,6 @@ public struct BridgePairingView: View {
             }
         }
         .navigationTitle("Сопряжение")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func parseInvitation() {
