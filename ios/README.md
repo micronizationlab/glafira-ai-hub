@@ -12,7 +12,7 @@ Core, memory authority, or privileged device.
 - `GlafiraBridgeKit`: versioned Bridge request/response models, Kotlin-compatible canonical HMAC-SHA256 signing, signature verification and envelope validation.
 - `PinnedBridgeHTTPSClient`: HTTPS-only transport for Android `/bridge/v1/requests` and `/bridge/v1/pairing`; checks the owner-supplied SHA-256 leaf pin, validates the certificate for the expected hostname, rejects redirects and bounds response bodies.
 - `BridgePairing`: Android-compatible one-time pairing proof; a successful submission only enters the Android owner-approval queue and never grants scopes or creates credentials.
-- `BridgeCredentialGrantImporter`: validates an Android-issued grant against the exact owner approval and pairing ticket, expiry, requested scopes and HMAC secret length. It stores the key in Keychain only after fresh Face ID/Touch ID confirmation.
+- `BridgeCredentialBundleImporter`: parses the exact `GLAFIRA_BRIDGE_CREDENTIAL_V1` bundle currently copied from Android's owner approval screen, verifies the expected HTTPS origin and certificate fingerprint, rejects unknown fields and scope escalation, and stores the 256-bit HMAC key only after fresh Face ID/Touch ID confirmation.
 - `GlafiraBridgeKitTests`: protocol tests including a fixed HMAC golden vector
   shared with the Kotlin implementation.
 - `.github/workflows/ios.yml`: macOS CI runs `swift test` for the package.
@@ -37,7 +37,7 @@ Requires Swift 5.9 or later and the Apple CryptoKit framework.
 - Protocol version and typed operation names must match Android/Desktop exactly.
 - HMAC canonicalization uses UTF-16 code-unit lengths to match Kotlin
   `String.length`; the golden test detects accidental serialization drift.
-- Paired device HMAC credentials are stored only in Apple Keychain with device-only accessibility and current-biometric-set protection. Credential import must occur only after the Android owner has approved the device and issued the credential.
+- Paired device HMAC credentials are stored only in Apple Keychain with device-only accessibility and current-biometric-set protection. Credential import must use the exact bundle shown by Android's owner approval screen after explicit approval. The current Android workflow transfers this bundle by a sensitive clipboard handoff; it is not yet a network grant endpoint.
 - Signature verification is not authorization. All operations remain subject
   to Gateway/Core admission, project scope, replay protection, revocation and
   owner approval.
