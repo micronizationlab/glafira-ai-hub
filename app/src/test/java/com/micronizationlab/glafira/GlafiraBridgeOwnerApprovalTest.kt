@@ -40,6 +40,18 @@ class GlafiraBridgeOwnerApprovalTest {
     }
 
     @Test
+    fun ownerCannotGrantUnknownCoreScope() {
+        val store = FakeApprovalStore()
+        val service = GlafiraBridgeOwnerApprovalService(store)
+        val queued = service.submitVerifiedEnrollment(candidate(emptySet()))!!
+
+        val result = service.approve(queued.approvalId, setOf("root.admin"), ownerSession(), 2_000L)
+
+        assertEquals(GlafiraBridgeApprovalMutation.InvalidScopes, result)
+        assertTrue(store.issuedScopes.isEmpty())
+    }
+
+    @Test
     fun requestedScopesCannotBeUsedToExpandOwnerSelection() {
         val store = FakeApprovalStore()
         val service = GlafiraBridgeOwnerApprovalService(store)
