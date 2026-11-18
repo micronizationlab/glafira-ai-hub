@@ -86,7 +86,7 @@ sealed class GlafiraBridgeDeliveryResult {
 interface GlafiraBridgePairingApprovalStore {
     fun enqueue(candidate: GlafiraBridgePendingApproval): Boolean
     fun find(approvalId: String): GlafiraBridgePendingApproval?
-    fun listPending(limit: Int = MAX_PENDING_APPROVALS): List<GlafiraBridgePendingApproval>
+    fun listPending(limit: Int = GlafiraBridgeOwnerApprovalService.MAX_PENDING_APPROVALS): List<GlafiraBridgePendingApproval>
 
     fun approveAndIssue(
         approvalId: String,
