@@ -258,8 +258,7 @@ class GlafiraBridgeTlsHttpServer(
             val key = name.lowercase(Locale.ROOT)
             if (headers.containsKey(key)) return null
             val value = line.substring(colon + 1).trim()
-            if (value.any { it == '\r' || it == '
-' || it == '\u0000' }) return null
+            if (value.any { it.code < 0x20 && it != '\t' }) return null
             headers[key] = value
         }
         return null
@@ -318,28 +317,19 @@ class GlafiraBridgeTlsHttpServer(
             HTTP_TOO_MANY_REQUESTS -> "Too Many Requests"
             HTTP_FORBIDDEN -> "Forbidden"
             HTTP_SERVICE_UNAVAILABLE -> "Service Unavailable"
-            HTTP_FORBIDDEN -> "Forbidden"
-            HTTP_SERVICE_UNAVAILABLE -> "Service Unavailable"
             else -> "Error"
         }
-        val headers = "HTTP/1.1 $status $reason\r
-" +
-            "Content-Type: application/json; charset=utf-8\r
-" +
-            "Content-Length: ${body.size}\r
-" +
-            "Connection: close\r
-" +
-            "Cache-Control: no-store\r
-\r
-"
+        val headers = "HTTP/1.1 $status $reason\\r\\n" +
+            "Content-Type: application/json; charset=utf-8\\r\\n" +
+            "Content-Length: " + body.size + "\\r\\n" +
+            "Connection: close\\r\\n" +
+            "Cache-Control: no-store\\r\\n\\r\\n"
         socket.getOutputStream().apply {
             write(headers.toByteArray(Charsets.US_ASCII))
             write(body)
             flush()
         }
     }
-
     companion object {
         const val DEFAULT_PORT = 47_321
         private const val WORKER_COUNT = 4
