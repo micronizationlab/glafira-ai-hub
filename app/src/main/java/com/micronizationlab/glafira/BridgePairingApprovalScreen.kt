@@ -280,7 +280,9 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                 Column(Modifier.padding(14.dp)) {
                     Text("КЛЮЧ УСТРОЙСТВА СОЗДАН", color = Gr, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
-                    Text("ID: ${issued.deviceId}", color = Tx, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Text("Approval: ${issued.approvalId}", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Text("Ticket: ${issued.ticketId}", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Text("Device: ${issued.deviceId}", color = Tx, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                     Text(
                         "HMAC: ${Base64.getUrlEncoder().withoutPadding().encodeToString(issued.hmacSecret)}",
                         color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace
@@ -297,6 +299,8 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                             val payload = org.json.JSONObject().apply {
                                 put("format", "GLAFIRA_BRIDGE_CREDENTIAL_V1")
                                 put("origin", connection.origin)
+                                put("approvalId", issued.approvalId)
+                                put("ticketId", issued.ticketId)
                                 put("deviceId", issued.deviceId)
                                 put("hmacSecretBase64Url", Base64.getUrlEncoder().withoutPadding().encodeToString(issued.hmacSecret))
                                 put("grantedScopes", org.json.JSONArray(issued.grantedScopes.sorted()))
