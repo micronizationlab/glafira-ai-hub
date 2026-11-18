@@ -375,7 +375,11 @@ data class TraceQuery(
     }
 }
 
-data class TraceAccessContext internal constructor(val actor: CoreActor, val allowedProjects: Set<ProjectIdentifier>)
+data class TraceAccessContext internal constructor(
+    val actor: CoreActor,
+    val allowedProjects: Set<ProjectIdentifier>,
+    val maximumClassification: CoreDataClassification
+)
 
 data class TracePage(
     val events: List<CoreTraceEvent>,
