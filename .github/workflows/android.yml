@@ -60,7 +60,24 @@ jobs:
           arch: x86_64
           profile: pixel_2
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: gradle connectedDebugAndroidTest
+          script: |
+            set +e
+            mkdir -p app/build/outputs
+            gradle connectedDebugAndroidTest
+            test_status=$?
+            adb logcat -d -v threadtime > app/build/outputs/androidTest-logcat.txt 2>&1 || true
+            exit "$test_status"
+
+      - name: Upload emulator test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-backup-emulator-diagnostics
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-logcat.txt
+          if-no-files-found: warn
+          retention-days: 7
 
 # Emulator tests cover SQLite persistence, idempotency, retry metadata and Core backup restore.
 # APK assembly is intentionally disabled until the owner-approved Bridge
