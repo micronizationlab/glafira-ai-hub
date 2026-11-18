@@ -28,13 +28,17 @@ class GlafiraBridgeRequestAdmission(
         val credential = credentials.load(request.deviceId)
             ?: return failed("DEVICE_NOT_PAIRED")
 
-        val authorization = GlafiraBridgeCoreGate.authorize(
-            request = request,
-            authenticatedDeviceId = credential.deviceId,
-            deviceSecret = credential.hmacSecret,
-            grantedScopes = credential.scopes,
-            nowEpochMs = nowEpochMs
-        )
+        val authorization = try {
+            GlafiraBridgeCoreGate.authorize(
+                request = request,
+                authenticatedDeviceId = credential.deviceId,
+                deviceSecret = credential.hmacSecret,
+                grantedScopes = credential.scopes,
+                nowEpochMs = nowEpochMs
+            )
+        } finally {
+            credential.hmacSecret.fill(0)
+        }
         val response = authorization.response
         if (response.status != GlafiraBridgeStatus.ACCEPTED &&
             response.status != GlafiraBridgeStatus.PENDING_APPROVAL
