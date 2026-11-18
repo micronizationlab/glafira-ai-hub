@@ -28,6 +28,7 @@ class GlafiraBridgeTlsHttpServer(
     private val identity: BridgeServerIdentity,
     private val admission: GlafiraBridgeRequestAdmission,
     private val enrollmentCoordinator: GlafiraBridgeEnrollmentCoordinator,
+    private val operationDispatcher: GlafiraBridgeOperationDispatcher,
     private val addressRateLimiter: GlafiraBridgeRateLimiter,
     private val deviceRateLimiter: GlafiraBridgeRateLimiter
 ) : AutoCloseable {
@@ -224,13 +225,18 @@ class GlafiraBridgeTlsHttpServer(
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_ENVELOPE"))
                     return
                 }
-                val response = admission.admit(request) { authenticatedDeviceId ->
+                val admitted = admission.admit(request) { authenticatedDeviceId ->
                     deviceRateLimiter.tryAcquire(authenticatedDeviceId)
                 }
-                if (response.errorCode == "DEVICE_RATE_LIMITED") {
-                    writeResponse(client, HTTP_TOO_MANY_REQUESTS, responseJson(response))
+                if (admitted.errorCode == "DEVICE_RATE_LIMITED") {
+                    writeResponse(client, HTTP_TOO_MANY_REQUESTS, responseJson(admitted))
                     return
                 }
+                // Only a fully authenticated, scoped, non-replayed ACCEPTED request reaches Core execution.
+                // PENDING_APPROVAL remains a queue decision and is never executed here.
+                val response = if (admitted.status == GlafiraBridgeStatus.ACCEPTED) {
+                    operationDispatcher.dispatch(request)
+                } else admitted
                 val status = if (response.status == GlafiraBridgeStatus.ACCEPTED ||
                     response.status == GlafiraBridgeStatus.PENDING_APPROVAL
                 ) HTTP_ACCEPTED else HTTP_OK
