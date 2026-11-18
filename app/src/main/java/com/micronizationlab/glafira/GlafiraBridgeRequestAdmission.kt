@@ -10,8 +10,8 @@ package com.micronizationlab.glafira
  * It does not execute operations or create owner-approval grants.
  */
 class GlafiraBridgeRequestAdmission(
-    private val credentials: AndroidKeystoreBridgeCredentialStore,
-    private val replayGuard: GlafiraBridgeReplayGuard
+    private val credentials: GlafiraBridgeCredentialProvider,
+    private val replayGuard: GlafiraBridgeReplayStore
 ) {
     fun admit(
         request: GlafiraBridgeRequest,
