@@ -20,7 +20,7 @@ Status: implementation slice in progress. Android has a bounded HTTPS/1.1 host, 
 - GlafiraBridgeHostService: non-exported foreground service, explicitly started/stopped by the owner, persistent notification, no boot auto-start.
 - GlafiraBridgePairingJsonCodec and GlafiraBridgeRequestJsonCodec: strict UTF-8, exact fields, duplicate-key rejection and bounded JSON.
 - /bridge/v1/pairing: verifies and atomically consumes the one-time proof, then enqueues the enrollment for owner approval. It does not issue credentials or grant scopes.
-- /bridge/v1/requests: decodes the signed envelope and passes it to GlafiraBridgeRequestAdmission.
+- /bridge/v1/requests: decodes the signed envelope and passes it to GlafiraBridgeRequestAdmission. Only a fully authenticated, scoped, non-replayed ACCEPTED request reaches GlafiraBridgeOperationDispatcher.
 - Per-IP rate limit applies before parsing. Per-device rate limit applies only after the credential and HMAC have been verified. Decrypted HMAC bytes are cleared after admission.
 - Owner approval screen can create a 120-second invitation, approve/reject, select scopes, issue credentials, and copy a TLS-pinned credential bundle. The screen is protected against screenshots while open.
 
@@ -50,7 +50,7 @@ The current Desktop vault is passphrase-protected application storage, **not yet
 - Physical Android Keystore validation of certificate signing and TLS handshake on supported devices.
 - Android 14/15 validation of foreground-service permissions, notification behavior, stop/restart lifecycle and Wi-Fi network changes.
 - LAN end-to-end test with actual Android and Desktop devices, including wrong pin, wrong hostname, expired invitation, reused ticket, denied owner approval, revoked/unknown device, invalid HMAC and replayed request.
-- Typed operation dispatcher connected to the actual shared Core/project/conversation stores. Admission is not operation execution.
+- Owner approval request persistence and action-bound grant execution; APPROVAL_REQUEST currently fails closed as not connected. External writes, financial and destructive actions are not dispatched.\n- Shared project/conversation dispatcher currently supports bounded PROJECT_READ, CONVERSATION_READ and CONVERSATION_APPEND only; it validates project membership, restricts conversation IDs to known agents under the selected project, rejects traversal/symlink paths, bounds file sizes and writes append operations atomically. No model/provider invocation is triggered by an append.
 - Native Windows/macOS credential-store adapters and a Desktop user interface/installer.
 - Owner-authenticated certificate rotation with client pin rollover acknowledgement.
 
