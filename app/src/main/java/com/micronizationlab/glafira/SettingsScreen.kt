@@ -28,7 +28,7 @@ fun loadApiKey(context: Context): String {
 }
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     val context = LocalContext.current
     var gigachatKey by remember { mutableStateOf(loadApiKey(context)) }
     var openaiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENAI)) }
@@ -38,6 +38,8 @@ fun SettingsScreen(onBack: () -> Unit) {
     var isSaved by remember { mutableStateOf(false) }
     var workingExpanded by remember { mutableStateOf(true) }
     var pendingExpanded by remember { mutableStateOf(true) }
+    var showDeleteProjectConfirm by remember { mutableStateOf(false) }
+    var exportResult by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -131,6 +133,56 @@ fun SettingsScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(32.dp))
 
+        // ===== СЕКЦИЯ ПРОЕКТА =====
+        if (currentProject != null) {
+            Text("ПРОЕКТ: ${currentProject.name}", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(8.dp))
+
+            // Кнопка 11: Экспорт проекта
+            Card(
+                colors = CardDefaults.cardColors(containerColor = GrD),
+                modifier = Modifier.fillMaxWidth().clickable {
+                    val agentNames = listOf("ГЛАФИРА", "АНАЛИТИК", "ПРОГРАММИСТ", "GigaChat")
+                    val file = exportProjectToFile(context, currentProject, agentNames)
+                    exportResult = file.absolutePath
+                }
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("📦", fontSize = 24.sp)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text("Экспортировать проект", color = Color.White, fontSize = 16.sp)
+                        Text("Все чаты всех агентов в один файл", color = Tx, fontSize = 12.sp)
+                    }
+                }
+            }
+
+            if (exportResult != null) {
+                Spacer(Modifier.height(8.dp))
+                Text("Сохранено: $exportResult", color = Gr, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Кнопка 12: Удалить историю проекта
+            Card(
+                colors = CardDefaults.cardColors(containerColor = GrD),
+                modifier = Modifier.fillMaxWidth().clickable { showDeleteProjectConfirm = true }
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🗑", fontSize = 24.sp)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text("Удалить историю проекта", color = Red, fontSize = 16.sp)
+                        Text("Все чаты и закрепления этого проекта", color = Tx, fontSize = 12.sp)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+        }
+
+        // Кнопка «Скопировать историю» — оставлена, но с уточнением
         Card(
             colors = CardDefaults.cardColors(containerColor = GrD),
             modifier = Modifier.fillMaxWidth().clickable {
@@ -152,7 +204,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text("Скопировать историю", color = Color.White, fontSize = 16.sp)
-                    Text("Буфер обмена (последний чат)", color = Tx, fontSize = 12.sp)
+                    Text("Буфер обмена (последний изменённый чат)", color = Tx, fontSize = 12.sp)
                 }
             }
         }
@@ -166,8 +218,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             Column(Modifier.padding(16.dp)) {
                 Text("ВЕРСИЯ ПРИЛОЖЕНИЯ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("GLAFIRA AI HUB v0.8", color = Color.White, fontSize = 14.sp)
-                Text("Sprint 8.0 — Звук, Передача, Офлайн, Группы ключей", color = Tx, fontSize = 12.sp)
+                Text("GLAFIRA AI HUB v0.9", color = Color.White, fontSize = 14.sp)
+                Text("Sprint 9.0 — Быстрые ответы, Закрепления, Экспорт проекта", color = Tx, fontSize = 12.sp)
             }
         }
 
@@ -182,13 +234,30 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .clickable {
                     val files = context.filesDir.listFiles()
                     files?.forEach { file ->
-                        if (file.name.startsWith("chat_") || file.name == "projects.json" || file.name == "pending_queue.json") {
+                        if (file.name.startsWith("chat_") || file.name == "projects.json" || file.name == "pending_queue.json" || file.name.startsWith("pinned_") || file.name.startsWith("export_") || file.name.startsWith("project_")) {
                             file.delete()
                         }
                     }
                 }
                 .padding(16.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+
+    if (showDeleteProjectConfirm && currentProject != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteProjectConfirm = false },
+            title = { Text("Удалить историю проекта?", color = Bg) },
+            text = { Text("Все чаты и закрепления проекта «${currentProject.name}» будут удалены безвозвратно. Сам проект останется.", color = Tx, fontSize = 12.sp) },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteProjectHistory(context, currentProject.id)
+                    showDeleteProjectConfirm = false
+                }) { Text("УДАЛИТЬ", color = Red) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteProjectConfirm = false }) { Text("ОТМЕНА", color = Tx) }
+            }
         )
     }
 }
