@@ -48,10 +48,17 @@ class RegistryBackedGlafiraTaskAuthorizer(
             val queued = runCatching {
                 grants.requestApproval(task, actionSummary, nowMillis)
             }.getOrDefault(false)
-            return GlafiraTaskAuthorizationResult(
-                GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
-                if (queued) "OWNER_APPROVAL_REQUIRED" else "OWNER_APPROVAL_STORAGE_ERROR"
-            )
+            return if (queued) {
+                GlafiraTaskAuthorizationResult(
+                    GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
+                    "OWNER_APPROVAL_REQUIRED"
+                )
+            } else {
+                GlafiraTaskAuthorizationResult(
+                    GlafiraTaskAuthorizationStatus.DENIED,
+                    "OWNER_APPROVAL_STORAGE_ERROR"
+                )
+            }
         }
 
         return when (GlafiraToolRegistry.authorize(definition, task, actionSummary, grant, nowMillis)) {
@@ -61,10 +68,17 @@ class RegistryBackedGlafiraTaskAuthorizer(
                 val queued = runCatching {
                     grants.requestApproval(task, actionSummary, nowMillis)
                 }.getOrDefault(false)
-                GlafiraTaskAuthorizationResult(
-                    GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
-                    if (queued) "OWNER_APPROVAL_REQUIRED" else "OWNER_APPROVAL_STORAGE_ERROR"
-                )
+                if (queued) {
+                    GlafiraTaskAuthorizationResult(
+                        GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
+                        "OWNER_APPROVAL_REQUIRED"
+                    )
+                } else {
+                    GlafiraTaskAuthorizationResult(
+                        GlafiraTaskAuthorizationStatus.DENIED,
+                        "OWNER_APPROVAL_STORAGE_ERROR"
+                    )
+                }
             }
         }
     }
