@@ -28,6 +28,21 @@ class GlafiraBridgeProtocolTest {
     }
 
     @Test
+    fun signsEnvelopeAndRejectsTampering() {
+        val secret = ByteArray(32) { it.toByte() }
+        val signed = GlafiraBridgeProtocol.sign(request(), secret)
+        assertEquals(true, GlafiraBridgeProtocol.verifySignature(signed, secret))
+        assertEquals(
+            false,
+            GlafiraBridgeProtocol.verifySignature(
+                signed.copy(projectId = "project-002"),
+                secret
+            )
+        )
+        assertEquals(false, GlafiraBridgeProtocol.verifySignature(signed, ByteArray(16)))
+    }
+
+    @Test
     fun rejectsUnsupportedProtocolVersion() {
         val invalid = request().copy(protocolVersion = 2)
         assertEquals(
