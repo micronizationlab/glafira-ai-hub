@@ -318,11 +318,15 @@ object BackupArchive {
             val key = keys.next()
             val safeKey = key == "glafira_primary_provider" ||
                 key == "peer_consultation_enabled" ||
-                key.startsWith("peer_consultation_enabled_")
+                key.startsWith("peer_consultation_enabled_") ||
+                key == "peer_consultation_providers" ||
+                key.startsWith("peer_consultation_providers_")
             if (!safeKey) continue
             val value = values.opt(key)
             when {
-                key == "glafira_primary_provider" && value is String -> editor.putString(key, value)
+                (key == "glafira_primary_provider" || key == "peer_consultation_providers" ||
+                    key.startsWith("peer_consultation_providers_")) && value is String ->
+                    editor.putString(key, value)
                 value is Boolean -> editor.putBoolean(key, value)
             }
         }
