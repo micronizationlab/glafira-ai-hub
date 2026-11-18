@@ -58,7 +58,7 @@ class GlafiraTaskStore(context: Context) :
         throw IllegalStateException("Downgrading the GLAFIRA task database is not supported.")
     }
 
-    fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
+    override fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
         GlafiraTaskPolicy.validate(task)
         val values = task.toContentValues()
         val insertedId = writableDatabase.insertWithOnConflict(
@@ -76,7 +76,7 @@ class GlafiraTaskStore(context: Context) :
         return GlafiraTaskEnqueueResult(existing, false)
     }
 
-    fun getTask(taskId: String): GlafiraTask? =
+    override fun getTask(taskId: String): GlafiraTask? =
         readableDatabase.query(
             TABLE_TASKS,
             null,
