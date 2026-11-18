@@ -261,8 +261,20 @@ class GlafiraSqliteMemoryRepository(
 
     private fun encryptPayload(record: CoreMemoryRecord): ByteArray =
         crypto.encrypt(
-            record.id, record.schemaVersion, record.classification,
-            payloadJson(record).toByteArray(Charsets.UTF_8)
+            memoryId = record.id,
+            schemaVersion = record.schemaVersion,
+            scopeType = record.scopeType,
+            scopeId = record.scopeId,
+            kind = record.kind,
+            classification = record.classification,
+            status = record.status,
+            confidence = record.confidence,
+            confidenceBasis = record.confidenceBasis,
+            createdAt = record.createdAt,
+            updatedAt = record.updatedAt,
+            validFrom = record.validFrom,
+            expiresAt = record.expiresAt,
+            plaintext = payloadJson(record).toByteArray(Charsets.UTF_8)
         )
 
     private fun payloadJson(record: CoreMemoryRecord): String = JSONObject().apply {
@@ -317,7 +329,22 @@ class GlafiraSqliteMemoryRepository(
     private fun decodeRecord(metadata: MemoryMetadata, encrypted: ByteArray): CoreMemoryRecord {
         val payload = JSONObject(
             String(
-                crypto.decrypt(metadata.id, metadata.schemaVersion, metadata.classification, encrypted),
+                crypto.decrypt(
+                    memoryId = metadata.id,
+                    schemaVersion = metadata.schemaVersion,
+                    scopeType = metadata.scopeType,
+                    scopeId = metadata.scopeId,
+                    kind = metadata.kind,
+                    classification = metadata.classification,
+                    status = metadata.status,
+                    confidence = metadata.confidence,
+                    confidenceBasis = metadata.confidenceBasis,
+                    createdAt = metadata.createdAt,
+                    updatedAt = metadata.updatedAt,
+                    validFrom = metadata.validFrom,
+                    expiresAt = metadata.expiresAt,
+                    payload = encrypted
+                ),
                 Charsets.UTF_8
             )
         )
