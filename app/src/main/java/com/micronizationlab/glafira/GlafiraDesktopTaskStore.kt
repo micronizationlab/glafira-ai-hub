@@ -41,7 +41,7 @@ internal class GlafiraDesktopTaskStore(context: Context) {
     fun claimNext(supportedCapabilities: Set<String>, maxParallelTasks: Int, deviceId: String): JSONObject? = synchronized(lock) {
         require(supportedCapabilities.size <= 16 && supportedCapabilities.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
         require(maxParallelTasks in 1..8)
-        require(deviceId.matches(Regex("[A-Za-z0-9_.-]{8,128}"))
+        require(deviceId.matches(Regex("[A-Za-z0-9_.-]{8,128}")))
         nodeState.edit().putLong("last_seen_epoch_ms", System.currentTimeMillis())
             .putStringSet("capabilities", supportedCapabilities.toSet())
             .putInt("max_parallel_tasks", maxParallelTasks).apply()
