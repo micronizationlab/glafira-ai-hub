@@ -24,6 +24,25 @@ class DesktopBridgePairingTest {
         assertTrue(json.contains("project.read"))
     }
 
+    @Test fun importsOwnerInvitationBundleAndCreatesPinnedEnrollment() {
+        val capability = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32) { 7 })
+        val bundle = org.json.JSONObject().apply {
+            put("format", "GLAFIRA_BRIDGE_INVITATION_V1")
+            put("origin", "https://192.168.1.20:47321")
+            put("ticketId", "ticket_identifier_123")
+            put("pairingCapability", capability)
+            put("serverCertificateSha256", "c".repeat(64))
+            put("expiresAtEpochMs", 1_800_000_120_000L)
+        }.toString()
+        val session = DesktopBridgePairing.fromInvitationBundle(
+            bundle, "GLAFIRA Desktop", setOf("project.read"), 1_800_000_000_000L
+        )
+        assertEquals("https://192.168.1.20:47321", session.origin)
+        assertEquals("c".repeat(64), session.serverCertificateSha256)
+        assertEquals("DESKTOP", session.enrollment.platform)
+        assertEquals(64, session.enrollment.proofHex.length)
+    }
+
     @Test fun rejectsMalformedCapabilityAndScope() {
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
             DesktopBridgePairing.createEnrollmentRequest("ticket_identifier_123", "bad", "Desktop", emptySet())
