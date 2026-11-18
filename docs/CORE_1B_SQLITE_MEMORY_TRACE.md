@@ -18,9 +18,9 @@
 
 - Every memory payload is encrypted, not only CONFIDENTIAL/RESTRICTED records.
 - AES-256-GCM uses a non-exportable Android Keystore key.
-- Memory ID, schema version and classification are authenticated as AES-GCM additional data.
+- Memory ID, schema version, scope, kind, classification, status, confidence, provenance basis and lifecycle timestamps are authenticated as AES-GCM additional data.
 - Content, provenance, author/modifier IDs, supersession reference and tags are inside the encrypted payload.
-- Only bounded filtering metadata (scope, scope ID, kind, classification, status and timestamps) remains queryable in SQLite.
+- Only bounded filtering metadata (scope, scope ID, kind, classification, status, confidence and timestamps) remains queryable in SQLite; memory content, provenance, authorship and tags are ciphertext.
 - Search decrypts only candidate rows that pass scope, status, expiry, classification and policy checks; there is no plaintext FTS index.
 - Delete clears the payload and leaves a content-free DELETED tombstone plus an audit event.
 
