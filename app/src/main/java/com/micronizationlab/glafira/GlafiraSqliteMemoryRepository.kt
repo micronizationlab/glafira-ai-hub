@@ -190,8 +190,8 @@ class GlafiraSqliteMemoryRepository(
             val changed = db.update(
                 TABLE,
                 recordValues(updated, encryptPayload(updated)),
-                "id = ? AND status != ?",
-                arrayOf(id.value, MemoryStatus.DELETED.name)
+                "id = ? AND status != ? AND updated_at = ?",
+                arrayOf(id.value, MemoryStatus.DELETED.name, current.updatedAt.toString())
             )
             if (changed != 1) return@withContext MemoryWriteResult.Rejected("MEMORY_NOT_FOUND")
             traceService.recordInTransaction(
@@ -225,8 +225,12 @@ class GlafiraSqliteMemoryRepository(
                     putNull("payload")
                     put("updated_at", Instant.now().toString())
                 }
-                val changed = db.update(TABLE, values, "id = ?", arrayOf(id.value))
-                if (changed != 1) return@withContext MemoryDeleteResult.NotFound
+                val changed = db.update(
+                    TABLE, values,
+                    "id = ? AND status != ? AND updated_at = ?",
+                    arrayOf(id.value, MemoryStatus.DELETED.name, current.updatedAt.toString())
+                )
+                if (changed != 1) return@withContext MemoryDeleteResult.Rejected("MEMORY_CONCURRENT_MODIFICATION")
                 traceService.recordInTransaction(
                     db,
                     memoryEvent(current, access, CoreTraceEventType.MEMORY_DELETED)
