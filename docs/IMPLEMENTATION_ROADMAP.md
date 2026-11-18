@@ -2,9 +2,9 @@
 
 This roadmap records the owner's priority order. Features remain on the roadmap even when they are not in the current sprint. A specification is not considered implemented until code, tests and an end-to-end acceptance check exist.
 
-## Priority 1 — Backup & Recovery (first)
+## Priority 1 — GLAFIRA Core (the brain and system authority)
 
-Goal: protect user data before expanding the product.
+Goal: make Glafira a reliable coordinator for the entire AI office. Core is the highest engineering priority and the single authority for task execution, permissions and agent coordination.
 
 1. Encrypted, versioned backup archive created on-device.
 2. Integrity verification and safe restore workflow.
@@ -16,9 +16,9 @@ Goal: protect user data before expanding the product.
 
 No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
 
-## Priority 2 — GLAFIRA Core (the brain and system authority)
+## Priority 2 — Backup & Recovery
 
-Goal: make Glafira a reliable coordinator for the entire AI office.
+Goal: protect user data before expanding the product.
 
 1. Define and enforce the authority model: owner is final decision-maker; Glafira coordinates; specialist agents advise and execute only within granted permissions; model providers are replaceable engines.
 2. Stabilize provider registry, primary-model selection, fallback, timeout, retry, cancellation and error reporting.
@@ -30,7 +30,7 @@ Goal: make Glafira a reliable coordinator for the entire AI office.
 
 No external irreversible action (send, publish, purchase, delete, alter business records) without explicit approval or a narrowly scoped owner policy.
 
-## Priority 3 — Employee Runtime, Roles and Voice
+## Priority 3 — Autonomous Runtime, Bridge, Roles and Voice
 
 1. Make role definitions executable and provider-independent.
 2. Add role registry and project-level assignment.
@@ -40,7 +40,31 @@ No external irreversible action (send, publish, purchase, delete, alter business
 6. Add SMM, Accountant, Medical/Scientific Consultant, Lawyer and Commercial Director roles, then further roles such as Analyst and Procurement/Logistics as prioritized by the owner.
 7. Voice and role behavior must not change facts, permissions, privacy or authority.
 
-## Priority 4 — Skill Engine
+## Priority 4 — Unified Memory and Knowledge
+
+1. Add a unified, searchable memory architecture with explicit separation between owner, project, agent and conversation memory.
+2. Provide owner-visible inspection, correction, export and deletion controls; track provenance, timestamps and confidence.
+3. Support shared project knowledge without leaking restricted data across projects or agents.
+4. Add document, file, website and connector ingestion with hybrid retrieval, citations and scheduled re-indexing.
+5. Add context compaction and long-running task summaries while preserving durable facts and decisions.
+
+## Priority 5 — Multi-Agent Workforce
+
+1. Add a coordinator-led team of narrowly scoped specialist agents with explicit role contracts.
+2. Support sequential, conditional, parallel and delegated handoffs with structured inputs and outputs.
+3. Allow independent review/verification agents and require evidence for completion claims.
+4. Show task ownership, dependencies, handoffs, status and shared project context.
+5. Enforce project boundaries, least privilege and per-agent tool scopes.
+
+## Priority 6 — Secure Device and Computer Bridge
+
+1. Add an authenticated, paired Bridge for desktop and Android device actions.
+2. Provide browser automation and controlled UI automation in isolated environments with minimal privileges.
+3. Use domain/app allowlists, credential isolation, prompt-injection defenses and action logs.
+4. Require owner approval for public, financial, destructive, privacy-sensitive or irreversible actions.
+5. Add dry-run/preview mode and recovery checkpoints before consequential actions.
+
+## Priority 7 — Skill Engine and Governed Plugin Marketplace
 
 1. Versioned skill manifest and package validation.
 2. Local skill library with import/export, install/update/uninstall and rollback.
@@ -48,7 +72,7 @@ No external irreversible action (send, publish, purchase, delete, alter business
 4. No implicit tool/network/filesystem permissions from installing a skill.
 5. Add role-specific test cases and acceptance checks.
 
-## Priority 5 — Knowledge and Evaluation
+## Priority 8 — Evaluation, Observability and Self-Monitoring
 
 1. Project-scoped document ingestion and RAG.
 2. Source metadata, dates, jurisdiction, citations and access filtering.
@@ -56,7 +80,7 @@ No external irreversible action (send, publish, purchase, delete, alter business
 4. Fixed role benchmarks, regression tests, prompt-injection and privacy tests.
 5. Staging, owner approval and rollback for production skill changes.
 
-## Priority 6 — Community Exchange
+## Priority 9 — Community Exchange
 
 1. Free sharing and paid package listings.
 2. Publisher identity, rights, license, provenance, privacy/security declaration and version history.
@@ -64,13 +88,48 @@ No external irreversible action (send, publish, purchase, delete, alter business
 4. Start with free package exchange; add payment processing only after legal and security review.
 5. Never publish private conversations, customer data, secrets or materials without rights.
 
-## Priority 7 — Model Adaptation
+## Priority 10 — Model Routing and Adaptation
 
 1. Compare candidate foundation models against role-specific benchmarks.
 2. Evaluate provider fine-tuning and local LoRA only for tasks with demonstrated need.
 3. Use only authorized, curated datasets with source, consent, license and privacy review.
 4. Hold out test data and compare against a fixed baseline.
 5. Require owner approval before deployment. No automatic training on raw chat history.
+
+
+## Priority 11 — GLAFIRA Self-Monitor and Safe Self-Improvement
+
+1. Add GLAFIRA SELF-MONITOR: health checks for Core, queue, runtime, backups, Bridge, providers, agents and integrations.
+2. Detect stalled tasks, repeated failures, expired credentials, backup drift, CI regressions and resource-limit breaches.
+3. Provide an owner-visible event timeline, diagnostics, alerts and incident summaries.
+4. Add GLAFIRA SELF-IMPROVEMENT as a proposal-and-validation pipeline: analyze failures, research options, propose a patch, create an isolated branch, run tests and report evidence.
+5. Never let self-improvement silently change its own safety policy, authority model, approval requirements or production state.
+6. Require signed/reviewable changes, regression tests, staged rollout and tested rollback for runtime or policy changes.
+
+## Priority 12 — Voice, Model Adaptation and Personal Interaction
+
+1. Preserve the optional voice plugin and support multiple selectable voice engines.
+2. Add voice input/output profiles, interruption handling, transcription correction and spoken task confirmations.
+3. Keep identity/voice imitation subject to consent, licensing and applicable safeguards.
+4. Route tasks across cloud and local models based on quality, latency, privacy, availability and cost.
+5. Maintain model-specific evaluations and fallback behavior; never switch providers in a way that silently changes privacy boundaries.
+
+## Cross-cutting roadmap additions from competitive research
+
+- Visual workflow designer: a readable graph of agents, tools, conditions, approvals and outputs; include run inspection, replay where safe, and version history.
+- Dry-run and simulation: preview tool actions and expected changes against test or mocked data before live execution.
+- Teach-by-demonstration skills: let the owner record or describe a repeatable procedure, then turn it into a reviewed, versioned skill.
+- Event-driven automation: triggers from schedules, webhooks, messages, files and connected-app events, with deduplication and rate controls.
+- Approval center: per-action policies, batch review, pause/resume, escalation reasons, expiration and revocation of grants.
+- Credential broker: secrets stay outside model context; scoped tokens, OAuth refresh, per-project connections and revocation.
+- Agent observability: end-to-end traces, tool inputs/outputs with secret redaction, latency, retries, cost, token usage and failure reason.
+- Evaluation gates: role-specific test suites, quality thresholds, adversarial tests and regression checks before promotion.
+- Resource governance: per-task step/time limits, concurrency caps, daily budgets, cost-based pauses and fallback model selection.
+- Versioned rollback: immutable skill/workflow versions, staged activation, canary tests and one-click rollback.
+- Owner-controlled memory: visible source/provenance, correction, export and deletion; separate personal and shared project memory.
+- Multi-channel interface: consistent task status and approvals across Android, desktop, browser and messaging channels.
+
+These are roadmap capabilities, not a claim that they are already implemented. Each requires an implementation plan, tests and end-to-end acceptance evidence before being marked complete.
 
 ## Continuous requirements across all priorities
 
