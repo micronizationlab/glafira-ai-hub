@@ -8,7 +8,6 @@ import java.io.File
 import java.security.SecureRandom
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
@@ -124,27 +123,29 @@ class VaultSession internal constructor(
             File(context.filesDir, FILE_NAME).exists()
 
         fun create(context: Context, masterPassword: CharArray): VaultSession {
-            require(masterPassword.size >= 12) { "Пароль должен содержать не менее 12 символов" }
-            require(!exists(context)) { "Хранилище уже создано" }
-            val salt = ByteArray(16).also(random::nextBytes)
-            val key = deriveKey(masterPassword, salt)
-            val session = VaultSession(context, key, salt)
             try {
-                session.saveEntries(emptyList())
-                return session
-            } catch (error: Exception) {
-                session.lock()
-                File(context.filesDir, FILE_NAME).delete()
-                throw error
+                require(masterPassword.size >= 12) { "Пароль должен содержать не менее 12 символов" }
+                require(!exists(context)) { "Хранилище уже создано" }
+                val salt = ByteArray(16).also(random::nextBytes)
+                val key = deriveKey(masterPassword, salt)
+                val session = VaultSession(context, key, salt)
+                try {
+                    session.saveEntries(emptyList())
+                    return session
+                } catch (error: Exception) {
+                    session.lock()
+                    File(context.filesDir, FILE_NAME).delete()
+                    throw error
+                }
             } finally {
                 masterPassword.fill('\u0000')
             }
         }
 
         fun unlock(context: Context, masterPassword: CharArray): VaultSession {
-            val file = File(context.filesDir, FILE_NAME)
-            require(file.exists()) { "Хранилище ещё не создано" }
             try {
+                val file = File(context.filesDir, FILE_NAME)
+                require(file.exists()) { "Хранилище ещё не создано" }
                 val envelope = JSONObject(file.readText())
                 require(envelope.optInt("version") == 1) { "Неизвестная версия хранилища" }
                 val salt = Base64.decode(envelope.getString("salt"), Base64.NO_WRAP)
