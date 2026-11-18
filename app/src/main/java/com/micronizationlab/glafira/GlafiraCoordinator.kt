@@ -91,7 +91,7 @@ object GlafiraCoordinator {
         val finalAnswer = callAiProvider(
             context,
             primaryProvider,
-            listOf(Msg(councilContext, true, "", "")),
+            safeHistory + Msg(councilContext, true, "", ""),
             systemPrompt + "\nТы — главный координатор. Другие модели — твои советники, не начальники."
         )
         return if (finalAnswer.startsWith("Ошибка API") || finalAnswer.startsWith("Ошибка сети")) {
@@ -168,7 +168,7 @@ object GlafiraCoordinator {
     private fun redactSecrets(value: String): String {
         var safe = value
         val patterns = listOf(
-            Regex("(?i)\\b(sk-[A-Za-z0-9_-]{12,})\\b"),
+            Regex("(?i)\\bsk-[A-Za-z0-9_-]{12,}\\b"),
             Regex("(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]{12,}"),
             Regex("(?i)(api[_ -]?key\\s*[:=]\\s*)[^\\s,;]{8,}"),
             Regex("(?i)(password\\s*[:=]\\s*)[^\\s,;]{4,}"),
