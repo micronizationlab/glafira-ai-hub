@@ -32,7 +32,7 @@ public struct OwnerApprovedBridgeCredentialBundle: Sendable {
         expectedTicketId: String,
         requestedScopes: Set<String>
     ) throws -> OwnerApprovedBridgeCredentialBundle {
-        guard json.count in 1...8_192,
+        guard (1...8_192).contains(json.count),
               let object = try JSONSerialization.jsonObject(with: json) as? [String: Any],
               Set(object.keys) == Set([
                 "format", "origin", "approvalId", "ticketId", "deviceId", "hmacSecretBase64Url",
