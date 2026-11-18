@@ -41,7 +41,26 @@ data class GlafiraPendingActionApproval(
 ) {
     val actionSummary: String
         get() = runCatching {
-            org.json.JSONObject(task.payload).optString("actionSummary").trim()
+            GlafiraSecretRedactor.redact(
+                org.json.JSONObject(task.payload).optString("actionSummary").trim()
+            )
+        }.getOrDefault("")
+
+    /** Only known review fields are surfaced; secret-like values are masked before display. */
+    val reviewDetails: String
+        get() = runCatching {
+            val json = org.json.JSONObject(task.payload)
+            val visibleKeys = setOf(
+                "recipient", "to", "destination", "url", "subject", "message", "content",
+                "amount", "currency", "recordId", "fileName", "title", "text", "body",
+                "target", "contact", "comment", "channel"
+            )
+            visibleKeys.sorted().mapNotNull { key ->
+                if (!json.has(key)) null else {
+                    val value = json.opt(key)?.toString().orEmpty().take(800)
+                    "$key: ${GlafiraSecretRedactor.redact(value)}"
+                }
+            }.joinToString("\\n")
         }.getOrDefault("")
 }
 
