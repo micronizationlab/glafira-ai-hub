@@ -94,6 +94,8 @@ private fun pairAndImport(
     return try {
         flow.importOwnerApprovedCredential(vaultPath, credentialBundle, passphrase)
         println("Credential bundle imported into the encrypted Desktop vault.")
+        println("Return to Android and confirm transfer to erase its temporary credential copy.")
+        console.readLine("Press Enter after confirming on Android: ")
         passphrase
     } catch (error: Exception) {
         passphrase.fill(0.toChar())
