@@ -940,9 +940,9 @@ fun TypingIndicator(agentName: String = "Глафира") {
 @Composable
 fun ProfileScreen(agent: A, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Bg)) {
-        Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("←", color = Gr, fontSize = 18.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
-            Text("Профиль агента", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Row(Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("←", color = Color.White, fontSize = 20.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
+            Text("ПРОФИЛЬ АГЕНТА", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
         Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(80.dp).clip(CircleShape).background(Gr.copy(alpha = 0.2f)).border(2.dp, Gr, CircleShape), contentAlignment = Alignment.Center) {
