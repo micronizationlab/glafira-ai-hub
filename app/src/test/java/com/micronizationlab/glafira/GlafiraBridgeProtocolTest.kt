@@ -89,7 +89,10 @@ class GlafiraBridgeProtocolTest {
 
     @Test fun acceptsDesktopTaskClaimWithoutPayload() {
         val signed = GlafiraBridgeProtocol.sign(
-            request(GlafiraBridgeOperation.DESKTOP_TASK_CLAIM), secret
+            request(
+                GlafiraBridgeOperation.DESKTOP_TASK_CLAIM,
+                mapOf("capabilities" to "analysis", "maxParallelTasks" to "1")
+            ), secret
         )
         assertNull(GlafiraBridgeProtocol.validate(signed, now))
     }
