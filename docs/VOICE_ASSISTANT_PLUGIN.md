@@ -110,6 +110,6 @@ The requested private target is a voice-and-delivery recreation of performer Shu
 
 ## Implementation checkpoint — 2026-11-18
 
-A provider-independent `VoiceProfilePolicy` contract and unit tests have been added on the separate `feature/glafira-voice-policy` branch. The policy distinguishes original non-identifying synthetic voices from identifiable real-person profiles and checks consent evidence reference, expiry, revocation and permitted use before synthesis.
+A provider-independent `VoiceProfilePolicy` contract and unit tests are present. A provider-neutral Voice runtime contract has now also been added on the separate `feature/glafira-voice-policy` branch: plugin capability discovery, STT/TTS adapter interfaces, owner opt-in (disabled by default), explicit session lifecycle, microphone-permission gate for STT sessions, bounded audio/text payloads, consent-policy enforcement before synthesis, and mandatory AI-generated speech disclosure metadata. Mock-provider tests cover disabled-by-default behavior, microphone permission, consent blocking and session invalidation.
 
-This is a policy primitive only. Audio capture, speech-to-text, text-to-speech providers, profile storage, consent-evidence workflow and playback are not implemented. No voice cloning or audio generation is enabled by this change.
+This remains a runtime contract, not a finished voice feature. Android microphone capture, audio playback, provider adapters/SDKs, profile storage, consent-evidence workflow, provider credential adapters and physical-device audio tests are not implemented. No voice cloning or real audio generation is enabled by this change.
