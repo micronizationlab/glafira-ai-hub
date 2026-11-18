@@ -14,17 +14,14 @@ fun isProviderConfigured(context: Context, id: ProviderId): Boolean {
     if (id == ProviderId.GIGACHAT) {
         return loadApiKey(context).isNotBlank()
     }
-    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    return (prefs.getString(id.prefKey, "") ?: "").isNotBlank()
+    return loadProviderKey(context, id).isNotBlank()
 }
 
 fun saveProviderKey(context: Context, id: ProviderId, key: String) {
-    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    prefs.edit().putString(id.prefKey, key.trim()).commit()
+    EncryptedApiKeyStore.save(context, id.prefKey, key.trim())
 }
 
 fun loadProviderKey(context: Context, id: ProviderId): String {
     if (id == ProviderId.GIGACHAT) return loadApiKey(context)
-    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    return prefs.getString(id.prefKey, "") ?: ""
+    return EncryptedApiKeyStore.load(context, id.prefKey)
 }
