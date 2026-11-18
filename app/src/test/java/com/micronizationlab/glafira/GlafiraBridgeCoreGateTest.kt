@@ -66,7 +66,7 @@ class GlafiraBridgeCoreGateTest {
     }
 
     @Test fun desktopTaskClaimAndResultRequireSeparateGrantedScopes() {
-        val claim = signed(GlafiraBridgeOperation.DESKTOP_TASK_CLAIM)
+        val claim = signed(\n            GlafiraBridgeOperation.DESKTOP_TASK_CLAIM,\n            mapOf("capabilities" to "analysis", "maxParallelTasks" to "1")\n        )
         val claimDenied = GlafiraBridgeCoreGate.authorize(
             claim, "device-0001", secret, emptySet(), nowEpochMs = now
         )
