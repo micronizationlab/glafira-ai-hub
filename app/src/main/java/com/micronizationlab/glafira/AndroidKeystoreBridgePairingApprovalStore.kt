@@ -459,10 +459,12 @@ class AndroidKeystoreBridgePairingApprovalStore(
     private fun validScope(value: String) =
         value.length in 1..96 && value.all { it.isLetterOrDigit() || it in "._-" }
 
-    private fun validScopes(value: Set<String>) =
-        value.isNotEmpty() &&
+    private fun validScopes(value: Set<String>): Boolean {
+        val knownScopes = GlafiraToolRegistry.all().flatMap { it.requiredScopes }.toSet()
+        return value.isNotEmpty() &&
             value.size <= GlafiraBridgeOwnerApprovalService.MAX_REQUESTED_SCOPES &&
-            value.all(::validScope)
+            value.all { validScope(it) && it in knownScopes }
+    }
 
     private fun encodeScopes(value: Set<String>) = value.sorted().joinToString(",")
 
