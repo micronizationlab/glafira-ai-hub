@@ -1,0 +1,140 @@
+package com.micronizationlab.glafira.desktop
+
+import org.json.JSONArray
+import org.json.JSONObject
+
+/**
+ * Desktop-side pull worker. Android remains the TLS server; this node polls its authenticated
+ * task inbox, executes only registered task handlers, and posts bounded results back.
+ */
+internal class DesktopBridgeTaskWorker(
+    private val origin: String,
+    private val credentials: DesktopBridgeCredentials,
+    private val projectId: String,
+    private val queue: DesktopTaskQueue,
+    handlers: Map<String, DesktopAgentExecutor>,
+    private val client: DesktopBridgeHttpsClient = DesktopBridgeHttpsClient(),
+    maxParallelTasks: Int = DesktopTaskRuntime.DEFAULT_PARALLELISM,
+    onResult: (DesktopAgentResult) -> Unit = {}
+) : AutoCloseable {
+    private val runtime = DesktopTaskRuntime(
+        queue = queue,
+        handlers = handlers,
+        maxParallelTasks = maxParallelTasks,
+        onProgress = { taskId, percent, message ->
+            postTaskUpdate(taskId, "RUNNING", percent, message, "none", "none")
+        },
+        onResult = { result ->
+            postTaskUpdate(
+                result.taskId,
+                if (result.state == DesktopTaskState.SUCCEEDED) "SUCCEEDED" else "FAILED",
+                if (result.state == DesktopTaskState.SUCCEEDED) 100 else 0,
+                "completed",
+                result.result ?: "none",
+                result.errorCode ?: "none"
+            )
+            onResult(result)
+        }
+    )
+
+    /** Polls one Android inbox item and starts available parallel work. */
+    fun pollOnce(): Int {
+        val response = client.post(
+            origin, credentials, projectId,
+            DesktopBridgeOperation.DESKTOP_TASK_CLAIM, emptyMap()
+        )
+        if (response.status != DesktopBridgeStatus.SUCCEEDED) {
+            throw IllegalStateException(response.errorCode ?: "DESKTOP_TASK_CLAIM_FAILED")
+        }
+        val raw = response.result["taskJson"] ?: throw IllegalStateException("TASK_RESPONSE_MISSING")
+        if (raw != "none") {
+            val json = JSONObject(raw)
+            val task = decodeTask(json)
+            queue.enqueue(task)
+            postTaskUpdate(task.taskId, "ACCEPTED", 0, "accepted", "none", "none")
+        }
+        return runtime.dispatchAvailable()
+    }
+
+    fun runPollingLoop(shouldContinue: () -> Boolean, pollIntervalMs: Long = 1_000L) {
+        require(pollIntervalMs in 250L..30_000L)
+        while (shouldContinue()) {
+            try {
+                val started = pollOnce()
+                if (started == 0) Thread.sleep(pollIntervalMs)
+            } catch (interrupted: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
+            } catch (_: Exception) {
+                Thread.sleep(pollIntervalMs.coerceAtMost(5_000L))
+            }
+        }
+    }
+
+    private fun postTaskUpdate(
+        taskId: String,
+        state: String,
+        progress: Int,
+        progressMessage: String,
+        result: String,
+        errorCode: String
+    ) {
+        val response = client.post(
+            origin, credentials, projectId,
+            DesktopBridgeOperation.DESKTOP_TASK_RESULT,
+            mapOf(
+                "taskId" to taskId,
+                "state" to state,
+                "progressPercent" to progress.toString(),
+                "progressMessage" to progressMessage,
+                "result" to result,
+                "errorCode" to errorCode
+            )
+        )
+        if (response.status != DesktopBridgeStatus.SUCCEEDED) {
+            throw IllegalStateException(response.errorCode ?: "DESKTOP_TASK_RESULT_FAILED")
+        }
+    }
+
+    private fun decodeTask(json: JSONObject): DesktopTaskEnvelope {
+        val executor = json.getString("executor")
+        val taskType = when (executor) {
+            "GLAFIRA" -> "core.orchestration"
+            "ANALYST" -> "analysis.document"
+            "PROGRAMMER" -> "code.build"
+            "RESEARCHER" -> "web.research"
+            else -> throw IllegalArgumentException("UNKNOWN_AGENT_ROLE")
+        }
+        val capabilityArray = json.optJSONArray("requiredCapabilities") ?: JSONArray()
+        val capabilities = buildSet {
+            for (index in 0 until capabilityArray.length()) {
+                when (capabilityArray.getString(index)) {
+                    "document.analysis" -> add(DesktopTaskCapability.DOCUMENT_ANALYSIS)
+                    "code.build" -> add(DesktopTaskCapability.CODE_BUILD)
+                    "web.research" -> add(DesktopTaskCapability.WEB_RESEARCH)
+                    "core.orchestration" -> add(DesktopTaskCapability.LOCAL_MODEL)
+                    else -> throw IllegalArgumentException("UNSUPPORTED_TASK_CAPABILITY")
+                }
+            }
+        }
+        val taskId = json.getString("taskId")
+        return DesktopTaskEnvelope(
+            taskId = taskId,
+            projectId = json.getString("projectId"),
+            taskType = taskType,
+            instruction = json.getString("instruction"),
+            contextRefs = emptyList(),
+            requiredCapabilities = capabilities,
+            requiredScopes = setOf("project.read"),
+            priority = json.optInt("priority", 5),
+            createdAt = json.getLong("createdAtEpochMs"),
+            expiresAt = json.getLong("expiresAtEpochMs"),
+            idempotencyKey = "desktop-task-$taskId"
+        )
+    }
+
+    override fun close() {
+        runtime.close()
+        credentials.hmacSecret.fill(0)
+    }
+}
