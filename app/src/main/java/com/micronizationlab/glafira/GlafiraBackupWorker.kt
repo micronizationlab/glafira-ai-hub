@@ -51,17 +51,13 @@ class GlafiraBackupWorker(
                 } ?: error("Не удалось загрузить архив в облако.")
 
                 copyRemoteToLocal(applicationContext, uploadedRemote, verifyCopy)
-                val verified = BackupArchive.verify(verifyCopy, recoveryPassphrase)
+                BackupArchive.verify(verifyCopy, recoveryPassphrase)
 
                 val staleCopies = folder.listFiles()
                     .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != uploadedRemote.uri }
                 val undeletedCopies = staleCopies.filterNot { it.delete() }
                 temporaryRemote = null
                 
-
-                folder.listFiles()
-                    .filter { it.name?.startsWith("GLAFIRA-weekly-") == true && it.name != weeklyName }
-                    .forEach { it.delete() }
                 prefs.edit()
                     .putLong(KEY_LAST_SUCCESS, System.currentTimeMillis())
                     .putLong(KEY_LAST_SIZE, archive.length())
@@ -105,13 +101,6 @@ class GlafiraBackupWorker(
         } ?: error("Не удалось прочитать файл из облака для проверки.")
     }
 
-    private fun copyRemoteToRemote(context: Context, source: DocumentFile, target: DocumentFile) {
-        context.contentResolver.openInputStream(source.uri)?.use { input ->
-            context.contentResolver.openOutputStream(target.uri, "wt")?.use { output ->
-                input.copyTo(output)
-            } ?: error("Не удалось записать контрольную копию.")
-        } ?: error("Не удалось прочитать предыдущую копию.")
-    }
 
     companion object {
         const val BACKUP_PREFS = "glafira_backup_prefs"
