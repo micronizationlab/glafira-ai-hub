@@ -1,82 +1,57 @@
-# GLAFIRA Bridge LAN TLS Host — implementation plan
+# GLAFIRA Bridge LAN TLS Host
 
-Status: implementation slice in progress. The bounded HTTPS/1.1 server, owner-started foreground service, `/bridge/v1/pairing` ingress and owner approval queue are now wired in code. Desktop invitation submission and encrypted credential import are implemented as JVM library APIs. CI and physical-device verification remain open.
+Status: implementation slice in progress. Android has a bounded HTTPS/1.1 host, explicit owner-started foreground service, separate pairing and paired-request routes, and owner approval wiring. Desktop has JVM APIs for pinned pairing and encrypted credential import. CI and physical-device validation remain open.
 
 ## Security invariants
 
-- Listener is disabled by default and requires an explicit owner action.
-- Bind only to the owner-selected LAN interface. Never bind wildcard/public interfaces, perform port forwarding, or expose a hosted relay.
-- Preserve TLS hostname verification on clients. A matching SHA-256 leaf pin is necessary but does not replace hostname verification.
-- The certificate SAN must match the exact DNS name or IP address used by the client. Common Name alone is insufficient.
-- The owner transfers the leaf-certificate SHA-256 fingerprint through the authenticated pairing/approval channel. Never accept a pin learned from the same unauthenticated network connection.
-- Pairing proof ingress and already-paired request ingress are distinct routes and distinct state transitions.
-- All authenticated Bridge requests pass through GlafiraBridgeRequestAdmission before dispatch.
-- No generic shell, arbitrary filesystem, unrestricted browser, or direct model-to-device credential access.
+- Listener is off by default; owner must explicitly start it from Settings → Security → Device pairing.
+- Bind only to the owner-selected private IPv4 address. No wildcard/public bind, port forwarding, public relay, or hosted endpoint.
+- Clients retain HTTPS hostname verification and verify the SHA-256 leaf certificate pin.
+- Certificate contains the exact IP SAN and serverAuth EKU. The private EC key remains in Android Keystore.
+- Pairing proof and paired-request admission are separate routes and state transitions.
+- Requested scopes are untrusted hints. Only the owner approval screen grants scopes.
+- All paired requests pass through credential lookup, HMAC verification, scope policy, device rate limit and replay/idempotency admission.
+- No generic shell, arbitrary filesystem or unrestricted browser operations.
 
-## Proposed Android host shape
+## Android runtime now wired
 
-1. GlafiraBridgeHostController: owner-controlled start/stop state machine. Refuse start if the selected interface, certificate, credential store, or admission dependencies are unavailable.
-2. GlafiraBridgeForegroundService: owns the listener while active, shows a persistent notification, stops on explicit owner request and network loss, and never auto-starts after reboot.
-3. GlafiraBridgeServerIdentityStore: Android Keystore-backed private key plus certificate chain and explicit rotation metadata. Private key is never exported to app storage or logs.
-4. GlafiraBridgeTlsServerFactory: creates an SSLServerSocket/TLS listener with TLS 1.2 minimum, TLS 1.3 where supported, strong platform cipher suites, client-auth policy explicitly defined, and bounded handshake timeout.
-5. GlafiraBridgeHttpIngress: applies per-IP rate limiting before reading, strict method/path/content-type checks, bounded body reading, header limits, request timeout, and bounded concurrency.
-6. GlafiraBridgeEnrollmentCoordinator: receives only pairing-proof route requests and places verified enrollments into the owner queue. It does not issue credentials.
-7. GlafiraBridgeRequestAdmission: receives typed request envelopes for paired devices. Only after authentication, scope checks, expiry, replay/idempotency and Core policy checks may a typed dispatcher be called.
-8. GlafiraBridgeOperationDispatcher: separate from HTTP/TLS. Dispatches only registered typed Core operations. External writes, finance and destructive actions remain owner-approved and action-bound.
+- AndroidKeystoreBridgeServerIdentityStore creates/persists a P-256 key in Android Keystore and an X.509 certificate with IP SAN, serverAuth EKU, digitalSignature usage and SHA-256 fingerprint.
+- GlafiraBridgeTlsHttpServer: TLS 1.2/1.3, private IPv4 bind, bounded worker pool, handshake/read timeouts, fixed routes, strict request framing, bounded headers/body, duplicate-header rejection, Host validation, no keep-alive and generic errors.
+- GlafiraBridgeHostService: non-exported foreground service, explicitly started/stopped by the owner, persistent notification, no boot auto-start.
+- GlafiraBridgePairingJsonCodec and GlafiraBridgeRequestJsonCodec: strict UTF-8, exact fields, duplicate-key rejection and bounded JSON.
+- /bridge/v1/pairing: verifies and atomically consumes the one-time proof, then enqueues the enrollment for owner approval. It does not issue credentials or grant scopes.
+- /bridge/v1/requests: decodes the signed envelope and passes it to GlafiraBridgeRequestAdmission.
+- Per-IP rate limit applies before parsing. Per-device rate limit applies only after the credential and HMAC have been verified. Decrypted HMAC bytes are cleared after admission.
+- Owner approval screen can create a 120-second invitation, approve/reject, select scopes, issue credentials, and copy a TLS-pinned credential bundle. The screen is protected against screenshots while open.
 
-## Certificate and naming decision
+## Desktop JVM runtime now wired
 
-Use an owner-visible stable local DNS identity (for example, a device-specific .local hostname discovered through Android Network Service Discovery) only if the chosen resolver path is supported and verified on both Android and Desktop. Otherwise use an explicitly selected LAN IP and regenerate/rotate the certificate when the address changes.
+- Invitation-bundle parser validates format, expiry, HTTPS origin and certificate fingerprint.
+- Pairing helper creates a fresh 256-bit nonce and HMAC proof without serializing the capability into the HTTP body.
+- Pairing HTTP client posts to /bridge/v1/pairing with TLS hostname verification and the owner-supplied certificate pin.
+- Owner credential bundle import stores device ID, 256-bit HMAC secret, granted scopes, HTTPS origin and certificate pin in an AES-256-GCM encrypted vault using PBKDF2-HMAC-SHA256 (310,000 iterations).
+- Vault writes are atomic and apply owner-only POSIX permissions where supported. Vault-backed request facade loads the credential, sends signed HTTPS requests and clears in-memory secret copies afterward.
 
-The server certificate must contain the chosen hostname in subjectAltName:dNSName or the chosen address in subjectAltName:iPAddress, and extendedKeyUsage:serverAuth. The Android client currently keeps the platform hostname verifier enabled and pins the leaf certificate.
+The current Desktop vault is passphrase-protected application storage, **not yet native Windows Credential Manager or macOS Keychain integration**. The module is a JVM library; a user-facing Desktop installer/UI is still outstanding.
 
-Certificate issuance must be implemented with a reviewed X.509 builder that supports SAN and EKU, with the signing private key kept in Android Keystore. Do not use internal JDK certificate classes, trust-all, disabled hostname verification, or a certificate that lacks SAN. Evaluate dependency size, maintenance and Android compatibility before adding an X.509 library.
+## Pairing sequence
 
-Rotation must be owner initiated and authenticated: create new key/certificate, show the new fingerprint to the owner, transfer the new pin to clients through the already authenticated channel, verify client acknowledgement, then retire the previous identity. Never accept an unsolicited pin rollover.
+1. Owner starts the Android server and confirms the active local IPv4 address in the foreground notification.
+2. Owner authenticates with device credential/biometric and creates a 120-second invitation. It contains ticket ID, one-time capability, HTTPS origin and certificate fingerprint.
+3. Desktop parses the invitation, creates nonce/proof, and sends the pairing request over pinned HTTPS.
+4. Android consumes the ticket once and creates a pending owner approval. Requested scopes are only displayed as hints.
+5. Owner selects actual scopes and approves or rejects. Approval atomically creates the encrypted device credential and encrypted delivery outbox.
+6. Owner copies the TLS-pinned credential bundle. Desktop imports it into the encrypted vault with an owner passphrase.
+7. Desktop sends signed requests to /bridge/v1/requests; Android verifies credential, signature, scope, device rate limit and idempotency.
 
-## HTTP limits
+## Remaining work before real-world test
 
-- Fixed routes only: /bridge/v1/pairing for one-time proof submission and /bridge/v1/requests for paired requests.
-- POST only; JSON with UTF-8 only.
-- Apply remote-address rate limit before parsing or allocating request bodies.
-- Use bounded header count/size, body size, request time, handshake time, active connection count and worker queue.
-- Use GlafiraBridgeIngressPolicy for the current fixed request route and bounded body reader; extend route validation explicitly for pairing when its transport contract is ready.
-- Use separate per-device rate limit after credential authentication.
-- Reject duplicate/ambiguous Content-Length, unsupported Transfer-Encoding combinations, malformed request targets, path traversal, unknown content encodings and unexpected headers.
-- Return generic errors; never include secrets, pairing capabilities, payload contents or HMAC material in logs.
+- CI must pass Android unit tests, Desktop tests, Debug APK packaging and Desktop JAR build.
+- Physical Android Keystore validation of certificate signing and TLS handshake on supported devices.
+- Android 14/15 validation of foreground-service permissions, notification behavior, stop/restart lifecycle and Wi-Fi network changes.
+- LAN end-to-end test with actual Android and Desktop devices, including wrong pin, wrong hostname, expired invitation, reused ticket, denied owner approval, revoked/unknown device, invalid HMAC and replayed request.
+- Typed operation dispatcher connected to the actual shared Core/project/conversation stores. Admission is not operation execution.
+- Native Windows/macOS credential-store adapters and a Desktop user interface/installer.
+- Owner-authenticated certificate rotation with client pin rollover acknowledgement.
 
-## Android platform constraints to verify
-
-- Foreground service type/permissions and notification requirements for the target SDK.
-- Wi-Fi/LAN interface selection, address changes, network callbacks and service lifecycle.
-- mDNS/NSD discovery and .local hostname resolution on supported Android versions.
-- Keystore key algorithm/curve support, certificate signing compatibility, backup/restore behavior and hardware-backed availability.
-- Whether a raw SSLServerSocket implementation provides sufficient HTTP framing, limits and cancellation; if a server library is considered, review dependency size, maintenance, TLS integration and attack surface.
-
-## Required tests before physical pairing
-
-- Unit tests for lifecycle transitions, interface selection, rate limits, bounded parsing, request timeout, concurrency and fail-closed behavior.
-- TLS integration tests for SAN hostname match/mismatch, expired certificate, wrong pin, rotation, unsupported protocol/cipher and handshake timeout.
-- Ingress tests for malformed request line, oversized headers/body, conflicting content length, transfer-encoding ambiguity, slowloris behavior and connection exhaustion.
-- Admission tests for unknown/revoked device, invalid HMAC, expired request, duplicate idempotency key, denied scope and storage failure.
-- LAN integration test between Android and Desktop on a private network.
-- Verify the listener is unreachable from a public network and remains off after process restart/reboot.
-
-## Current implementation status
-
-Implemented separately:
-- one-time pairing ticket/proof primitives and encrypted ticket storage;\n- `GlafiraBridgeServerIdentity`: P-256 signing key generated in Android Keystore, self-signed X.509 leaf with explicit DNS/IP SAN, serverAuth EKU, digitalSignature key usage, 90-day validity, and SHA-256 fingerprint; only the public certificate is persisted;\n- `GlafiraBridgeTlsSocketListener`: explicit start/stop TLS socket acceptor, private/site-local or link-local address only, TLS 1.2/1.3, bounded worker pool, handshake/read timeouts, no automatic start;\n- Desktop pairing-proof helper that derives the one-time proof and nonce without serializing the invitation capability; existing Desktop HTTPS request client remains available;\n- strict UTF-8/JSON codecs for paired requests and pairing enrollment, with duplicate-key rejection, exact field allowlists and bounded envelope size;\n- dedicated `POST /bridge/v1/pairing` route verifies and consumes one-time proof, then enqueues a pending owner approval; it never grants requested scopes;\n- owner approval screen can create short-lived invitations, manually start/stop the LAN service, approve/reject, choose scopes, and export a TLS-pinned Desktop credential bundle;\n- Android manifest registers the foreground service as non-exported and connected-device type;\n- Desktop JVM library can parse the invitation bundle, submit a pin-verified pairing request, import the owner-issued credential bundle into an AES-256-GCM/PBKDF2 passphrase vault, and send paired requests from that vault;\n- request admission applies device-level rate limiting only after credential and HMAC verification, and clears the decrypted HMAC secret after use;
-- pinned HTTPS Android client;
-- owner approval queue/UI and encrypted credential delivery outbox;
-- verified-enrollment coordinator;
-- bounded rate limiter and fixed-route bounded HTTP body policy.
-
-Not implemented:
-- TLS server certificate generation/rotation;
-- foreground listener lifecycle and LAN binding;
-- HTTP server implementation and transport-to-coordinator wiring;
-- pairing route wire format;
-- Desktop credential import/client transport;
-- end-to-end LAN validation.
-
-No listener or endpoint has been opened. No paid or hosted infrastructure has been created.\n\n## Implementation checkpoint — 2026-11-18\n\nThe TLS identity and socket acceptor are implementation foundations, not a claim that the Android app currently starts a server. The acceptor receives a callback only after TLS handshake; the callback must implement the bounded HTTP contract and route each request to the correct pairing/admission coordinator. Do not expose the listener in UI or manifest as a production feature until the foreground-service lifecycle, route parser, admission wiring, physical-device Keystore test, and Android↔Desktop LAN test are complete.\n\n\n## Pairing and credential handoff\n\n1. Owner starts the local HTTPS service from Settings → Security → Device pairing; the service binds only to the explicitly entered private IPv4 address and displays a persistent stop notification.\n2. After owner biometric/device-credential confirmation, the owner creates a 120-second invitation. The copied invitation contains the ticket ID, one-time capability, HTTPS origin and SHA-256 leaf-certificate pin.\n3. Desktop parses the invitation, creates a fresh 256-bit nonce and HMAC proof, then POSTs the pairing envelope to `/bridge/v1/pairing` over HTTPS with hostname verification and the supplied certificate pin.\n4. Android consumes the ticket atomically and adds the verified device metadata to the pending approval queue. The owner explicitly selects scopes and approves or rejects. Requested scopes are never grants.\n5. On approval, Android creates the device HMAC credential and encrypted delivery record atomically. The owner copies a TLS-pinned credential bundle; Desktop imports it into its passphrase-protected encrypted vault.\n6. Desktop sends signed requests to `/bridge/v1/requests`; Android verifies the credential, signature, granted scopes, device rate limit and idempotency before returning an admission result. A typed operation dispatcher and shared-Core execution adapter remain a separate required stage.\n\nThe Desktop vault currently uses PBKDF2-HMAC-SHA256 (310,000 iterations) and AES-256-GCM, with atomic writes and owner-only POSIX permissions where supported. It is not represented as native OS keyring integration.\n
+No public endpoint, relay, paid infrastructure, merge or release has been created. APK is not marked ready for user testing until CI and physical LAN validation pass.
