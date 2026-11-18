@@ -115,27 +115,53 @@ object BackupArchive {
     }
 
     fun restore(context: Context, file: File, passphrase: CharArray): BackupVerification {
-        val extracted = decryptToStaging(file, passphrase)
+        // Keep a verified snapshot of the current state so a partial restore can be rolled back.
+        val safetySnapshot = create(context, passphrase)
+        val extracted = try {
+            decryptToStaging(file, passphrase)
+        } catch (error: Exception) {
+            safetySnapshot.delete()
+            throw error
+        }
         try {
-            val targetRoot = context.filesDir.canonicalFile
-            extracted.files.forEach { staged ->
-                val target = File(targetRoot, staged.relativePath).canonicalFile
-                require(target.path.startsWith(targetRoot.path + File.separator)) { "Недопустимый путь в архиве." }
-                target.parentFile?.mkdirs()
-                val replacement = File(target.parentFile, target.name + ".restore-tmp")
-                staged.file.copyTo(replacement, overwrite = true)
-                if (target.exists() && !target.delete()) {
-                    replacement.delete()
-                    throw IllegalStateException("Не удалось заменить файл ${staged.relativePath}")
-                }
-                if (!replacement.renameTo(target)) {
-                    replacement.delete()
-                    throw IllegalStateException("Не удалось восстановить файл ${staged.relativePath}")
-                }
-            }
+            applyStaged(context, extracted.files)
             return extracted.verification
+        } catch (restoreError: Exception) {
+            val rollback = decryptToStaging(safetySnapshot, passphrase)
+            try {
+                val safePaths = rollback.files.map { it.relativePath }.toSet()
+                extracted.files.map { it.relativePath }.filter { it !in safePaths }.forEach { relative ->
+                    File(context.filesDir, relative).delete()
+                }
+                applyStaged(context, rollback.files)
+            } catch (rollbackError: Exception) {
+                restoreError.addSuppressed(rollbackError)
+            } finally {
+                rollback.directory.deleteRecursively()
+            }
+            throw restoreError
         } finally {
             extracted.directory.deleteRecursively()
+            safetySnapshot.delete()
+        }
+    }
+
+    private fun applyStaged(context: Context, files: List<StagedFile>) {
+        val targetRoot = context.filesDir.canonicalFile
+        files.forEach { staged ->
+            val target = File(targetRoot, staged.relativePath).canonicalFile
+            require(target.path.startsWith(targetRoot.path + File.separator)) { "Недопустимый путь в архиве." }
+            target.parentFile?.mkdirs()
+            val replacement = File(target.parentFile, target.name + ".restore-tmp")
+            staged.file.copyTo(replacement, overwrite = true)
+            if (target.exists() && !target.delete()) {
+                replacement.delete()
+                throw IllegalStateException("Не удалось заменить файл ${staged.relativePath}")
+            }
+            if (!replacement.renameTo(target)) {
+                replacement.delete()
+                throw IllegalStateException("Не удалось восстановить файл ${staged.relativePath}")
+            }
         }
     }
 
