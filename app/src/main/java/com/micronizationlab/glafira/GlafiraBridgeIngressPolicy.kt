@@ -39,7 +39,10 @@ object GlafiraBridgeIngressPolicy {
         if (contentType == null) return false
         val parts = contentType.split(';').map(String::trim)
         if (!parts.firstOrNull().equals("application/json", ignoreCase = true)) return false
-        return parts.drop(1).all { parameter ->
+        val parameters = parts.drop(1)
+        // Reject duplicate charset parameters rather than accepting ambiguous HTTP metadata.
+        if (parameters.size > 1) return false
+        return parameters.isEmpty() || parameters.single().let { parameter ->
             parameter.equals("charset=utf-8", ignoreCase = true) ||
                 parameter.equals("charset=utf8", ignoreCase = true)
         }
