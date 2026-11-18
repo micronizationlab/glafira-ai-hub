@@ -6,6 +6,9 @@ Core, memory authority, or privileged device.
 ## Current implementation status
 
 - `GlafiraIOSUI`: adaptive SwiftUI navigation shell for projects, agents and settings on iPhone/iPad. It shows explicit not-connected/empty states and does not fabricate project data.
+- `KeychainBridgeCredentialStore`: device-only Keychain storage for paired-device HMAC secrets, protected by `biometryCurrentSet` and `WhenUnlockedThisDeviceOnly`. Existing credentials cannot be overwritten implicitly.
+- `OwnerBiometricAuthenticator`: explicit Face ID/Touch ID owner-presence check for sensitive actions. Cancellation, lockout, unavailable biometrics and errors fail closed.
+- `OwnerBiometricGateView`: reusable SwiftUI confirmation surface; the protected callback runs only after successful biometric authentication.
 - `GlafiraBridgeKit`: Swift Package foundation for the versioned Bridge request
   and response models, Kotlin-compatible canonical HMAC-SHA256 signing,
   signature verification, and envelope validation.
@@ -42,6 +45,28 @@ Requires Swift 5.9 or later and the Apple CryptoKit framework.
   is defined.
 - TLS hostname validation must remain enabled alongside certificate pinning.
 - Voice capture must remain explicit and consent-gated; no always-listening mode.
+
+
+## iOS biometric and Keychain requirements
+
+- Paired HMAC secrets are stored as generic-password Keychain items scoped by
+  service and device ID. Accessibility is `WhenUnlockedThisDeviceOnly`; access
+  control is `biometryCurrentSet`. The secret is not synchronized to iCloud
+  Keychain and cannot be restored onto another device.
+- A changed biometric enrollment invalidates access to the paired secret.
+  Re-pairing must be performed through the owner-approved Bridge flow; the app
+  must never silently downgrade to an unprotected Keychain item or plaintext.
+- Keychain reads show the system authentication prompt. Sensitive local actions
+  use an explicit `OwnerBiometricAuthenticator` check and fail closed when
+  biometrics are cancelled, unavailable, not enrolled, or locked out.
+- The future iOS app target must add `NSFaceIDUsageDescription` with a clear
+  user-facing explanation before Face ID is invoked. Touch ID uses the system
+  prompt on supported devices.
+- App integration must keep credential access behind the authenticated owner
+  flow. Never log, serialize, export, or include HMAC secrets in diagnostics.
+- Simulator CI can compile and unit-test policy/model behavior; actual Keychain
+  biometric prompts and enrollment-change invalidation require physical-device
+  acceptance testing.
 
 ## Next implementation gates
 
