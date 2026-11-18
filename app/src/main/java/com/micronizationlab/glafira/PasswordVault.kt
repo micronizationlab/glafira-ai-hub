@@ -75,7 +75,7 @@ class VaultSession internal constructor(
         origin: String,
         username: String? = null,
         allowedHosts: Set<String>,
-        block: (VaultCredentialLease) -> T
+        block: (VaultCredentialLease) -> Unit
     ) {
         check(active) { "Хранилище заблокировано" }
         val requestedHost = canonicalHttpsHost(origin)
