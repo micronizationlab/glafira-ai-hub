@@ -183,9 +183,9 @@ class GlafiraBridgeOwnerApprovalService(
         ownerSession: GlafiraBridgeOwnerSession,
         nowEpochMs: Long = System.currentTimeMillis()
     ): GlafiraBridgeDeliveryResult {
-        if (!ownerSession.isValid(nowEpochMs) || !isValidApprovalId(approvalId)) {
-            return GlafiraBridgeDeliveryResult.NotApproved
-        }
+        if (nowEpochMs <= 0L || !ownerSession.isValid(nowEpochMs) ||
+            !isValidApprovalId(approvalId)
+        ) return GlafiraBridgeDeliveryResult.NotApproved
         return runCatching {
             store.claimDelivery(
                 approvalId,
@@ -202,7 +202,9 @@ class GlafiraBridgeOwnerApprovalService(
         ownerSession: GlafiraBridgeOwnerSession,
         nowEpochMs: Long = System.currentTimeMillis()
     ): Boolean {
-        if (!ownerSession.isValid(nowEpochMs) || !isValidApprovalId(approvalId)) return false
+        if (nowEpochMs <= 0L || !ownerSession.isValid(nowEpochMs) ||
+            !isValidApprovalId(approvalId)
+        ) return false
         return runCatching { store.acknowledgeDelivery(approvalId, ownerSession.sessionId) }
             .getOrDefault(false)
     }
