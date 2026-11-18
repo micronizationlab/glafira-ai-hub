@@ -11,7 +11,7 @@ Goal: protect user data before expanding the product.
 3. Daily Android WorkManager schedule with retry and owner-visible status.
 4. Free off-device destinations: Google Drive and Yandex Disk using owner-authorized OAuth.
 5. Email fallback only for small archives; OAuth only, never mailbox passwords.
-6. Replace the current cloud backup only after a new upload has completed and been verified; retain a known-good weekly checkpoint.
+6. Replace the current cloud backup only after a new upload has completed and been verified; keep one current copy in steady state.
 7. New-device restore test. API keys, OAuth tokens and device-bound Keystore secrets remain excluded by default and must be reauthorized after restore.
 
 No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
@@ -86,7 +86,7 @@ No external irreversible action (send, publish, purchase, delete, alter business
 
 - Architecture documents exist for GLAFIRA Core, Voice Assistant, SMM, specialist roles, Intelligence Center and Backup & Recovery.
 - Backup code now includes a versioned local archive, PBKDF2-derived AES-GCM encryption, manifest and SHA-256 checks, archive verification, manual export/restore, restore safety snapshot with rollback, Android WorkManager daily scheduling, and a user-selected Storage Access Framework cloud folder.
-- The cloud worker uploads a new timestamped archive, reads it back and verifies it before pruning older daily copies; it retains one weekly checkpoint. The selected folder can be a Google Drive or Yandex Disk document provider when exposed by an installed app. This is not a direct Drive/Yandex REST OAuth adapter.
+- The cloud worker uploads a new timestamped archive, reads it back and verifies it before deleting older current copies; steady state is one current archive. If the provider refuses deletion, it keeps the verified new copy and records a cleanup warning. The selected folder can be a Google Drive or Yandex Disk document provider when exposed by an installed app. This is not a direct Drive/Yandex REST OAuth adapter.
 - Still required for Backup & Recovery: real-device/provider acceptance testing, permission-expiry and quota failure tests, clean-device restore test, status notifications, and optional email fallback. WorkManager timing is best-effort.
 - GLAFIRA Core hardening has started: cross-provider consultation is owner opt-in and disabled by default; common tokens/passwords/contact details are pattern-redacted; the primary model can return a direct answer from the planning call to avoid duplicate requests; Council synthesis now follows the configured primary model.
 - Still required for GLAFIRA Core: field-level data-sharing classifications, broader coordinator tests, timeout/cancellation/fallback policy, context-boundary tests, typed tool registry, approval engine and audit trail.
