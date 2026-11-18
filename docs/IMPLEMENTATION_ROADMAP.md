@@ -2,21 +2,7 @@
 
 This roadmap records the owner's priority order. Features remain on the roadmap even when they are not in the current sprint. A specification is not considered implemented until code, tests and an end-to-end acceptance check exist.
 
-## Priority 1 — Backup & Recovery (first)
-
-Goal: protect user data before expanding the product.
-
-1. Encrypted, versioned backup archive created on-device.
-2. Integrity verification and safe restore workflow.
-3. Daily Android WorkManager schedule with retry and owner-visible status.
-4. Free off-device destinations: Google Drive and Yandex Disk using owner-authorized OAuth.
-5. Email fallback only for small archives; OAuth only, never mailbox passwords.
-6. Replace the current cloud backup only after a new upload has completed and been verified; keep one current copy in steady state.
-7. New-device restore test. API keys, OAuth tokens and device-bound Keystore secrets remain excluded by default and must be reauthorized after restore.
-
-No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
-
-## Priority 2 — GLAFIRA Core (the brain and system authority)
+## Priority 1 — GLAFIRA Core (the brain and system authority)
 
 Goal: make Glafira a reliable coordinator for the entire AI office.
 
@@ -29,6 +15,20 @@ Goal: make Glafira a reliable coordinator for the entire AI office.
 7. Add health/diagnostics so the owner can see why a model or tool was selected and whether an operation actually completed.
 
 No external irreversible action (send, publish, purchase, delete, alter business records) without explicit approval or a narrowly scoped owner policy.
+
+## Priority 2 — Backup & Recovery (secondary)
+
+Goal: protect user data before expanding the product.
+
+1. Encrypted, versioned backup archive created on-device.
+2. Integrity verification and safe restore workflow.
+3. Daily Android WorkManager schedule with retry and owner-visible status.
+4. Free off-device destinations: Google Drive and Yandex Disk using owner-authorized OAuth.
+5. Email fallback only for small archives; OAuth only, never mailbox passwords.
+6. Replace the current cloud backup only after a new upload has completed and been verified; keep one current copy in steady state.
+7. New-device restore test. API keys, OAuth tokens and device-bound Keystore secrets remain excluded by default and must be reauthorized after restore.
+
+No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
 
 ## Priority 3 — Employee Runtime, Roles and Voice
 
