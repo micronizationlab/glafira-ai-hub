@@ -23,7 +23,7 @@ Evaluate Supabase Auth as the first no-rented-server candidate:
 - PostgreSQL profile/invitation records with Row Level Security;
 - a small Edge Function or tightly scoped database RPC for invitation redemption and owner administration.
 
-The free plan currently advertises 50,000 monthly active users and up to three custom OAuth providers; its database is limited and inactive projects may pause. Re-check provider pricing, quotas, availability and terms before launch. No quota is a guarantee of permanent free operation.
+The free plan currently advertises 50,000 monthly active users and up to three custom OAuth providers; it includes 500 MB database storage, does not include automatic database backups, and may pause projects after a week of low activity. Supabase's default SMTP is restricted to pre-authorized team addresses, so email verification/invitations for arbitrary customers require configuring a custom SMTP provider. Re-check provider pricing, quotas, availability and terms before launch. No quota is a guarantee of permanent free operation.
 
 Alternative: Firebase Authentication Spark is a strong no-cost option for email/social auth, but Yandex identity federation and invitation provisioning need a separate proof of concept. Do not choose an architecture based only on the fact that one provider offers free email/password auth.
 
