@@ -26,7 +26,8 @@ sealed class GlafiraBridgeIngressBodyResult {
  * through the typed protocol decoder and GlafiraBridgeRequestAdmission.
  */
 object GlafiraBridgeIngressPolicy {
-    const val REQUEST_PATH = "/bridge/v1/requests"\n    const val PAIRING_PATH = "/bridge/v1/pairing"
+    const val REQUEST_PATH = "/bridge/v1/requests"
+    const val PAIRING_PATH = "/bridge/v1/pairing"
     const val MAX_REQUEST_BODY_BYTES = 64 * 1024
 
     fun validateRequestLine(method: String, rawPath: String): GlafiraBridgeIngressRejection? {
