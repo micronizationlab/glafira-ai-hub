@@ -290,7 +290,7 @@ class GlafiraSqliteMemoryRepository(
         put("createdBy", record.createdBy)
         put("lastModifiedBy", record.lastModifiedBy)
         put("supersedes", record.supersedes?.value)
-        put("tags", JSONArray().apply { record.tags.sorted().forEach(::put) })
+        put("tags", JSONArray().apply { record.tags.sorted().forEach { tag -> put(tag) } })
     }.toString()
 
     private data class MemoryMetadata(
