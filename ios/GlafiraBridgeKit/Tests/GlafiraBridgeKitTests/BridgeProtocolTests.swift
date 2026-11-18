@@ -32,6 +32,23 @@ final class BridgeProtocolTests: XCTestCase {
         XCTAssertTrue(BridgeProtocol.verifySignature(signed, secret: secret))
     }
 
+    func testPayloadGoldenVectorUsesKotlinUTF16LengthsAndSortedKeys() throws {
+        let secret = Data((0..<32).map { UInt8($0) })
+        let request = request(
+            operation: .conversationAppend,
+            payload: [
+                "messageText": "Проверь статус проекта",
+                "conversationId": "conversation-01"
+            ]
+        )
+        let signed = try BridgeProtocol.sign(request, secret: secret)
+        XCTAssertEqual(
+            signed.signatureHex,
+            "6a8cc014b60899ab5b0855472c77d94f99e62da34971e3b9dcf4412ae1c6b614"
+        )
+        XCTAssertTrue(BridgeProtocol.verifySignature(signed, secret: secret))
+    }
+
     func testSignatureRejectsTamperingAndShortSecret() throws {
         let secret = Data((0..<32).map(UInt8.init))
         let signed = try BridgeProtocol.sign(request(), secret: secret)
