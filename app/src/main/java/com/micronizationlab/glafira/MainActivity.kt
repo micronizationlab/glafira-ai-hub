@@ -96,6 +96,7 @@ fun ContactList(
     onSettingsClick: () -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var showProjectMenu by remember { mutableStateOf(false) }
     var newProjectName by remember { mutableStateOf("") }
 
     val list = listOf(
@@ -105,14 +106,30 @@ fun ContactList(
     )
 
     Column {
-        // Верхняя панель с проектами
         Row(Modifier.fillMaxWidth().background(GrD).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Проект: ", color = Tx, fontSize = 12.sp)
-            DropdownMenu(
-                expanded = false, // Заглушка для красоты
-                onDismissRequest = {}
-            ) {}
-            Text(currentProject.name, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            
+            Box {
+                Row(modifier = Modifier.clickable { showProjectMenu = true }, verticalAlignment = Alignment.CenterVertically) {
+                    Text(currentProject.name, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Text(" ▼", color = Gr, fontSize = 12.sp)
+                }
+                DropdownMenu(
+                    expanded = showProjectMenu,
+                    onDismissRequest = { showProjectMenu = false }
+                ) {
+                    projects.forEach { proj ->
+                        DropdownMenuItem(
+                            text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Bg) },
+                            onClick = {
+                                onProjectSelect(proj)
+                                showProjectMenu = false
+                            }
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.weight(1f))
             Text("+", color = Gr, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { showAddDialog = true })
             Spacer(Modifier.width(16.dp))
@@ -164,7 +181,6 @@ fun ContactList(
 fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
-    // Ключ истории теперь включает ID проекта и имя агента
     val historyKey = "${project.id}_${agent.n}"
     var messages by remember { mutableStateOf(loadHistory(context, historyKey)) }
     var isLoading by remember { mutableStateOf(false) }
@@ -172,7 +188,6 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     if (showProfile) {
-        // Тот самый экран профиля, который ты просил
         AlertDialog(
             onDismissRequest = { showProfile = false },
             title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(agent.emoji, fontSize = 24.sp); Spacer(Modifier.width(8.dp)); Text(agent.n, color = Gr) } },
@@ -184,7 +199,6 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
-            // Нажатие на имя агента открывает профиль
             Row(Modifier.weight(1f).clickable { showProfile = true }, verticalAlignment = Alignment.CenterVertically) {
                 Text(agent.emoji, fontSize = 20.sp)
                 Spacer(Modifier.width(8.dp))
@@ -319,7 +333,6 @@ suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>, sy
         chatConn.doOutput = true
 
         val messagesArray = JSONArray()
-        // Добавляем системный промпт в начало
         messagesArray.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
         
         history.forEach { msg ->
