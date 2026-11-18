@@ -59,6 +59,19 @@ final class BridgeCredentialBundleTests: XCTestCase {
         ))
     }
 
+    func testRejectsMismatchedApprovalOrTicketCorrelation() throws {
+        XCTAssertThrowsError(try OwnerApprovedBridgeCredentialBundle.parse(
+            bundle(), expectedOrigin: origin, expectedCertificateSHA256: pin,
+            expectedApprovalId: "approval-another-0000", expectedTicketId: "ticket-1234567890",
+            requestedScopes: ["project.read"]
+        ))
+        XCTAssertThrowsError(try OwnerApprovedBridgeCredentialBundle.parse(
+            bundle(), expectedOrigin: origin, expectedCertificateSHA256: pin,
+            expectedApprovalId: "approval-1234567890", expectedTicketId: "ticket-another-0000",
+            requestedScopes: ["project.read"]
+        ))
+    }
+
     func testRejectsScopeEscalationAndDuplicates() throws {
         XCTAssertThrowsError(try OwnerApprovedBridgeCredentialBundle.parse(
             bundle(scopes: ["admin.root"]), expectedOrigin: origin,
@@ -66,7 +79,7 @@ final class BridgeCredentialBundleTests: XCTestCase {
         ))
         XCTAssertThrowsError(try OwnerApprovedBridgeCredentialBundle.parse(
             bundle(scopes: ["project.read", "project.read"]), expectedOrigin: origin,
-            expectedCertificateSHA256: pin, requestedScopes: ["project.read"]
+            expectedCertificateSHA256: pin, expectedApprovalId: "approval-1234567890", expectedTicketId: "ticket-1234567890", requestedScopes: ["project.read"]
         ))
     }
 
