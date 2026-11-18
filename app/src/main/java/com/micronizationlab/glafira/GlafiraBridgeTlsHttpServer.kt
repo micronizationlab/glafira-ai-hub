@@ -319,11 +319,11 @@ class GlafiraBridgeTlsHttpServer(
             HTTP_SERVICE_UNAVAILABLE -> "Service Unavailable"
             else -> "Error"
         }
-        val headers = "HTTP/1.1 $status $reason\\r\\n" +
-            "Content-Type: application/json; charset=utf-8\\r\\n" +
-            "Content-Length: " + body.size + "\\r\\n" +
-            "Connection: close\\r\\n" +
-            "Cache-Control: no-store\\r\\n\\r\\n"
+        val headers = "HTTP/1.1 $status $reason\r\n" +
+            "Content-Type: application/json; charset=utf-8\r\n" +
+            "Content-Length: " + body.size + "\r\n" +
+            "Connection: close\r\n" +
+            "Cache-Control: no-store\r\n\r\n"
         socket.getOutputStream().apply {
             write(headers.toByteArray(Charsets.US_ASCII))
             write(body)
