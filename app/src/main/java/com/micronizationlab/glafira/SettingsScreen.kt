@@ -40,6 +40,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var pendingExpanded by remember { mutableStateOf(true) }
     var showDeleteProjectConfirm by remember { mutableStateOf(false) }
     var exportResult by remember { mutableStateOf<String?>(null) }
+    var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -133,12 +134,47 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
         Spacer(Modifier.height(32.dp))
 
+        // Секция безопасности
+        Text("БЕЗОПАСНОСТЬ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Spacer(Modifier.height(8.dp))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Вход по отпечатку", color = Color.White, fontSize = 16.sp)
+                    Text(
+                        if (!canUseBiometric(context)) "Биометрия недоступна на устройстве"
+                        else if (biometricEnabled) "Включено" else "Выключено",
+                        color = Tx, fontSize = 12.sp
+                    )
+                }
+                Switch(
+                    checked = biometricEnabled,
+                    onCheckedChange = { checked ->
+                        if (checked && !canUseBiometric(context)) {
+                            ToastHelper.short(context, "Биометрия недоступна")
+                        } else {
+                            biometricEnabled = checked
+                            setBiometricEnabled(context, checked)
+                        }
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Gr,
+                        checkedTrackColor = Gr.copy(alpha = 0.5f)
+                    )
+                )
+            }
+        }
+
+        Spacer(Modifier.height(32.dp))
+
         // ===== СЕКЦИЯ ПРОЕКТА =====
         if (currentProject != null) {
             Text("ПРОЕКТ: ${currentProject.name}", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.height(8.dp))
 
-            // Кнопка 11: Экспорт проекта
             Card(
                 colors = CardDefaults.cardColors(containerColor = GrD),
                 modifier = Modifier.fillMaxWidth().clickable {
@@ -164,7 +200,6 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
             Spacer(Modifier.height(12.dp))
 
-            // Кнопка 12: Удалить историю проекта
             Card(
                 colors = CardDefaults.cardColors(containerColor = GrD),
                 modifier = Modifier.fillMaxWidth().clickable { showDeleteProjectConfirm = true }
@@ -182,7 +217,6 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Spacer(Modifier.height(32.dp))
         }
 
-        // Кнопка «Скопировать историю» — оставлена, но с уточнением
         Card(
             colors = CardDefaults.cardColors(containerColor = GrD),
             modifier = Modifier.fillMaxWidth().clickable {
@@ -218,8 +252,8 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Column(Modifier.padding(16.dp)) {
                 Text("ВЕРСИЯ ПРИЛОЖЕНИЯ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("GLAFIRA AI HUB v0.9", color = Color.White, fontSize = 14.sp)
-                Text("Sprint 9.0 — Быстрые ответы, Закрепления, Экспорт проекта", color = Tx, fontSize = 12.sp)
+                Text("GLAFIRA AI HUB v1.0", color = Color.White, fontSize = 14.sp)
+                Text("Sprint 10.0 — Биометрия", color = Tx, fontSize = 12.sp)
             }
         }
 
