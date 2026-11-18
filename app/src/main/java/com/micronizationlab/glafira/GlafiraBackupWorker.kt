@@ -41,7 +41,8 @@ class GlafiraBackupWorker(
                 }
                 BackupArchive.verify(archive, recoveryPassphrase)
 
-                val uploadName = "GLAFIRA-upload-${UUID.randomUUID()}.glb"
+                val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+                val uploadName = "GLAFIRA-current-$stamp-${UUID.randomUUID()}.glb"
                 temporaryRemote = folder.createFile("application/octet-stream", uploadName)
                     ?: error("Облачный сервис не разрешил создать временный файл.")
                 applicationContext.contentResolver.openOutputStream(temporaryRemote.uri, "wt")?.use { output ->
@@ -51,14 +52,16 @@ class GlafiraBackupWorker(
                 copyRemoteToLocal(applicationContext, temporaryRemote, verifyCopy)
                 val verified = BackupArchive.verify(verifyCopy, recoveryPassphrase)
 
-                val latest = folder.findFile(LATEST_BACKUP)
+                val previousCurrent = folder.listFiles()
+                    .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != temporaryRemote.uri }
+                    .maxByOrNull { it.lastModified() }
                 val weekKey = SimpleDateFormat("YYYY-'W'ww", Locale.US).format(Date())
                 val weeklyName = "GLAFIRA-weekly-$weekKey.glb"
-                if (latest != null && folder.findFile(weeklyName) == null) {
+                if (previousCurrent != null && folder.findFile(weeklyName) == null) {
                     val weekly = folder.createFile("application/octet-stream", weeklyName)
                         ?: error("Не удалось создать контрольную недельную копию.")
                     try {
-                        copyRemoteToRemote(applicationContext, latest, weekly)
+                        copyRemoteToRemote(applicationContext, previousCurrent, weekly)
                         copyRemoteToLocal(applicationContext, weekly, verifyCopy)
                         BackupArchive.verify(verifyCopy, recoveryPassphrase)
                     } catch (error: Exception) {
@@ -67,28 +70,18 @@ class GlafiraBackupWorker(
                     }
                 }
 
-                val previous = latest?.let {
-                    val previousName = "GLAFIRA-previous-${UUID.randomUUID()}.glb"
-                    if (!it.renameTo(previousName)) {
-                        error("Облачное хранилище не поддерживает безопасную замену файла. Старая копия сохранена.")
+                folder.listFiles()
+                    .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != temporaryRemote.uri }
+                    .forEach { oldCopy ->
+                        // The newly uploaded and verified copy is already durable.
+                        // If a provider refuses deletion, retain the extra copy rather than risk data loss.
+                        oldCopy.delete()
                     }
-                    it
-                }
-
-                if (!temporaryRemote.renameTo(LATEST_BACKUP)) {
-                    previous?.renameTo(LATEST_BACKUP)
-                    error("Не удалось опубликовать новую проверенную копию. Предыдущая копия сохранена.")
-                }
                 temporaryRemote = null
-                previous?.delete()
 
                 folder.listFiles()
                     .filter { it.name?.startsWith("GLAFIRA-weekly-") == true && it.name != weeklyName }
                     .forEach { it.delete() }
-                folder.listFiles()
-                    .filter { it.name?.startsWith("GLAFIRA-upload-") == true }
-                    .forEach { it.delete() }
-
                 prefs.edit()
                     .putLong(KEY_LAST_SUCCESS, System.currentTimeMillis())
                     .putLong(KEY_LAST_SIZE, archive.length())
@@ -141,6 +134,5 @@ class GlafiraBackupWorker(
         const val KEY_LAST_STATUS = "backup_last_status"
         const val KEY_LAST_ERROR = "backup_last_error"
         const val BACKUP_PASSPHRASE_KEY = "backup_recovery_passphrase"
-        const val LATEST_BACKUP = "GLAFIRA-latest.glb"
     }
 }
