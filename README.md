@@ -10,3 +10,8 @@ The target authority model and secure tool-execution roadmap are documented in
 ## Optional Voice Assistant Plugin
 
 The separately enabled speech input/output module, voice and delivery profiles, consent safeguards, and implementation phases are described in [VOICE_ASSISTANT_PLUGIN.md](docs/VOICE_ASSISTANT_PLUGIN.md).
+
+
+## SMM Specialist Role
+
+The multi-channel social communications role and connector architecture are described in [SMM_SPECIALIST_ROLE.md](docs/SMM_SPECIALIST_ROLE.md).
