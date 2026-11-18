@@ -76,5 +76,8 @@ class DesktopBridgePairingTest {
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
             DesktopBridgePairing.createEnrollmentRequest("ticket_identifier_123", capability, "Desktop", setOf("../admin"))
         }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            DesktopBridgePairing.createEnrollmentRequest("ticket_identifier_123", capability, "Desktop", setOf("unknown.scope"))
+        }
     }
 }
