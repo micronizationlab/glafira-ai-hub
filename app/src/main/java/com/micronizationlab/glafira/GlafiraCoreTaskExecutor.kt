@@ -101,9 +101,9 @@ class GlafiraCoreTaskExecutor(
         val outcome = try {
             handler.execute(task)
         } catch (cancelled: CancellationException) {
-            scheduleRetry(task, "EXECUTION_CANCELLED", nowMillis)
+            return scheduleRetry(task, "EXECUTION_CANCELLED", nowMillis)
         } catch (failure: Exception) {
-            scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", nowMillis)
+            return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", nowMillis)
         }
 
         return when (outcome) {
