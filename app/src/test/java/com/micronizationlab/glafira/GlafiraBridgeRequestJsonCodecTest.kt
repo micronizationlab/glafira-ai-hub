@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import org.json.JSONObject
 
 class GlafiraBridgeRequestJsonCodecTest {
     private val request = GlafiraBridgeRequest(
@@ -29,13 +30,13 @@ class GlafiraBridgeRequestJsonCodecTest {
     @Test
     fun rejectsUnknownOrMissingEnvelopeFields() {
         val encoded = String(GlafiraBridgeRequestJsonCodec.encode(request), StandardCharsets.UTF_8)
+        val withUnknownField = JSONObject(encoded).put("unexpected", "x").toString()
         assertThrows(IllegalArgumentException::class.java) {
-            GlafiraBridgeRequestJsonCodec.decode(encoded.replace("\"signatureHex\"", "\"unexpected\":\"x\",\"signatureHex\"")
-                .toByteArray(StandardCharsets.UTF_8))
+            GlafiraBridgeRequestJsonCodec.decode(withUnknownField.toByteArray(StandardCharsets.UTF_8))
         }
+        val missingField = JSONObject(encoded).apply { remove("signatureHex") }.toString()
         assertThrows(IllegalArgumentException::class.java) {
-            GlafiraBridgeRequestJsonCodec.decode(encoded.replace(",\"signatureHex\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"", "")
-                .toByteArray(StandardCharsets.UTF_8))
+            GlafiraBridgeRequestJsonCodec.decode(missingField.toByteArray(StandardCharsets.UTF_8))
         }
     }
 
