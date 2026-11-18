@@ -22,7 +22,7 @@ internal object GlafiraSecretRedactor {
         var safe = value
         patterns.forEach { pattern ->
             safe = pattern.replace(safe) { match ->
-                val prefix = match.groups[1]?.value.orEmpty()
+                val prefix = match.groups.getOrNull(1)?.value.orEmpty()
                 prefix + "[СКРЫТО]"
             }
         }
