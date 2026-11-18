@@ -119,8 +119,14 @@ object DesktopBridgeCredentialVault {
 
     /** Imports the one-time owner-delivered JSON bundle copied from the Android approval screen. */
     fun importOwnerBundle(path: Path, bundleJson: String, passphrase: CharArray) {
-        require(bundleJson.toByteArray(Charsets.UTF_8).size <= 8 * 1024)
-        val json = org.json.JSONObject(bundleJson)
+        val json = DesktopBridgeJson.parseExactObject(
+            bundleJson,
+            maxBytes = 8 * 1024,
+            expectedKeys = setOf(
+                "format", "origin", "deviceId", "hmacSecretBase64Url",
+                "grantedScopes", "serverCertificateSha256"
+            )
+        )
         require(json.getString("format") == "GLAFIRA_BRIDGE_CREDENTIAL_V1")
         val scopesJson = json.getJSONArray("grantedScopes")
         require(scopesJson.length() in 1..32)
