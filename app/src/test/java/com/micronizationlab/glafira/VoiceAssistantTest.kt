@@ -91,9 +91,9 @@ class VoiceAssistantTest {
         source[0] = 9
 
         val firstRead = audio.bytes
-        assertEquals(1, firstRead[0])
+        assertEquals(1.toByte(), firstRead[0])
         firstRead[1] = 9
-        assertEquals(2, audio.bytes[1])
+        assertEquals(2.toByte(), audio.bytes[1])
     }
 
     @Test
