@@ -3,7 +3,7 @@ import XCTest
 @testable import GlafiraBridgeKit
 
 final class OwnerSecurityTests: XCTestCase {
-    func testCredentialRequiresValidDeviceIdAndAtLeast256BitSecret() throws {
+    func testCredentialRequiresValidDeviceIdAndExactly256BitSecret() throws {
         let secret = Data(repeating: 0x5A, count: 32)
         XCTAssertNoThrow(try BridgeDeviceCredential(deviceId: "device-0001", hmacSecret: secret))
 
@@ -15,6 +15,12 @@ final class OwnerSecurityTests: XCTestCase {
 
         XCTAssertThrowsError(
             try BridgeDeviceCredential(deviceId: "device-0001", hmacSecret: Data(repeating: 0, count: 31))
+        ) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .invalidSecret)
+        }
+
+        XCTAssertThrowsError(
+            try BridgeDeviceCredential(deviceId: "device-0001", hmacSecret: Data(repeating: 0, count: 33))
         ) { error in
             XCTAssertEqual(error as? BridgeCredentialStoreError, .invalidSecret)
         }
