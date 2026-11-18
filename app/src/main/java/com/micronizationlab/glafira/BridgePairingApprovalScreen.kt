@@ -49,9 +49,11 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
 
     LaunchedEffect(context) {
         while (true) {
-            hostRunning = context.getSharedPreferences(
+            val hostState = context.getSharedPreferences(
                 GlafiraBridgeHostService.HOST_STATE_PREFS, Context.MODE_PRIVATE
-            ).getBoolean(GlafiraBridgeHostService.HOST_RUNNING_KEY, false)
+            )
+            hostRunning = hostState.getBoolean(GlafiraBridgeHostService.HOST_RUNNING_KEY, false) &&
+                hostState.getInt(GlafiraBridgeHostService.HOST_PID_KEY, 0) == android.os.Process.myPid()
             delay(1_000)
         }
     }
