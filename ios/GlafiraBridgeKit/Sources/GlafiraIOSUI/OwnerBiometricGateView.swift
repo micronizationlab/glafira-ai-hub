@@ -33,7 +33,6 @@ public struct OwnerBiometricGateView<ProtectedContent: View>: View {
                     .font(.footnote)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
-                    .accessibilityLiveRegion(.assertive)
             }
 
             Button {
@@ -43,7 +42,7 @@ public struct OwnerBiometricGateView<ProtectedContent: View>: View {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                 } else {
-                    Label(actionTitle, systemImage: "faceid")
+                    Label(actionTitle, systemImage: "lock.shield")
                         .frame(maxWidth: .infinity)
                 }
             }
