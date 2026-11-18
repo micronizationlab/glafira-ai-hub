@@ -32,6 +32,7 @@ class GlafiraBridgeTlsHttpServer(
     private val deviceRateLimiter: GlafiraBridgeRateLimiter
 ) : AutoCloseable {
     @Volatile private var running = false
+    @Volatile private var boundPort: Int = DEFAULT_PORT
     private var serverSocket: SSLServerSocket? = null
     private var acceptThread: Thread? = null
     private val workers = ThreadPoolExecutor(
@@ -69,6 +70,7 @@ class GlafiraBridgeTlsHttpServer(
             socket.soTimeout = ACCEPT_TIMEOUT_MS
             socket.bind(InetSocketAddress(bindAddress, port), WORK_QUEUE_CAPACITY)
             serverSocket = socket
+            boundPort = port
             running = true
             acceptThread = Thread({ acceptLoop(socket) }, "glafira-bridge-accept").apply {
                 isDaemon = true
@@ -146,7 +148,7 @@ class GlafiraBridgeTlsHttpServer(
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_HEADERS"))
                     return
                 }
-                val expectedHost = if (port == 443) identity.host else "${identity.host}:$port"
+                val expectedHost = if (boundPort == 443) identity.host else "${identity.host}:$boundPort"
                 if (!headers["host"].equals(expectedHost, ignoreCase = true)) {
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_HOST"))
                     return
