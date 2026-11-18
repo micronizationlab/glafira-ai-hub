@@ -38,9 +38,10 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         task.taskId
     }
 
-    fun claimNext(supportedCapabilities: Set<String>, maxParallelTasks: Int): JSONObject? = synchronized(lock) {
+    fun claimNext(supportedCapabilities: Set<String>, maxParallelTasks: Int, deviceId: String): JSONObject? = synchronized(lock) {
         require(supportedCapabilities.size <= 16 && supportedCapabilities.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
         require(maxParallelTasks in 1..8)
+        require(deviceId.matches(Regex("[A-Za-z0-9_.-]{8,128}"))
         nodeState.edit().putLong("last_seen_epoch_ms", System.currentTimeMillis())
             .putStringSet("capabilities", supportedCapabilities.toSet())
             .putInt("max_parallel_tasks", maxParallelTasks).apply()
@@ -59,6 +60,7 @@ internal class GlafiraDesktopTaskStore(context: Context) {
                     item.put("state", "QUEUED")
                 }
                 item.put("sequence", item.optLong("sequence") + 1)
+                item.remove("assignedDeviceId")
             }
         }
         val next = records.filter { item ->
@@ -76,6 +78,7 @@ internal class GlafiraDesktopTaskStore(context: Context) {
             return@synchronized null
         }
         next.put("state", "DISPATCHED")
+        next.put("assignedDeviceId", deviceId)
         next.put("attemptCount", next.optInt("attemptCount") + 1)
         next.put("leaseExpiresAtEpochMs", now + CLAIM_LEASE_MS)
         next.put("sequence", next.optLong("sequence") + 1)
@@ -85,6 +88,7 @@ internal class GlafiraDesktopTaskStore(context: Context) {
 
     fun update(
         taskId: String,
+        deviceId: String,
         state: String,
         progressPercent: Int,
         progressMessage: String?,
@@ -92,12 +96,14 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         errorCode: String?
     ): Boolean = synchronized(lock) {
         require(taskId.matches(Regex("[A-Za-z0-9_-]{8,64}")))
+        require(deviceId.matches(Regex("[A-Za-z0-9_.-]{8,128}")))
         require(progressPercent in 0..100)
         require(progressMessage == null || progressMessage.length <= 500)
         require(result == null || result.length <= 24_000)
         require(errorCode == null || errorCode.matches(Regex("[A-Z0-9_]{1,64}")))
         val records = read().toMutableList()
         val item = records.firstOrNull { it.optString("taskId") == taskId } ?: return@synchronized false
+        require(item.optString("assignedDeviceId") == deviceId) { "Task is assigned to another Desktop node." }
         val current = item.optString("state")
         require(current in setOf("QUEUED", "DISPATCHED", "ACCEPTED", "RUNNING")) {
             "Task is already terminal."
@@ -111,7 +117,10 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         require(state in allowedNext) { "Invalid task state transition." }
         item.put("state", state)
         if (state in setOf("ACCEPTED", "RUNNING")) item.put("leaseExpiresAtEpochMs", System.currentTimeMillis() + CLAIM_LEASE_MS)
-        if (state in setOf("SUCCEEDED", "FAILED", "CANCELLED")) item.remove("leaseExpiresAtEpochMs")
+        if (state in setOf("SUCCEEDED", "FAILED", "CANCELLED")) {
+            item.remove("leaseExpiresAtEpochMs")
+            item.remove("assignedDeviceId")
+        }
         item.put("sequence", item.optLong("sequence") + 1)
         item.put("progressPercent", progressPercent)
         if (progressMessage != null) item.put("progressMessage", progressMessage)
