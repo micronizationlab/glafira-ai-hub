@@ -82,11 +82,17 @@ interface VoicePlugin {
 }
 
 class VoicePluginRegistry {
-    private val plugins = LinkedHashMap<String, VoicePlugin>()
+    private data class RegisteredPlugin(
+        val plugin: VoicePlugin,
+        val descriptor: VoicePluginDescriptor
+    )
+
+    private val plugins = LinkedHashMap<String, RegisteredPlugin>()
 
     @Synchronized
     fun register(plugin: VoicePlugin) {
-        val descriptor = plugin.descriptor
+        val source = plugin.descriptor
+        val descriptor = source.copy(capabilities = source.capabilities.toSet())
         val actual = buildSet {
             if (plugin.speechToTextProvider != null) add(VoiceCapability.SPEECH_TO_TEXT)
             if (plugin.textToSpeechProvider != null) add(VoiceCapability.TEXT_TO_SPEECH)
@@ -97,11 +103,14 @@ class VoicePluginRegistry {
         require(!plugins.containsKey(descriptor.pluginId)) {
             "Voice plugin is already registered."
         }
-        plugins[descriptor.pluginId] = plugin
+        plugins[descriptor.pluginId] = RegisteredPlugin(plugin, descriptor)
     }
 
     @Synchronized
-    fun find(pluginId: String): VoicePlugin? = plugins[pluginId]
+    fun find(pluginId: String): VoicePlugin? = plugins[pluginId]?.plugin
+
+    @Synchronized
+    fun descriptor(pluginId: String): VoicePluginDescriptor? = plugins[pluginId]?.descriptor
 
     @Synchronized
     fun discover(): List<VoicePluginDescriptor> = plugins.values.map { it.descriptor }
@@ -167,8 +176,10 @@ class VoiceAssistantRuntime(
         if (!enabled) return VoiceRuntimeResult.Failure(VoiceRuntimeError.DISABLED)
         val plugin = registry.find(pluginId)
             ?: return VoiceRuntimeResult.Failure(VoiceRuntimeError.PLUGIN_NOT_FOUND)
+        val descriptor = registry.descriptor(pluginId)
+            ?: return VoiceRuntimeResult.Failure(VoiceRuntimeError.PLUGIN_NOT_FOUND)
         if (requestedCapabilities.isEmpty() ||
-            !plugin.descriptor.capabilities.containsAll(requestedCapabilities)
+            !descriptor.capabilities.containsAll(requestedCapabilities)
         ) return VoiceRuntimeResult.Failure(VoiceRuntimeError.CAPABILITY_UNAVAILABLE)
         if (VoiceCapability.SPEECH_TO_TEXT in requestedCapabilities && !microphonePermissionGranted) {
             return VoiceRuntimeResult.Failure(VoiceRuntimeError.MICROPHONE_PERMISSION_REQUIRED)
