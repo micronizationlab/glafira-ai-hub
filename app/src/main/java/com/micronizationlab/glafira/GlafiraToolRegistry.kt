@@ -95,6 +95,14 @@ object GlafiraToolRegistry {
             ToolRiskLevel.FINANCIAL, setOf("finance.payment")
         ),
         GlafiraToolDefinition(
+            "desktop.task.claim", "Получение задания Desktop", "Получение назначенного задания из очереди Desktop.",
+            ToolRiskLevel.DRAFT, setOf("desktop.task.claim")
+        ),
+        GlafiraToolDefinition(
+            "desktop.task.result", "Отчёт Desktop о задании", "Передача статуса и результата назначенного задания.",
+            ToolRiskLevel.DRAFT, setOf("desktop.task.result")
+        ),
+        GlafiraToolDefinition(
             "record.delete", "Удаление данных", "Удаление записей или файлов.",
             ToolRiskLevel.DESTRUCTIVE, setOf("data.delete")
         )
