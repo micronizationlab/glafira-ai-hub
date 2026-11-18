@@ -117,7 +117,7 @@ class GlafiraTaskStore(context: Context) :
      * Atomically claims one eligible task and increments its attempt count.
      * A worker crash after this point is recovered by a later Core recovery pass.
      */
-    fun claimNext(nowMillis: Long = System.currentTimeMillis()): GlafiraTask? {
+    override fun claimNext(nowMillis: Long): GlafiraTask? {
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -166,13 +166,13 @@ class GlafiraTaskStore(context: Context) :
      * Compare-and-set transition. Callers must supply the states they observed;
      * illegal state transitions are rejected before SQLite is modified.
      */
-    fun transition(
+    override fun transition(
         taskId: String,
         expectedStates: Set<GlafiraTaskState>,
         nextState: GlafiraTaskState,
-        nowMillis: Long = System.currentTimeMillis(),
-        retryAtMillis: Long? = null,
-        lastError: String? = null
+        nowMillis: Long,
+        retryAtMillis: Long?,
+        lastError: String?
     ): Boolean {
         require(expectedStates.isNotEmpty()) { "At least one expected task state is required." }
         require(expectedStates.all { GlafiraTaskPolicy.canTransition(it, nextState) }) {
