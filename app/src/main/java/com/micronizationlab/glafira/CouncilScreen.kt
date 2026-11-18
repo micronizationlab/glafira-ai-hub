@@ -72,8 +72,8 @@ fun CouncilScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Что обсудить?", color = Tx, fontSize = 12.sp) },
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = GrD, unfocusedContainerColor = GrD,
-                    focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                    focusedContainerColor = Color.White, unfocusedContainerColor = Color.White,
+                    focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020),
                     focusedIndicatorColor = Gr
                 ),
                 maxLines = 4
