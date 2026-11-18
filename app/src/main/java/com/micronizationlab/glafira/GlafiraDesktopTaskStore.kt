@@ -45,7 +45,7 @@ internal class GlafiraDesktopTaskStore(context: Context) {
             if (state == "QUEUED" && item.optLong("expiresAtEpochMs") <= now) {
                 item.put("state", "EXPIRED")
                 item.put("sequence", item.optLong("sequence") + 1)
-            } else if (state == "DISPATCHED" && item.optLong("leaseExpiresAtEpochMs") in 1..now) {
+            } else if (state in setOf("DISPATCHED", "ACCEPTED", "RUNNING") && item.optLong("leaseExpiresAtEpochMs") in 1..now) {
                 if (item.optInt("attemptCount") >= MAX_DELIVERY_ATTEMPTS) {
                     item.put("state", "FAILED")
                     item.put("errorCode", "DESKTOP_DELIVERY_RETRIES_EXCEEDED")
@@ -98,7 +98,7 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         }
         require(state in allowedNext) { "Invalid task state transition." }
         item.put("state", state)
-        if (state == "RUNNING") item.put("leaseExpiresAtEpochMs", System.currentTimeMillis() + CLAIM_LEASE_MS)
+        if (state in setOf("ACCEPTED", "RUNNING")) item.put("leaseExpiresAtEpochMs", System.currentTimeMillis() + CLAIM_LEASE_MS)
         if (state in setOf("SUCCEEDED", "FAILED", "CANCELLED")) item.remove("leaseExpiresAtEpochMs")
         item.put("sequence", item.optLong("sequence") + 1)
         item.put("progressPercent", progressPercent)
