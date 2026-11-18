@@ -170,7 +170,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                     saveProviderKey(context, ProviderId.GROK, grokKey),
                     saveProviderKey(context, ProviderId.YANDEX, yandexKey),
                     saveProviderKey(context, ProviderId.GEMINI, geminiKey),
-                    saveProviderKey(context, ProviderId.OPENROUTER, openRouterKey)
+                    saveProviderKey(context, ProviderId.OPENROUTER, openRouterKey),
                     GlafiraBraveSearchProvider.saveApiKey(context, braveSearchKey)
                 )
                 val saved = saveResults.all { it }
