@@ -50,8 +50,15 @@ internal class DesktopBridgeTaskWorker(
         if (raw != "none") {
             val json = JSONObject(raw)
             val task = decodeTask(json)
-            queue.enqueue(task)
-            postTaskUpdate(task.taskId, "ACCEPTED", 0, "accepted", "none", "none")
+            try {
+                queue.enqueue(task)
+                postTaskUpdate(task.taskId, "ACCEPTED", 0, "accepted", "none", "none")
+            } catch (error: Exception) {
+                runCatching {
+                    postTaskUpdate(task.taskId, "FAILED", 0, "desktop queue rejected task", "none", "DESKTOP_QUEUE_REJECTED")
+                }
+                throw error
+            }
         }
         return runtime.dispatchAvailable()
     }
@@ -79,21 +86,31 @@ internal class DesktopBridgeTaskWorker(
         result: String,
         errorCode: String
     ) {
-        val response = client.post(
-            origin, credentials, projectId,
-            DesktopBridgeOperation.DESKTOP_TASK_RESULT,
-            mapOf(
-                "taskId" to taskId,
-                "state" to state,
-                "progressPercent" to progress.toString(),
-                "progressMessage" to progressMessage,
-                "result" to result,
-                "errorCode" to errorCode
-            )
-        )
-        if (response.status != DesktopBridgeStatus.SUCCEEDED) {
-            throw IllegalStateException(response.errorCode ?: "DESKTOP_TASK_RESULT_FAILED")
+        var lastError: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                val response = client.post(
+                    origin, credentials, projectId,
+                    DesktopBridgeOperation.DESKTOP_TASK_RESULT,
+                    mapOf(
+                        "taskId" to taskId,
+                        "state" to state,
+                        "progressPercent" to progress.toString(),
+                        "progressMessage" to progressMessage,
+                        "result" to result,
+                        "errorCode" to errorCode
+                    )
+                )
+                if (response.status != DesktopBridgeStatus.SUCCEEDED) {
+                    throw IllegalStateException(response.errorCode ?: "DESKTOP_TASK_RESULT_FAILED")
+                }
+                return
+            } catch (error: Exception) {
+                lastError = error
+                if (attempt < 2) Thread.sleep(250L * (attempt + 1))
+            }
         }
+        throw IllegalStateException("DESKTOP_TASK_RESULT_DELIVERY_FAILED", lastError)
     }
 
     private fun decodeTask(json: JSONObject): DesktopTaskEnvelope {
