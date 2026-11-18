@@ -15,3 +15,8 @@ The separately enabled speech input/output module, voice and delivery profiles, 
 ## SMM Specialist Role
 
 The multi-channel social communications role and connector architecture are described in [SMM_SPECIALIST_ROLE.md](docs/SMM_SPECIALIST_ROLE.md).
+
+
+## Specialist Roles
+
+Additional role definitions for Accountant, Medical/Scientific Consultant, Lawyer and Commercial Director are in [SPECIALIST_ROLES.md](docs/SPECIALIST_ROLES.md).
