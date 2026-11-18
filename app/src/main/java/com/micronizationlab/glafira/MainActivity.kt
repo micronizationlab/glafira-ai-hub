@@ -13,6 +13,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -27,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -48,14 +48,9 @@ val GrD = Color(0xFF151515)
 val Tx = Color(0xFF888888)
 
 data class A(
-    val n: String, 
-    val d: String, 
-    val on: Boolean, 
-    val emoji: String, 
-    val prompt: String,
-    val fullDesc: String
+    val n: String, val d: String, val on: Boolean, val emoji: String, 
+    val prompt: String, val fullDesc: String
 )
-
 data class Msg(val text: String, val isUser: Boolean, val time: String)
 
 class MainActivity : ComponentActivity() {
@@ -112,48 +107,34 @@ fun ContactList(
     var newProjectName by remember { mutableStateOf("") }
 
     val list = listOf(
-        A(
-            "ГЛАФИРА", "Главный координатор", true, "🤖", 
+        A("ГЛАФИРА", "Главный координатор", true, "🤖", 
             "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
-            "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением."
-        ),
-        A(
-            "АНАЛИТИК", "Исследование и анализ", true, "📊", 
+            "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением."),
+        A("АНАЛИТИК", "Исследование и анализ", true, "📊", 
             "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен.",
-            "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры."
-        ),
-        A(
-            "ПРОГРАММИСТ", "Код и технические задачи", false, "💻", 
+            "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры."),
+        A("ПРОГРАММИСТ", "Код и технические задачи", false, "💻", 
             "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
-            "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта."
-        )
+            "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта.")
     )
 
     Column {
         Row(Modifier.fillMaxWidth().background(GrD).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Проект: ", color = Tx, fontSize = 12.sp)
-            
             Box {
                 Row(modifier = Modifier.clickable { showProjectMenu = true }, verticalAlignment = Alignment.CenterVertically) {
                     Text(currentProject.name, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     Text(" ▼", color = Gr, fontSize = 12.sp)
                 }
-                DropdownMenu(
-                    expanded = showProjectMenu,
-                    onDismissRequest = { showProjectMenu = false }
-                ) {
+                DropdownMenu(expanded = showProjectMenu, onDismissRequest = { showProjectMenu = false }) {
                     projects.forEach { proj ->
                         DropdownMenuItem(
                             text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Bg) },
-                            onClick = {
-                                onProjectSelect(proj)
-                                showProjectMenu = false
-                            }
+                            onClick = { onProjectSelect(proj); showProjectMenu = false }
                         )
                     }
                 }
             }
-
             Spacer(Modifier.weight(1f))
             Text("+", color = Gr, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { showAddDialog = true })
             Spacer(Modifier.width(16.dp))
@@ -164,16 +145,10 @@ fun ContactList(
             AlertDialog(
                 onDismissRequest = { showAddDialog = false },
                 title = { Text("Новый проект", color = Bg) },
-                text = { 
-                    TextField(value = newProjectName, onValueChange = { newProjectName = it }, placeholder = { Text("Название...") })
-                },
+                text = { TextField(value = newProjectName, onValueChange = { newProjectName = it }, placeholder = { Text("Название...") }) },
                 confirmButton = {
                     TextButton(onClick = {
-                        if (newProjectName.isNotBlank()) {
-                            onProjectAdd(newProjectName)
-                            newProjectName = ""
-                            showAddDialog = false
-                        }
+                        if (newProjectName.isNotBlank()) { onProjectAdd(newProjectName); newProjectName = ""; showAddDialog = false }
                     }) { Text("Создать", color = Gr) }
                 }
             )
@@ -210,47 +185,69 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var messages by remember { mutableStateOf(loadHistory(context, historyKey)) }
     var isLoading by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
+    
+    // СОСТОЯНИЯ ДЛЯ ПОИСКА
+    var isSearching by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    
+    // ДЛЯ АВТОСКРОЛЛА
+    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    // Фильтрация сообщений при поиске
+    val displayedMessages = if (searchQuery.isBlank()) messages else messages.filter { it.text.contains(searchQuery, ignoreCase = true) }
+
+    // Эффект автоскролла при изменении количества сообщений
+    LaunchedEffect(messages.size) {
+        if (!isSearching && messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
 
     if (showProfile) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
+            // Шапка чата
             Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
-                Row(Modifier.weight(1f).clickable { showProfile = true }, verticalAlignment = Alignment.CenterVertically) {
-                    Text(agent.emoji, fontSize = 20.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Column {
-                        Text(agent.n, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                        Text(if (agent.on) "Online" else "Offline", color = Tx, fontSize = 10.sp)
+                if (isSearching) {
+                    // Режим поиска
+                    TextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Поиск...", color = Tx, fontSize = 14.sp) },
+                        modifier = Modifier.weight(1f),
+                        colors = TextFieldDefaults.colors(focusedContainerColor = GrD, unfocusedContainerColor = GrD, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr)
+                    )
+                    Text("✕", color = Gr, fontSize = 20.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
+                } else {
+                    // Обычная шапка
+                    Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
+                    Row(Modifier.weight(1f).clickable { showProfile = true }, verticalAlignment = Alignment.CenterVertically) {
+                        Text(agent.emoji, fontSize = 20.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(agent.n, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Text(if (agent.on) "Online" else "Offline", color = Tx, fontSize = 10.sp)
+                        }
                     }
+                    Text("🔍", fontSize = 18.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 16.dp))
+                    Text("📤", fontSize = 18.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 16.dp))
+                    Text("🗑️", fontSize = 18.sp, modifier = Modifier.clickable {
+                        messages = emptyList(); saveHistory(context, historyKey, emptyList())
+                    })
                 }
-                // Кнопка экспорта
-                Text("📤", fontSize = 18.sp, modifier = Modifier.clickable {
-                    exportChatToFile(context, project.name, agent.n, messages)
-                }.padding(end = 16.dp))
-                // Кнопка очистки
-                Text("🗑️", fontSize = 18.sp, modifier = Modifier.clickable {
-                    messages = emptyList()
-                    saveHistory(context, historyKey, emptyList())
-                })
             }
 
-            LazyColumn(Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(messages) { msg ->
+            // Список сообщений
+            LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(displayedMessages) { msg ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
                         Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
                             Box(
-                                Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f))
-                                    .border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                    .combinedClickable(
-                                        onClick = {},
-                                        onLongClick = { copyToClipboard(context, msg.text) }
-                                    )
-                                    .padding(12.dp)
+                                Modifier.clip(RoundedCornerShape(8.dp)).background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f)).border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).combinedClickable(
+                                    onClick = {}, onLongClick = { copyToClipboard(context, msg.text) }
+                                ).padding(12.dp)
                             ) {
                                 Text(msg.text, color = if (msg.isUser) Color.White else Gr, fontSize = 14.sp)
                             }
@@ -258,65 +255,53 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         }
                     }
                 }
-                if (isLoading) {
-                    item { TypingIndicator() }
-                }
+                if (isLoading) { item { TypingIndicator() } }
+                if (isSearching && displayedMessages.isEmpty()) { item { Text("Ничего не найдено", color = Tx, modifier = Modifier.padding(16.dp)) } }
             }
 
-            Row(Modifier.fillMaxWidth().background(GrD).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 14.sp) },
-                    modifier = Modifier.weight(1f).padding(end = 8.dp),
-                    colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Color.DarkGray)
-                )
-                Button(
-                    onClick = {
-                        if (inputText.isNotBlank() && !isLoading) {
-                            val userMsg = inputText
-                            val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                            val updatedMessages = messages + Msg(userMsg, true, timeNow)
-                            messages = updatedMessages
-                            saveHistory(context, historyKey, updatedMessages)
-                            inputText = ""
-                            isLoading = true
-                            
-                            scope.launch {
-                                val reply = callGigaChatWithTrustedCert(context, updatedMessages, agent.prompt)
-                                val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                                val finalMessages = updatedMessages + Msg(reply, false, replyTime)
-                                messages = finalMessages
-                                saveHistory(context, historyKey, finalMessages)
-                                isLoading = false
+            // Поле ввода
+            if (!isSearching) {
+                Row(Modifier.fillMaxWidth().background(GrD).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextField(
+                        value = inputText, onValueChange = { inputText = it },
+                        placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 14.sp) },
+                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                        colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Color.DarkGray)
+                    )
+                    Button(
+                        onClick = {
+                            if (inputText.isNotBlank() && !isLoading) {
+                                val userMsg = inputText
+                                val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                                val updatedMessages = messages + Msg(userMsg, true, timeNow)
+                                messages = updatedMessages
+                                saveHistory(context, historyKey, updatedMessages)
+                                inputText = ""
+                                isLoading = true
+                                scope.launch {
+                                    val reply = callGigaChatWithTrustedCert(context, updatedMessages, agent.prompt)
+                                    val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                                    val finalMessages = updatedMessages + Msg(reply, false, replyTime)
+                                    messages = finalMessages
+                                    saveHistory(context, historyKey, finalMessages)
+                                    isLoading = false
+                                }
                             }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Bg)
-                ) {
-                    Text("➤", fontSize = 18.sp)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Bg)
+                    ) { Text("➤", fontSize = 18.sp) }
                 }
             }
         }
     }
 }
 
-// Анимированный индикатор печати
 @Composable
 fun TypingIndicator() {
     val infiniteTransition = rememberInfiniteTransition()
-    val alpha1 by infiniteTransition.animateFloat(
-        initialValue = 0.2f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(600, easing = LinearEasing), repeatMode = RepeatMode.Reverse)
-    )
-    val alpha2 by infiniteTransition.animateFloat(
-        initialValue = 0.2f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(600, delayMillis = 200, easing = LinearEasing), repeatMode = RepeatMode.Reverse)
-    )
-    val alpha3 by infiniteTransition.animateFloat(
-        initialValue = 0.2f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(600, delayMillis = 400, easing = LinearEasing), repeatMode = RepeatMode.Reverse)
-    )
+    val alpha1 by infiniteTransition.animateFloat(0.2f, 1f, infiniteRepeatable(tween(600, easing = LinearEasing), RepeatMode.Reverse))
+    val alpha2 by infiniteTransition.animateFloat(0.2f, 1f, infiniteRepeatable(tween(600, delayMillis = 200, easing = LinearEasing), RepeatMode.Reverse))
+    val alpha3 by infiniteTransition.animateFloat(0.2f, 1f, infiniteRepeatable(tween(600, delayMillis = 400, easing = LinearEasing), RepeatMode.Reverse))
 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
         Text("Глафира печатает", color = Tx, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
@@ -334,15 +319,10 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
             Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
             Text("Профиль агента", color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
-
         Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                Modifier.size(100.dp).clip(CircleShape).background(Gr.copy(alpha = 0.2f)).border(2.dp, Gr, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(Modifier.size(100.dp).clip(CircleShape).background(Gr.copy(alpha = 0.2f)).border(2.dp, Gr, CircleShape), contentAlignment = Alignment.Center) {
                 Text(agent.emoji, fontSize = 50.sp)
             }
-            
             Spacer(Modifier.height(16.dp))
             Text(agent.n, color = Gr, fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             Text(agent.d, color = Tx, fontSize = 14.sp)
@@ -352,7 +332,6 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
                 Spacer(Modifier.width(4.dp))
                 Text(if (agent.on) "В сети" else "Не в сети", color = if (agent.on) Color.Green else Tx, fontSize = 12.sp)
             }
-
             Spacer(Modifier.height(32.dp))
             Card(colors = CardDefaults.cardColors(containerColor = GrD), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
@@ -361,7 +340,6 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
                     Text(agent.fullDesc, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
                 }
             }
-            
             Spacer(Modifier.height(16.dp))
             Card(colors = CardDefaults.cardColors(containerColor = GrD), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
@@ -374,16 +352,11 @@ fun ProfileScreen(agent: A, onBack: () -> Unit) {
     }
 }
 
+// --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (остались без изменений) ---
 fun saveHistory(context: Context, key: String, history: List<Msg>) {
     val file = File(context.filesDir, "chat_$key.json")
     val jsonArray = JSONArray()
-    history.forEach { 
-        jsonArray.put(JSONObject().apply { 
-            put("text", it.text)
-            put("isUser", it.isUser)
-            put("time", it.time)
-        }) 
-    }
+    history.forEach { jsonArray.put(JSONObject().apply { put("text", it.text); put("isUser", it.isUser); put("time", it.time) }) }
     file.writeText(jsonArray.toString())
 }
 
@@ -403,8 +376,7 @@ fun loadHistory(context: Context, key: String): List<Msg> {
 
 suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>, systemPrompt: String): String = withContext(Dispatchers.IO) {
     val authKey = loadApiKey(context)
-    if (authKey.isBlank()) return@withContext "Ошибка: Ключ API не найден. Зайдите в настройки (шестеренка) и вставьте ключ."
-
+    if (authKey.isBlank()) return@withContext "Ошибка: Ключ API не найден. Зайдите в настройки и вставьте ключ."
     try {
         val certFactory = CertificateFactory.getInstance("X.509")
         val certInputStream = context.assets.open("russian_trusted_root_ca.crt")
@@ -442,19 +414,11 @@ suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>, sy
 
         val messagesArray = JSONArray()
         messagesArray.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-        
         history.forEach { msg ->
-            messagesArray.put(JSONObject().apply { 
-                put("role", if (msg.isUser) "user" else "assistant") 
-                put("content", msg.text) 
-            })
+            messagesArray.put(JSONObject().apply { put("role", if (msg.isUser) "user" else "assistant"); put("content", msg.text) })
         }
 
-        val chatBody = JSONObject().apply {
-            put("model", "GigaChat-2")
-            put("messages", messagesArray)
-        }.toString()
-
+        val chatBody = JSONObject().apply { put("model", "GigaChat-2"); put("messages", messagesArray) }.toString()
         chatConn.outputStream.use { it.write(chatBody.toByteArray()) }
 
         if (chatConn.responseCode == 200) {
