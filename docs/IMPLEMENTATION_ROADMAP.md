@@ -24,7 +24,7 @@ Goal: make Glafira a reliable coordinator for the entire AI office.
 2. Stabilize provider registry, primary-model selection, fallback, timeout, retry, cancellation and error reporting.
 3. Improve consultation policy: call peers only when useful; never forward project-restricted data; primary Glafira model owns final synthesis.
 4. Implement context assembly with project isolation, role instructions, skill references and source citations.
-5. Add tool permission scopes, approval gates, audit trail and safe handoff for unsupported actions.
+5. Add tool permission scopes, approval gates, audit trail and safe handoff for unsupported actions. Initial typed tool registry and project/tool/action-bound approval policy are implemented; persistent approval inbox and execution integration remain.
 6. Add coordinator tests: routing, provider failures, secret redaction, peer selection, context boundaries, approval behavior and final synthesis.
 7. Add health/diagnostics so the owner can see why a model or tool was selected and whether an operation actually completed.
 
