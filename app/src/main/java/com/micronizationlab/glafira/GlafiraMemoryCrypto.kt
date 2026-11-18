@@ -57,7 +57,8 @@ class GlafiraMemoryCrypto(context: Context) {
         val iv = payload.copyOfRange(0, IV_LENGTH)
         val ciphertext = payload.copyOfRange(IV_LENGTH, payload.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(TAG_LENGTH_BITS, iv))
+        // Do not mint a replacement key during decryption: that would hide key loss.
+        cipher.init(Cipher.DECRYPT_MODE, getExistingKey(), GCMParameterSpec(TAG_LENGTH_BITS, iv))
         cipher.updateAAD(aad(memoryId, schemaVersion, scopeType, scopeId, kind, classification,
             status, confidence, confidenceBasis, createdAt, updatedAt, validFrom, expiresAt))
         return cipher.doFinal(ciphertext)
@@ -80,6 +81,13 @@ class GlafiraMemoryCrypto(context: Context) {
                 .build()
         )
         return generator.generateKey()
+    }
+
+    @Synchronized
+    private fun getExistingKey(): SecretKey {
+        val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+            ?: throw IllegalStateException("GLAFIRA memory encryption key is unavailable; owner recovery is required")
     }
 
     private fun aad(
