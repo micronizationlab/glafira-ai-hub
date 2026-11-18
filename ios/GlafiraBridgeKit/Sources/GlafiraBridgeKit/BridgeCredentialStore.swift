@@ -45,7 +45,12 @@ public final class KeychainBridgeCredentialStore {
         self.service = service
     }
 
-    public func store(_ credential: BridgeDeviceCredential) throws {
+    public func store(
+        _ credential: BridgeDeviceCredential,
+        ownerConfirmationReason: String
+    ) async throws {
+        try await OwnerBiometricAuthenticator().authenticate(reason: ownerConfirmationReason)
+
         var accessError: Unmanaged<CFError>?
         guard let access = SecAccessControlCreateWithFlags(
             nil,
@@ -116,7 +121,12 @@ public final class KeychainBridgeCredentialStore {
 
     /// Deletes only the selected paired device credential. Callers must gate
     /// this operation behind a fresh owner-biometric confirmation.
-    public func delete(deviceId: String) throws {
+    public func delete(
+        deviceId: String,
+        ownerConfirmationReason: String
+    ) async throws {
+        try await OwnerBiometricAuthenticator().authenticate(reason: ownerConfirmationReason)
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
