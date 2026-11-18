@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -84,6 +85,8 @@ data class Msg(val text: String, val isUser: Boolean, val time: String, val date
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Draw edge-to-edge so Compose can apply system-bar and keyboard insets consistently.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent { App() }
     }
 }
@@ -181,7 +184,13 @@ fun App() {
         }
     }
 
-    Surface(Modifier.fillMaxSize(), color = Bg) {
+    Surface(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .imePadding(),
+        color = Bg
+    ) {
         when {
             showSettings -> SettingsScreen(
                 onBack = {
