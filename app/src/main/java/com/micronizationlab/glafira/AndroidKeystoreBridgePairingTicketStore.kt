@@ -127,12 +127,16 @@ class AndroidKeystoreBridgePairingTicketStore(
 
                 if (stored != null && stored.third > nowEpochMs) {
                     val verifier = decrypt(getExistingKey(), stored.first, stored.second)
-                    if (MessageDigest.isEqual(verifier, expectedVerifierKey)) {
-                        consumed = db.delete(
-                            TABLE_NAME,
-                            "ticket_id = ?",
-                            arrayOf(ticketId)
-                        ) == 1
+                    try {
+                        if (MessageDigest.isEqual(verifier, expectedVerifierKey)) {
+                            consumed = db.delete(
+                                TABLE_NAME,
+                                "ticket_id = ?",
+                                arrayOf(ticketId)
+                            ) == 1
+                        }
+                    } finally {
+                        verifier.fill(0)
                     }
                 }
                 db.setTransactionSuccessful()
