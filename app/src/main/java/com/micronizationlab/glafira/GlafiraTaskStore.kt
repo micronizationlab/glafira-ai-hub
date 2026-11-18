@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONArray
+import java.io.File
 
 /**
  * Transactional, process-death-safe queue storage for GLAFIRA Core.
