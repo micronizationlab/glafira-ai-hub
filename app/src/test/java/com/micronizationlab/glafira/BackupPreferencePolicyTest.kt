@@ -9,7 +9,7 @@ class BackupPreferencePolicyTest {
     fun exportsAndRestoresPrimaryProviderAndPeerProviderSelection() {
         assertTrue(BackupPreferencePolicy.isAllowedValue("glafira_primary_provider", "OPENAI"))
         assertTrue(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers", "GIGACHAT"))
-        assertTrue(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers_project_a", "openai,gigachat"))
+        assertTrue(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers_project_a", "OPENAI,GIGACHAT"))
     }
 
     @Test
