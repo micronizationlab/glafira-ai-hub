@@ -37,7 +37,6 @@ jobs:
           gradle-version: '8.9'
 
       - name: Configure stable debug signing key
-        if: ${{ env.GLAFIRA_DEBUG_KEYSTORE_BASE64 != '' }}
         env:
           GLAFIRA_DEBUG_KEYSTORE_BASE64: ${{ secrets.GLAFIRA_DEBUG_KEYSTORE_BASE64 }}
           GLAFIRA_DEBUG_STORE_PASSWORD: ${{ secrets.GLAFIRA_DEBUG_STORE_PASSWORD }}
@@ -45,6 +44,10 @@ jobs:
           GLAFIRA_DEBUG_KEY_PASSWORD: ${{ secrets.GLAFIRA_DEBUG_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          if [ -z "${GLAFIRA_DEBUG_KEYSTORE_BASE64:-}" ]; then
+            echo "::warning::Stable debug signing is not configured; this APK may not update an APK signed by a previous GitHub runner."
+            exit 0
+          fi
           test -n "$GLAFIRA_DEBUG_STORE_PASSWORD"
           test -n "$GLAFIRA_DEBUG_KEY_ALIAS"
           test -n "$GLAFIRA_DEBUG_KEY_PASSWORD"
@@ -55,12 +58,6 @@ jobs:
           echo "GLAFIRA_DEBUG_STORE_PASSWORD=$GLAFIRA_DEBUG_STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "GLAFIRA_DEBUG_KEY_ALIAS=$GLAFIRA_DEBUG_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "GLAFIRA_DEBUG_KEY_PASSWORD=$GLAFIRA_DEBUG_KEY_PASSWORD" >> "$GITHUB_ENV"
-
-      - name: Warn when stable debug signing is not configured
-        if: ${{ env.GLAFIRA_DEBUG_KEYSTORE_BASE64 == '' }}
-        env:
-          GLAFIRA_DEBUG_KEYSTORE_BASE64: ${{ secrets.GLAFIRA_DEBUG_KEYSTORE_BASE64 }}
-        run: echo "::warning::Stable debug signing is not configured; this APK may not update an APK signed by a previous GitHub runner."
 
       - name: Run Unit Tests
         run: gradle testDebugUnitTest :desktop-bridge:test :desktop-bridge:installDist
