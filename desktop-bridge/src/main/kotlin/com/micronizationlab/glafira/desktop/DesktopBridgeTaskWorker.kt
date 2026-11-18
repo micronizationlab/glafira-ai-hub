@@ -61,15 +61,44 @@ internal class DesktopBridgeTaskWorker(
         if (raw != "none") {
             val json = JSONObject(raw)
             val task = decodeTask(json)
-            try {
-                queue.enqueue(task)
-                postTaskUpdate(task.taskId, "ACCEPTED", 0, "accepted", "none", "none")
-            } catch (error: Exception) {
-                runCatching { queue.cancel(task.taskId) }
-                runCatching {
-                    postTaskUpdate(task.taskId, "FAILED", 0, "desktop queue rejected task", "none", "DESKTOP_QUEUE_REJECTED")
+            val existing = queue.get(task.taskId)
+            when (existing?.state) {
+                DesktopTaskState.SUCCEEDED -> {
+                    postTaskUpdate(task.taskId, "ACCEPTED", 0, "restored completed task", "none", "none")
+                    postTaskUpdate(
+                        task.taskId, "RUNNING", 99, "restoring result",
+                        existing.result ?: "none", "none"
+                    )
+                    postTaskUpdate(
+                        task.taskId, "SUCCEEDED", 100, "completed",
+                        existing.result ?: "none", "none"
+                    )
                 }
-                throw error
+                DesktopTaskState.FAILED, DesktopTaskState.CANCELLED, DesktopTaskState.EXPIRED -> {
+                    postTaskUpdate(task.taskId, "ACCEPTED", 0, "restored terminal task", "none", "none")
+                    postTaskUpdate(
+                        task.taskId, "RUNNING", 99, "restoring failure", "none", "none"
+                    )
+                    postTaskUpdate(
+                        task.taskId, "FAILED", 0, "completed with failure",
+                        "none", existing.errorCode ?: "DESKTOP_TASK_FAILED"
+                    )
+                }
+                DesktopTaskState.DISPATCHED, DesktopTaskState.ACCEPTED, DesktopTaskState.RUNNING -> {
+                    val failed = runCatching { queue.fail(task.taskId, "RECOVERY_REQUIRES_REVIEW") }.getOrNull()
+                    postTaskUpdate(task.taskId, "ACCEPTED", 0, "recovery check", "none", "none")
+                    postTaskUpdate(
+                        task.taskId, "RUNNING", 99, "recovery check", "none", "none"
+                    )
+                    postTaskUpdate(
+                        task.taskId, "FAILED", 0, "task was interrupted; automatic replay blocked",
+                        "none", failed?.errorCode ?: "RECOVERY_REQUIRES_REVIEW"
+                    )
+                }
+                DesktopTaskState.QUEUED, null -> {
+                    if (existing == null) queue.enqueue(task)
+                    postTaskUpdate(task.taskId, "ACCEPTED", 0, "accepted", "none", "none")
+                }
             }
         }
         return runtime.dispatchAvailable()
