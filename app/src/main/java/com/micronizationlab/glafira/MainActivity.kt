@@ -99,7 +99,24 @@ fun App() {
     var currentProject by remember { mutableStateOf(projects.first()) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(context) { SoundHelper.init(context) }
+    LaunchedEffect(context) {
+        SoundHelper.init(context)
+        val activity = context as? Activity
+        val incomingIntent = activity?.intent
+        if (incomingIntent?.action == Intent.ACTION_SEND) {
+            val received = withContext(Dispatchers.IO) { IncomingFileHelper.importSharedFile(context, incomingIntent) }
+            if (received != null) {
+                val defaultProject = loadProjects(context).first()
+                val key = "${defaultProject.id}_ГЛАФИРА"
+                val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                val now = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                saveHistory(context, key, loadHistory(context, key) + received.copy(time = now, date = today))
+                currentAgent = A("ГЛАФИРА", "Главный координатор", true, "🤖", "Ты — Глафира, главный координатор проектов. Отвечай четко и по делу.", "Главный управляющий интеллект.", ProviderId.GIGACHAT, AgentGroup.IA)
+                SoundHelper.playIncomingFile()
+                activity.intent = Intent(activity, MainActivity::class.java)
+            }
+        }
+    }
 
     var unlocked by remember {
         mutableStateOf(!isBiometricEnabled(context))
@@ -714,6 +731,19 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                     .padding(horizontal = 10.dp, vertical = 8.dp)
                             ) {
                                 Column {
+                                    if (msg.attachmentPath.isNotBlank()) {
+                                        Row(Modifier.fillMaxWidth().clickable {
+                                            IncomingFileHelper.openFile(context, msg.attachmentPath, msg.attachmentMime)
+                                        }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Text("📎", fontSize = 22.sp)
+                                            Spacer(Modifier.width(8.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(msg.attachmentName.ifBlank { "Вложенный файл" }, color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                Text(IncomingFileHelper.formatSize(msg.attachmentSize), color = Tx, fontSize = 9.sp)
+                                            }
+                                            Text("ОТКРЫТЬ", color = Gr, fontSize = 9.sp)
+                                        }
+                                    }
                                     Text(
                                         if (isLong && !isExpanded) collapsedText(msg.text) else msg.text,
                                         color = Color(0xFF202020),
