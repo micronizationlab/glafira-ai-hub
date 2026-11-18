@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GlafiraCorePolicyTest {
@@ -36,5 +37,26 @@ class GlafiraCorePolicyTest {
             emptyList<ProviderId>(),
             GlafiraCorePolicy.selectAllowedPeers(ProviderId.DEEPSEEK, configured, setOf(ProviderId.YANDEX))
         )
+    }
+
+    @Test
+    fun autonomyPolicyPreservesRoleAndAddsCapabilityHonestyRules() {
+        val base = "Ты — Глафира, главный координатор."
+
+        val result = GlafiraAutonomyPolicy.apply(base)
+
+        assertTrue(result.startsWith(base))
+        assertTrue(result.contains("не «просто помощник»"))
+        assertTrue(result.contains("сайт"))
+        assertTrue(result.contains("Не утверждай, что открыла или проверила ресурс"))
+        assertTrue(result.contains("подтверждения владельца"))
+    }
+
+    @Test
+    fun autonomyPolicyCanBeUsedWithoutAnAgentSpecificBasePrompt() {
+        val result = GlafiraAutonomyPolicy.apply("")
+
+        assertTrue(result.isNotBlank())
+        assertTrue(result.contains("самостоятельный интеллектуальный координатор"))
     }
 }
