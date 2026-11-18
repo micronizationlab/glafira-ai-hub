@@ -293,7 +293,12 @@ object BackupArchive {
         val allowed = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE).all
         return JSONObject().apply {
             allowed.forEach { (key, value) ->
-                if (BackupPreferencePolicy.isAllowedValue(key, value)) {
+                val safeKey = key == "glafira_primary_provider" ||
+                    key == "peer_consultation_enabled" ||
+                    key.startsWith("peer_consultation_enabled_") ||
+                    key == "peer_consultation_providers" ||
+                    key.startsWith("peer_consultation_providers_")
+                if (safeKey && (value is String || value is Boolean || value is Int || value is Long || value is Float)) {
                     put(key, value)
                 }
             }
@@ -303,18 +308,22 @@ object BackupArchive {
     private fun restoreSafePreferences(context: Context, values: JSONObject) {
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val editor = preferences.edit()
-        preferences.all.keys.filter(BackupPreferencePolicy::isAllowedKey)
-            .forEach { editor.remove(it) }
+        preferences.all.keys.filter {
+            it == "glafira_primary_provider" || it == "peer_consultation_enabled" ||
+                it.startsWith("peer_consultation_enabled_") ||
+                it == "peer_consultation_providers" || it.startsWith("peer_consultation_providers_")
+        }.forEach { editor.remove(it) }
         val keys = values.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            if (!BackupPreferencePolicy.isAllowedKey(key)) continue
+            val safeKey = key == "glafira_primary_provider" ||
+                key == "peer_consultation_enabled" ||
+                key.startsWith("peer_consultation_enabled_")
+            if (!safeKey) continue
             val value = values.opt(key)
             when {
-                BackupPreferencePolicy.isStringKey(key) && value is String ->
-                    editor.putString(key, value)
-                BackupPreferencePolicy.isBooleanKey(key) && value is Boolean ->
-                    editor.putBoolean(key, value)
+                key == "glafira_primary_provider" && value is String -> editor.putString(key, value)
+                value is Boolean -> editor.putBoolean(key, value)
             }
         }
         check(editor.commit()) { "Не удалось восстановить настройки приложения." }
