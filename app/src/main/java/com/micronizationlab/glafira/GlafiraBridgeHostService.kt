@@ -44,6 +44,7 @@ class GlafiraBridgeHostService : Service() {
             val selectedHost = BridgeServerHost.ipv4(address ?: "")
             val bindAddress = InetAddress.getByName(selectedHost.value)
             approvalStore = AndroidKeystoreBridgePairingApprovalStore(this)
+            pairingTicketStore = AndroidKeystoreBridgePairingTicketStore(this)
             replayGuard = GlafiraBridgeReplayGuard(this)
             val identity = AndroidKeystoreBridgeServerIdentityStore(this).getOrCreate(selectedHost)
             val limiter = GlafiraBridgeRateLimiter(
@@ -55,6 +56,10 @@ class GlafiraBridgeHostService : Service() {
             host = GlafiraBridgeTlsHttpServer(
                 identity = identity,
                 admission = GlafiraBridgeRequestAdmission(approvalStore!!, replayGuard!!),
+                enrollmentCoordinator = GlafiraBridgeEnrollmentCoordinator(
+                    GlafiraBridgePairingProtocol(pairingTicketStore!!),
+                    GlafiraBridgeOwnerApprovalService(approvalStore!!)
+                ),
                 addressRateLimiter = limiter
             ).also { it.start(bindAddress, port) }
             updateNotification("Защищённый локальный канал активен: $address:$port")
