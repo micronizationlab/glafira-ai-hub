@@ -9,7 +9,8 @@ data class PendingMessage(
     val projectId: String,
     val agentName: String,
     val text: String,
-    val time: String
+    val time: String,
+    val providerId: String = ProviderId.GIGACHAT.name
 )
 
 fun savePendingQueue(context: Context, queue: List<PendingMessage>) {
@@ -21,6 +22,7 @@ fun savePendingQueue(context: Context, queue: List<PendingMessage>) {
             put("agentName", it.agentName)
             put("text", it.text)
             put("time", it.time)
+            put("providerId", it.providerId)
         })
     }
     file.writeText(arr.toString())
@@ -38,7 +40,8 @@ fun loadPendingQueue(context: Context): List<PendingMessage> {
                 o.getString("projectId"),
                 o.getString("agentName"),
                 o.getString("text"),
-                o.optString("time", "")
+                o.optString("time", ""),
+                o.optString("providerId", ProviderId.GIGACHAT.name)
             ))
         }
     } catch (e: Exception) { }
