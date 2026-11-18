@@ -26,6 +26,17 @@ The first owner-testable build must contain an update screen. The owner must not
 
 A stable signing key is required before the first test build can be updated in place. A debug APK generated on a fresh CI runner is not suitable: its debug signing key may differ on the next run, and Android will reject an update signed by a different certificate.
 
+Create the keystore once on the owner's trusted computer (keep the file in an encrypted backup location):
+```bash
+keytool -genkeypair -v -keystore glafira-release.jks -alias glafira -keyalg RSA -keysize 3072 -validity 10000
+```
+
+Encode the file for the GitHub secret (Linux/macOS):
+```bash
+base64 -w 0 glafira-release.jks
+```
+On macOS, use `base64 glafira-release.jks | tr -d '\\n'`. Paste the resulting value only into the repository secret field, never into chat, source code or an issue.
+
 The private keystore must never be committed to Git. Store these GitHub Actions repository secrets:
 
 - `GLAFIRA_KEYSTORE_BASE64` — base64-encoded owner-controlled JKS/PKCS12 keystore.
