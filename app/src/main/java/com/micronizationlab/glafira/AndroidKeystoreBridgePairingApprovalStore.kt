@@ -226,7 +226,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
         return runCatching {
             readableDatabase.rawQuery(
                 """
-                SELECT d.approval_id, d.device_id
+                SELECT d.approval_id, a.ticket_id, d.device_id
                 FROM $DELIVERIES d
                 INNER JOIN $APPROVALS a ON a.approval_id = d.approval_id
                 WHERE a.status = ? AND a.delivery_acknowledged = 0
@@ -237,7 +237,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) {
-                        add(GlafiraBridgePendingCredentialDelivery(cursor.getString(0), cursor.getString(1)))
+                        add(GlafiraBridgePendingCredentialDelivery(cursor.getString(0), cursor.getString(1), cursor.getString(2)))
                     }
                 }
             }
@@ -260,6 +260,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
             var result: GlafiraBridgeDeliveryResult = GlafiraBridgeDeliveryResult.StorageError
             var encrypted: EncryptedSecret? = null
             var deviceId: String? = null
+            var ticketId: String? = null
             var scopes: Set<String> = emptySet()
             db.beginTransaction()
             try {
@@ -280,12 +281,9 @@ class AndroidKeystoreBridgePairingApprovalStore(
                 } else if (approvalState.second) {
                     result = GlafiraBridgeDeliveryResult.AlreadyAcknowledged
                 } else {
-                    val delivery = db.query(
-                        DELIVERIES,
-                        arrayOf("device_id", "iv", "ciphertext", "granted_scopes", "owner_session_id", "claim_expires_at"),
-                        "approval_id = ?",
-                        arrayOf(approvalId),
-                        null, null, null, "1"
+                    val delivery = db.rawQuery(
+                        "SELECT d.device_id, d.iv, d.ciphertext, d.granted_scopes, d.owner_session_id, d.claim_expires_at, a.ticket_id FROM $DELIVERIES d INNER JOIN $APPROVALS a ON a.approval_id = d.approval_id WHERE d.approval_id = ? LIMIT 1",
+                        arrayOf(approvalId)
                     ).use { cursor ->
                         if (!cursor.moveToFirst()) null
                         else DeliveryRow(
@@ -294,7 +292,8 @@ class AndroidKeystoreBridgePairingApprovalStore(
                             ciphertext = cursor.getBlob(2),
                             scopes = decodeScopes(cursor.getString(3)),
                             ownerSessionId = cursor.getString(4),
-                            claimExpiresAt = cursor.getLong(5)
+                            claimExpiresAt = cursor.getLong(5),
+                            ticketId = cursor.getString(6)
                         )
                     }
                     if (delivery == null) {
@@ -317,6 +316,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
                         check(changed == 1)
                         encrypted = EncryptedSecret(delivery.iv, delivery.ciphertext)
                         deviceId = delivery.deviceId
+                        ticketId = delivery.ticketId
                         scopes = delivery.scopes
                         result = GlafiraBridgeDeliveryResult.StorageError
                     }
@@ -326,10 +326,10 @@ class AndroidKeystoreBridgePairingApprovalStore(
                 db.endTransaction()
             }
 
-            if (encrypted != null && deviceId != null) {
+            if (encrypted != null && deviceId != null && ticketId != null) {
                 val secret = decrypt(encrypted!!, "delivery:$approvalId")
                 GlafiraBridgeDeliveryResult.Available(
-                    GlafiraBridgeCredentialDelivery(approvalId, deviceId!!, secret, scopes)
+                    GlafiraBridgeCredentialDelivery(approvalId, ticketId!!, deviceId!!, secret, scopes)
                 )
             } else result
         }.getOrDefault(GlafiraBridgeDeliveryResult.StorageError)
@@ -477,7 +477,8 @@ class AndroidKeystoreBridgePairingApprovalStore(
         val ciphertext: ByteArray,
         val scopes: Set<String>,
         val ownerSessionId: String?,
-        val claimExpiresAt: Long
+        val claimExpiresAt: Long,
+        val ticketId: String
     )
 
     companion object {
