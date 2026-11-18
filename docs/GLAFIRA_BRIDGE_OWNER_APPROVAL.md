@@ -35,7 +35,7 @@ The Android adapter, AndroidKeystoreBridgePairingApprovalStore, uses SQLite tran
 
 - Device-requested scopes are untrusted display hints only.
 - Approval must require an authenticated owner session.
-- The owner chooses the exact granted scope set; the request and LLM cannot expand it.
+- The owner chooses the exact granted scope set from registered Core tool scopes only; unknown scope IDs are rejected. The request and LLM cannot expand it.
 - Empty or malformed owner scope sets are rejected.
 - Rejection never creates a credential.
 - Pairing proof verification is not owner approval, and owner approval is not permission to bypass Core tool-risk gates.
