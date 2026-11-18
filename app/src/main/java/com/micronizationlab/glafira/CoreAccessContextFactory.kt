@@ -6,6 +6,8 @@ package com.micronizationlab.glafira
  */
 interface CoreIdentityProvider {
     suspend fun currentActor(): CoreActor?
+    /** Trusted role from the authenticated agent session; never supplied by task input. */
+    suspend fun currentAgentRoleId(): AgentRoleIdentifier? = null
 }
 
 /**
@@ -19,11 +21,13 @@ class CoreAccessContextFactory(
 ) {
     suspend fun forMemory(
         projectId: ProjectIdentifier,
-        agentRoleId: AgentRoleIdentifier? = null,
         requestedScopes: Set<MemoryScopeType>,
         maximumClassification: CoreDataClassification
     ): MemoryAccessContext? {
         val actor = identityProvider.currentActor() ?: return null
+        val trustedRoleId = if (actor.type == CoreActorType.AGENT) {
+            identityProvider.currentAgentRoleId()
+        } else null
         val actorCeiling = when (actor.type) {
             CoreActorType.OWNER, CoreActorType.SYSTEM -> MemoryScopeType.values().toSet()
             CoreActorType.AGENT -> setOf(
@@ -39,8 +43,8 @@ class CoreAccessContextFactory(
         }
         val scopes = requestedScopes intersect actorCeiling
         if (scopes.isEmpty()) return null
-        if (actor.type == CoreActorType.AGENT && agentRoleId == null &&
-            MemoryScopeType.AGENT in scopes) return null
+        if (actor.type == CoreActorType.AGENT &&
+            MemoryScopeType.AGENT in scopes && trustedRoleId == null) return null
 
         val decision = policyEngine.evaluate(
             CorePolicyRequest(actor, projectId, CoreAction.READ_MEMORY, maximumClassification)
@@ -50,7 +54,7 @@ class CoreAccessContextFactory(
         return MemoryAccessContext(
             actorId = actor.id,
             projectId = projectId,
-            agentRoleId = agentRoleId,
+            agentRoleId = trustedRoleId,
             allowedScopes = scopes,
             maximumClassification = maximumClassification,
             actorType = actor.type
