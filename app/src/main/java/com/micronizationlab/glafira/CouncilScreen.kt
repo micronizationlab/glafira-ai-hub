@@ -27,7 +27,8 @@ import java.util.Locale
 data class CouncilAgent(
     val name: String,
     val emoji: String,
-    val prompt: String
+    val prompt: String,
+    val providerId: ProviderId
 )
 
 @Composable
@@ -42,15 +43,18 @@ fun CouncilScreen(onBack: () -> Unit) {
     val agents = listOf(
         CouncilAgent(
             "ГЛАФИРА", "🤖",
-            "Ты — Глафира, главный координатор. Смотри на вопрос стратегически, выделяй главное, предлагай план действий. Отвечай чётко и по делу."
+            "Ты — Глафира, главный координатор. Смотри на вопрос стратегически, выделяй главное, предлагай план действий. Отвечай чётко и по делу.",
+            ProviderId.GIGACHAT
         ),
         CouncilAgent(
             "АНАЛИТИК", "📊",
-            "Ты — Аналитик. Анализируй факты, риски, цифры. Отвечай объективно, без эмоций. Будь точен."
+            "Ты — Аналитик. Анализируй факты, риски, цифры. Отвечай объективно, без эмоций. Будь точен.",
+            ProviderId.OPENAI
         ),
         CouncilAgent(
             "ПРОГРАММИСТ", "💻",
-            "Ты — Программист. Оценивай техническую реализуемость, предлагай конкретные решения. Отвечай кодом и кратким объяснением."
+            "Ты — Программист. Оценивай техническую реализуемость, предлагай конкретные решения. Отвечай кодом и кратким объяснением.",
+            ProviderId.DEEPSEEK
         )
     )
 
@@ -92,7 +96,11 @@ fun CouncilScreen(onBack: () -> Unit) {
                             agents.map { agent ->
                                 async {
                                     val history = listOf(Msg(question, true, "", ""))
-                                    val reply = callGigaChatWithTrustedCert(context, history, agent.prompt)
+                                    val reply = if (isProviderConfigured(context, agent.providerId)) {
+                                        callAiProvider(context, agent.providerId, history, agent.prompt)
+                                    } else {
+                                        "Модель ${agent.providerId.displayName} не подключена. Добавь её API-ключ в Настройках."
+                                    }
                                     agent.name to reply
                                 }
                             }.map { it.await() }.toMap()
@@ -108,11 +116,21 @@ fun CouncilScreen(onBack: () -> Unit) {
                             }
                             appendLine("Сформируй итоговое решение на основе мнений совета. Выдели главное, предложи конкретные шаги.")
                         }
-                        val finalAnswer = callGigaChatWithTrustedCert(
-                            context,
-                            listOf(Msg(councilInput, true, "", "")),
-                            "Ты — Глафира, председатель совета. Собери мнения специалистов в единое решение. Будь краток и конкретен."
-                        )
+                        val synthesisProvider = listOf(
+                            ProviderId.GIGACHAT,
+                            ProviderId.OPENAI,
+                            ProviderId.DEEPSEEK
+                        ).firstOrNull { isProviderConfigured(context, it) }
+                        val finalAnswer = if (synthesisProvider == null) {
+                            "Не подключена ни одна модель. Добавь API-ключ в Настройках."
+                        } else {
+                            callAiProvider(
+                                context,
+                                synthesisProvider,
+                                listOf(Msg(councilInput, true, "", "")),
+                                "Ты — Глафира, председатель совета. Собери мнения специалистов в единое решение. Будь краток и конкретен. Другие модели — советники, последнее слово за тобой."
+                            )
+                        }
                         summary = finalAnswer
                         isLoading = false
                     }
