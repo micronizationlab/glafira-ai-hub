@@ -31,7 +31,6 @@ class GlafiraBridgeCoreGateTest {
             request, "device-0001", secret, setOf("project.read"), nowEpochMs = now
         )
         assertEquals(GlafiraBridgeStatus.ACCEPTED, allowed.response.status)
-
         val denied = GlafiraBridgeCoreGate.authorize(
             request, "device-0001", secret, emptySet(), nowEpochMs = now
         )
@@ -44,7 +43,6 @@ class GlafiraBridgeCoreGateTest {
             request, "device-0002", secret, setOf("project.read"), nowEpochMs = now
         )
         assertEquals(GlafiraBridgeAuthorizationError.DEVICE_MISMATCH, mismatch.error)
-
         val tampered = request.copy(projectId = "project-002")
         val invalid = GlafiraBridgeCoreGate.authorize(
             tampered, "device-0001", secret, setOf("project.read"), nowEpochMs = now
@@ -61,14 +59,13 @@ class GlafiraBridgeCoreGateTest {
             request, "device-0001", secret, setOf("conversation.read"), nowEpochMs = now
         )
         assertEquals(GlafiraBridgeAuthorizationError.SCOPE_DENIED, denied.error)
-
         val allowed = GlafiraBridgeCoreGate.authorize(
             request, "device-0001", secret, setOf("conversation.append"), nowEpochMs = now
         )
         assertEquals(GlafiraBridgeStatus.ACCEPTED, allowed.response.status)
     }
 
-    @Test fun approvalRequestQueuesOwnerReviewAndDoesNotGrantExecution() {
+    @Test fun approvalRequestReturnsPendingStateButDoesNotCreateGrant() {
         val request = signed(
             GlafiraBridgeOperation.APPROVAL_REQUEST,
             mapOf("toolId" to "message.send", "actionSummary" to "Send approved reply to customer")
@@ -78,6 +75,7 @@ class GlafiraBridgeCoreGateTest {
         )
         assertEquals(GlafiraBridgeStatus.PENDING_APPROVAL, result.response.status)
         assertEquals("message.send", result.response.result["toolId"])
+        assertEquals(null, result.response.result["approvalGrant"])
     }
 
     @Test fun rejectsApprovalRequestsForUnknownOrNonPrivilegedTools() {
@@ -89,7 +87,6 @@ class GlafiraBridgeCoreGateTest {
             unknown, "device-0001", secret, setOf("approval.request"), nowEpochMs = now
         )
         assertEquals(GlafiraBridgeAuthorizationError.UNKNOWN_TOOL, unknownResult.error)
-
         val readOnly = signed(
             GlafiraBridgeOperation.APPROVAL_REQUEST,
             mapOf("toolId" to "project.read", "actionSummary" to "Read project")
@@ -97,6 +94,6 @@ class GlafiraBridgeCoreGateTest {
         val readOnlyResult = GlafiraBridgeCoreGate.authorize(
             readOnly, "device-0001", secret, setOf("approval.request"), nowEpochMs = now
         )
-        assertEquals(GlafiraBridgeAuthorizationError.UNKNOWN_TOOL, readOnlyResult.error)
+        assertEquals(GlafiraBridgeAuthorizationError.APPROVAL_NOT_REQUIRED, readOnlyResult.error)
     }
 }
