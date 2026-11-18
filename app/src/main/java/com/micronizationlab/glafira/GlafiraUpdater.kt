@@ -51,10 +51,12 @@ object GlafiraUpdater {
                 val assets = release.optJSONArray("assets")
                     ?: throw IllegalStateException("В опубликованном релизе нет APK")
                 var candidate: GlafiraAppUpdate? = null
+                var apkAssetFound = false
                 for (index in 0 until assets.length()) {
                     val asset = assets.getJSONObject(index)
                     val name = asset.optString("name")
                     if (!name.startsWith(APK_PREFIX) || !name.endsWith(APK_SUFFIX)) continue
+                    apkAssetFound = true
                     val code = name.removePrefix(APK_PREFIX).removeSuffix(APK_SUFFIX).toLongOrNull()
                         ?: continue
                     val digest = asset.optString("digest")
@@ -72,6 +74,7 @@ object GlafiraUpdater {
                     )
                     break
                 }
+                if (!apkAssetFound) throw IllegalStateException("В последнем релизе нет APK-файла GLAFIRA")
                 val currentCode = currentVersionCode(context)
                 candidate?.takeIf { it.versionCode > currentCode }
             } finally {
