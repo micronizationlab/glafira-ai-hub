@@ -116,13 +116,16 @@ object BackupArchive {
     }
 
     /** Verifies the authenticated archive contains a required relative data path. */
-    fun verifyContains(file: File, passphrase: CharArray, relativePath: String): BackupVerification {
+    fun verifyContains(context: Context, file: File, passphrase: CharArray, relativePath: String): BackupVerification {
         require(relativePath.isNotBlank() && !relativePath.startsWith("/") &&
             relativePath.split("/").none { it == ".." || it.isBlank() }) {
             "Недопустимый путь обязательного файла архива."
         }
         val extracted = decryptToStaging(file, passphrase)
         try {
+            require(extracted.appId == context.packageName) {
+                "Резервная копия создана для другого приложения."
+            }
             require(extracted.files.any { it.relativePath == relativePath }) {
                 "Архив не содержит обязательную базу GLAFIRA Core."
             }
@@ -143,6 +146,9 @@ object BackupArchive {
         }
         var safetySnapshotCanBeDeleted = true
         try {
+            require(extracted.appId == context.packageName) {
+                "Резервная копия создана для другого приложения."
+            }
             applyStaged(context, extracted.files, extracted.safePreferences)
             return extracted.verification
         } catch (restoreError: Exception) {
@@ -211,7 +217,8 @@ object BackupArchive {
         val directory: File,
         val files: List<StagedFile>,
         val verification: BackupVerification,
-        val safePreferences: JSONObject
+        val safePreferences: JSONObject,
+        val appId: String
     )
 
     private fun decryptToStaging(file: File, passphrase: CharArray): StagedArchive {
@@ -284,6 +291,14 @@ object BackupArchive {
                 val parsed = requireNotNull(manifest) { "В архиве отсутствует manifest." }
                 require(parsed.optString("format") == "GLAFIRA_BACKUP") { "Неверный формат manifest." }
                 require(parsed.optInt("version") == FORMAT_VERSION) { "Версия manifest не поддерживается." }
+                val archiveAppId = parsed.optString("appId")
+                require(archiveAppId.isNotBlank()) { "В manifest отсутствует идентификатор приложения." }
+                require(parsed.optInt("fileCount", -1) == stagedFiles.size) {
+                    "Количество файлов не совпадает с заголовком manifest."
+                }
+                require(parsed.optLong("totalBytes", -1L) == totalBytes) {
+                    "Общий размер файлов не совпадает с manifest."
+                }
                 val expected = parsed.getJSONArray("files")
                 require(expected.length() == stagedFiles.size) { "Количество файлов не совпадает с manifest." }
                 val stagedByPath = stagedFiles.associateBy { it.relativePath }
@@ -307,7 +322,8 @@ object BackupArchive {
                         stagedFiles.size,
                         totalBytes
                     ),
-                    parsed.optJSONObject("safePreferences") ?: JSONObject()
+                    parsed.optJSONObject("safePreferences") ?: JSONObject(),
+                    archiveAppId
                 )
             }
         } catch (error: Exception) {
