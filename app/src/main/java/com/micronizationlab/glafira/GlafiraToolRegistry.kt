@@ -32,7 +32,8 @@ data class ToolApprovalGrant internal constructor(
     val toolId: String,
     val actionHash: String,
     val approvedAt: Long,
-    val expiresAt: Long
+    val expiresAt: Long,
+    val taskId: String? = null
 )
 
 object GlafiraToolRegistry {
@@ -107,6 +108,39 @@ object GlafiraToolRegistry {
             grant.expiresAt > now
         return if (validGrant) ToolAuthorizationDecision.ALLOWED
         else ToolAuthorizationDecision.OWNER_APPROVAL_REQUIRED
+    }
+
+    fun authorize(
+        definition: GlafiraToolDefinition,
+        task: GlafiraTask,
+        actionSummary: String,
+        grant: ToolApprovalGrant?,
+        now: Long = System.currentTimeMillis()
+    ): ToolAuthorizationDecision {
+        if (!requiresOwnerApproval(definition.risk)) return ToolAuthorizationDecision.ALLOWED
+        if (grant == null) return ToolAuthorizationDecision.OWNER_APPROVAL_REQUIRED
+        val validGrant = grant.projectId == task.projectId &&
+            grant.toolId == task.taskType &&
+            grant.taskId == task.taskId &&
+            grant.actionHash == actionHash(task, actionSummary) &&
+            grant.approvedAt <= now &&
+            grant.expiresAt > now
+        return if (validGrant) ToolAuthorizationDecision.ALLOWED
+        else ToolAuthorizationDecision.OWNER_APPROVAL_REQUIRED
+    }
+
+    internal fun actionHash(task: GlafiraTask, actionSummary: String): String {
+        val fields = listOf(
+            task.taskId, task.projectId, task.taskType, task.origin,
+            task.payload, task.requiredScopes.sorted().joinToString("\\u0000"),
+            actionSummary.trim()
+        )
+        val canonical = buildString {
+            fields.forEach { append(it.length).append(':').append(it) }
+        }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(canonical.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
     }
 
     internal fun issueGrantForOwnerApprovedRequest(
