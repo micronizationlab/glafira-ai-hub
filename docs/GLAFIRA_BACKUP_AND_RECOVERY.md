@@ -97,3 +97,7 @@ Free-tier capacities, provider quotas and API terms can change; query/display cu
 - The UI accurately reports last verified backup, not merely last attempted upload.
 - The app explains that Android background scheduling is best-effort.
 - At least one end-to-end restore test passes on a clean device/profile.
+
+
+## Restore semantics
+Restore applies an exact snapshot of app-private files: it writes verified archive entries and removes app-private files absent from the selected archive. It first creates an encrypted safety snapshot and attempts rollback if applying the selected archive fails. Real-device tests must verify both replacement and removal behavior before release.
