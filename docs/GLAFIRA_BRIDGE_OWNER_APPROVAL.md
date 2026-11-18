@@ -1,6 +1,6 @@
 # GLAFIRA Bridge owner approval and device enrollment
 
-Status: domain contract and unit-test implementation in progress. The Android durable adapter and owner UI are not implemented by this document or the domain contract alone.
+Status: platform-neutral domain contract, policy tests, and an Android SQLite/Keystore persistence adapter are implemented in the current Draft PR. The owner UI, trusted owner-authentication session issuer, and live Gateway wiring remain outstanding. Physical-device security validation has not yet been performed.
 
 ## Trust boundary
 
@@ -29,7 +29,7 @@ GlafiraBridgePairingApprovalStore is a platform-neutral port. Its production imp
 - audit metadata without secrets or pairing capabilities;
 - cleanup/expiry policy for stale pending requests and unacknowledged deliveries.
 
-The Android implementation should use SQLite transactions and Android Keystore-backed AES-GCM encryption. The iOS implementation should use an equivalent Keychain-backed design when the iOS client reaches this stage. No plaintext HMAC secret may be persisted, logged, included in model context, or placed in shared engineering memory.
+The Android adapter, AndroidKeystoreBridgePairingApprovalStore, uses SQLite transactions and Android Keystore-backed AES-GCM encryption. Credential and delivery records are encrypted separately with identity-bound AAD. Delivery claims are leased to an owner session until its expiry, allowing a later authenticated session to recover an unacknowledged delivery. The iOS implementation should use an equivalent Keychain-backed design when the iOS client reaches this stage. No plaintext HMAC secret may be persisted, logged, included in model context, or placed in shared engineering memory.
 
 ## Scope rules
 
@@ -51,3 +51,16 @@ The platform-neutral approval service and policy tests define the workflow and s
 - Desktop client enrollment or a live TLS server.
 
 Do not claim device pairing is complete until those components and physical-device tests pass.
+
+
+## Android physical-device acceptance checklist
+
+- Verify AES key creation and encrypted database records on a supported Android device.
+- Verify pending requests survive process death and device restart.
+- Verify two concurrent approvals cannot issue two credentials for one request.
+- Verify a database failure rolls back credential, delivery and approval-state changes together.
+- Verify the HMAC secret is never present in SQLite as plaintext.
+- Verify owner-session delivery can be recovered by a new authenticated session after the previous session lease expires.
+- Verify acknowledgement removes the encrypted delivery copy while the credential remains available to the Bridge credential provider.
+- Verify Keystore invalidation causes fail-closed behavior and requires controlled re-pairing.
+- Verify app backup/restore does not restore ciphertext without its Keystore key and that this state is reported safely.
