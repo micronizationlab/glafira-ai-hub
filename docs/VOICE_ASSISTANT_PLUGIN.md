@@ -57,6 +57,16 @@ Do not expose manual controls for pitch, timbre, pace, pauses, accent, emotion o
 
 Microphone access is requested only when the owner starts a voice interaction. Do not add always-listening behavior to the minimal toggle. Audio retention remains off by default and must be clearly disclosed if a provider requires processing or storage.
 
+## Conversation-based voice assignment
+
+The initial owner preference is automatic assignment by conversation type:
+- **Personal chats → Shura Karetny-inspired profile:** informal, lively, comic delivery; colloquial and unconventional vocabulary; profanity may be used naturally when appropriate to the private conversation and the user's request. The assistant must not force profanity into every sentence or use it in a way that targets or harasses someone.
+- **Work chats → Levitan-inspired profile:** formal, precise, respectful and fully correct official Russian; no profanity, slang or crude expressions.
+
+This is a routing rule, not a collection of tuning controls. Glafira determines the conversation category from the project/chat context and selects the associated profile. The owner can change the selected plugin/profile; if classification is uncertain, default to the formal work-safe profile. Text content, factual accuracy, confidentiality and action permissions remain governed by Glafira Core, not by the voice persona.
+
+The Shura Karetny and Yuri Levitan names are target references for the requested experiments. Do not present generated audio as an authentic recording or endorsement by either performer. A recognizable voice replica or a direct recreation of distinctive signature expressions requires the applicable documented authorization. Without it, use a clearly distinct original voice and original phrasing that follow only broad, non-identifying traits (informal comedic Russian for personal chats; authoritative formal announcer diction for work chats). Do not scrape public recordings as a cloning dataset without authorization.
+
 ## Runtime architecture
 
 - `VoicePlugin`: lifecycle, opt-in settings and capability declaration.
