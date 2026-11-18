@@ -277,7 +277,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     if (showDeleteProjectConfirm && currentProject != null) {
         AlertDialog(
             onDismissRequest = { showDeleteProjectConfirm = false },
-            title = { Text("Удалить историю проекта?", color = Bg) },
+            title = { Text("Удалить историю проекта?", color = Color(0xFF202020)) },
             text = { Text("Все чаты и закрепления проекта «${currentProject.name}» будут удалены безвозвратно. Сам проект останется.", color = Tx, fontSize = 12.sp) },
             confirmButton = {
                 TextButton(onClick = {
