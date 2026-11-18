@@ -90,7 +90,7 @@ object GlafiraBridgeProtocol {
     fun validate(request: GlafiraBridgeRequest, nowEpochMs: Long = System.currentTimeMillis()): GlafiraBridgeValidationError? {
         if (request.protocolVersion != CURRENT_VERSION) return GlafiraBridgeValidationError.UNSUPPORTED_VERSION
         if (!isIdentifier(request.requestId) || !isIdentifier(request.idempotencyKey) ||
-            !isIdentifier(request.deviceId) || !isIdentifier(request.projectId)
+            !isIdentifier(request.deviceId) || !isProjectIdentifier(request.projectId)
         ) return GlafiraBridgeValidationError.INVALID_IDENTIFIER
         val ttl = request.expiresAtEpochMs - request.issuedAtEpochMs
         if (request.issuedAtEpochMs <= 0L || request.expiresAtEpochMs <= request.issuedAtEpochMs ||
@@ -109,6 +109,9 @@ object GlafiraBridgeProtocol {
             return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
         return null
     }
+
+    private fun isProjectIdentifier(value: String): Boolean =
+        value == "default" || isIdentifier(value)
 
     private fun isIdentifier(value: String): Boolean =
         value.length in 8..128 && value.all { it.isLetterOrDigit() || it in "-_." }
