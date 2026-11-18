@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,10 +22,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -41,16 +44,27 @@ import java.util.*
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 val Bg = Color(0xFF000000)
 val Gr = Color(0xFF7EC850)
 val GrD = Color(0xFF151515)
 val Tx = Color(0xFF888888)
+val Line = Color(0xFF2A2A2A)
+val Red = Color(0xFFCC3333)
+
+enum class AgentGroup(val title: String) {
+    IA("ИНТЕЛЛЕКТУАЛЬНЫЕ АГЕНТЫ"),
+    AI("МОДЕЛИ ИИ")
+}
 
 data class A(
     val n: String, val d: String, val on: Boolean, val emoji: String,
     val prompt: String, val fullDesc: String,
-    val providerId: ProviderId = ProviderId.GIGACHAT
+    val providerId: ProviderId = ProviderId.GIGACHAT,
+    val group: AgentGroup = AgentGroup.IA
 )
 data class Msg(val text: String, val isUser: Boolean, val time: String)
 
@@ -65,16 +79,21 @@ class MainActivity : ComponentActivity() {
 fun App() {
     var currentAgent by remember { mutableStateOf<A?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var statusRefresh by remember { mutableStateOf(0) }
     val context = LocalContext.current
     var projects by remember { mutableStateOf(loadProjects(context)) }
     var currentProject by remember { mutableStateOf(projects.first()) }
 
     Surface(Modifier.fillMaxSize(), color = Bg) {
         when {
-            showSettings -> SettingsScreen(onBack = { showSettings = false })
+            showSettings -> SettingsScreen(onBack = {
+                showSettings = false
+                statusRefresh++
+            })
             currentAgent == null -> ContactList(
                 projects = projects,
                 currentProject = currentProject,
+                refreshKey = statusRefresh,
                 onProjectSelect = { currentProject = it },
                 onProjectAdd = { name ->
                     val newProj = Project(UUID.randomUUID().toString(), name)
@@ -101,9 +120,71 @@ fun App() {
 }
 
 @Composable
+fun StatusFlower(isOnline: Boolean, size: Dp = 12.dp) {
+    Canvas(Modifier.size(size)) {
+        val c = if (isOnline) Gr else Red
+        val r = size.toPx() / 4f
+        repeat(5) { i ->
+            val angle = (i * 72f - 90f) * PI / 180
+            drawCircle(
+                color = c,
+                radius = r,
+                center = Offset(
+                    x = center.x + cos(angle).toFloat() * r,
+                    y = center.y + sin(angle).toFloat() * r
+                )
+            )
+        }
+        drawCircle(Color(0xFFFFFFAA), radius = size.toPx() / 6f, center = center)
+    }
+}
+
+@Composable
+fun GroupHeader(title: String, count: Int, expanded: Boolean, onToggle: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().background(GrD).clickable { onToggle() }.padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(if (expanded) "▼" else "▶", color = Gr, fontSize = 10.sp)
+        Spacer(Modifier.width(6.dp))
+        Text(title, color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Spacer(Modifier.weight(1f))
+        Text("$count", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+    }
+}
+
+@Composable
+fun AgentRow(a: A, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(CircleShape)
+                .background(if (a.on) Gr.copy(alpha = 0.15f) else Color.DarkGray.copy(alpha = 0.2f))
+                .border(1.dp, if (a.on) Gr else Color.DarkGray, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(a.emoji, fontSize = 20.sp)
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(a.n, color = if (a.on) Gr else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Text(
+                if (a.on) "${a.providerId.displayName} · готов" else "Не настроен",
+                color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace
+            )
+        }
+        StatusFlower(a.on, 12.dp)
+    }
+    Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
+}
+
+@Composable
 fun ContactList(
     projects: List<Project>,
     currentProject: Project,
+    refreshKey: Int,
     onProjectSelect: (Project) -> Unit,
     onProjectAdd: (String) -> Unit,
     onProjectDelete: (Project) -> Unit,
@@ -116,49 +197,53 @@ fun ContactList(
     var newProjectName by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var notConfiguredAgent by remember { mutableStateOf<A?>(null) }
-    // Триггер пересчёта статусов при возврате из настроек
-    var refreshTick by remember { mutableStateOf(0) }
+    var iaExpanded by remember { mutableStateOf(true) }
+    var aiExpanded by remember { mutableStateOf(true) }
 
-    val list = remember(context, refreshTick) {
+    val list = remember(context, refreshKey) {
         listOf(
             A("ГЛАФИРА", "Главный координатор", isProviderConfigured(context, ProviderId.GIGACHAT), "🤖",
                 "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
                 "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением.",
-                ProviderId.GIGACHAT),
+                ProviderId.GIGACHAT, AgentGroup.IA),
             A("АНАЛИТИК", "Исследование и анализ", isProviderConfigured(context, ProviderId.GIGACHAT), "📊",
                 "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен.",
                 "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры.",
-                ProviderId.GIGACHAT),
+                ProviderId.GIGACHAT, AgentGroup.IA),
             A("ПРОГРАММИСТ", "Код и технические задачи", isProviderConfigured(context, ProviderId.GIGACHAT), "💻",
                 "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
                 "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта.",
-                ProviderId.GIGACHAT),
+                ProviderId.GIGACHAT, AgentGroup.IA),
+            A("GigaChat", "GigaChat · модель", isProviderConfigured(context, ProviderId.GIGACHAT), "🟣",
+                "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке.",
+                "Прямой доступ к модели GigaChat без роли агента. Универсальный помощник.",
+                ProviderId.GIGACHAT, AgentGroup.AI),
             A("ChatGPT", "OpenAI · не настроен", isProviderConfigured(context, ProviderId.OPENAI), "🟢",
                 "Ты — ChatGPT от OpenAI. Отвечай чётко, структурированно, с примерами.",
                 "Модель OpenAI. Универсальный помощник для анализа, текстов и программирования. Для работы нужен API-ключ OpenAI (платный).",
-                ProviderId.OPENAI),
+                ProviderId.OPENAI, AgentGroup.AI),
             A("DeepSeek", "DeepSeek · не настроен", isProviderConfigured(context, ProviderId.DEEPSEEK), "🔵",
                 "Ты — DeepSeek. Специализируешься на логике, коде и аналитике.",
                 "Модель DeepSeek. Логические задачи, программирование, аналитика. Для работы нужен API-ключ DeepSeek (платный, но дешёвый).",
-                ProviderId.DEEPSEEK),
+                ProviderId.DEEPSEEK, AgentGroup.AI),
             A("Grok", "xAI · не настроен", isProviderConfigured(context, ProviderId.GROK), "⚫",
                 "Ты — Grok от xAI. Отвечай с лёгкой иронией, но по делу.",
                 "Модель xAI. Универсальный помощник. Для работы нужен API-ключ xAI (платный).",
-                ProviderId.GROK),
+                ProviderId.GROK, AgentGroup.AI),
             A("Алиса", "Yandex · не настроен", isProviderConfigured(context, ProviderId.YANDEX), "🟡",
                 "Ты — Алиса от Яндекс. Отвечай на русском, дружелюбно и по делу.",
                 "YandexGPT через Yandex Cloud. Русскоязычные задачи. Для работы нужен API-ключ Yandex Cloud и folder ID.",
-                ProviderId.YANDEX)
+                ProviderId.YANDEX, AgentGroup.AI)
         )
     }
 
-    Column {
-        Row(Modifier.fillMaxWidth().background(GrD).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Проект: ", color = Tx, fontSize = 12.sp)
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Проект: ", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
             Box {
                 Row(modifier = Modifier.clickable { showProjectMenu = true }, verticalAlignment = Alignment.CenterVertically) {
-                    Text(currentProject.name, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    Text(" ▼", color = Gr, fontSize = 12.sp)
+                    Text(currentProject.name, color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Text(" ▼", color = Gr, fontSize = 8.sp)
                 }
                 DropdownMenu(expanded = showProjectMenu, onDismissRequest = { showProjectMenu = false }) {
                     projects.forEach { proj ->
@@ -169,7 +254,7 @@ fun ContactList(
                                 modifier = Modifier.weight(1f)
                             )
                             if (projects.size > 1) {
-                                Text("✕", color = Color.Red, modifier = Modifier.clickable {
+                                Text("✕", color = Red, modifier = Modifier.clickable {
                                     if (proj.id == currentProject.id) showDeleteConfirm = true
                                 }.padding(8.dp))
                             }
@@ -178,12 +263,13 @@ fun ContactList(
                 }
             }
             Spacer(Modifier.weight(1f))
-            Text("+", color = Gr, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { showAddDialog = true })
-            Spacer(Modifier.width(16.dp))
-            Text("⚙️", fontSize = 20.sp, modifier = Modifier.clickable {
-                onSettingsClick()
-                refreshTick++
-            })
+            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { showAddDialog = true }, contentAlignment = Alignment.Center) {
+                Text("+", color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(6.dp))
+            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onSettingsClick() }, contentAlignment = Alignment.Center) {
+                Text("⚙", fontSize = 12.sp)
+            }
         }
 
         if (showDeleteConfirm) {
@@ -193,7 +279,7 @@ fun ContactList(
                 text = { Text("Все чаты в этом проекте будут безвозвратно удалены.") },
                 confirmButton = {
                     TextButton(onClick = { onProjectDelete(currentProject); showDeleteConfirm = false; showProjectMenu = false }) {
-                        Text("Удалить", color = Color.Red)
+                        Text("Удалить", color = Red)
                     }
                 },
                 dismissButton = {
@@ -240,29 +326,42 @@ fun ContactList(
             )
         }
 
-        LazyColumn(Modifier.weight(1f)) {
-            items(list) { a ->
-                Row(
-                    Modifier.fillMaxWidth().clickable {
-                        if (!a.on) notConfiguredAgent = a else onAgentClick(a)
-                    }.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(Modifier.size(48.dp).clip(CircleShape).background(if (a.on) Gr.copy(alpha = 0.2f) else Color.DarkGray.copy(alpha = 0.3f)).border(1.dp, if (a.on) Gr else Color.DarkGray, CircleShape), contentAlignment = Alignment.Center) {
-                        Text(a.emoji, fontSize = 24.sp)
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(a.n, color = if (a.on) Gr else Tx, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                        Text(a.d, color = Tx, fontSize = 12.sp)
-                    }
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(if (a.on) Color.Green else Color.Gray))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
+            LazyColumn(Modifier.fillMaxWidth(0.92f)) {
+                item {
+                    GroupHeader(
+                        title = AgentGroup.IA.title,
+                        count = list.count { it.group == AgentGroup.IA },
+                        expanded = iaExpanded,
+                        onToggle = { iaExpanded = !iaExpanded }
+                    )
                 }
-                Box(Modifier.fillMaxWidth().height(1.dp).background(GrD))
+                if (iaExpanded) {
+                    items(list.filter { it.group == AgentGroup.IA }) { a ->
+                        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
+                    }
+                }
+                item { Spacer(Modifier.height(8.dp)) }
+                item {
+                    GroupHeader(
+                        title = AgentGroup.AI.title,
+                        count = list.count { it.group == AgentGroup.AI },
+                        expanded = aiExpanded,
+                        onToggle = { aiExpanded = !aiExpanded }
+                    )
+                }
+                if (aiExpanded) {
+                    items(list.filter { it.group == AgentGroup.AI }) { a ->
+                        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
+                    }
+                }
             }
         }
-        Row(Modifier.fillMaxWidth().background(GrD).padding(8.dp), Arrangement.Center) {
-            Text("СЕТЬ: ONLINE | ПРОЕКТ: ${currentProject.name}", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+
+        Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            StatusFlower(true, 8.dp)
+            Spacer(Modifier.width(6.dp))
+            Text("ONLINE | ${currentProject.name}", color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
@@ -293,62 +392,72 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (isSearching) {
                     TextField(
                         value = searchQuery, onValueChange = { searchQuery = it },
-                        placeholder = { Text("Поиск...", color = Tx, fontSize = 14.sp) },
+                        placeholder = { Text("Поиск...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f),
                         colors = TextFieldDefaults.colors(focusedContainerColor = GrD, unfocusedContainerColor = GrD, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr)
                     )
-                    Text("✕", color = Gr, fontSize = 20.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
+                    Text("✕", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
                 } else {
-                    Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
+                    Text("←", color = Gr, fontSize = 18.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
                     Row(Modifier.weight(1f).clickable { showProfile = true }, verticalAlignment = Alignment.CenterVertically) {
-                        Text(agent.emoji, fontSize = 20.sp)
-                        Spacer(Modifier.width(8.dp))
+                        Text(agent.emoji, fontSize = 16.sp)
+                        Spacer(Modifier.width(6.dp))
                         Column {
-                            Text(agent.n, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                            Text(if (agent.on) "Online" else "Offline", color = Tx, fontSize = 10.sp)
+                            Text(agent.n, color = Gr, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Text(
+                                if (agent.on) "Online · ${agent.providerId.displayName}" else "Offline",
+                                color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace
+                            )
                         }
                     }
-                    Text("🔍", fontSize = 18.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 16.dp))
-                    Text("📤", fontSize = 18.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 16.dp))
-                    Text("🗑️", fontSize = 18.sp, modifier = Modifier.clickable {
+                    Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 10.dp))
+                    Text("📤", fontSize = 14.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 10.dp))
+                    Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
                         messages = emptyList(); saveHistory(context, historyKey, emptyList())
                     })
                 }
             }
 
-            LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(displayedMessages) { msg ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
                         Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
-                            Box(
-                                Modifier.clip(RoundedCornerShape(8.dp)).background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f)).border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).combinedClickable(
-                                    onClick = {}, onLongClick = { copyToClipboard(context, msg.text) }
-                                ).padding(12.dp)
-                            ) {
-                                Text(msg.text, color = if (msg.isUser) Color.White else Gr, fontSize = 14.sp)
+                            val shape = if (msg.isUser) {
+                                RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 6.dp, bottomEnd = 0.dp)
+                            } else {
+                                RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 0.dp, bottomEnd = 6.dp)
                             }
-                            Text(msg.time, color = Tx, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                            Box(
+                                Modifier.clip(shape)
+                                    .background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f))
+                                    .border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), shape)
+                                    .combinedClickable(onClick = {}, onLongClick = { copyToClipboard(context, msg.text) })
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                            ) {
+                                Text(msg.text, color = if (msg.isUser) Color.White else Gr, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                            }
+                            Text(msg.time, color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 2.dp))
                         }
                     }
                 }
                 if (isLoading) { item { TypingIndicator() } }
-                if (isSearching && displayedMessages.isEmpty()) { item { Text("Ничего не найдено", color = Tx, modifier = Modifier.padding(16.dp)) } }
+                if (isSearching && displayedMessages.isEmpty()) { item { Text("Ничего не найдено", color = Tx, modifier = Modifier.padding(12.dp), fontSize = 12.sp) } }
             }
 
             if (!isSearching) {
-                Row(Modifier.fillMaxWidth().background(GrD).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().background(GrD).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     TextField(
                         value = inputText, onValueChange = { inputText = it },
-                        placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 14.sp) },
-                        modifier = Modifier.weight(1f).padding(end = 8.dp),
-                        colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Color.DarkGray)
+                        placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 12.sp) },
+                        modifier = Modifier.weight(1f).padding(end = 6.dp),
+                        colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Line)
                     )
-                    Button(
-                        onClick = {
+                    Box(
+                        Modifier.size(36.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable {
                             if (inputText.isNotBlank() && !isLoading) {
                                 val userMsg = inputText
                                 val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
@@ -358,9 +467,9 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 inputText = ""
                                 isLoading = true
                                 scope.launch {
-                                    // Пока все агенты ходят в GigaChat. Новые провайдеры
-                                    // подключаются отдельным шагом, когда появятся ключи.
-                                    val reply = callGigaChatWithTrustedCert(context, updatedMessages, agent.prompt)
+                                    val projectContext = buildProjectContext(context, project.id, agent.n)
+                                    val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
+                                    val reply = callGigaChatWithTrustedCert(context, updatedMessages, fullPrompt)
                                     val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                                     val finalMessages = updatedMessages + Msg(reply, false, replyTime)
                                     messages = finalMessages
@@ -369,8 +478,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 }
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Bg)
-                    ) { Text("➤", fontSize = 18.sp) }
+                        contentAlignment = Alignment.Center
+                    ) { Text("➤", color = Gr, fontSize = 16.sp) }
                 }
             }
         }
@@ -384,49 +493,49 @@ fun TypingIndicator() {
     val alpha2 by infiniteTransition.animateFloat(0.2f, 1f, infiniteRepeatable(tween(600, delayMillis = 200, easing = LinearEasing), RepeatMode.Reverse))
     val alpha3 by infiniteTransition.animateFloat(0.2f, 1f, infiniteRepeatable(tween(600, delayMillis = 400, easing = LinearEasing), RepeatMode.Reverse))
 
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
-        Text("Глафира печатает", color = Tx, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-        Spacer(Modifier.width(4.dp))
-        Text(".", color = Gr.copy(alpha = alpha1), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(".", color = Gr.copy(alpha = alpha2), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(".", color = Gr.copy(alpha = alpha3), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(4.dp)) {
+        Text("печатает", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Spacer(Modifier.width(2.dp))
+        Text(".", color = Gr.copy(alpha = alpha1), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(".", color = Gr.copy(alpha = alpha2), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(".", color = Gr.copy(alpha = alpha3), fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
 fun ProfileScreen(agent: A, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Bg)) {
-        Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
-            Text("Профиль агента", color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("←", color = Gr, fontSize = 18.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
+            Text("Профиль агента", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
-        Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(100.dp).clip(CircleShape).background(Gr.copy(alpha = 0.2f)).border(2.dp, Gr, CircleShape), contentAlignment = Alignment.Center) {
-                Text(agent.emoji, fontSize = 50.sp)
+        Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(80.dp).clip(CircleShape).background(Gr.copy(alpha = 0.2f)).border(2.dp, Gr, CircleShape), contentAlignment = Alignment.Center) {
+                Text(agent.emoji, fontSize = 40.sp)
             }
-            Spacer(Modifier.height(16.dp))
-            Text(agent.n, color = Gr, fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-            Text(agent.d, color = Tx, fontSize = 14.sp)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
+            Text(agent.n, color = Gr, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Text(agent.d, color = Tx, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(if (agent.on) Color.Green else Color.Gray))
+                StatusFlower(agent.on, 10.dp)
                 Spacer(Modifier.width(4.dp))
-                Text(if (agent.on) "В сети" else "Не в сети", color = if (agent.on) Color.Green else Tx, fontSize = 12.sp)
+                Text(if (agent.on) "В сети" else "Не в сети", color = if (agent.on) Gr else Red, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
             }
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(24.dp))
             Card(colors = CardDefaults.cardColors(containerColor = GrD), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("ОПИСАНИЕ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    Text(agent.fullDesc, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
+                Column(Modifier.padding(12.dp)) {
+                    Text("ОПИСАНИЕ", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.height(6.dp))
+                    Text(agent.fullDesc, color = Color.White, fontSize = 11.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             Card(colors = CardDefaults.cardColors(containerColor = GrD), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("СПЕЦИФИКА РАБОТЫ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    Text(agent.prompt, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
+                Column(Modifier.padding(12.dp)) {
+                    Text("СПЕЦИФИКА РАБОТЫ", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.height(6.dp))
+                    Text(agent.prompt, color = Color.White, fontSize = 11.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
                 }
             }
         }
@@ -452,6 +561,31 @@ fun loadHistory(context: Context, key: String): List<Msg> {
         }
     } catch (e: Exception) { }
     return list
+}
+
+fun buildProjectContext(context: Context, projectId: String, currentAgentName: String, maxMessagesPerChat: Int = 5): String {
+    val files = context.filesDir.listFiles { file ->
+        file.name.startsWith("chat_${projectId}_") && file.name.endsWith(".json")
+    } ?: return ""
+    if (files.isEmpty()) return ""
+    val sb = StringBuilder()
+    files.forEach { file ->
+        val key = file.name.removePrefix("chat_").removeSuffix(".json")
+        val parts = key.split("_")
+        val agentName = if (parts.size > 1) parts[1] else "Агент"
+        if (agentName == currentAgentName) return@forEach
+        val history = loadHistory(context, key)
+        if (history.isEmpty()) return@forEach
+        val tail = history.takeLast(maxMessagesPerChat)
+        sb.appendLine("--- Чат с $agentName ---")
+        tail.forEach { msg ->
+            val author = if (msg.isUser) "Пользователь" else agentName
+            sb.appendLine("$author: ${msg.text.take(300)}")
+        }
+        sb.appendLine()
+    }
+    val result = sb.toString().trim()
+    return if (result.isBlank()) "" else "Контекст других чатов в этом проекте:\n$result"
 }
 
 suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>, systemPrompt: String): String = withContext(Dispatchers.IO) {
@@ -508,6 +642,4 @@ suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>, sy
             "Ошибка API: ${chatConn.responseCode}"
         }
     } catch (e: Exception) {
-        "Ошибка сети: ${e.message}"
-    }
-}
+        "Ошибка сети: ${e.message
