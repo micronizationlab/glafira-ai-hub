@@ -27,6 +27,7 @@ fun loadApiKey(context: Context): String =
 fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     val context = LocalContext.current
     val peerConsultationKey = currentProject?.id?.let { "peer_consultation_enabled_$it" } ?: "peer_consultation_enabled"
+    val peerProvidersKey = currentProject?.id?.let { "peer_consultation_providers_$it" } ?: "peer_consultation_providers"
     var gigachatKey by remember { mutableStateOf(loadApiKey(context)) }
     var openaiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENAI)) }
     var deepseekKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.DEEPSEEK)) }
@@ -46,6 +47,13 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var peerConsultationEnabled by remember(peerConsultationKey) {
         mutableStateOf(context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
             .getBoolean(peerConsultationKey, false))
+    }
+    var selectedPeerProviders by remember(peerProvidersKey) {
+        mutableStateOf(
+            context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+                .getString(peerProvidersKey, "").orEmpty().split(",")
+                .mapNotNull { value -> runCatching { ProviderId.valueOf(value) }.getOrNull() }.toSet()
+        )
     }
 
     LaunchedEffect(isSaved) {
@@ -234,6 +242,37 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                             .edit().putBoolean(peerConsultationKey, enabled).apply()
                     }
                 )
+            }
+        }
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text("КАКИМ МОДЕЛЯМ РАЗРЕШЕНО СОВЕТОВАТЬСЯ", color = Color(0xFF202020), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Выбирай только те провайдеры, которым разрешено получать контекст этого проекта. Главная модель-координатор исключается автоматически.", color = Tx, fontSize = 11.sp)
+                val peerCandidates = configuredGlafiraProviders(context).filter { it != primaryProvider }
+                if (peerCandidates.isEmpty()) {
+                    Text("Нет других подключённых моделей.", color = Tx, fontSize = 11.sp)
+                } else {
+                    peerCandidates.forEach { provider ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(
+                                checked = provider in selectedPeerProviders,
+                                onCheckedChange = { checked ->
+                                    selectedPeerProviders = if (checked) selectedPeerProviders + provider else selectedPeerProviders - provider
+                                    context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+                                        .edit().putString(peerProvidersKey, selectedPeerProviders.joinToString(",") { it.name }).apply()
+                                }
+                            )
+                            Text(provider.displayName, color = Color(0xFF202020), fontSize = 12.sp)
+                        }
+                    }
+                }
+                if (selectedPeerProviders.isEmpty()) {
+                    Text("Пока ни одной модели не разрешено получать контекст.", color = Tx, fontSize = 10.sp)
+                }
             }
         }
 
