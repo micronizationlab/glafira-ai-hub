@@ -79,7 +79,7 @@ data class A(
     val providerId: ProviderId = ProviderId.GIGACHAT,
     val group: AgentGroup = AgentGroup.IA
 )
-data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "")
+data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "", val attachmentPath: String = "", val attachmentName: String = "", val attachmentMime: String = "", val attachmentSize: Long = 0L)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -992,6 +992,10 @@ fun saveHistory(context: Context, key: String, history: List<Msg>) {
             put("isUser", it.isUser)
             put("time", it.time)
             put("date", it.date)
+            put("attachmentPath", it.attachmentPath)
+            put("attachmentName", it.attachmentName)
+            put("attachmentMime", it.attachmentMime)
+            put("attachmentSize", it.attachmentSize)
         })
     }
     file.writeText(jsonArray.toString())
@@ -1010,7 +1014,11 @@ fun loadHistory(context: Context, key: String): List<Msg> {
                     obj.getString("text"),
                     obj.getBoolean("isUser"),
                     obj.optString("time", ""),
-                    obj.optString("date", "")
+                    obj.optString("date", ""),
+                    obj.optString("attachmentPath", ""),
+                    obj.optString("attachmentName", ""),
+                    obj.optString("attachmentMime", ""),
+                    obj.optLong("attachmentSize", 0L)
                 )
             )
         }
