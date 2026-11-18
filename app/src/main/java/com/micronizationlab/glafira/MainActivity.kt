@@ -171,7 +171,7 @@ fun App() {
         }
     }
 
-    Surface(Modifier.fillMaxSize(), color = Color(0xFF202020)) {
+    Surface(Modifier.fillMaxSize(), color = Bg) {
         when {
             showSettings -> SettingsScreen(
                 onBack = {
