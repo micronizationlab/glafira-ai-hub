@@ -96,6 +96,25 @@ class GlafiraBridgeOwnerApprovalTest {
         )
     }
 
+    @Test
+    fun undeliveredCredentialCanBeRecoveredByOwnerAfterRestart() {
+        val store = FakeApprovalStore()
+        val service = GlafiraBridgeOwnerApprovalService(store)
+        val queued = service.submitVerifiedEnrollment(candidate(emptySet()))!!
+        service.approve(queued.approvalId, setOf("project.read"), ownerSession(), 2_000L)
+
+        val pending = service.pendingCredentialDeliveries(ownerSession(), 2_001L)
+
+        assertEquals(1, pending.size)
+        assertEquals(queued.approvalId, pending.single().approvalId)
+        val delivery = service.claimCredentialDelivery(
+            pending.single().approvalId,
+            ownerSession("owner-session-0002"),
+            2_001L
+        )
+        assertTrue(delivery is GlafiraBridgeDeliveryResult.Available)
+    }
+
     private fun ownerSession(id: String = "owner-session-0001") =
         GlafiraBridgeOwnerSession(id, 10_000L)
 
@@ -118,6 +137,7 @@ class GlafiraBridgeOwnerApprovalTest {
         val pending = linkedMapOf<String, GlafiraBridgePendingApproval>()
         var issuedScopes: Set<String> = emptySet()
         var persistedSecret: ByteArray? = null
+        var issuedDeviceId: String? = null
         private var claimedBy: String? = null
         private var claimedUntilEpochMs: Long = 0L
         private var acknowledged = false
@@ -145,6 +165,7 @@ class GlafiraBridgeOwnerApprovalTest {
                 return GlafiraBridgeApprovalMutation.AlreadyDecided
             }
             issuedScopes = ownerSelectedScopes.toSet()
+            issuedDeviceId = deviceId
             persistedSecret = hmacSecret.clone()
             pending[approvalId] = current.copy(status = GlafiraBridgeApprovalStatus.APPROVED)
             return GlafiraBridgeApprovalMutation.Approved(deviceId)
@@ -156,6 +177,13 @@ class GlafiraBridgeOwnerApprovalTest {
             pending[approvalId] = current.copy(status = GlafiraBridgeApprovalStatus.REJECTED)
             return true
         }
+
+        override fun listUndeliveredDeliveries(limit: Int): List<GlafiraBridgePendingCredentialDelivery> =
+            pending.values.filter {
+                it.status == GlafiraBridgeApprovalStatus.APPROVED && !acknowledged
+            }.take(limit).map {
+                GlafiraBridgePendingCredentialDelivery(it.approvalId, issuedDeviceId!!)
+            }
 
         override fun claimDelivery(
             approvalId: String,
