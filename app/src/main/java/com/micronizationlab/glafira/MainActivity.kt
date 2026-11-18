@@ -158,7 +158,8 @@ fun App() {
                 val key = "${pm.projectId}_${pm.agentName}"
                 val history = loadHistory(context, key)
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                val reply = callGigaChatWithTrustedCert(context, history + Msg(pm.text, true, pm.time, today), agentPrompt)
+                val provider = runCatching { ProviderId.valueOf(pm.providerId) }.getOrDefault(ProviderId.GIGACHAT)
+                val reply = callAiProvider(context, provider, history + Msg(pm.text, true, pm.time, today), agentPrompt)
                 if (reply.startsWith("Ошибка сети")) {
                     remaining.add(pm)
                 } else {
@@ -340,7 +341,15 @@ fun ContactList(
             A("Алиса", "Yandex · не настроен", isProviderConfigured(context, ProviderId.YANDEX), "🟡",
                 "Ты — Алиса от Яндекс. Отвечай на русском, дружелюбно и по делу.",
                 "YandexGPT через Yandex Cloud. Русскоязычные задачи. Для работы нужен API-ключ Yandex Cloud и folder ID.",
-                ProviderId.YANDEX, AgentGroup.AI)
+                ProviderId.YANDEX, AgentGroup.AI),
+            A("Gemini", "Google · бесплатный тариф", isProviderConfigured(context, ProviderId.GEMINI), "✨",
+                "Ты — Gemini от Google. Анализируй, объясняй и помогай решать задачи.",
+                "Google Gemini API. Для некоторых моделей есть бесплатный тариф с ограничениями; Google может использовать данные бесплатного уровня для улучшения продуктов.",
+                ProviderId.GEMINI, AgentGroup.AI),
+            A("OpenRouter Free", "Бесплатные модели · лимиты", isProviderConfigured(context, ProviderId.OPENROUTER), "🆓",
+                "Ты — ИИ-помощник через OpenRouter. Отвечай точно и структурированно.",
+                "Маршрутизатор бесплатных моделей разных разработчиков. Доступность моделей и лимиты меняются; политики обработки данных зависят от выбранного провайдера.",
+                ProviderId.OPENROUTER, AgentGroup.AI)
         )
     }
 
@@ -588,11 +597,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         scope.launch {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
-            val reply = callGigaChatWithTrustedCert(context, updatedMessages, fullPrompt)
+            val reply = callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
             val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
             if (reply.startsWith("Ошибка сети")) {
-                addToPendingQueue(context, PendingMessage(project.id, agent.n, text, timeNow))
+                addToPendingQueue(context, PendingMessage(project.id, agent.n, text, timeNow, agent.providerId.name))
                 val queuedMsg = Msg("⏳ Сообщение в очереди. Отправится при появлении сети.", false, replyTime, replyDate)
                 val finalMessages = updatedMessages + queuedMsg
                 messages = finalMessages
