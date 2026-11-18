@@ -43,17 +43,18 @@ class GlafiraBackupWorker(
 
                 val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                 val uploadName = "GLAFIRA-current-$stamp-${UUID.randomUUID()}.glb"
-                temporaryRemote = folder.createFile("application/octet-stream", uploadName)
+                val uploadedRemote = folder.createFile("application/octet-stream", uploadName)
                     ?: error("Облачный сервис не разрешил создать временный файл.")
-                applicationContext.contentResolver.openOutputStream(temporaryRemote.uri, "wt")?.use { output ->
+                temporaryRemote = uploadedRemote
+                applicationContext.contentResolver.openOutputStream(uploadedRemote.uri, "wt")?.use { output ->
                     archive.inputStream().use { input -> input.copyTo(output) }
                 } ?: error("Не удалось загрузить архив в облако.")
 
-                copyRemoteToLocal(applicationContext, temporaryRemote, verifyCopy)
+                copyRemoteToLocal(applicationContext, uploadedRemote, verifyCopy)
                 val verified = BackupArchive.verify(verifyCopy, recoveryPassphrase)
 
                 val previousCurrent = folder.listFiles()
-                    .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != temporaryRemote.uri }
+                    .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != uploadedRemote.uri }
                     .maxByOrNull { it.lastModified() }
                 val weekKey = SimpleDateFormat("YYYY-'W'ww", Locale.US).format(Date())
                 val weeklyName = "GLAFIRA-weekly-$weekKey.glb"
