@@ -71,7 +71,17 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                 GlafiraBridgeOperation.APPROVAL_REQUEST ->
                     failed(request, "APPROVAL_QUEUE_NOT_CONNECTED")
                 GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> {
-                    val task = desktopTasks.claimNext()
+                    val capabilityJson = JSONArray(request.payload.getValue("capabilities"))
+                    require(capabilityJson.length() <= 16)
+                    val capabilities = buildSet {
+                        for (index in 0 until capabilityJson.length()) {
+                            val value = capabilityJson.getString(index)
+                            require(value.matches(Regex("[a-z][a-z0-9_.-]{1,63}")))
+                            add(value)
+                        }
+                    }
+                    val maxParallel = request.payload.getValue("maxParallelTasks").toInt()
+                    val task = desktopTasks.claimNext(capabilities, maxParallel)
                     if (task == null) succeeded(request, mapOf("taskJson" to "none"))
                     else succeeded(request, mapOf("taskJson" to task.toString()))
                 }
