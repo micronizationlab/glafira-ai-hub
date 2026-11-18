@@ -43,6 +43,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var exportResult by remember { mutableStateOf<String?>(null) }
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
     var showPasswordVault by remember { mutableStateOf(false) }
+    var showBridgeApprovals by remember { mutableStateOf(false) }
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
     var peerConsultationEnabled by remember(peerConsultationKey) {
@@ -59,6 +60,10 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
     if (showPasswordVault) {
         PasswordVaultScreen(onBack = { showPasswordVault = false })
+        return
+    }
+    if (showBridgeApprovals) {
+        BridgePairingApprovalScreen(onBack = { showBridgeApprovals = false })
         return
     }
 
@@ -314,6 +319,21 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         checkedTrackColor = Gr.copy(alpha = 0.5f)
                     )
                 )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth().clickable { showBridgeApprovals = true }
+        ) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("🔗", fontSize = 24.sp)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Сопряжение устройств GLAFIRA", color = Color(0xFF202020), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text("Очередь запросов · выбор прав · выдача ключей владельцем", color = Tx, fontSize = 11.sp)
+                }
             }
         }
 
