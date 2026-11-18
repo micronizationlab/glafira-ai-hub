@@ -120,6 +120,7 @@ data class MemoryQuery(
 ) {
     init {
         require(limit in 1..100) { "Memory query limit must be between 1 and 100" }
+        require(text.length <= 512) { "Memory search text is too long" }
     }
 }
 
