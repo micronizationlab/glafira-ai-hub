@@ -22,6 +22,20 @@ class GlafiraTaskPlannerTest {
     }
 
     @Test
+    fun rejectsCompletedTaskWhenItsDependenciesAreNotCompleted() {
+        val plan = GlafiraTaskPlanner.parseAndValidate(
+            """{"goal":"x","tasks":[
+                {"id":"a","title":"A","instruction":"Do A","executor":"GLAFIRA","dependsOn":[]},
+                {"id":"b","title":"B","instruction":"Do B","executor":"GLAFIRA","dependsOn":["a"]}
+            ]}"""
+        )
+        val error = runCatching {
+            GlafiraTaskPlanner.readyBatches(plan, completedIds = setOf("b"))
+        }.exceptionOrNull()
+        assertTrue(error?.message?.contains("зависимостей") == true)
+    }
+
+    @Test
     fun rejectsUnknownDependencies() {
         val raw = """{"goal":"x","tasks":[{"id":"a","title":"A","instruction":"Do A","executor":"GLAFIRA","dependsOn":["missing"]}]}"""
         val error = runCatching { GlafiraTaskPlanner.parseAndValidate(raw) }.exceptionOrNull()
