@@ -37,6 +37,32 @@ class DesktopBridgeCredentialVaultTest {
         }
     }
 
+    @Test fun importsAndroidOwnerCredentialBundle() {
+        val directory = Files.createTempDirectory("glafira-owner-bundle-test")
+        val path = directory.resolve("device.vault")
+        val password = "another-long-owner-passphrase".toCharArray()
+        val secret = ByteArray(32) { (it + 9).toByte() }
+        val bundle = org.json.JSONObject().apply {
+            put("format", "GLAFIRA_BRIDGE_CREDENTIAL_V1")
+            put("origin", "https://192.168.1.20:47321")
+            put("deviceId", "device-identifier-02")
+            put("hmacSecretBase64Url", Base64.getUrlEncoder().withoutPadding().encodeToString(secret))
+            put("grantedScopes", org.json.JSONArray(listOf("project.read", "conversation.read")))
+            put("serverCertificateSha256", "c".repeat(64))
+        }.toString()
+        try {
+            DesktopBridgeCredentialVault.importOwnerBundle(path, bundle, password)
+            val loaded = DesktopBridgeCredentialVault.load(path, password)
+            assertEquals("device-identifier-02", loaded.deviceId)
+            assertEquals(setOf("project.read", "conversation.read"), loaded.grantedScopes)
+            assertArrayEquals(secret, loaded.hmacSecret)
+        } finally {
+            password.fill('\\u0000')
+            Files.deleteIfExists(path)
+            Files.deleteIfExists(directory)
+        }
+    }
+
     @Test fun rejectsWrongPassphraseAndInvalidSecret() {
         val directory = Files.createTempDirectory("glafira-vault-test")
         val path = directory.resolve("device.vault")
