@@ -17,30 +17,54 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-fun saveApiKey(context: Context, key: String) {
-    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    prefs.edit().putString("gigachat_api_key", key).commit()
-}
+fun saveApiKey(context: Context, key: String): Boolean =
+    EncryptedApiKeyStore.save(context, "gigachat_api_key", key)
 
-fun loadApiKey(context: Context): String {
-    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    return prefs.getString("gigachat_api_key", "") ?: ""
-}
+fun loadApiKey(context: Context): String =
+    EncryptedApiKeyStore.load(context, "gigachat_api_key")
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     val context = LocalContext.current
+    val peerConsultationKey = currentProject?.id?.let { "peer_consultation_enabled_$it" } ?: "peer_consultation_enabled"
+    val peerProvidersKey = currentProject?.id?.let { "peer_consultation_providers_$it" } ?: "peer_consultation_providers"
     var gigachatKey by remember { mutableStateOf(loadApiKey(context)) }
     var openaiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENAI)) }
     var deepseekKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.DEEPSEEK)) }
     var grokKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GROK)) }
     var yandexKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.YANDEX)) }
+    var geminiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GEMINI)) }
+    var openRouterKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENROUTER)) }
     var isSaved by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf(false) }
     var workingExpanded by remember { mutableStateOf(true) }
     var pendingExpanded by remember { mutableStateOf(true) }
     var showDeleteProjectConfirm by remember { mutableStateOf(false) }
     var exportResult by remember { mutableStateOf<String?>(null) }
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
+    var showPasswordVault by remember { mutableStateOf(false) }
+    var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
+    var primaryProviderMenu by remember { mutableStateOf(false) }
+    var peerConsultationEnabled by remember(peerConsultationKey) {
+        mutableStateOf(context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+            .getBoolean(peerConsultationKey, false))
+    }
+    var selectedPeerProviders by remember(peerProvidersKey) {
+        mutableStateOf(
+            context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+                .getString(peerProvidersKey, "").orEmpty().split(",")
+                .mapNotNull { value -> runCatching { ProviderId.valueOf(value) }.getOrNull() }.toSet()
+        )
+    }
+
+    if (showPasswordVault) {
+        PasswordVaultScreen(onBack = { showPasswordVault = false })
+        return
+    }
+
+    LaunchedEffect(isSaved) {
+        if (isSaved) primaryProvider = loadGlafiraPrimaryProvider(context)
+    }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(
@@ -67,7 +91,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             ProviderKeyField(
                 label = "GigaChat (Authorization Key)",
                 value = gigachatKey,
-                onValueChange = { gigachatKey = it; isSaved = false },
+                onValueChange = { gigachatKey = it; isSaved = false; saveError = false },
                 configured = gigachatKey.isNotBlank()
             )
         }
@@ -82,32 +106,44 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Spacer(Modifier.width(6.dp))
             Text("ТРЕБУЮТ КЛЮЧА", color = Tx, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("4", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Text("6", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         }
         if (pendingExpanded) {
             ProviderKeyField(
                 label = "ChatGPT (OpenAI API Key, sk-...)",
                 value = openaiKey,
-                onValueChange = { openaiKey = it; isSaved = false },
+                onValueChange = { openaiKey = it; isSaved = false; saveError = false },
                 configured = openaiKey.isNotBlank()
             )
             ProviderKeyField(
                 label = "DeepSeek API Key",
                 value = deepseekKey,
-                onValueChange = { deepseekKey = it; isSaved = false },
+                onValueChange = { deepseekKey = it; isSaved = false; saveError = false },
                 configured = deepseekKey.isNotBlank()
             )
             ProviderKeyField(
                 label = "Grok (xAI API Key)",
                 value = grokKey,
-                onValueChange = { grokKey = it; isSaved = false },
+                onValueChange = { grokKey = it; isSaved = false; saveError = false },
                 configured = grokKey.isNotBlank()
             )
             ProviderKeyField(
                 label = "Алиса (Yandex Cloud API Key)",
                 value = yandexKey,
-                onValueChange = { yandexKey = it; isSaved = false },
+                onValueChange = { yandexKey = it; isSaved = false; saveError = false },
                 configured = yandexKey.isNotBlank()
+            )
+            ProviderKeyField(
+                label = "Google Gemini API Key (есть бесплатный тариф)",
+                value = geminiKey,
+                onValueChange = { geminiKey = it; isSaved = false; saveError = false },
+                configured = geminiKey.isNotBlank()
+            )
+            ProviderKeyField(
+                label = "OpenRouter API Key (бесплатные модели)",
+                value = openRouterKey,
+                onValueChange = { openRouterKey = it; isSaved = false; saveError = false },
+                configured = openRouterKey.isNotBlank()
             )
         }
 
@@ -115,12 +151,18 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
         Button(
             onClick = {
-                saveApiKey(context, gigachatKey.trim())
-                saveProviderKey(context, ProviderId.OPENAI, openaiKey)
-                saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey)
-                saveProviderKey(context, ProviderId.GROK, grokKey)
-                saveProviderKey(context, ProviderId.YANDEX, yandexKey)
-                isSaved = true
+                val saveResults = listOf(
+                    saveApiKey(context, gigachatKey.trim()),
+                    saveProviderKey(context, ProviderId.OPENAI, openaiKey),
+                    saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey),
+                    saveProviderKey(context, ProviderId.GROK, grokKey),
+                    saveProviderKey(context, ProviderId.YANDEX, yandexKey),
+                    saveProviderKey(context, ProviderId.GEMINI, geminiKey),
+                    saveProviderKey(context, ProviderId.OPENROUTER, openRouterKey)
+                )
+                val saved = saveResults.all { it }
+                isSaved = saved
+                saveError = !saved
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White)
@@ -128,9 +170,116 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Text("СОХРАНИТЬ ВСЕ КЛЮЧИ", fontWeight = FontWeight.Bold)
         }
 
-        if (isSaved) {
+        if (isSaved || saveError) {
             Spacer(Modifier.height(8.dp))
-            Text("Ключи успешно сохранены!", color = Gr, fontSize = 12.sp)
+            Text(
+                if (isSaved) "Ключи зашифрованы и сохранены." else "Не удалось безопасно сохранить ключи. Повторите попытку.",
+                color = if (isSaved) Gr else Red,
+                fontSize = 12.sp
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text("ГЛАВНЫЙ МОЗГ ГЛАФИРЫ", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Это основная модель-координатор. Глафира может самостоятельно советоваться с другими подключёнными моделями.",
+                    color = Tx, fontSize = 11.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                val configuredProviders = configuredGlafiraProviders(context)
+                Box {
+                    OutlinedButton(
+                        onClick = { primaryProviderMenu = true },
+                        enabled = configuredProviders.isNotEmpty()
+                    ) {
+                        Text(primaryProvider.displayName)
+                        Text("  ▾")
+                    }
+                    DropdownMenu(
+                        expanded = primaryProviderMenu,
+                        onDismissRequest = { primaryProviderMenu = false }
+                    ) {
+                        configuredProviders.forEach { provider ->
+                            DropdownMenuItem(
+                                text = { Text(provider.displayName) },
+                                onClick = {
+                                    if (saveGlafiraPrimaryProvider(context, provider)) {
+                                        primaryProvider = provider
+                                    }
+                                    primaryProviderMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+                if (configuredProviders.isEmpty()) {
+                    Text("Сначала подключи хотя бы одну модель выше.", color = Tx, fontSize = 10.sp)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (currentProject == null) "НЕЗАВИСИМЫЕ МОДЕЛИ-СОВЕТНИКИ" else "СОВЕТНИКИ ДЛЯ ЭТОГО ПРОЕКТА", color = Color(0xFF202020), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (currentProject == null) "Если включено, Глафира может передавать до 12 последних сообщений другим подключённым моделям. По умолчанию выключено." else "Если включено, Глафира может передавать до 12 последних сообщений этого проекта другим подключённым моделям. Типичные API-токены, пароли, email и телефоны маскируются, но это не гарантирует удаление всех персональных данных. По умолчанию выключено для каждого проекта.",
+                        color = Tx, fontSize = 11.sp
+                    )
+                }
+                Switch(
+                    checked = peerConsultationEnabled,
+                    onCheckedChange = { enabled ->
+                        peerConsultationEnabled = enabled
+                        context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+                            .edit().putBoolean(peerConsultationKey, enabled).apply()
+                    }
+                )
+            }
+        }
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text("КАКИМ МОДЕЛЯМ РАЗРЕШЕНО СОВЕТОВАТЬСЯ", color = Color(0xFF202020), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Выбирай только те провайдеры, которым разрешено получать контекст этого проекта. Главная модель-координатор исключается автоматически.", color = Tx, fontSize = 11.sp)
+                val peerCandidates = configuredGlafiraProviders(context).filter { it != primaryProvider }
+                if (peerCandidates.isEmpty()) {
+                    Text("Нет других подключённых моделей.", color = Tx, fontSize = 11.sp)
+                } else {
+                    peerCandidates.forEach { provider ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(
+                                checked = provider in selectedPeerProviders,
+                                onCheckedChange = { checked ->
+                                    selectedPeerProviders = if (checked) selectedPeerProviders + provider else selectedPeerProviders - provider
+                                    context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+                                        .edit().putString(peerProvidersKey, selectedPeerProviders.joinToString(",") { it.name }).apply()
+                                }
+                            )
+                            Text(provider.displayName, color = Color(0xFF202020), fontSize = 12.sp)
+                        }
+                    }
+                }
+                if (selectedPeerProviders.isEmpty()) {
+                    Text("Пока ни одной модели не разрешено получать контекст.", color = Tx, fontSize = 10.sp)
+                }
+            }
         }
 
         Spacer(Modifier.height(32.dp))
@@ -165,6 +314,30 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         checkedTrackColor = Gr.copy(alpha = 0.5f)
                     )
                 )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        BackupSettingsSection()
+
+        if (currentProject == null) {
+            Spacer(Modifier.height(16.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = GrD),
+                modifier = Modifier.fillMaxWidth().clickable { showPasswordVault = true }
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🔐", fontSize = 24.sp)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text("Закрытое хранилище паролей", color = Color(0xFF202020), fontSize = 16.sp)
+                        Text(
+                            if (VaultSession.exists(context)) "Зашифровано · требуется мастер-пароль" else "Создать личный сейф паролей",
+                            color = Tx, fontSize = 11.sp
+                        )
+                    }
+                }
             }
         }
 

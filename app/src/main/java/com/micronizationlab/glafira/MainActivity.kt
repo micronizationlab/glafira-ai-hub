@@ -158,7 +158,17 @@ fun App() {
                 val key = "${pm.projectId}_${pm.agentName}"
                 val history = loadHistory(context, key)
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                val reply = callGigaChatWithTrustedCert(context, history + Msg(pm.text, true, pm.time, today), agentPrompt)
+                val provider = if (pm.agentName == "ГЛАФИРА") {
+                    loadGlafiraPrimaryProvider(context)
+                } else {
+                    runCatching { ProviderId.valueOf(pm.providerId) }.getOrDefault(ProviderId.GIGACHAT)
+                }
+                val pendingHistory = history + Msg(pm.text, true, pm.time, today)
+                val reply = if (pm.agentName == "ГЛАФИРА") {
+                    GlafiraCoordinator.respond(context, provider, pendingHistory, agentPrompt, pm.projectId)
+                } else {
+                    callAiProvider(context, provider, pendingHistory, agentPrompt)
+                }
                 if (reply.startsWith("Ошибка сети")) {
                     remaining.add(pm)
                 } else {
@@ -309,10 +319,10 @@ fun ContactList(
 
     val list = remember(context, refreshKey) {
         listOf(
-            A("ГЛАФИРА", "Главный координатор", isProviderConfigured(context, ProviderId.GIGACHAT), "🤖",
+            A("ГЛАФИРА", "Главный координатор", hasAnyGlafiraProvider(context), "🤖",
                 "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
                 "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением.",
-                ProviderId.GIGACHAT, AgentGroup.IA),
+                loadGlafiraPrimaryProvider(context), AgentGroup.IA),
             A("АНАЛИТИК", "Исследование и анализ", isProviderConfigured(context, ProviderId.GIGACHAT), "📊",
                 "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен.",
                 "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры.",
@@ -340,7 +350,15 @@ fun ContactList(
             A("Алиса", "Yandex · не настроен", isProviderConfigured(context, ProviderId.YANDEX), "🟡",
                 "Ты — Алиса от Яндекс. Отвечай на русском, дружелюбно и по делу.",
                 "YandexGPT через Yandex Cloud. Русскоязычные задачи. Для работы нужен API-ключ Yandex Cloud и folder ID.",
-                ProviderId.YANDEX, AgentGroup.AI)
+                ProviderId.YANDEX, AgentGroup.AI),
+            A("Gemini", "Google · бесплатный тариф", isProviderConfigured(context, ProviderId.GEMINI), "✨",
+                "Ты — Gemini от Google. Анализируй, объясняй и помогай решать задачи.",
+                "Google Gemini API. Для некоторых моделей есть бесплатный тариф с ограничениями; Google может использовать данные бесплатного уровня для улучшения продуктов.",
+                ProviderId.GEMINI, AgentGroup.AI),
+            A("OpenRouter Free", "Бесплатные модели · лимиты", isProviderConfigured(context, ProviderId.OPENROUTER), "🆓",
+                "Ты — ИИ-помощник через OpenRouter. Отвечай точно и структурированно.",
+                "Маршрутизатор бесплатных моделей разных разработчиков. Доступность моделей и лимиты меняются; политики обработки данных зависят от выбранного провайдера.",
+                ProviderId.OPENROUTER, AgentGroup.AI)
         )
     }
 
@@ -588,11 +606,15 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         scope.launch {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
-            val reply = callGigaChatWithTrustedCert(context, updatedMessages, fullPrompt)
+            val reply = if (agent.n == "ГЛАФИРА") {
+                GlafiraCoordinator.respond(context, loadGlafiraPrimaryProvider(context), updatedMessages, fullPrompt, project.id)
+            } else {
+                callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
+            }
             val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
             if (reply.startsWith("Ошибка сети")) {
-                addToPendingQueue(context, PendingMessage(project.id, agent.n, text, timeNow))
+                addToPendingQueue(context, PendingMessage(project.id, agent.n, text, timeNow, if (agent.n == "ГЛАФИРА") loadGlafiraPrimaryProvider(context).name else agent.providerId.name))
                 val queuedMsg = Msg("⏳ Сообщение в очереди. Отправится при появлении сети.", false, replyTime, replyDate)
                 val finalMessages = updatedMessages + queuedMsg
                 messages = finalMessages
