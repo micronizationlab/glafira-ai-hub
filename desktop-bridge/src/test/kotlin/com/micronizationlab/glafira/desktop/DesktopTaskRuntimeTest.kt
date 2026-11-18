@@ -56,7 +56,8 @@ class DesktopTaskRuntimeTest {
         queue.enqueue(task("task_missing"))
         val results = mutableListOf<DesktopAgentResult>()
         DesktopTaskRuntime(queue, emptyMap(), onResult = results::add).use { runtime ->
-            assertEquals(1, runtime.dispatchAvailable())
+            // The task is consumed and failed immediately; no worker was started.
+            assertEquals(0, runtime.dispatchAvailable())
         }
         assertEquals(DesktopTaskState.FAILED, queue.get("task_missing")?.state)
         assertEquals("NO_AGENT_HANDLER", results.single().errorCode)
