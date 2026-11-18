@@ -17,12 +17,12 @@ import javax.net.ssl.SSLSocket
 import org.json.JSONObject
 
 /**
- * Bounded HTTPS/1.1 host for already-paired Bridge requests.
+ * Bounded HTTPS/1.1 host for the separate one-time pairing and paired-request routes.
  *
- * Pairing ingress is intentionally not exposed by this first host slice. The listener
- * binds to one explicitly selected private IPv4 interface, rejects ambiguous HTTP framing,
- * and sends all decoded requests through GlafiraBridgeRequestAdmission. It never dispatches
- * arbitrary commands or treats admission as operation completion.
+ * Pairing proofs are consumed by the enrollment coordinator and only create a pending
+ * owner-approval request; they never grant scopes. Paired requests pass through credential,
+ * signature, scope, rate-limit and replay admission. This host does not dispatch arbitrary
+ * commands or treat admission as operation completion.
  */
 class GlafiraBridgeTlsHttpServer(
     private val identity: BridgeServerIdentity,
