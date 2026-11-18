@@ -78,7 +78,7 @@ class GlafiraCoreOwnerApprovalStore(
             put("action_hash", hash)
             put("requested_scopes", JSONArray(requestedScopes).toString())
             put("requested_at", nowMillis)
-            put("expires_at", nowMillis + REQUEST_TTL_MILLIS)
+            put("expires_at", Long.MAX_VALUE)
             put("status", PENDING)
             putNull("approved_at")
             putNull("grant_expires_at")
@@ -138,8 +138,6 @@ class GlafiraCoreOwnerApprovalStore(
     @Synchronized
     fun pendingApprovals(nowMillis: Long = System.currentTimeMillis(), limit: Int = 100): List<GlafiraPendingActionApproval> {
         require(limit in 1..100)
-        db.update("core_action_approvals", ContentValues().apply { put("status", EXPIRED) },
-            "status = ? AND expires_at <= ?", arrayOf(PENDING, nowMillis.toString()))
         val rows = db.query(
             "core_action_approvals",
             arrayOf("task_id", "action_hash", "requested_scopes", "requested_at", "expires_at"),
@@ -242,6 +240,10 @@ class GlafiraCoreOwnerApprovalStore(
         var result = GlafiraCoreOwnerApprovalMutation.NOT_FOUND
         db.beginTransaction()
         try {
+            val currentTask = taskStore.getTask(taskId)
+            if (currentTask == null || currentTask.state != GlafiraTaskState.WAITING_FOR_OWNER) {
+                result = GlafiraCoreOwnerApprovalMutation.ALREADY_DECIDED
+            } else {
             val changed = db.update("core_action_approvals", ContentValues().apply {
                 put("status", REJECTED)
                 put("decided_by", ownerSession.sessionId)
@@ -256,6 +258,7 @@ class GlafiraCoreOwnerApprovalStore(
                     arrayOf(taskId, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue))
                 result = GlafiraCoreOwnerApprovalMutation.REJECTED
                 db.setTransactionSuccessful()
+            }
             }
         } finally {
             db.endTransaction()
@@ -283,7 +286,6 @@ class GlafiraCoreOwnerApprovalStore(
         private const val REJECTED = "REJECTED"
         private const val EXPIRED = "EXPIRED"
         private const val CONSUMED = "CONSUMED"
-        private const val REQUEST_TTL_MILLIS = 24L * 60L * 60L * 1000L
         private const val GRANT_TTL_MILLIS = 10L * 60L * 1000L
     }
 }
