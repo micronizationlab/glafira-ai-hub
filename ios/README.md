@@ -12,6 +12,7 @@ Core, memory authority, or privileged device.
 - `GlafiraBridgeKit`: versioned Bridge request/response models, Kotlin-compatible canonical HMAC-SHA256 signing, signature verification and envelope validation.
 - `PinnedBridgeHTTPSClient`: HTTPS-only transport for Android `/bridge/v1/requests` and `/bridge/v1/pairing`; checks the owner-supplied SHA-256 leaf pin, validates the certificate for the expected hostname, rejects redirects and bounds response bodies.
 - `BridgePairing`: Android-compatible one-time pairing proof; a successful submission only enters the Android owner-approval queue and never grants scopes or creates credentials.
+- `BridgeCredentialGrantImporter`: validates an Android-issued grant against the exact owner approval and pairing ticket, expiry, requested scopes and HMAC secret length. It stores the key in Keychain only after fresh Face ID/Touch ID confirmation.
 - `GlafiraBridgeKitTests`: protocol tests including a fixed HMAC golden vector
   shared with the Kotlin implementation.
 - `.github/workflows/ios.yml`: macOS CI runs `swift test` for the package.
