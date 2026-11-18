@@ -38,6 +38,14 @@ data class ToolApprovalGrant internal constructor(
 object GlafiraToolRegistry {
     private val definitions = listOf(
         GlafiraToolDefinition(
+            "web.search", "Поиск в интернете", "Поиск публичной информации через подключённого поискового провайдера.",
+            ToolRiskLevel.READ_ONLY, setOf("web.search")
+        ),
+        GlafiraToolDefinition(
+            "web.open", "Открытие сайта", "Чтение публичных HTML- и текстовых страниц с защитой от локальных адресов.",
+            ToolRiskLevel.READ_ONLY, setOf("web.open")
+        ),
+        GlafiraToolDefinition(
             "project.read", "Чтение проекта", "Чтение разрешённых данных текущего проекта.",
             ToolRiskLevel.READ_ONLY, setOf("project.read")
         ),
