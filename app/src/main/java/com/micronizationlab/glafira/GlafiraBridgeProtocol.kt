@@ -46,7 +46,7 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.CONVERSATION_READ to setOf("conversationId"),
         GlafiraBridgeOperation.CONVERSATION_APPEND to setOf("conversationId", "messageText"),
         GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary"),
-        GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to emptySet(),
+        GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to setOf("capabilities", "maxParallelTasks"),
         GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "state", "progressPercent", "progressMessage", "result", "errorCode")
     )
     private val allowedFields = requiredFields
