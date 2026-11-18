@@ -8,6 +8,14 @@ public struct GlafiraRootView: View {
     public var body: some View {
         NavigationSplitView {
             List {
+                Section("Подключение") {
+                    NavigationLink {
+                        BridgePairingView()
+                    } label: {
+                        Label("Сопряжение Android", systemImage: "iphone.and.arrow.right.inward")
+                    }
+                }
+
                 Section("Рабочее пространство") {
                     NavigationLink {
                         GlafiraProjectsPlaceholderView()
