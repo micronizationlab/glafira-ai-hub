@@ -73,8 +73,12 @@ internal object GlafiraTaskPlanner {
     /** Build executable batches with at most two independent tasks per batch. */
     fun readyBatches(plan: GlafiraTaskPlan, completedIds: Set<String> = emptySet()): List<List<GlafiraSubtask>> {
         val completed = completedIds.toMutableSet()
-        require(completed.all { id -> plan.tasks.any { it.id == id } }) {
+        val tasksById = plan.tasks.associateBy { it.id }
+        require(completed.all { id -> id in tasksById }) {
             "Список завершённых задач содержит неизвестный идентификатор."
+        }
+        require(completed.all { id -> tasksById.getValue(id).dependsOn.all { it in completed } }) {
+            "Нельзя отметить задачу завершённой до завершения всех её зависимостей."
         }
         val remaining = plan.tasks.filterNot { it.id in completed }.toMutableList()
         val batches = mutableListOf<List<GlafiraSubtask>>()
