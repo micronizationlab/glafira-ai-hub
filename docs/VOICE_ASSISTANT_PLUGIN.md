@@ -106,3 +106,10 @@ The requested private target is a voice-and-delivery recreation of performer Shu
 - If documented authorization is obtained, the plugin may use an appropriate provider workflow to analyze the authorized recordings and create the voice profile and delivery behavior, subject to provider terms.
 - Until then, the plugin may offer only a clearly distinct, original voice using broad non-identifying characteristics; it must not claim to be Shura Karetny or reproduce his recognizable voice.
 - The user-facing settings remain only enable/disable and change plugin; consent and provenance checks are enforced internally, not exposed as a collection of tuning controls.
+
+
+## Implementation checkpoint — 2026-11-18
+
+A provider-independent `VoiceProfilePolicy` contract and unit tests have been added on the separate `feature/glafira-voice-policy` branch. The policy distinguishes original non-identifying synthetic voices from identifiable real-person profiles and checks consent evidence reference, expiry, revocation and permitted use before synthesis.
+
+This is a policy primitive only. Audio capture, speech-to-text, text-to-speech providers, profile storage, consent-evidence workflow and playback are not implemented. No voice cloning or audio generation is enabled by this change.
