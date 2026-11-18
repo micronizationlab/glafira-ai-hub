@@ -23,6 +23,25 @@ android {
         versionName = "0.1.$ciRunNumber"
     }
 
+    signingConfigs {
+        if (providers.environmentVariable("GLAFIRA_DEBUG_KEYSTORE_PATH").isPresent) {
+            create("ciDebug") {
+                storeFile = file(providers.environmentVariable("GLAFIRA_DEBUG_KEYSTORE_PATH").get())
+                storePassword = providers.environmentVariable("GLAFIRA_DEBUG_STORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("GLAFIRA_DEBUG_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("GLAFIRA_DEBUG_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            if (providers.environmentVariable("GLAFIRA_DEBUG_KEYSTORE_PATH").isPresent) {
+                signingConfig = signingConfigs.getByName("ciDebug")
+            }
+        }
+    }
+
     buildFeatures {
         compose = true
     }
