@@ -62,6 +62,11 @@ object GlafiraToolRegistry {
             ToolRiskLevel.DRAFT, setOf("approval.request")
         ),
         GlafiraToolDefinition(
+            "vault.credential.use", "Использование сохранённой учётной записи",
+            "Передача учётных данных только доверенному адаптеру для заранее разрешённого HTTPS-сайта; секрет не возвращается модели.",
+            ToolRiskLevel.DRAFT, setOf("vault.credential.use")
+        ),
+        GlafiraToolDefinition(
             "content.draft", "Подготовка черновика", "Создание черновика текста без публикации.",
             ToolRiskLevel.DRAFT, setOf("content.draft")
         ),
