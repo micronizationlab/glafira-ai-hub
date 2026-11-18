@@ -43,9 +43,12 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
-            Text("НАСТРОЙКИ", color = Gr, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Row(
+            Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("←", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { onBack() }.padding(end = 14.dp))
+            Text("НАСТРОЙКИ", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
 
         Spacer(Modifier.height(24.dp))
