@@ -158,7 +158,11 @@ fun App() {
                 val key = "${pm.projectId}_${pm.agentName}"
                 val history = loadHistory(context, key)
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                val provider = runCatching { ProviderId.valueOf(pm.providerId) }.getOrDefault(ProviderId.GIGACHAT)
+                val provider = if (pm.agentName == "ГЛАФИРА") {
+                    loadGlafiraPrimaryProvider(context)
+                } else {
+                    runCatching { ProviderId.valueOf(pm.providerId) }.getOrDefault(ProviderId.GIGACHAT)
+                }
                 val pendingHistory = history + Msg(pm.text, true, pm.time, today)
                 val reply = if (pm.agentName == "ГЛАФИРА") {
                     GlafiraCoordinator.respond(context, provider, pendingHistory, agentPrompt)
@@ -315,10 +319,10 @@ fun ContactList(
 
     val list = remember(context, refreshKey) {
         listOf(
-            A("ГЛАФИРА", "Главный координатор", isProviderConfigured(context, ProviderId.GIGACHAT), "🤖",
+            A("ГЛАФИРА", "Главный координатор", hasAnyGlafiraProvider(context), "🤖",
                 "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
                 "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением.",
-                ProviderId.GIGACHAT, AgentGroup.IA),
+                loadGlafiraPrimaryProvider(context), AgentGroup.IA),
             A("АНАЛИТИК", "Исследование и анализ", isProviderConfigured(context, ProviderId.GIGACHAT), "📊",
                 "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен.",
                 "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры.",
@@ -603,14 +607,14 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
             val reply = if (agent.n == "ГЛАФИРА") {
-                GlafiraCoordinator.respond(context, agent.providerId, updatedMessages, fullPrompt)
+                GlafiraCoordinator.respond(context, loadGlafiraPrimaryProvider(context), updatedMessages, fullPrompt)
             } else {
                 callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
             }
             val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
             if (reply.startsWith("Ошибка сети")) {
-                addToPendingQueue(context, PendingMessage(project.id, agent.n, text, timeNow, agent.providerId.name))
+                addToPendingQueue(context, PendingMessage(project.id, agent.n, text, timeNow, if (agent.n == "ГЛАФИРА") loadGlafiraPrimaryProvider(context).name else agent.providerId.name))
                 val queuedMsg = Msg("⏳ Сообщение в очереди. Отправится при появлении сети.", false, replyTime, replyDate)
                 val finalMessages = updatedMessages + queuedMsg
                 messages = finalMessages
