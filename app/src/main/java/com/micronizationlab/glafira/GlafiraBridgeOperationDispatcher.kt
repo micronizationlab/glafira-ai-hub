@@ -145,10 +145,11 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
     }
 
     private fun isDirectChild(file: File): Boolean {
-        val normalized = file.absoluteFile.normalize()
-        return normalized.parentFile == filesRoot &&
-            !Files.isSymbolicLink(normalized.toPath()) &&
-            normalized.canonicalFile == normalized
+        val normalizedPath = file.toPath().toAbsolutePath().normalize()
+        val normalizedFile = normalizedPath.toFile()
+        return normalizedFile.parentFile == filesRoot &&
+            !Files.isSymbolicLink(normalizedPath) &&
+            normalizedFile.canonicalFile == normalizedFile
     }
 
     private fun succeeded(request: GlafiraBridgeRequest, result: Map<String, String>) =
