@@ -105,14 +105,14 @@ object GlafiraUpdater {
             val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val downloadId = manager.enqueue(request)
             var completedUri: Uri? = null
-            repeat(600) {
+            var attempts = 0
+            while (completedUri == null && attempts < 600) {
                 val query = DownloadManager.Query().setFilterById(downloadId)
                 manager.query(query).use { cursor ->
                     if (cursor != null && cursor.moveToFirst()) {
                         when (cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
                             DownloadManager.STATUS_SUCCESSFUL -> {
                                 completedUri = manager.getUriForDownloadedFile(downloadId)
-                                return@repeat
                             }
                             DownloadManager.STATUS_FAILED -> {
                                 val reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
@@ -123,6 +123,7 @@ object GlafiraUpdater {
                     }
                 }
                 if (completedUri == null) delay(1_000)
+                attempts++
             }
             val uri = completedUri ?: run {
                 manager.remove(downloadId)
@@ -134,8 +135,16 @@ object GlafiraUpdater {
                 "glafira-${update.versionCode}.apk"
             )
             val actualHash = withContext(Dispatchers.IO) {
-                MessageDigest.getInstance("SHA-256").digest(apkFile.readBytes())
-                    .joinToString("") { "%02x".format(it) }
+                val digest = MessageDigest.getInstance("SHA-256")
+                apkFile.inputStream().buffered().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        digest.update(buffer, 0, read)
+                    }
+                }
+                digest.digest().joinToString("") { "%02x".format(it) }
             }
             if (!actualHash.equals(update.sha256, ignoreCase = true)) {
                 manager.remove(downloadId)
