@@ -262,6 +262,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                                 }
                             }
                             (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+                            invitationClipboardText = bundle
                             status = "Одноразовое приглашение скопировано. Используйте его в Desktop до истечения срока."
                         }
                     }) { Text("СКОПИРОВАТЬ ПРИГЛАШЕНИЕ") }
