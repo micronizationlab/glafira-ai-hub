@@ -198,7 +198,7 @@ object DesktopBridgeCredentialVault {
         require(entry.deviceId.length in 8..128 && entry.deviceId.all { it.isLetterOrDigit() || it in "-_." })
         require(entry.hmacSecret.size == 32)
         require(entry.grantedScopes.isNotEmpty() && entry.grantedScopes.size <= 32)
-        require(entry.grantedScopes.all { it.length in 1..96 && it.all { c -> c.isLetterOrDigit() || c in "._-" } })
+        require(entry.grantedScopes.all(DesktopBridgeScopePolicy::isValidScope))
         require(entry.serverCertificateSha256.matches(Regex("[0-9a-f]{64}")))
     }
 
