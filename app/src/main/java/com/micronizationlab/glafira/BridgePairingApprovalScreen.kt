@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import java.util.Base64
 import java.util.UUID
+import kotlinx.coroutines.delay
 
 @Composable
 fun BridgePairingApprovalScreen(onBack: () -> Unit) {
@@ -41,8 +42,17 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var deliveryText by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("Для просмотра и подтверждения устройств подтвердите личность владельца.") }
     var isBusy by remember { mutableStateOf(false) }
-    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }
+    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }\n    var hostRunning by remember { mutableStateOf(false) }
     var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
+
+    LaunchedEffect(context) {
+        while (true) {
+            hostRunning = context.getSharedPreferences(
+                GlafiraBridgeHostService.HOST_STATE_PREFS, Context.MODE_PRIVATE
+            ).getBoolean(GlafiraBridgeHostService.HOST_RUNNING_KEY, false)
+            delay(1_000)
+        }
+    }
 
     val availableScopes = remember {
         GlafiraToolRegistry.all().flatMap { it.requiredScopes }.toSortedSet()
@@ -179,13 +189,8 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                 Text("ОДНОРАЗОВОЕ ПРИГЛАШЕНИЕ ДЛЯ DESKTOP", color = Gr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 Text("Создавайте приглашение после запуска локального сервера. Код действует не более 120 секунд и сам по себе не выдаёт прав.", color = Tx, fontSize = 10.sp)
                 Button(
-                    enabled = ownerSession?.isValid(System.currentTimeMillis()) == true &&
-                        context.getSharedPreferences(GlafiraBridgeHostService.HOST_STATE_PREFS, Context.MODE_PRIVATE)
-                            .getBoolean(GlafiraBridgeHostService.HOST_RUNNING_KEY, false),
+                    enabled = ownerSession?.isValid(System.currentTimeMillis()) == true && hostRunning,
                     onClick = {
-                        val hostRunning = context.getSharedPreferences(
-                            GlafiraBridgeHostService.HOST_STATE_PREFS, Context.MODE_PRIVATE
-                        ).getBoolean(GlafiraBridgeHostService.HOST_RUNNING_KEY, false)
                         if (!hostRunning) {
                             status = "Сначала запустите локальный сервер и дождитесь уведомления об активном канале."
                             return@Button
