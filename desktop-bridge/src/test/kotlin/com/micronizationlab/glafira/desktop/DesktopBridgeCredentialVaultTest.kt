@@ -56,6 +56,13 @@ class DesktopBridgeCredentialVaultTest {
                     "bad", setOf("project.read"), "b".repeat(64), password
                 )
             }
+            assertThrows(IllegalArgumentException::class.java) {
+                DesktopBridgeCredentialVault.import(
+                    path, "https://192.168.1.20:47321", "device-identifier-01",
+                    Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32)),
+                    setOf("unknown.scope"), "b".repeat(64), password
+                )
+            }
         } finally {
             password.fill('\u0000')
             Files.deleteIfExists(path)
