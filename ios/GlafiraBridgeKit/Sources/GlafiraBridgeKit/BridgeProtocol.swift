@@ -152,7 +152,7 @@ public enum BridgeProtocol {
     public static func verifySignature(_ request: BridgeRequest, secret: Data) -> Bool {
         guard secret.count >= 32,
               let supplied = decodeHex(request.signatureHex),
-              supplied.count == SHA256.byteCount else { return false }
+              supplied.count == 32 else { return false }
         let unsigned = HMAC<SHA256>.isValidAuthenticationCode(
             supplied,
             authenticating: canonicalBytes(request),
@@ -185,8 +185,9 @@ public enum BridgeProtocol {
         let units = value.utf16.count
         guard (8...128).contains(units) else { return false }
         return value.unicodeScalars.allSatisfy {
-            CharacterSet.alphanumerics.contains($0) ||
-            $0 == "-" || $0 == "_" || $0 == "."
+            $0.value <= 0xFFFF &&
+            (CharacterSet.alphanumerics.contains($0) ||
+             $0 == "-" || $0 == "_" || $0 == ".")
         }
     }
 
