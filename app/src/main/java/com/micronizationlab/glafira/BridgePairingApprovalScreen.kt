@@ -44,7 +44,8 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var isBusy by remember { mutableStateOf(false) }
     var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }
     var hostRunning by remember { mutableStateOf(false) }
-    var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }\n    var invitationClipboardText by remember { mutableStateOf<String?>(null) }
+    var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
+    var invitationClipboardText by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(context) {
         while (true) {
