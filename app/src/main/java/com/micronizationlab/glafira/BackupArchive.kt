@@ -221,6 +221,7 @@ object BackupArchive {
                 var manifest: JSONObject? = null
                 var totalBytes = 0L
                 var entries = 0
+                val archiveEntryNames = mutableSetOf<String>()
                 ZipInputStream(BufferedInputStream(CipherInputStream(input, cipher))).use { zip ->
                     var entry = zip.nextEntry
                     while (entry != null) {
@@ -228,6 +229,7 @@ object BackupArchive {
                         entries++
                         require(entries <= MAX_FILES + 1) { "В архиве слишком много файлов." }
                         val name = entry.name
+                        require(archiveEntryNames.add(name)) { "Повторная запись в архиве: $name" }
                         require(!name.startsWith("/") && !name.contains("\\") &&
                             name.split("/").none { it == ".." || it.isBlank() }) { "Обнаружен небезопасный путь в архиве." }
                         if (name == "manifest.json") {
@@ -265,12 +267,22 @@ object BackupArchive {
                 val expected = parsed.getJSONArray("files")
                 require(expected.length() == stagedFiles.size) { "Количество файлов не совпадает с manifest." }
                 val stagedByPath = stagedFiles.associateBy { it.relativePath }
+                val manifestPaths = mutableSetOf<String>()
                 for (index in 0 until expected.length()) {
                     val item = expected.getJSONObject(index)
                     val relative = item.getString("path")
+                    require(relative.isNotBlank() && !relative.startsWith("/") &&
+                        !relative.contains("\\") &&
+                        relative.split("/").none { it == ".." || it.isBlank() }) {
+                        "Недопустимый путь в manifest."
+                    }
+                    require(manifestPaths.add(relative)) { "Повторный путь в manifest: $relative" }
                     val staged = stagedByPath[relative] ?: error("В архиве отсутствует файл $relative")
                     require(staged.file.length() == item.getLong("size")) { "Размер файла не совпадает: $relative" }
                     require(sha256(staged.file) == item.getString("sha256")) { "Контрольная сумма не совпадает: $relative" }
+                }
+                require(manifestPaths == stagedByPath.keys) {
+                    "Состав файлов архива не совпадает с manifest."
                 }
                 return StagedArchive(
                     staging,
