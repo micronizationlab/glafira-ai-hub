@@ -60,9 +60,11 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                 val result = context.contentResolver.openInputStream(uri)?.use { input ->
                     GooglePasswordCsvImporter.parse(input)
                 } ?: error("Не удалось прочитать выбранный CSV-файл.")
-                val existingKeys = entries.map { (it.website.trim().lowercase() + "|" + it.username.trim().lowercase()) }.toSet()
-                val newEntries = result.entries.filterNot {
-                    (it.website.trim().lowercase() + "|" + it.username.trim().lowercase()) in existingKeys
+                val knownKeys = entries.map {
+                    it.website.trim().lowercase() + "|" + it.username.trim().lowercase()
+                }.toMutableSet()
+                val newEntries = result.entries.filter { entry ->
+                    knownKeys.add(entry.website.trim().lowercase() + "|" + entry.username.trim().lowercase())
                 }
                 activeSession.saveEntries(entries + newEntries)
                 entries = entries + newEntries
