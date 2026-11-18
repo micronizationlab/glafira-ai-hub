@@ -60,8 +60,10 @@ public struct OwnerApprovedBridgeCredentialBundle: Sendable {
               pin.utf8.count == 64, pin.allSatisfy({ $0.isHexDigit }) else {
             throw BridgeCredentialBundleError.serverIdentityMismatch
         }
-        guard approvalId == expectedApprovalId, ticketId == expectedTicketId,
-              (16...128).contains(approvalId.utf8.count),
+        guard approvalId == expectedApprovalId, ticketId == expectedTicketId else {
+            throw BridgeCredentialBundleError.invalidApprovalCorrelation
+        }
+        guard (16...128).contains(approvalId.utf8.count),
               (16...128).contains(ticketId.utf8.count),
               approvalId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
               ticketId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
@@ -99,6 +101,7 @@ public enum BridgeCredentialBundleError: Error, Equatable, Sendable {
     case invalidFormat
     case serverIdentityMismatch
     case invalidDevice
+    case invalidApprovalCorrelation
     case invalidScopes
     case invalidSecret
 }
