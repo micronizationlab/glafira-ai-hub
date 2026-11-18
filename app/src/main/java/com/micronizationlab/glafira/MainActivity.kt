@@ -21,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -387,13 +388,14 @@ fun ContactList(
                     )
                 }
                 if (iaExpanded) {
-    items(
-        items = list.filter { it.group == AgentGroup.IA },
-        key = { it.n }
-    ) { a ->
-        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
-    }
-}
+                    val iaList = list.filter { it.group == AgentGroup.IA }
+                    itemsIndexed(
+                        items = iaList,
+                        key = { _, a -> a.n }
+                    ) { _, a ->
+                        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
+                    }
+                }
                 item { Spacer(Modifier.height(8.dp)) }
                 item {
                     GroupHeader(
@@ -404,13 +406,14 @@ fun ContactList(
                     )
                 }
                 if (aiExpanded) {
-    items(
-        items = list.filter { it.group == AgentGroup.AI },
-        key = { it.n }
-    ) { a ->
-        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
-    }
-}
+                    val aiList = list.filter { it.group == AgentGroup.AI }
+                    itemsIndexed(
+                        items = aiList,
+                        key = { _, a -> a.n }
+                    ) { _, a ->
+                        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
+                    }
+                }
             }
         }
 
