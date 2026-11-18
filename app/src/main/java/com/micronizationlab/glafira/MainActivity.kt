@@ -419,6 +419,9 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var isSearching by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showTransferDialog by remember { mutableStateOf(false) }
+    var pinned by remember { mutableStateOf(loadPinned(context, historyKey)) }
+    var showPinnedPanel by remember { mutableStateOf(false) }
+    var messageActionIndex by remember { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -427,6 +430,35 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     LaunchedEffect(messages.size) {
         if (!isSearching && messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    fun sendMessage(text: String) {
+        if (text.isBlank() || isLoading) return
+        val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+        val updatedMessages = messages + Msg(text, true, timeNow)
+        messages = updatedMessages
+        saveHistory(context, historyKey, updatedMessages)
+        isLoading = true
+        scope.launch {
+            val projectContext = buildProjectContext(context, project.id, agent.n)
+            val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
+            val reply = callGigaChatWithTrustedCert(context, updatedMessages, fullPrompt)
+            val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+            if (reply.startsWith("Ошибка сети")) {
+                addToPendingQueue(context, PendingMessage(project.id, agent.n, text, timeNow))
+                val queuedMsg = Msg("⏳ Сообщение в очереди. Отправится при появлении сети.", false, replyTime)
+                val finalMessages = updatedMessages + queuedMsg
+                messages = finalMessages
+                saveHistory(context, historyKey, finalMessages)
+                SoundHelper.playIncoming()
+            } else {
+                val finalMessages = updatedMessages + Msg(reply, false, replyTime)
+                messages = finalMessages
+                saveHistory(context, historyKey, finalMessages)
+                SoundHelper.playIncoming()
+            }
+            isLoading = false
         }
     }
 
@@ -456,17 +488,50 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                             )
                         }
                     }
+                    Text("📌", fontSize = 14.sp, modifier = Modifier.clickable { showPinnedPanel = !showPinnedPanel }.padding(end = 8.dp))
                     Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 8.dp))
                     Text("↗", fontSize = 16.sp, color = Gr, modifier = Modifier.clickable { showTransferDialog = true }.padding(end = 8.dp))
                     Text("📤", fontSize = 14.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 8.dp))
                     Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
                         messages = emptyList(); saveHistory(context, historyKey, emptyList())
+                        pinned = emptySet(); savePinned(context, historyKey, emptySet())
                     })
                 }
             }
 
+            if (showPinnedPanel && pinned.isNotEmpty()) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = GrD),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Column(Modifier.padding(8.dp)) {
+                        Text("📌 ЗАКРЕПЛЁННЫЕ", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Spacer(Modifier.height(4.dp))
+                        pinned.sorted().forEach { idx ->
+                            if (idx < messages.size) {
+                                val m = messages[idx]
+                                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        m.text.take(80) + if (m.text.length > 80) "…" else "",
+                                        color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text("✕", color = Red, fontSize = 12.sp, modifier = Modifier.clickable {
+                                        pinned = pinned - idx
+                                        savePinned(context, historyKey, pinned)
+                                    }.padding(start = 6.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(displayedMessages) { msg ->
+                items(displayedMessages.size) { displayIdx ->
+                    val msg = displayedMessages[displayIdx]
+                    val realIdx = messages.indexOf(msg)
+                    val isPinned = realIdx in pinned
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
                         Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
                             val shape = if (msg.isUser) {
@@ -478,17 +543,26 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 Modifier.clip(shape)
                                     .background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f))
                                     .border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), shape)
-                                    .combinedClickable(onClick = {}, onLongClick = { copyToClipboard(context, msg.text) })
+                                    .combinedClickable(
+                                        onClick = {},
+                                        onLongClick = { messageActionIndex = realIdx }
+                                    )
                                     .padding(horizontal = 10.dp, vertical = 8.dp)
                             ) {
                                 Text(msg.text, color = if (msg.isUser) Color.White else Gr, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                             }
-                            Text(msg.time, color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 2.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isPinned) Text("📌 ", fontSize = 8.sp)
+                                Text(msg.time, color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 2.dp))
+                            }
                         }
                     }
                 }
                 if (isLoading) { item { TypingIndicator() } }
                 if (isSearching && displayedMessages.isEmpty()) { item { Text("Ничего не найдено", color = Tx, modifier = Modifier.padding(12.dp), fontSize = 12.sp) } }
+                if (!isLoading && displayedMessages.isNotEmpty() && !displayedMessages.last().isUser && searchQuery.isBlank()) {
+                    item { QuickActionsRow(onAction = { sendMessage(it) }) }
+                }
             }
 
             if (!isSearching) {
@@ -501,40 +575,46 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     )
                     Box(
                         Modifier.size(36.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable {
-                            if (inputText.isNotBlank() && !isLoading) {
-                                val userMsg = inputText
-                                val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                                val updatedMessages = messages + Msg(userMsg, true, timeNow)
-                                messages = updatedMessages
-                                saveHistory(context, historyKey, updatedMessages)
+                            if (inputText.isNotBlank()) {
+                                val t = inputText
                                 inputText = ""
-                                isLoading = true
-                                scope.launch {
-                                    val projectContext = buildProjectContext(context, project.id, agent.n)
-                                    val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
-                                    val reply = callGigaChatWithTrustedCert(context, updatedMessages, fullPrompt)
-                                    val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                                    if (reply.startsWith("Ошибка сети")) {
-                                        addToPendingQueue(context, PendingMessage(project.id, agent.n, userMsg, timeNow))
-                                        val queuedMsg = Msg("⏳ Сообщение в очереди. Отправится при появлении сети.", false, replyTime)
-                                        val finalMessages = updatedMessages + queuedMsg
-                                        messages = finalMessages
-                                        saveHistory(context, historyKey, finalMessages)
-                                        SoundHelper.playIncoming()
-                                    } else {
-                                        val finalMessages = updatedMessages + Msg(reply, false, replyTime)
-                                        messages = finalMessages
-                                        saveHistory(context, historyKey, finalMessages)
-                                        SoundHelper.playIncoming()
-                                    }
-                                    isLoading = false
-                                }
+                                sendMessage(t)
                             }
                         },
                         contentAlignment = Alignment.Center
                     ) { Text("➤", color = Gr, fontSize = 16.sp) }
                 }
             }
+        }
+
+        if (messageActionIndex != null) {
+            val idx = messageActionIndex!!
+            val msg = if (idx < messages.size) messages[idx] else null
+            AlertDialog(
+                onDismissRequest = { messageActionIndex = null },
+                title = { Text("Действие", color = Bg) },
+                text = {
+                    Column {
+                        if (msg != null) {
+                            Text(msg.text.take(120) + if (msg.text.length > 120) "…" else "", color = Tx, fontSize = 11.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Копировать", color = Gr, fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+                                copyToClipboard(context, msg.text)
+                                messageActionIndex = null
+                            }.padding(vertical = 6.dp))
+                            val isPinned = idx in pinned
+                            Text(if (isPinned) "Открепить" else "Закрепить", color = Gr, fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+                                pinned = if (isPinned) pinned - idx else pinned + idx
+                                savePinned(context, historyKey, pinned)
+                                messageActionIndex = null
+                            }.padding(vertical = 6.dp))
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { messageActionIndex = null }) { Text("ЗАКРЫТЬ", color = Tx) }
+                }
+            )
         }
 
         if (showTransferDialog) {
@@ -581,6 +661,31 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     }
                 }
             )
+        }
+    }
+}
+
+@Composable
+fun QuickActionsRow(onAction: (String) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        val actions = listOf(
+            "Продолжить" to "Продолжи.",
+            "Подробнее" to "Раскрой подробнее.",
+            "Пример" to "Дай пример.",
+            "Короче" to "Сократи ответ.",
+            "Другой" to "Дай другой вариант."
+        )
+        actions.forEach { (label, prompt) ->
+            Box(
+                Modifier.border(1.dp, Gr.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
+                    .clickable { onAction(prompt) }
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+            ) {
+                Text(label, color = Gr, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+            }
         }
     }
 }
