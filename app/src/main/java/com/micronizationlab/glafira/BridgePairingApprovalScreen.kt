@@ -51,6 +51,10 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var hostRunning by remember { mutableStateOf(false) }
     var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
     var invitationClipboardText by remember { mutableStateOf<String?>(null) }
+    // DisposableEffect is keyed only by Activity; read the latest secret and clipboard values on disposal.
+    val currentDelivery by rememberUpdatedState(delivery)
+    val currentDeliveryText by rememberUpdatedState(deliveryText)
+    val currentInvitationClipboardText by rememberUpdatedState(invitationClipboardText)
 
     fun startBridgeHost() {
         runCatching { GlafiraBridgeHostService.startFromOwnerAction(context, hostAddress.trim()) }
@@ -86,12 +90,12 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
         window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose {
             if (previousSecure == false) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            delivery?.hmacSecret?.fill(0)
+            currentDelivery?.hmacSecret?.fill(0)
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val currentClipboard = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
                 ?.coerceToText(context)?.toString()
             if (currentClipboard != null &&
-                (currentClipboard == deliveryText || currentClipboard == invitationClipboardText)
+                (currentClipboard == currentDeliveryText || currentClipboard == currentInvitationClipboardText)
             ) {
                 clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
             }
