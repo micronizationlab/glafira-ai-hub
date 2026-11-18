@@ -80,7 +80,7 @@ class DesktopBridgeHttpsClient(
         operation: DesktopBridgeOperation,
         payload: Map<String, String>
     ): DesktopBridgeResponse {
-        require(isIdentifier(projectId))
+        require(isProjectIdentifier(projectId))
         require(payload.size <= 16)
         require(payload.entries.all { (key, value) ->
             key.matches(Regex("[A-Za-z][A-Za-z0-9]{0,63}")) && value.length <= 16_384
@@ -249,6 +249,9 @@ class DesktopBridgeHttpsClient(
 
     private fun parsePin(value: String): ByteArray =
         value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+    private fun isProjectIdentifier(value: String): Boolean =
+        value == "default" || isIdentifier(value)
 
     private fun isIdentifier(value: String): Boolean =
         value.length in 8..128 && value.all { it.isLetterOrDigit() || it in "-_." }
