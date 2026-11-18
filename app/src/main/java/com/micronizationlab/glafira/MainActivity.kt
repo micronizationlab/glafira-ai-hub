@@ -635,11 +635,14 @@ suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>, sy
         val chatBody = JSONObject().apply { put("model", "GigaChat-2"); put("messages", messagesArray) }.toString()
         chatConn.outputStream.use { it.write(chatBody.toByteArray()) }
 
-        if (chatConn.responseCode == 200) {
+                if (chatConn.responseCode == 200) {
             val json = JSONObject(chatConn.inputStream.bufferedReader().readText())
             json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         } else {
             "Ошибка API: ${chatConn.responseCode}"
         }
     } catch (e: Exception) {
+        "Ошибка сети: ${e.message}"
+    }
+}
         "Ошибка сети: ${e.message
