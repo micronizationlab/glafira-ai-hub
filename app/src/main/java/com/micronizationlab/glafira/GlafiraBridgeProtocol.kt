@@ -1,5 +1,9 @@
 package com.micronizationlab.glafira
 
+import java.security.MessageDigest
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+
 /**
  * Versioned, typed envelope shared by Android, Desktop and the optional ChatGPT MCP adapter.
  * This is a protocol boundary, not a network listener or an authorization grant.
@@ -28,7 +32,8 @@ data class GlafiraBridgeRequest(
     val operation: GlafiraBridgeOperation,
     val issuedAtEpochMs: Long,
     val expiresAtEpochMs: Long,
-    val payload: Map<String, String>
+    val payload: Map<String, String>,
+    val signatureHex: String = ""
 )
 
 data class GlafiraBridgeResponse(
@@ -70,6 +75,55 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.CONVERSATION_APPEND to setOf("conversationId", "messageText"),
         GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary")
     )
+
+    /**
+     * Signs the canonical envelope with a per-device secret. The secret must be generated
+     * and stored by the platform credential layer; never place it in the request or model context.
+     */
+    fun sign(request: GlafiraBridgeRequest, deviceSecret: ByteArray): GlafiraBridgeRequest {
+        require(deviceSecret.size >= 32) { "Device secret must contain at least 256 bits." }
+        return request.copy(signatureHex = hmacSha256(canonicalBytes(request), deviceSecret).toHex())
+    }
+
+    fun verifySignature(request: GlafiraBridgeRequest, deviceSecret: ByteArray): Boolean {
+        if (deviceSecret.size < 32 || request.signatureHex.length != 64) return false
+        val supplied = runCatching { request.signatureHex.hexToBytes() }.getOrNull() ?: return false
+        val expected = hmacSha256(canonicalBytes(request.copy(signatureHex = "")), deviceSecret)
+        return MessageDigest.isEqual(expected, supplied)
+    }
+
+    private fun canonicalBytes(request: GlafiraBridgeRequest): ByteArray {
+        val fields = buildList {
+            add(request.protocolVersion.toString())
+            add(request.requestId)
+            add(request.idempotencyKey)
+            add(request.deviceId)
+            add(request.projectId)
+            add(request.operation.name)
+            add(request.issuedAtEpochMs.toString())
+            add(request.expiresAtEpochMs.toString())
+            request.payload.toSortedMap().forEach { (key, value) ->
+                add(key)
+                add(value)
+            }
+        }
+        return fields.joinToString(separator = "") { "${it.length}:$it" }
+            .toByteArray(Charsets.UTF_8)
+    }
+
+    private fun hmacSha256(data: ByteArray, secret: ByteArray): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(secret, "HmacSHA256"))
+        return mac.doFinal(data)
+    }
+
+    private fun ByteArray.toHex(): String =
+        joinToString("") { "%02x".format(it) }
+
+    private fun String.hexToBytes(): ByteArray {
+        require(length % 2 == 0 && all { it in "0123456789abcdefABCDEF" })
+        return chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    }
 
     fun validate(
         request: GlafiraBridgeRequest,
