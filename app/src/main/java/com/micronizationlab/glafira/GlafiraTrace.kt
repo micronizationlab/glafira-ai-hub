@@ -101,6 +101,10 @@ class GlafiraSqliteTraceRepository(
             }
             val clauses = mutableListOf<String>()
             val args = mutableListOf<String>()
+            val visibleClassifications = CoreDataClassification.values()
+                .take(access.maximumClassification.ordinal + 1)
+            clauses += "data_classification IN (${visibleClassifications.joinToString(",") { "?" }})"
+            args.addAll(visibleClassifications.map { it.name })
             if (query.projectId != null) {
                 clauses += "project_id = ?"
                 args += query.projectId.value
