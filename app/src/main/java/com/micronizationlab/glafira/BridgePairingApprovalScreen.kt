@@ -31,7 +31,9 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     val store = remember(context) { AndroidKeystoreBridgePairingApprovalStore(context) }
-    val service = remember(store) { GlafiraBridgeOwnerApprovalService(store) }\n    val ticketStore = remember(context) { AndroidKeystoreBridgePairingTicketStore(context) }\n    val pairingProtocol = remember(ticketStore) { GlafiraBridgePairingProtocol(ticketStore) }
+    val service = remember(store) { GlafiraBridgeOwnerApprovalService(store) }
+    val ticketStore = remember(context) { AndroidKeystoreBridgePairingTicketStore(context) }
+    val pairingProtocol = remember(ticketStore) { GlafiraBridgePairingProtocol(ticketStore) }
     var ownerSession by remember { mutableStateOf<GlafiraBridgeOwnerSession?>(null) }
     var pending by remember { mutableStateOf(emptyList<GlafiraBridgePendingApproval>()) }
     var selectedScopes by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
@@ -39,7 +41,8 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var deliveryText by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("Для просмотра и подтверждения устройств подтвердите личность владельца.") }
     var isBusy by remember { mutableStateOf(false) }
-    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }\n    var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
+    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }
+    var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
 
     val availableScopes = remember {
         GlafiraToolRegistry.all().flatMap { it.requiredScopes }.toSortedSet()
@@ -51,7 +54,8 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
         window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose {
             if (previousSecure == false) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            store.close()\n            ticketStore.close()
+            store.close()
+            ticketStore.close()
         }
     }
 
