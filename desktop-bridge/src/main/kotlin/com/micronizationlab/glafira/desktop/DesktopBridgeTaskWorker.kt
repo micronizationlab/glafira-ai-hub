@@ -17,6 +17,7 @@ internal class DesktopBridgeTaskWorker(
     maxParallelTasks: Int = DesktopTaskRuntime.DEFAULT_PARALLELISM,
     onResult: (DesktopAgentResult) -> Unit = {}
 ) : AutoCloseable {
+    private val advertisedCapabilities = handlers.keys.map(::capabilityForTaskType).toSet()
     private val runtime = DesktopTaskRuntime(
         queue = queue,
         handlers = handlers,
@@ -41,7 +42,11 @@ internal class DesktopBridgeTaskWorker(
     fun pollOnce(): Int {
         val response = client.post(
             origin, credentials, projectId,
-            DesktopBridgeOperation.DESKTOP_TASK_CLAIM, emptyMap()
+            DesktopBridgeOperation.DESKTOP_TASK_CLAIM,
+            mapOf(
+                "capabilities" to org.json.JSONArray(advertisedCapabilities.toList()).toString(),
+                "maxParallelTasks" to maxParallelTasks.toString()
+            )
         )
         if (response.status != DesktopBridgeStatus.SUCCEEDED) {
             throw IllegalStateException(response.errorCode ?: "DESKTOP_TASK_CLAIM_FAILED")
@@ -111,6 +116,14 @@ internal class DesktopBridgeTaskWorker(
             }
         }
         throw IllegalStateException("DESKTOP_TASK_RESULT_DELIVERY_FAILED", lastError)
+    }
+
+    private fun capabilityForTaskType(taskType: String): String = when (taskType) {
+        "core.orchestration" -> "core.orchestration"
+        "analysis.document" -> "document.analysis"
+        "code.build" -> "code.build"
+        "web.research" -> "web.research"
+        else -> throw IllegalArgumentException("UNSUPPORTED_AGENT_TASK_TYPE")
     }
 
     private fun decodeTask(json: JSONObject): DesktopTaskEnvelope {
