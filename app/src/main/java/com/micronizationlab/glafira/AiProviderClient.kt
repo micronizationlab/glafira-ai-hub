@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
@@ -109,6 +110,8 @@ suspend fun callAiProvider(
                     return@withContext "Ошибка Gemini: модель ${endpoint.model} не найдена или недоступна для этого API-ключа (HTTP 404). Проверьте список моделей, доступных вашему ключу."
                 }
                 return@withContext "Ошибка API ${providerId.displayName}: HTTP $status${if (details.isBlank()) "" else " — $details"}"
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 return@withContext "Ошибка сети (${providerId.displayName}): ${error.message ?: "неизвестная ошибка"}"
             } finally {
