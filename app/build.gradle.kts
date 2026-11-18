@@ -76,4 +76,6 @@ dependencies {
     implementation("org.bouncycastle:bcpkix-jdk18on:1.80")
     implementation("com.google.code.gson:gson:2.11.0")
     testImplementation("junit:junit:4.13.2")
+    // Use a real JVM org.json implementation; android.jar provides non-functional stubs in local unit tests.
+    testImplementation("org.json:json:20240303")
 }
