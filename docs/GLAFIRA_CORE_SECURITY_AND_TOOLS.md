@@ -10,13 +10,13 @@
 
 ## Model consultation
 
-1. Glafira's configured primary provider receives the task and decides whether independent review is useful.
-2. It may select up to two configured peer providers.
-3. Peer calls run independently and concurrently.
-4. Glafira compares their results, resolves disagreements, and produces the final answer.
-5. Unconfigured providers are never silently substituted. A failed peer is reported and does not block Glafira from answering.
+1. Peer consultation is disabled by default and requires explicit owner opt-in in Settings.
+2. When enabled, Glafira's configured primary provider receives the task and decides whether independent review is useful. A direct answer is returned from this first call when consultation is unnecessary, avoiding a duplicate primary-model request.
+3. If review is useful, Glafira may select up to two configured peer providers. Only the last 12 conversation messages are considered for peer context.
+4. Peer calls run independently and concurrently. Glafira compares their results, resolves disagreements, and produces the final answer using the configured primary provider (not a hard-coded vendor priority).
+5. Unconfigured providers are never silently substituted. A failed peer does not block Glafira from answering.
 
-Credentials, API keys, bearer tokens and passwords must never be included in model prompts. The current client applies basic secret-pattern redaction before peer consultation; this is a defense-in-depth measure, not a complete data-loss-prevention system. A later policy layer must classify project data and enforce per-provider sharing permissions.
+Credentials, API keys, bearer tokens and passwords must never be included in model prompts. The current client applies pattern-based redaction for common API tokens, bearer values, passwords, email addresses and phone-like values before peer consultation. This is defense in depth, not complete data-loss prevention. Enabling peer consultation can still disclose business or personal information to other providers. Per-project and per-provider data classifications, explicit sharing scopes and a user-visible routing audit remain required next steps.
 
 ## Tool and account access model
 
