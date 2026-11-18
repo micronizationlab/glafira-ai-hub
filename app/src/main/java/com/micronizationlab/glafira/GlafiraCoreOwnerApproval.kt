@@ -58,7 +58,7 @@ data class GlafiraPendingActionApproval(
             }.toMutableList()
             val hidden = keys.size - visible.size
             if (hidden > 0) visible += "[ЕЩЁ СКРЫТО ПОЛЕЙ: $hidden — проверьте исходное задание перед подтверждением]"
-            visible.joinToString("\\n")
+            visible.joinToString("\n")
         }.getOrDefault("Не удалось безопасно прочитать детали задания.")
 
     companion object {
