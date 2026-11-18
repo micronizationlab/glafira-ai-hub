@@ -154,6 +154,9 @@ class DesktopBridgeHttpsClient(
                     throw java.security.cert.CertificateException("TLS authentication type is missing.")
                 }
                 leaf.checkValidity()
+                if (leaf.basicConstraints != -1 || leaf.keyUsage?.getOrNull(0) != true) {
+                    throw java.security.cert.CertificateException("Bridge certificate key usage is invalid.")
+                }
                 if (SERVER_AUTH_OID !in (leaf.extendedKeyUsage
                         ?: throw java.security.cert.CertificateException("TLS serverAuth EKU is required."))) {
                     throw java.security.cert.CertificateException("Certificate is not valid for TLS server authentication.")
