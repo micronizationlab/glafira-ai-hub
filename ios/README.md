@@ -5,6 +5,7 @@ Core, memory authority, or privileged device.
 
 ## Current implementation status
 
+- `GlafiraIOSUI`: adaptive SwiftUI navigation shell for projects, agents and settings on iPhone/iPad. It shows explicit not-connected/empty states and does not fabricate project data.
 - `GlafiraBridgeKit`: Swift Package foundation for the versioned Bridge request
   and response models, Kotlin-compatible canonical HMAC-SHA256 signing,
   signature verification, and envelope validation.
@@ -12,7 +13,7 @@ Core, memory authority, or privileged device.
   shared with the Kotlin implementation.
 - `.github/workflows/ios.yml`: macOS CI runs `swift test` for the package.
 
-This is a library foundation, not yet an installable iPhone/iPad application.
+These are buildable Swift package modules, not yet an installable iPhone/iPad application.
 There is no Xcode app target, app icon, signing profile, Apple account setup,
 TestFlight build, or App Store release in this increment.
 
