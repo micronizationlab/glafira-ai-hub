@@ -58,3 +58,43 @@ fun showBiometricPrompt(
 
     prompt.authenticate(info)
 }
+
+
+/** Mints a short-lived Core owner session only from a successful platform biometric callback. */
+fun authenticateCoreOwner(
+    activity: FragmentActivity,
+    onSuccess: (GlafiraCoreOwnerSession) -> Unit,
+    onError: (String) -> Unit
+) {
+    val executor = ContextCompat.getMainExecutor(activity)
+    val prompt = BiometricPrompt(
+        activity,
+        executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                val session = runCatching {
+                    GlafiraCoreOwnerSession.fromAuthentication(result)
+                }.getOrElse {
+                    onError("Не удалось создать сессию владельца.")
+                    return
+                }
+                onSuccess(session)
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                onError(errString.toString())
+            }
+        }
+    )
+    val info = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("GLAFIRA — подтверждение владельца")
+        .setSubtitle("Подтвердите разрешение на конкретное действие")
+        .setAllowedAuthenticators(
+            BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        )
+        .build()
+    prompt.authenticate(info)
+}
