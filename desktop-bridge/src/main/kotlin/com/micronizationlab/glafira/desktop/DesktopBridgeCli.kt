@@ -23,12 +23,47 @@ fun main() {
     println("Vault: $vaultPath")
     println("1 — Pair this Desktop with Android")
     println("2 — Use an already imported device credential")
-    val passphrase = when (console.readLine("Select: ").trim()) {
+    println("3 — Run the Desktop task worker (requires local Ollama)")
+    val selection = console.readLine("Select: ").trim()
+    val passphrase = when (selection) {
         "1" -> pairAndImport(console, flow, vaultPath)
-        "2" -> readSecret(console, "Vault passphrase: ")
+        "2", "3" -> readSecret(console, "Vault passphrase: ")
         else -> error("Unknown menu choice.")
     }
     try {
+        if (selection == "3") {
+            val entry = DesktopBridgeCredentialVault.load(vaultPath, passphrase)
+            val credentials = entry.toCredentials()
+            entry.hmacSecret.fill(0)
+            try {
+                val projectId = console.readLine("Project ID: ").trim()
+                require(projectId.isNotBlank())
+                val model = console.readLine("Installed Ollama model name: ").trim()
+                require(model.isNotBlank())
+                val queuePath = Path.of(
+                    System.getProperty("user.home"),
+                    ".glafira-ai-hub",
+                    "tasks",
+                    "desktop-tasks.json"
+                )
+                val queue = DesktopTaskQueue(queuePath)
+                println("Desktop task worker started. Press Ctrl+C to stop.")
+                println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
+                println("Ollama must be running locally at 127.0.0.1:11434.")
+                DesktopBridgeTaskWorker(
+                    origin = entry.origin,
+                    credentials = credentials,
+                    projectId = projectId,
+                    queue = queue,
+                    handlers = DesktopLocalAgentRegistry.ollama(model)
+                ).use { worker ->
+                    worker.runPollingLoop(shouldContinue = { true })
+                }
+            } finally {
+                credentials.hmacSecret.fill(0)
+            }
+            return
+        }
         val projectId = console.readLine("Project ID (default is allowed): ").trim()
         require(projectId.isNotBlank())
         println("1 — Read project")
