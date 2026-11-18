@@ -30,13 +30,9 @@ class JsonProjectRepository(context: Context) : ProjectRepository {
     }
 
     override fun loadProjects(): List<Project> {
-        if (!projectsFile.exists()) {
-            val defaults = listOf(Project("default", "Личное"))
-            saveProjects(defaults)
-            return defaults
-        }
+        if (!projectsFile.exists()) return createDefaultProjects()
 
-        return try {
+        val loaded = try {
             val jsonArray = JSONArray(projectsFile.readText())
             buildList {
                 for (index in 0 until jsonArray.length()) {
@@ -47,5 +43,13 @@ class JsonProjectRepository(context: Context) : ProjectRepository {
         } catch (_: Exception) {
             emptyList()
         }
+
+        return if (loaded.isEmpty()) createDefaultProjects() else loaded
+    }
+
+    private fun createDefaultProjects(): List<Project> {
+        val defaults = listOf(Project("default", "Личное"))
+        saveProjects(defaults)
+        return defaults
     }
 }
