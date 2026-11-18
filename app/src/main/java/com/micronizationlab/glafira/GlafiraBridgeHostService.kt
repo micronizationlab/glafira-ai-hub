@@ -18,7 +18,7 @@ import java.net.InetAddress
 class GlafiraBridgeHostService : Service() {
     private var host: GlafiraBridgeTlsHttpServer? = null
     private var approvalStore: AndroidKeystoreBridgePairingApprovalStore? = null
-    private var replayGuard: GlafiraBridgeReplayGuard? = null
+    private var replayGuard: GlafiraBridgeReplayGuard? = null\n    private var pairingTicketStore: AndroidKeystoreBridgePairingTicketStore? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -135,7 +135,7 @@ class GlafiraBridgeHostService : Service() {
     private fun stopHost() {
         runCatching { host?.close() }
         host = null
-        runCatching { approvalStore?.close() }
+        runCatching { pairingTicketStore?.close() }\n        pairingTicketStore = null\n        runCatching { approvalStore?.close() }
         approvalStore = null
         runCatching { replayGuard?.close() }
         replayGuard = null
