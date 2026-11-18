@@ -57,8 +57,8 @@ Google ID and Yandex ID are optional sign-in identities, not blanket permissions
 Use independent, revocable OAuth connections for each capability:
 - Google Drive backup: request the narrowest available file scope (prefer app-created/app-shared files such as drive.file) and keep backups inside a dedicated GLAFIRA folder.
 - Gmail: separate consent for reading metadata, reading messages, drafting and sending. Start with the least powerful required scope; sending mail is a separate capability and requires user confirmation or a narrow policy.
-- Yandex Disk: separate Yandex OAuth app/permission grant for Disk access; do not assume Yandex ID login itself grants Disk access. Yandex distinguishes user-login apps from API-access apps; register the appropriate app types separately because their permission rules differ.
-- Yandex Mail: separate integration and permission proof; do not infer that Yandex ID login grants mailbox access.
+- Yandex Disk: separate explicit OAuth permission grant for Disk access; do not assume Yandex ID login itself grants Disk access. Yandex distinguishes user-login and API-access app types and imposes different scope rules, so validate the correct user-facing authorization flow before choosing app registration.
+- Yandex Mail: separate mailbox permission grant. Yandex documents OAuth authorization for IMAP/SMTP (XOAUTH2); use this instead of asking users to store a reusable mailbox password. Do not infer that Yandex ID login grants mailbox access.
 
 Tokens are stored encrypted using Android Keystore-backed local protection and, if sync is introduced, a separately designed end-to-end encrypted token envelope. Tokens never enter model prompts, logs, backups in plaintext or Git. Revocation and expiry must be visible to the owner.
 
