@@ -20,18 +20,12 @@ import javax.crypto.spec.GCMParameterSpec
  * This class is storage only: pairing/authentication must happen before save(), and
  * callers must pass the authenticated device record to GlafiraBridgeCoreGate.
  */
-class AndroidKeystoreBridgeCredentialStore(context: Context) {
+class AndroidKeystoreBridgeCredentialStore(context: Context) : GlafiraBridgeCredentialProvider {
     private val preferences = context.applicationContext.getSharedPreferences(
         PREFS_NAME,
         Context.MODE_PRIVATE
     )
     private val keyStore: KeyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
-
-    data class Credential(
-        val deviceId: String,
-        val hmacSecret: ByteArray,
-        val scopes: Set<String>
-    )
 
     @Synchronized
     fun save(deviceId: String, hmacSecret: ByteArray, scopes: Set<String>) {
@@ -57,7 +51,7 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) {
     }
 
     @Synchronized
-    fun load(deviceId: String): Credential? {
+    override fun load(deviceId: String): GlafiraBridgeDeviceCredential? {
         if (!isValidDeviceId(deviceId)) return null
         val encoded = preferences.getString(storageKey(deviceId), null) ?: return null
         val parts = encoded.split(":", limit = 3)
@@ -71,7 +65,7 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) {
             require(scopes.isNotEmpty() && scopes.all(::isValidScope))
             val secret = decrypt(getExistingKey(keyAlias(deviceId)), iv, ciphertext)
             require(secret.size >= MIN_SECRET_BYTES)
-            Credential(deviceId, secret, scopes)
+            GlafiraBridgeDeviceCredential(deviceId, secret, scopes)
         }.getOrNull()
     }
 
