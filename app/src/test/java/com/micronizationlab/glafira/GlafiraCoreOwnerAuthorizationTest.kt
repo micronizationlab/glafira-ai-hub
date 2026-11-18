@@ -99,4 +99,22 @@ class GlafiraCoreOwnerAuthorizationTest {
             RegistryBackedGlafiraTaskAuthorizer(grants).authorize(current, 2_000L).status
         )
     }
+    @Test
+    fun ownerReviewPreviewMasksSecretsAndShowsOnlyAllowListedFields() {
+        val reviewTask = task(payload = """{"actionSummary":"Send to user@example.com","recipient":"customer@example.com","message":"Your order is ready. Bearer abcdefghijklmnopqrstuvwxyz123456","password":"do-not-display"}""")
+        val approval = GlafiraPendingActionApproval(
+            task = reviewTask,
+            actionHash = GlafiraToolRegistry.actionHash(reviewTask, "Send to user@example.com"),
+            requestedScopes = setOf("communications.send"),
+            requestedAtMillis = 1_000L,
+            expiresAtMillis = Long.MAX_VALUE
+        )
+
+        assertFalse(approval.actionSummary.contains("user@example.com"))
+        assertTrue(approval.reviewDetails.contains("recipient"))
+        assertFalse(approval.reviewDetails.contains("customer@example.com"))
+        assertFalse(approval.reviewDetails.contains("do-not-display"))
+        assertFalse(approval.reviewDetails.contains("abcdefghijklmnopqrstuvwxyz123456"))
+    }
+
 }
