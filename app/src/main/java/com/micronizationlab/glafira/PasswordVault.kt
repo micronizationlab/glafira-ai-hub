@@ -116,6 +116,7 @@ class VaultSession internal constructor(
     companion object {
         private const val FILE_NAME = "password_vault.enc"
         private const val IV_LENGTH = 12
+        private const val PBKDF2_ITERATIONS = 310_000
         private const val AAD = "GLAFIRA_PASSWORD_VAULT_V1"
         private val random = SecureRandom()
 
@@ -164,7 +165,7 @@ class VaultSession internal constructor(
         }
 
         private fun deriveKey(password: CharArray, salt: ByteArray): ByteArray {
-            val spec = PBEKeySpec(password, salt, 310_000, 256)
+            val spec = PBEKeySpec(password, salt, PBKDF2_ITERATIONS, 256)
             return try {
                 SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
                     .generateSecret(spec).encoded
