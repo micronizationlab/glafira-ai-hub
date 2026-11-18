@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import Security
+import CoreFoundation
 
 public enum BridgeClientPlatform: String, Codable, Sendable {
     case ios = "IOS"
@@ -36,6 +37,60 @@ public struct BridgePairingPendingResponse: Codable, Sendable {
     public let status: String
     public let approvalId: String
     public let receivedAtEpochMs: Int64
+}
+
+
+public enum BridgeInvitationError: Error, Equatable, Sendable {
+    case invalidFormat
+    case expired
+    case invalidServerIdentity
+}
+
+/// Parses the exact one-time invitation JSON exported by the Android owner screen.
+public extension BridgePairingInvitation {
+    static func parseAndroidBundle(
+        _ json: Data,
+        nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
+    ) throws -> BridgePairingInvitation {
+        guard json.count in 1...8_192,
+              let object = try JSONSerialization.jsonObject(with: json) as? [String: Any],
+              Set(object.keys) == Set([
+                "format", "origin", "ticketId", "pairingCapability",
+                "serverCertificateSha256", "expiresAtEpochMs"
+              ]),
+              object["format"] as? String == "GLAFIRA_BRIDGE_INVITATION_V1",
+              let origin = object["origin"] as? String,
+              let ticketId = object["ticketId"] as? String,
+              let capability = object["pairingCapability"] as? String,
+              let pin = object["serverCertificateSha256"] as? String,
+              let expiryNumber = object["expiresAtEpochMs"] as? NSNumber,
+              CFGetTypeID(expiryNumber) != CFBooleanGetTypeID() else {
+            throw BridgeInvitationError.invalidFormat
+        }
+        let expiry = expiryNumber.int64Value
+        guard expiry > nowEpochMs, expiry - nowEpochMs <= 120_000 else {
+            throw BridgeInvitationError.expired
+        }
+        guard let url = URL(string: origin),
+              url.scheme?.lowercased() == "https",
+              url.host != nil, url.user == nil, url.password == nil,
+              url.query == nil, url.fragment == nil,
+              url.path.isEmpty || url.path == "/",
+              pin.utf8.count == 64, pin.allSatisfy({ $0.isHexDigit }),
+              ticketId.utf8.count in 16...128,
+              ticketId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
+              let capabilityData = Data(base64URLEncoded: capability),
+              capabilityData.count == 32 else {
+            throw BridgeInvitationError.invalidServerIdentity
+        }
+        return BridgePairingInvitation(
+            origin: origin,
+            certificateSHA256: pin.lowercased(),
+            ticketId: ticketId,
+            pairingCapability: capability,
+            expiresAtEpochMs: expiry
+        )
+    }
 }
 
 /// Implements the same one-time HMAC proof as Android. Proof acceptance only
