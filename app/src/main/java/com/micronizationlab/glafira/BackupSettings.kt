@@ -268,3 +268,10 @@ fun BackupSettingsSection() {
         )
     }
 }
+
+
+private fun formatBackupSize(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes Б"
+    bytes < 1024 * 1024 -> "${bytes / 1024} КБ"
+    else -> String.format(Locale.getDefault(), "%.1f МБ", bytes / (1024.0 * 1024.0))
+}
