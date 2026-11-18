@@ -23,6 +23,7 @@ internal data class GlafiraDistributedTask(
     val instruction: String,
     val executor: GlafiraTaskExecutor,
     val requiredCapabilities: Set<String>,
+    val priority: Int = 5,
     val createdAtEpochMs: Long,
     val expiresAtEpochMs: Long
 )
@@ -83,6 +84,7 @@ internal class GlafiraDistributedTaskOrchestrator(
                         instruction = subtask.instruction,
                         executor = subtask.executor,
                         requiredCapabilities = required,
+                        priority = 5,
                         createdAtEpochMs = clock(),
                         expiresAtEpochMs = clock() + ttlMs
                     )
