@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import androidx.biometric.BiometricPrompt
+import android.os.SystemClock
 import java.util.UUID
 
 /**
@@ -9,25 +10,23 @@ import java.util.UUID
  */
 class GlafiraCoreOwnerSession private constructor(
     val sessionId: String,
-    val expiresAtMillis: Long
+    val expiresAtElapsedRealtime: Long
 ) {
-    internal fun isValid(nowMillis: Long): Boolean =
+    internal fun isValid(): Boolean =
         sessionId.length in 16..64 &&
-            expiresAtMillis > nowMillis &&
-            nowMillis > 0L
+            expiresAtElapsedRealtime > SystemClock.elapsedRealtime()
 
     companion object {
         internal fun fromAuthentication(
             result: BiometricPrompt.AuthenticationResult,
-            nowMillis: Long = System.currentTimeMillis(),
             lifetimeMillis: Long = 120_000L
         ): GlafiraCoreOwnerSession {
             // The result object is supplied only by BiometricPrompt.onAuthenticationSucceeded.
-            require(nowMillis > 0L && lifetimeMillis in 1_000L..300_000L)
+            require(lifetimeMillis in 1_000L..300_000L)
             result.authenticationType // Force use of a real platform authentication result.
             return GlafiraCoreOwnerSession(
                 sessionId = UUID.randomUUID().toString(),
-                expiresAtMillis = nowMillis + lifetimeMillis
+                expiresAtElapsedRealtime = SystemClock.elapsedRealtime() + lifetimeMillis
             )
         }
     }
