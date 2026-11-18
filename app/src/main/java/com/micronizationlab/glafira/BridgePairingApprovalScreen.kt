@@ -374,12 +374,14 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
 private const val OWNER_SESSION_LIFETIME_MS = 120_000L
 
 
-private fun discoverBridgeIpv4(context: Context): String? = runCatching {
-    val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    val network = manager.activeNetwork ?: return null
-    val properties = manager.getLinkProperties(network) ?: return null
-    properties.linkAddresses.asSequence()
-        .mapNotNull { it.address as? Inet4Address }
-        .firstOrNull { it.isSiteLocalAddress && !it.isLoopbackAddress && !it.isAnyLocalAddress }
-        ?.hostAddress
-}.getOrNull()
+private fun discoverBridgeIpv4(context: Context): String? {
+    return runCatching {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = manager.activeNetwork ?: return@runCatching null
+        val properties = manager.getLinkProperties(network) ?: return@runCatching null
+        properties.linkAddresses.asSequence()
+            .mapNotNull { it.address as? Inet4Address }
+            .firstOrNull { it.isSiteLocalAddress && !it.isLoopbackAddress && !it.isAnyLocalAddress }
+            ?.hostAddress
+    }.getOrNull()
+}
