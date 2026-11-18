@@ -7,7 +7,7 @@ Web Access is a required Core capability. It gives GLAFIRA a governed way to dis
 ## Capability layers
 
 1. Public page reader: fetch a user-supplied public HTTP/HTTPS URL, follow bounded redirects, accept HTML/text only, extract readable text and title, enforce timeouts and response limits.
-2. Web search providers: provider-neutral search interface and adapters. Search returns title, URL, snippet, provider and retrieval time. Report when no search provider is configured; never pretend URL fetching is search.
+2. Web search: Brave Search adapter is now implemented. Its API key is entered in Settings and encrypted with Android Keystore-backed storage. Search results include title, URL and snippet. The provider must be configured by the owner; never pretend URL fetching is search.
 3. Browser agent: controlled browser session for JavaScript-heavy pages, navigation and page interaction. Login, MFA, CAPTCHA and security challenges pause for the owner; no bypass.
 4. Website inspector: structured analysis of page content, links, metadata, accessibility, SEO and technical issues. Findings distinguish observed facts from hypotheses.
 5. Core routing: Core selects capability, grants minimum read scopes, sends relevant findings to the assigned specialist and retains provenance/citations.
