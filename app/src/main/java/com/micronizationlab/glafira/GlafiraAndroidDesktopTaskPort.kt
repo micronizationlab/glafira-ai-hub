@@ -19,7 +19,7 @@ internal class GlafiraAndroidDesktopTaskPort(
             when (record.optString("state")) {
                 "SUCCEEDED" -> return GlafiraDistributedTaskResult(
                     task.taskId, GlafiraExecutionNode.DESKTOP, true,
-                    output = record.optString("result").takeIf(String::isNotBlank)
+                    output = record.optString("result").takeIf { it.isNotBlank() }
                 )
                 "FAILED", "CANCELLED", "EXPIRED" -> return GlafiraDistributedTaskResult(
                     task.taskId, GlafiraExecutionNode.DESKTOP, false,
