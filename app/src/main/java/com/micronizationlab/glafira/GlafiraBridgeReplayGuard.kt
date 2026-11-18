@@ -24,7 +24,7 @@ enum class BridgeReplayClaim {
 class GlafiraBridgeReplayGuard(
     context: Context,
     private val maxEntries: Int = DEFAULT_MAX_ENTRIES
-) : SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION) {
+) : SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION), GlafiraBridgeReplayStore {
 
     init {
         require(maxEntries in 1..MAX_ALLOWED_ENTRIES) { "Replay guard capacity is out of range." }
@@ -51,7 +51,7 @@ class GlafiraBridgeReplayGuard(
     }
 
     @Synchronized
-    fun claim(
+    override fun claim(
         authenticatedDeviceId: String,
         idempotencyKey: String,
         expiresAtEpochMs: Long,
