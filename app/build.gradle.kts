@@ -10,12 +10,17 @@ android {
     namespace = "com.micronizationlab.glafira"
     compileSdk = 35
 
+    val ciRunNumber = providers.environmentVariable("GITHUB_RUN_NUMBER")
+        .orNull
+        ?.toIntOrNull()
+        ?: 1
+
     defaultConfig {
         applicationId = "com.micronizationlab.glafira"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = ciRunNumber
+        versionName = "0.1.$ciRunNumber"
     }
 
     buildFeatures {
