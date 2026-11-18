@@ -42,6 +42,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var showDeleteProjectConfirm by remember { mutableStateOf(false) }
     var exportResult by remember { mutableStateOf<String?>(null) }
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
+    var showPasswordVault by remember { mutableStateOf(false) }
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
     var peerConsultationEnabled by remember(peerConsultationKey) {
@@ -54,6 +55,11 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 .getString(peerProvidersKey, "").orEmpty().split(",")
                 .mapNotNull { value -> runCatching { ProviderId.valueOf(value) }.getOrNull() }.toSet()
         )
+    }
+
+    if (showPasswordVault) {
+        PasswordVaultScreen(onBack = { showPasswordVault = false })
+        return
     }
 
     LaunchedEffect(isSaved) {
@@ -314,6 +320,26 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         Spacer(Modifier.height(24.dp))
 
         BackupSettingsSection()
+
+        if (currentProject == null) {
+            Spacer(Modifier.height(16.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = GrD),
+                modifier = Modifier.fillMaxWidth().clickable { showPasswordVault = true }
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🔐", fontSize = 24.sp)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text("Закрытое хранилище паролей", color = Color(0xFF202020), fontSize = 16.sp)
+                        Text(
+                            if (VaultSession.exists(context)) "Зашифровано · требуется мастер-пароль" else "Создать личный сейф паролей",
+                            color = Tx, fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+        }
 
         Spacer(Modifier.height(32.dp))
 
