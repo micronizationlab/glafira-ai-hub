@@ -41,6 +41,18 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Run unit tests
+        run: gradle testDebugUnitTest
+
+      - name: Run Android instrumentation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          script: gradle connectedDebugAndroidTest
+
       - name: Decode owner-controlled signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.GLAFIRA_KEYSTORE_BASE64 }}
