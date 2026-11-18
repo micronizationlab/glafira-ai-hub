@@ -99,12 +99,13 @@ data class CoreMemoryRecord(
     }
 }
 
-data class MemoryAccessContext(
+data class MemoryAccessContext internal constructor(
     val actorId: String,
     val projectId: ProjectIdentifier?,
     val agentRoleId: AgentRoleIdentifier?,
     val allowedScopes: Set<MemoryScopeType>,
-    val maximumClassification: CoreDataClassification
+    val maximumClassification: CoreDataClassification,
+    val actorType: CoreActorType
 ) {
     init { require(actorId.isNotBlank()) }
 }
@@ -374,7 +375,7 @@ data class TraceQuery(
     }
 }
 
-data class TraceAccessContext(val actor: CoreActor, val allowedProjects: Set<ProjectIdentifier>)
+data class TraceAccessContext internal constructor(val actor: CoreActor, val allowedProjects: Set<ProjectIdentifier>)
 
 data class TracePage(
     val events: List<CoreTraceEvent>,
@@ -392,7 +393,7 @@ interface TraceService {
 }
 
 enum class CoreAction {
-    READ_MEMORY, WRITE_MEMORY, DELETE_MEMORY, DELEGATE_AGENT,
+    READ_MEMORY, WRITE_MEMORY, DELETE_MEMORY, READ_TRACE, DELEGATE_AGENT,
     EXECUTE_TOOL, EXTERNAL_SIDE_EFFECT, EXPORT_DATA
 }
 
