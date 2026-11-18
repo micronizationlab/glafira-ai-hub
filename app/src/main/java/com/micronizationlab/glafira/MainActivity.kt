@@ -82,6 +82,11 @@ private fun markProviderQuotaExceeded(context: Context, id: ProviderId) {
         .edit().putBoolean("${id.name}_quota_exceeded", true).apply()
 }
 
+private fun clearProviderQuotaExceeded(context: Context, id: ProviderId) {
+    context.getSharedPreferences("glafira_model_status", Context.MODE_PRIVATE)
+        .edit().putBoolean("${id.name}_quota_exceeded", false).apply()
+}
+
 private fun isQuotaLimitError(message: String): Boolean {
     val value = message.lowercase(Locale.ROOT)
     return listOf(
@@ -352,15 +357,15 @@ fun ContactList(
                 "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
                 "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением.",
                 ProviderId.GIGACHAT, AgentGroup.IA, isProviderQuotaExceeded(context, ProviderId.GIGACHAT)),
-            A("АНАЛИТИК", "Исследование и анализ", isProviderConfigured(context, ProviderId.GIGACHAT), "📊",
+            A("АНАЛИТИК", "Исследование и анализ", isProviderConfigured(context, ProviderId.GIGACHAT) && !isProviderQuotaExceeded(context, ProviderId.GIGACHAT), "📊",
                 "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен.",
                 "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры.",
                 ProviderId.GIGACHAT, AgentGroup.IA, isProviderQuotaExceeded(context, ProviderId.GIGACHAT)),
-            A("ПРОГРАММИСТ", "Код и технические задачи", isProviderConfigured(context, ProviderId.GIGACHAT), "💻",
+            A("ПРОГРАММИСТ", "Код и технические задачи", isProviderConfigured(context, ProviderId.GIGACHAT) && !isProviderQuotaExceeded(context, ProviderId.GIGACHAT), "💻",
                 "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
                 "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта.",
                 ProviderId.GIGACHAT, AgentGroup.IA, isProviderQuotaExceeded(context, ProviderId.GIGACHAT)),
-            A("GigaChat", "GigaChat · модель", isProviderConfigured(context, ProviderId.GIGACHAT), "🟣",
+            A("GigaChat", "GigaChat · модель", isProviderConfigured(context, ProviderId.GIGACHAT) && !isProviderQuotaExceeded(context, ProviderId.GIGACHAT), "🟣",
                 "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке.",
                 "Прямой доступ к модели GigaChat без роли агента. Универсальный помощник.",
                 ProviderId.GIGACHAT, AgentGroup.AI),
@@ -662,6 +667,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             val reply = callGigaChatWithTrustedCert(context, updatedMessages, fullPrompt)
             if (isQuotaLimitError(reply)) {
                 markProviderQuotaExceeded(context, agent.providerId)
+            } else if (!reply.startsWith("Ошибка сети")) {
+                clearProviderQuotaExceeded(context, agent.providerId)
             }
             val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
