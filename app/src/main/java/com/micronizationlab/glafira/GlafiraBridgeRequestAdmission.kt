@@ -15,7 +15,8 @@ class GlafiraBridgeRequestAdmission(
 ) {
     fun admit(
         request: GlafiraBridgeRequest,
-        nowEpochMs: Long = System.currentTimeMillis()
+        nowEpochMs: Long = System.currentTimeMillis(),
+        authenticatedDeviceRateLimit: ((String) -> Boolean)? = null
     ): GlafiraBridgeResponse {
         fun failed(code: String) = GlafiraBridgeResponse(
             protocolVersion = GlafiraBridgeProtocol.CURRENT_VERSION,
@@ -27,17 +28,25 @@ class GlafiraBridgeRequestAdmission(
         val credential = credentials.load(request.deviceId)
             ?: return failed("DEVICE_NOT_PAIRED")
 
-        val authorization = GlafiraBridgeCoreGate.authorize(
-            request = request,
-            authenticatedDeviceId = credential.deviceId,
-            deviceSecret = credential.hmacSecret,
-            grantedScopes = credential.scopes,
-            nowEpochMs = nowEpochMs
-        )
+        val authorization = try {
+            GlafiraBridgeCoreGate.authorize(
+                request = request,
+                authenticatedDeviceId = credential.deviceId,
+                deviceSecret = credential.hmacSecret,
+                grantedScopes = credential.scopes,
+                nowEpochMs = nowEpochMs
+            )
+        } finally {
+            credential.hmacSecret.fill(0)
+        }
         val response = authorization.response
         if (response.status != GlafiraBridgeStatus.ACCEPTED &&
             response.status != GlafiraBridgeStatus.PENDING_APPROVAL
         ) return response
+
+        if (authenticatedDeviceRateLimit != null &&
+            !authenticatedDeviceRateLimit(credential.deviceId)
+        ) return failed("DEVICE_RATE_LIMITED")
 
         return when (
             replayGuard.claim(

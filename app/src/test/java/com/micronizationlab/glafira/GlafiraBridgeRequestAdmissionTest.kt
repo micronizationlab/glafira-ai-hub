@@ -92,7 +92,7 @@ class GlafiraBridgeRequestAdmissionTest {
         assertEquals(0, replay.calls)
     }
 
-    @Test fun approvalRequestRemainsPendingAndIsReplayProtected() {
+    @Test fun approvalRequestFailsClosedUntilDurableOwnerQueueExists() {
         val replay = FakeReplayStore(BridgeReplayClaim.ACCEPTED)
         val admission = GlafiraBridgeRequestAdmission(
             FakeCredentials(credential(setOf("approval.request"))), replay
@@ -102,8 +102,8 @@ class GlafiraBridgeRequestAdmissionTest {
             mapOf("toolId" to "message.send", "actionSummary" to "Send a reply")
         )
         val response = admission.admit(request, now)
-        assertEquals(GlafiraBridgeStatus.PENDING_APPROVAL, response.status)
-        assertTrue(response.result["approvalGrant"] == null)
-        assertEquals(1, replay.calls)
+        assertEquals(GlafiraBridgeStatus.FAILED, response.status)
+        assertEquals("APPROVAL_QUEUE_UNAVAILABLE", response.errorCode)
+        assertEquals(0, replay.calls)
     }
 }

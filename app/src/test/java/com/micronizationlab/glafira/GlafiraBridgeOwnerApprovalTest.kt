@@ -125,6 +125,7 @@ class GlafiraBridgeOwnerApprovalTest {
 
         assertEquals(1, pending.size)
         assertEquals(queued.approvalId, pending.single().approvalId)
+        assertEquals(queued.ticketId, pending.single().ticketId)
         val delivery = service.claimCredentialDelivery(
             pending.single().approvalId,
             recoveredSession,
@@ -202,7 +203,7 @@ class GlafiraBridgeOwnerApprovalTest {
             pending.values.filter {
                 it.status == GlafiraBridgeApprovalStatus.APPROVED && !acknowledged
             }.take(limit).map {
-                GlafiraBridgePendingCredentialDelivery(it.approvalId, issuedDeviceId!!)
+                GlafiraBridgePendingCredentialDelivery(it.approvalId, it.ticketId, issuedDeviceId!!)
             }
 
         override fun claimDelivery(
@@ -224,6 +225,7 @@ class GlafiraBridgeOwnerApprovalTest {
             return GlafiraBridgeDeliveryResult.Available(
                 GlafiraBridgeCredentialDelivery(
                     approvalId,
+                    record.ticketId,
                     "device-credential-1234",
                     persistedSecret!!.clone(),
                     issuedScopes

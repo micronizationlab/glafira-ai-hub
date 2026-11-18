@@ -1,8 +1,16 @@
 package com.micronizationlab.glafira
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.os.Build
+import android.net.ConnectivityManager
+import java.net.Inet4Address
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -21,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import java.util.Base64
 import java.util.UUID
+import kotlinx.coroutines.delay
 
 @Composable
 fun BridgePairingApprovalScreen(onBack: () -> Unit) {
@@ -28,6 +38,8 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     val activity = context as? FragmentActivity
     val store = remember(context) { AndroidKeystoreBridgePairingApprovalStore(context) }
     val service = remember(store) { GlafiraBridgeOwnerApprovalService(store) }
+    val ticketStore = remember(context) { AndroidKeystoreBridgePairingTicketStore(context) }
+    val pairingProtocol = remember(ticketStore) { GlafiraBridgePairingProtocol(ticketStore) }
     var ownerSession by remember { mutableStateOf<GlafiraBridgeOwnerSession?>(null) }
     var pending by remember { mutableStateOf(emptyList<GlafiraBridgePendingApproval>()) }
     var selectedScopes by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
@@ -35,6 +47,48 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var deliveryText by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("Для просмотра и подтверждения устройств подтвердите личность владельца.") }
     var isBusy by remember { mutableStateOf(false) }
+    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }
+    var hostRunning by remember { mutableStateOf(false) }
+    var observedHostError by remember { mutableStateOf<String?>(null) }
+    var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
+    var invitationClipboardText by remember { mutableStateOf<String?>(null) }
+    // DisposableEffect is keyed only by Activity; read the latest secret and clipboard values on disposal.
+    val currentDelivery by rememberUpdatedState(delivery)
+    val currentDeliveryText by rememberUpdatedState(deliveryText)
+    val currentInvitationClipboardText by rememberUpdatedState(invitationClipboardText)
+
+    fun startBridgeHost() {
+        observedHostError = null
+        runCatching { GlafiraBridgeHostService.startFromOwnerAction(context, hostAddress.trim()) }
+            .onSuccess { status = "Команда запуска отправлена. Ожидаем подтверждения запуска службы…" }
+            .onFailure { failure ->
+                status = "Не удалось отправить команду запуска: " +
+                    (failure.message ?: failure.javaClass.simpleName)
+            }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startBridgeHost()
+        else status = "Без разрешения уведомлений сервер не сможет показать постоянный статус в панели Android."
+    }
+
+    LaunchedEffect(context) {
+        while (true) {
+            val hostState = context.getSharedPreferences(
+                GlafiraBridgeHostService.HOST_STATE_PREFS, Context.MODE_PRIVATE
+            )
+            hostRunning = hostState.getBoolean(GlafiraBridgeHostService.HOST_RUNNING_KEY, false) &&
+                hostState.getInt(GlafiraBridgeHostService.HOST_PID_KEY, 0) == android.os.Process.myPid()
+            val startupError = hostState.getString(GlafiraBridgeHostService.HOST_ERROR_KEY, null)
+            if (startupError != null && startupError != observedHostError) {
+                observedHostError = startupError
+                status = "Служба Bridge не запустилась: " + startupError
+            }
+            delay(1_000)
+        }
+    }
 
     val availableScopes = remember {
         GlafiraToolRegistry.all().flatMap { it.requiredScopes }.toSortedSet()
@@ -46,7 +100,18 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
         window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose {
             if (previousSecure == false) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            currentDelivery?.hmacSecret?.fill(0)
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val currentClipboard = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+                ?.coerceToText(context)?.toString()
+            if (currentClipboard != null &&
+                (currentClipboard == currentDeliveryText || currentClipboard == currentInvitationClipboardText)
+            ) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+            }
+            invitation = null
             store.close()
+            ticketStore.close()
         }
     }
 
@@ -132,13 +197,102 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         Text(status, color = Tx, fontSize = 11.sp)
 
+        Spacer(Modifier.height(14.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = GrD)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("ЛОКАЛЬНЫЙ ЗАЩИЩЁННЫЙ СЕРВЕР", color = Gr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("Сервер доступен только в локальной сети. Запуск и остановка выполняются владельцем вручную.", color = Tx, fontSize = 10.sp)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = hostAddress,
+                    onValueChange = { hostAddress = it },
+                    label = { Text("IPv4 адрес этого Android-устройства") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = hostAddress.isNotBlank(),
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= 33 &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                            ) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            else startBridgeHost()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Gr)
+                    ) { Text("ЗАПУСТИТЬ") }
+                    OutlinedButton(onClick = {
+                        GlafiraBridgeHostService.stopFromOwnerAction(context)
+                        status = "Отправлена команда остановки локального сервера."
+                    }) { Text("ОСТАНОВИТЬ") }
+                }
+                Text("Порт: ${GlafiraBridgeTlsHttpServer.DEFAULT_PORT}. Для Desktop используй IP и fingerprint сертификата из пакета сопряжения.", color = Tx, fontSize = 10.sp)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = GrD)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("ОДНОРАЗОВОЕ ПРИГЛАШЕНИЕ ДЛЯ DESKTOP", color = Gr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("Создавайте приглашение после запуска локального сервера. Код действует не более 120 секунд и сам по себе не выдаёт прав.", color = Tx, fontSize = 10.sp)
+                Button(
+                    enabled = ownerSession?.isValid(System.currentTimeMillis()) == true && hostRunning,
+                    onClick = {
+                        if (!hostRunning) {
+                            status = "Сначала запустите локальный сервер и дождитесь уведомления об активном канале."
+                            return@Button
+                        }
+                        val connection = AndroidKeystoreBridgeServerIdentityStore(context).currentConnectionDetails()
+                        if (connection == null) {
+                            status = "Сначала запустите сервер, чтобы создать TLS fingerprint и адрес."
+                        } else {
+                            invitation = runCatching { pairingProtocol.issueInvitation() }.getOrNull()
+                            status = if (invitation != null) "Одноразовое приглашение создано. Передайте его только своему Desktop." else "Не удалось создать приглашение."
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Gr)
+                ) { Text("СОЗДАТЬ ПРИГЛАШЕНИЕ") }
+                invitation?.let { issued ->
+                    Text("Ticket ID: ${issued.ticketId}", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Text("Одноразовый код: ${issued.pairingCapability}", color = Color(0xFF202020), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Text("Действует до: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(issued.expiresAtEpochMs))}", color = Tx, fontSize = 10.sp)
+                    OutlinedButton(onClick = {
+                        val connection = AndroidKeystoreBridgeServerIdentityStore(context).currentConnectionDetails()
+                        if (connection == null) {
+                            status = "Не удалось получить TLS fingerprint."
+                        } else {
+                            val bundle = org.json.JSONObject().apply {
+                                put("format", "GLAFIRA_BRIDGE_INVITATION_V1")
+                                put("origin", connection.origin)
+                                put("ticketId", issued.ticketId)
+                                put("pairingCapability", issued.pairingCapability)
+                                put("serverCertificateSha256", connection.certificateSha256)
+                                put("expiresAtEpochMs", issued.expiresAtEpochMs)
+                            }.toString()
+                            val clip = ClipData.newPlainText("GLAFIRA one-time invitation", bundle)
+                            if (Build.VERSION.SDK_INT >= 33) {
+                                clip.description.extras = android.os.PersistableBundle().apply {
+                                    putBoolean("android.content.extra.IS_SENSITIVE", true)
+                                }
+                            }
+                            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+                            invitationClipboardText = bundle
+                            status = "Одноразовое приглашение скопировано. Используйте его в Desktop до истечения срока."
+                        }
+                    }) { Text("СКОПИРОВАТЬ ПРИГЛАШЕНИЕ") }
+                }
+            }
+        }
+
         delivery?.let { issued ->
             Spacer(Modifier.height(16.dp))
             Card(colors = CardDefaults.cardColors(containerColor = GrD)) {
                 Column(Modifier.padding(14.dp)) {
                     Text("КЛЮЧ УСТРОЙСТВА СОЗДАН", color = Gr, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
-                    Text("ID: ${issued.deviceId}", color = Tx, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Text("Approval: ${issued.approvalId}", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Text("Ticket: ${issued.ticketId}", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Text("Device: ${issued.deviceId}", color = Tx, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                     Text(
                         "HMAC: ${Base64.getUrlEncoder().withoutPadding().encodeToString(issued.hmacSecret)}",
                         color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace
@@ -146,11 +300,32 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(8.dp))
                     Button(
                         onClick = {
-                            val payload = "${issued.deviceId}:${Base64.getUrlEncoder().withoutPadding().encodeToString(issued.hmacSecret)}"
+                            val connection = AndroidKeystoreBridgeServerIdentityStore(context)
+                                .currentConnectionDetails()
+                            if (connection == null) {
+                                status = "Нет сохранённой TLS-идентичности сервера. Сначала запустите локальный Bridge."
+                                return@Button
+                            }
+                            val payload = org.json.JSONObject().apply {
+                                put("format", "GLAFIRA_BRIDGE_CREDENTIAL_V1")
+                                put("origin", connection.origin)
+                                put("approvalId", issued.approvalId)
+                                put("ticketId", issued.ticketId)
+                                put("deviceId", issued.deviceId)
+                                put("hmacSecretBase64Url", Base64.getUrlEncoder().withoutPadding().encodeToString(issued.hmacSecret))
+                                put("grantedScopes", org.json.JSONArray(issued.grantedScopes.sorted()))
+                                put("serverCertificateSha256", connection.certificateSha256)
+                            }.toString()
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("GLAFIRA device credential", payload))
+                            val clip = ClipData.newPlainText("GLAFIRA encrypted-import bundle", payload)
+                            if (Build.VERSION.SDK_INT >= 33) {
+                                clip.description.extras = android.os.PersistableBundle().apply {
+                                    putBoolean("android.content.extra.IS_SENSITIVE", true)
+                                }
+                            }
+                            clipboard.setPrimaryClip(clip)
                             deliveryText = payload
-                            status = "Учётные данные скопированы. Передайте их только сопрягаемому устройству."
+                            status = "Пакет сопряжения скопирован. Импортируйте его в Desktop-хранилище с паролем владельца."
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Gr)
                     ) { Text("СКОПИРОВАТЬ ДАННЫЕ СОПРЯЖЕНИЯ") }
@@ -196,7 +371,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                         color = Tx, fontSize = 10.sp)
                     Spacer(Modifier.height(8.dp))
                     Text("ВЫБЕРИТЕ РАЗРЕШЁННЫЕ ПРАВА", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    availableScopes.forEach { permission ->
+                    availableScopes.filter { it in request.requestedScopes }.forEach { permission ->
                         val selected = permission in selectedScopes[request.approvalId].orEmpty()
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
@@ -263,3 +438,16 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
 }
 
 private const val OWNER_SESSION_LIFETIME_MS = 120_000L
+
+
+private fun discoverBridgeIpv4(context: Context): String? {
+    return runCatching {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = manager.activeNetwork ?: return@runCatching null
+        val properties = manager.getLinkProperties(network) ?: return@runCatching null
+        properties.linkAddresses.asSequence()
+            .mapNotNull { it.address as? Inet4Address }
+            .firstOrNull { it.isSiteLocalAddress && !it.isLoopbackAddress && !it.isAnyLocalAddress }
+            ?.hostAddress
+    }.getOrNull()
+}

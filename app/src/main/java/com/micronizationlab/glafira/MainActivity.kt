@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -58,14 +59,14 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-// Classic ICQ / Windows XP light palette
-val Bg = Color(0xFFF4F4F4)
-val Gr = Color(0xFF1767A8)
-val GrD = Color(0xFFE2E2E2)
-val Tx = Color(0xFF626262)
-val Line = Color(0xFFB8B8B8)
-val Red = Color(0xFFC62828)
-val XpBlue = Color(0xFF2F73B7)
+// GLAFIRA design system: calm neutral surfaces with one indigo accent.
+val Bg = GlafiraColors.Background
+val Gr = GlafiraColors.Primary
+val GrD = GlafiraColors.SurfaceMuted
+val Tx = GlafiraColors.TextSecondary
+val Line = GlafiraColors.Outline
+val Red = GlafiraColors.Error
+val XpBlue = GlafiraColors.Primary
 
 
 enum class AgentGroup(val title: String) {
@@ -84,6 +85,8 @@ data class Msg(val text: String, val isUser: Boolean, val time: String, val date
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Draw edge-to-edge so Compose can apply system-bar and keyboard insets consistently.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent { App() }
     }
 }
@@ -181,7 +184,13 @@ fun App() {
         }
     }
 
-    Surface(Modifier.fillMaxSize(), color = Bg) {
+    Surface(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .imePadding(),
+        color = Bg
+    ) {
         when {
             showSettings -> SettingsScreen(
                 onBack = {
@@ -222,66 +231,60 @@ fun App() {
 }
 
 @Composable
-fun StatusFlower(isOnline: Boolean, size: Dp = 12.dp) {
-    Canvas(Modifier.size(size)) {
-        val c = if (isOnline) Color(0xFF55B84A) else Color(0xFF9A9A9A)
-        val r = size.toPx() / 4f
-        repeat(5) { i ->
-            val angle = (i * 72f - 90f) * PI / 180
-            drawCircle(
-                color = c,
-                radius = r,
-                center = Offset(
-                    x = center.x + cos(angle).toFloat() * r,
-                    y = center.y + sin(angle).toFloat() * r
-                )
-            )
-        }
-        drawCircle(Color(0xFFFFFFAA), radius = size.toPx() / 6f, center = center)
-    }
+fun StatusFlower(isOnline: Boolean, size: Dp = 8.dp) {
+    Box(
+        Modifier.size(size).clip(CircleShape)
+            .background(if (isOnline) GlafiraColors.Success else GlafiraColors.Offline)
+    )
 }
 
 @Composable
 fun GroupHeader(title: String, count: Int, expanded: Boolean, onToggle: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(GrD).clickable { onToggle() }.padding(horizontal = 8.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().clickable { onToggle() }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(if (expanded) "▼" else "▶", color = Gr, fontSize = 10.sp)
-        Spacer(Modifier.width(6.dp))
-        Text(title, color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Text(title, color = GlafiraColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.weight(1f))
-        Text("$count", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Text("$count", color = Tx, fontSize = 12.sp)
+        Spacer(Modifier.width(10.dp))
+        Text(if (expanded) "−" else "+", color = Gr, fontSize = 18.sp, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
 fun AgentRow(a: A, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
+        shape = RoundedCornerShape(GlafiraShape.Card),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        StatusFlower(a.on, 14.dp)
-        Spacer(Modifier.width(8.dp))
-        Box(
-            Modifier.size(24.dp).clip(CircleShape)
-                .background(Color.White)
-                .border(1.dp, Line, CircleShape),
-            contentAlignment = Alignment.Center
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(a.emoji, fontSize = 14.sp)
+            Box(
+                Modifier.size(42.dp).clip(RoundedCornerShape(14.dp))
+                    .background(GlafiraColors.PrimarySoft),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(a.n.take(1), color = Gr, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(a.n, color = GlafiraColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(a.d, color = Tx, fontSize = 12.sp)
+                Text(
+                    if (a.on) "${a.providerId.displayName} · готов" else "Требуется настройка",
+                    color = if (a.on) GlafiraColors.Success else Tx, fontSize = 11.sp
+                )
+            }
+            StatusFlower(a.on, 8.dp)
         }
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            Text(a.n, color = if (a.on) Color(0xFF202020) else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(
-                if (a.on) "${a.providerId.displayName} · готов" else "Не настроен",
-                color = Tx, fontSize = 10.sp
-            )
-        }
-        StatusFlower(a.on, 12.dp)
     }
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 }
 
 @Composable
@@ -328,7 +331,7 @@ fun ContactList(
                 "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры.",
                 ProviderId.GIGACHAT, AgentGroup.IA),
             A("ПРОГРАММИСТ", "Код и технические задачи", isProviderConfigured(context, ProviderId.GIGACHAT), "💻",
-                "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
+                "Ты — Программист GLAFIRA AI HUB. Ты пишешь и проверяешь код, исследуешь технические вопросы и предлагаешь архитектурные решения. Не заявляй автоматически, что у тебя нет интернета или браузера: сначала проверь доступные инструменты и возможности GLAFIRA Core. Если для проверки сайта нужен браузер или веб-поиск, запроси у Core выполнение этой части через подключённый веб-инструмент или браузерного агента и затем проанализируй полученные результаты. Если такой инструмент действительно не подключён, назови конкретно отсутствующую интеграцию и предложи Core передать задачу доступному агенту; не подменяй это фразой «это не моя роль». Не утверждай, что сайт открыт или проверен, пока нет фактических результатов. Разделяй подтверждённые факты и предположения. Ответ должен содержать выводы, технические риски и конкретные следующие действия.",
                 "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта.",
                 ProviderId.GIGACHAT, AgentGroup.IA),
             A("GigaChat", "GigaChat · модель", isProviderConfigured(context, ProviderId.GIGACHAT), "🟣",
@@ -364,19 +367,22 @@ fun ContactList(
 
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
-            Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 20.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("✿", color = Color.White, fontSize = 17.sp)
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
-                Text("GLAFIRA AI HUB", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text("СЕТЬ АГЕНТОВ · 2003", color = Color.White.copy(alpha = 0.88f), fontSize = 9.sp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("GLAFIRA AI HUB", color = GlafiraColors.TextPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text("Ваша интеллектуальная команда", color = Tx, fontSize = 13.sp)
             }
-            Text("—  □  ×", color = Color.White, fontSize = 12.sp)
+            Box(
+                Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(GlafiraColors.PrimarySoft),
+                contentAlignment = Alignment.Center
+            ) { Text("G", color = Gr, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
         }
-        Row(Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Проект: ", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)
+            .clip(RoundedCornerShape(GlafiraShape.Card)).background(Color.White)
+            .padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("ПРОЕКТ", color = Tx, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
             Box {
                 Row(modifier = Modifier.clickable { showProjectMenu = true }, verticalAlignment = Alignment.CenterVertically) {
                     Text(currentProject.name, color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
@@ -400,17 +406,9 @@ fun ContactList(
                 }
             }
             Spacer(Modifier.weight(1f))
-            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onCouncilClick() }, contentAlignment = Alignment.Center) {
-                Text("🏛", fontSize = 12.sp)
-            }
-            Spacer(Modifier.width(6.dp))
-            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { showAddDialog = true }, contentAlignment = Alignment.Center) {
-                Text("+", color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.width(6.dp))
-            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onSettingsClick() }, contentAlignment = Alignment.Center) {
-                Text("⚙", fontSize = 12.sp)
-            }
+            TextButton(onClick = onCouncilClick) { Text("Совет", color = Gr) }
+            TextButton(onClick = { showAddDialog = true }) { Text("+ Проект", color = Gr) }
+            TextButton(onClick = onSettingsClick) { Text("Настройки", color = Gr) }
         }
 
         if (showDeleteConfirm) {
@@ -468,7 +466,10 @@ fun ContactList(
         }
 
         Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
-            LazyColumn(Modifier.fillMaxWidth().background(Color.White).border(1.dp, Line)) {
+            LazyColumn(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp).background(Bg),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 item {
                     GroupHeader(
                         title = AgentGroup.IA.title,
@@ -507,7 +508,7 @@ fun ContactList(
             }
         }
 
-        Row(Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             StatusFlower(isOnline, 8.dp)
             Spacer(Modifier.width(6.dp))
             Text(
@@ -537,11 +538,30 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var expandedMessages by remember { mutableStateOf(setOf<Int>()) }
     var isListening by remember { mutableStateOf(false) }
     var speakingIndex by remember { mutableStateOf<Int?>(null) }
+    var pendingChatExport by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         TtsHelper.init(context)
+    }
+
+    val chatExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri == null) {
+            ToastHelper.short(context, "Экспорт отменён")
+        } else {
+            runCatching {
+                val output = context.contentResolver.openOutputStream(uri)
+                    ?: error("Не удалось открыть выбранный файл")
+                output.bufferedWriter(Charsets.UTF_8).use { it.write(pendingChatExport) }
+            }.onSuccess {
+                ToastHelper.short(context, "Файл экспорта сохранён в выбранной папке")
+            }.onFailure {
+                ToastHelper.short(context, "Не удалось сохранить экспорт: ${it.localizedMessage ?: "ошибка записи"}")
+            }
+        }
     }
 
     val speechLauncher = rememberLauncherForActivityResult(
@@ -559,11 +579,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     }
 
     fun startVoiceInput() {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!hasPermission) {
-            ToastHelper.short(context, "Нужно разрешение на микрофон")
+        if (ContextCompat.checkSelfPermission(
+                context, Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ToastHelper.short(context, "Разрешение на микрофон не предоставлено")
             return
         }
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
@@ -581,6 +601,27 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         } catch (e: Exception) {
             isListening = false
             ToastHelper.short(context, "Не удалось запустить распознавание")
+        }
+    }
+
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            startVoiceInput()
+        } else {
+            ToastHelper.short(context, "Без разрешения микрофона голосовой ввод недоступен")
+        }
+    }
+
+    fun requestOrStartVoiceInput() {
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            startVoiceInput()
+        } else {
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -633,7 +674,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (isSearching) {
                     TextField(
                         value = searchQuery, onValueChange = { searchQuery = it },
@@ -648,26 +689,27 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         Text(agent.emoji, fontSize = 16.sp)
                         Spacer(Modifier.width(6.dp))
                         Column {
-                            Text(agent.n, color = Gr, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Text(agent.n, color = GlafiraColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             Text(
-                                if (agent.on) "Online · ${agent.providerId.displayName} · ${messages.size} сообщ." else "Offline",
-                                color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace
+                                if (agent.on) "В сети · ${agent.providerId.displayName} · ${messages.size} сообщ." else "Не в сети",
+                                color = Tx, fontSize = 11.sp
                             )
                         }
                     }
-                    Text("⬆", fontSize = 14.sp, color = Gr, modifier = Modifier.clickable { scope.launch { listState.animateScrollToItem(0) } }.padding(end = 8.dp))
-                    Text("📌", fontSize = 14.sp, modifier = Modifier.clickable { showPinnedPanel = !showPinnedPanel }.padding(end = 8.dp))
-                    Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 8.dp))
-                    Text("↗", fontSize = 16.sp, color = Gr, modifier = Modifier.clickable { showTransferDialog = true }.padding(end = 8.dp))
-                    Text("🔇", fontSize = 14.sp, modifier = Modifier.clickable {
-                        TtsHelper.stop()
-                        speakingIndex = null
-                    }.padding(end = 8.dp))
-                    Text("📋", fontSize = 14.sp, modifier = Modifier.clickable {
-                        copyToClipboard(context, messages.joinToString("\n") { m -> val who = if (m.isUser) "Вы" else agent.n; "[${m.date} ${m.time}] $who: ${m.text}" })
-                    }.padding(end = 8.dp))
-                    Text("📤", fontSize = 14.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 8.dp))
-                    Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { showClearConfirm = true })
+                    TextButton(onClick = { isSearching = true }) { Text("Поиск", color = Gr) }
+                    var menuExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(onClick = { menuExpanded = true }) { Text("Ещё", color = Gr) }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(text = { Text("К началу") }, onClick = { menuExpanded = false; scope.launch { listState.animateScrollToItem(0) } })
+                            DropdownMenuItem(text = { Text(if (showPinnedPanel) "Скрыть закреплённое" else "Закреплённое") }, onClick = { menuExpanded = false; showPinnedPanel = !showPinnedPanel })
+                            DropdownMenuItem(text = { Text("Передать агенту") }, onClick = { menuExpanded = false; showTransferDialog = true })
+                            DropdownMenuItem(text = { Text("Остановить озвучивание") }, onClick = { menuExpanded = false; TtsHelper.stop(); speakingIndex = null })
+                            DropdownMenuItem(text = { Text("Копировать переписку") }, onClick = { menuExpanded = false; copyToClipboard(context, messages.joinToString("\n") { m -> val who = if (m.isUser) "Вы" else agent.n; "[${m.date} ${m.time}] $who: ${m.text}" }) })
+                            DropdownMenuItem(text = { Text("Экспортировать чат") }, onClick = { menuExpanded = false; pendingChatExport = buildChatExportText(project.name, agent.n, messages); chatExportLauncher.launch(suggestedChatExportFileName(project.name, agent.n)) })
+                            DropdownMenuItem(text = { Text("Очистить чат", color = Red) }, onClick = { menuExpanded = false; showClearConfirm = true })
+                        }
+                    }
                 }
             }
 
@@ -721,14 +763,13 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
                         Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
                             val shape = if (msg.isUser) {
-                                RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 6.dp, bottomEnd = 0.dp)
+                                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 5.dp)
                             } else {
-                                RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 0.dp, bottomEnd = 6.dp)
+                                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 5.dp, bottomEnd = 16.dp)
                             }
                             Box(
                                 Modifier.clip(shape)
-                                    .background(if (msg.isUser) Color(0xFFE5F0FA) else Color.White)
-                                    .border(1.dp, if (msg.isUser) Color(0xFF8BAFD0) else Color(0xFFB8C9D8), shape)
+                                    .background(if (msg.isUser) GlafiraColors.UserBubble else Color.White)
                                     .combinedClickable(
                                         onClick = {},
                                         onLongClick = { messageActionIndex = realIdx }
@@ -739,7 +780,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                     Text(
                                         if (isLong && !isExpanded) collapsedText(msg.text) else msg.text,
                                         color = Color(0xFF202020),
-                                        fontSize = 13.sp
+                                        fontSize = 14.sp,
+                                        lineHeight = 21.sp
                                     )
                                     if (isLong) {
                                         Text(
@@ -783,32 +825,46 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             }
 
             if (!isSearching) {
-                Row(Modifier.fillMaxWidth().background(GrD).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier.size(36.dp).border(1.dp, if (isListening) Red else Gr, RoundedCornerShape(2.dp)).clickable { startVoiceInput() },
-                        contentAlignment = Alignment.Center
-                    ) { Text(if (isListening) "🔴" else "🎤", fontSize = 16.sp) }
-                    Spacer(Modifier.width(6.dp))
+                Row(
+                    Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     TextField(
                         value = inputText,
                         onValueChange = {
                             inputText = it
                             saveDraft(context, project.id, agent.n, it)
                         },
-                        placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 12.sp) },
-                        modifier = Modifier.weight(1f).padding(end = 6.dp),
-                        colors = TextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020), focusedIndicatorColor = Gr, unfocusedIndicatorColor = Line)
-                    )
-                    Box(
-                        Modifier.size(36.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable {
-                            if (inputText.isNotBlank()) {
-                                val t = inputText
-                                inputText = ""
-                                sendMessage(t)
+                        placeholder = { Text("Напишите сообщение…", color = Tx, fontSize = 14.sp) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(22.dp),
+                        trailingIcon = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { requestOrStartVoiceInput() }, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                                    Text(if (isListening) "●" else "🎙", color = if (isListening) Red else Gr, fontSize = 17.sp)
+                                }
+                                TextButton(onClick = {
+                                    if (inputText.isNotBlank()) {
+                                        val t = inputText
+                                        inputText = ""
+                                        sendMessage(t)
+                                    }
+                                }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                                    Text("➤", color = Gr, fontSize = 18.sp)
+                                }
                             }
                         },
-                        contentAlignment = Alignment.Center
-                    ) { Text("➤", color = Gr, fontSize = 16.sp) }
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = GlafiraColors.SurfaceMuted,
+                            unfocusedContainerColor = GlafiraColors.SurfaceMuted,
+                            focusedTextColor = GlafiraColors.TextPrimary,
+                            unfocusedTextColor = GlafiraColors.TextPrimary,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            focusedPlaceholderColor = Tx,
+                            unfocusedPlaceholderColor = Tx
+                        )
+                    )
                 }
             }
         }
@@ -933,11 +989,11 @@ fun QuickActionsRow(onAction: (String) -> Unit) {
         )
         actions.forEach { (label, prompt) ->
             Box(
-                Modifier.border(1.dp, Gr.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
+                Modifier.clip(RoundedCornerShape(50)).background(GlafiraColors.PrimarySoft)
                     .clickable { onAction(prompt) }
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
             ) {
-                Text(label, color = Gr, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                Text(label, color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Medium)
             }
         }
     }

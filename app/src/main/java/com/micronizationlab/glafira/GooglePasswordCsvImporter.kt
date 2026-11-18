@@ -25,9 +25,10 @@ object GooglePasswordCsvImporter {
             val rows = parseCsv(text)
             require(rows.isNotEmpty()) { "CSV-файл пуст." }
 
-            val headers = rows.first().mapIndexed { index, name ->
-                name.trim().removePrefix("\uFEFF").lowercase() to index
-            }.toMap()
+            val headerNames = rows.first().map { it.trim().removePrefix("\uFEFF").lowercase() }
+            require(headerNames.all { it.isNotBlank() }) { "В CSV есть пустое имя столбца." }
+            require(headerNames.distinct().size == headerNames.size) { "В CSV повторяются названия столбцов." }
+            val headers = headerNames.mapIndexed { index, name -> name to index }.toMap()
             val nameIndex = headers["name"] ?: error("В CSV не найден столбец name.")
             val urlIndex = headers["url"] ?: error("В CSV не найден столбец url.")
             val usernameIndex = headers["username"] ?: error("В CSV не найден столбец username.")

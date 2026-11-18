@@ -94,6 +94,7 @@ class GlafiraBridgePairingProtocol(
             verifierKey.fill(0)
             throw IllegalStateException("Unable to persist one-time pairing ticket.")
         }
+        verifierKey.fill(0)
 
         return GlafiraBridgePairingInvitation(ticketId, capability, expiresAt)
     }
@@ -118,24 +119,32 @@ class GlafiraBridgePairingProtocol(
             return rejected(GlafiraBridgePairingError.STORAGE_ERROR)
         }
 
-        val suppliedProof = runCatching { proofHex.hexToBytes() }.getOrNull()
-            ?: return rejected(GlafiraBridgePairingError.INVALID_INPUT)
-        val expectedProof = hmacSha256(
-            ticket.verifierKey,
-            canonicalProofMessage(ticketId, clientNonce)
-        )
-        if (!MessageDigest.isEqual(expectedProof, suppliedProof)) {
-            return rejected(GlafiraBridgePairingError.INVALID_PROOF)
+        try {
+            val suppliedProof = runCatching { proofHex.hexToBytes() }.getOrNull()
+                ?: return rejected(GlafiraBridgePairingError.INVALID_INPUT)
+            val expectedProof = hmacSha256(
+                ticket.verifierKey,
+                canonicalProofMessage(ticketId, clientNonce)
+            )
+            val proofMatches = try {
+                MessageDigest.isEqual(expectedProof, suppliedProof)
+            } finally {
+                expectedProof.fill(0)
+                suppliedProof.fill(0)
+            }
+            if (!proofMatches) return rejected(GlafiraBridgePairingError.INVALID_PROOF)
+
+            val consumed = runCatching {
+                ticketStore.consume(ticketId, ticket.verifierKey, nowEpochMs)
+            }.getOrDefault(false)
+            if (!consumed) return rejected(GlafiraBridgePairingError.TICKET_ALREADY_USED)
+
+            return GlafiraBridgePairingResult.Verified(
+                GlafiraBridgeVerifiedEnrollment(ticketId, clientNonce, nowEpochMs)
+            )
+        } finally {
+            ticket.verifierKey.fill(0)
         }
-
-        val consumed = runCatching {
-            ticketStore.consume(ticketId, ticket.verifierKey, nowEpochMs)
-        }.getOrDefault(false)
-        if (!consumed) return rejected(GlafiraBridgePairingError.TICKET_ALREADY_USED)
-
-        return GlafiraBridgePairingResult.Verified(
-            GlafiraBridgeVerifiedEnrollment(ticketId, clientNonce, nowEpochMs)
-        )
     }
 
     companion object {

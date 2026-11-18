@@ -1,5 +1,9 @@
 name: GLAFIRA AI HUB Android Build
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches:
@@ -32,8 +36,31 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Configure stable debug signing key
+        env:
+          GLAFIRA_DEBUG_KEYSTORE_BASE64: ${{ secrets.GLAFIRA_DEBUG_KEYSTORE_BASE64 }}
+          GLAFIRA_DEBUG_STORE_PASSWORD: ${{ secrets.GLAFIRA_DEBUG_STORE_PASSWORD }}
+          GLAFIRA_DEBUG_KEY_ALIAS: ${{ secrets.GLAFIRA_DEBUG_KEY_ALIAS }}
+          GLAFIRA_DEBUG_KEY_PASSWORD: ${{ secrets.GLAFIRA_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GLAFIRA_DEBUG_KEYSTORE_BASE64:-}" ]; then
+            echo "::warning::Stable debug signing is not configured; this APK may not update an APK signed by a previous GitHub runner."
+            exit 0
+          fi
+          test -n "$GLAFIRA_DEBUG_STORE_PASSWORD"
+          test -n "$GLAFIRA_DEBUG_KEY_ALIAS"
+          test -n "$GLAFIRA_DEBUG_KEY_PASSWORD"
+          mkdir -p "$RUNNER_TEMP/glafira-signing"
+          echo "$GLAFIRA_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/glafira-signing/glafira-debug.jks"
+          chmod 600 "$RUNNER_TEMP/glafira-signing/glafira-debug.jks"
+          echo "GLAFIRA_DEBUG_KEYSTORE_PATH=$RUNNER_TEMP/glafira-signing/glafira-debug.jks" >> "$GITHUB_ENV"
+          echo "GLAFIRA_DEBUG_STORE_PASSWORD=$GLAFIRA_DEBUG_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "GLAFIRA_DEBUG_KEY_ALIAS=$GLAFIRA_DEBUG_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "GLAFIRA_DEBUG_KEY_PASSWORD=$GLAFIRA_DEBUG_KEY_PASSWORD" >> "$GITHUB_ENV"
+
       - name: Run Unit Tests
-        run: gradle testDebugUnitTest
+        run: gradle testDebugUnitTest :desktop-bridge:test :desktop-bridge:installDist
 
       - name: Build Debug APK
         run: gradle assembleDebug
@@ -43,5 +70,13 @@ jobs:
         with:
           name: glafira-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Desktop Bridge CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-desktop-bridge-cli
+          path: desktop-bridge/build/install/desktop-bridge/
           if-no-files-found: error
           retention-days: 14

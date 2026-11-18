@@ -40,6 +40,7 @@ data class GlafiraBridgePendingApproval(
 
 data class GlafiraBridgeCredentialDelivery(
     val approvalId: String,
+    val ticketId: String,
     val deviceId: String,
     /** Sensitive: expose only to the authenticated owner delivery surface. */
     val hmacSecret: ByteArray,
@@ -48,6 +49,7 @@ data class GlafiraBridgeCredentialDelivery(
 
 data class GlafiraBridgePendingCredentialDelivery(
     val approvalId: String,
+    val ticketId: String,
     val deviceId: String
 )
 

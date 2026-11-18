@@ -38,6 +38,14 @@ data class ToolApprovalGrant internal constructor(
 object GlafiraToolRegistry {
     private val definitions = listOf(
         GlafiraToolDefinition(
+            "web.search", "Поиск в интернете", "Поиск публичной информации через подключённого поискового провайдера.",
+            ToolRiskLevel.READ_ONLY, setOf("web.search")
+        ),
+        GlafiraToolDefinition(
+            "web.open", "Открытие сайта", "Чтение публичных HTML- и текстовых страниц с защитой от локальных адресов.",
+            ToolRiskLevel.READ_ONLY, setOf("web.open")
+        ),
+        GlafiraToolDefinition(
             "project.read", "Чтение проекта", "Чтение разрешённых данных текущего проекта.",
             ToolRiskLevel.READ_ONLY, setOf("project.read")
         ),
@@ -52,6 +60,19 @@ object GlafiraToolRegistry {
         GlafiraToolDefinition(
             "approval.request", "Запрос подтверждения владельца", "Передача владельцу точного описания действия для решения.",
             ToolRiskLevel.DRAFT, setOf("approval.request")
+        ),
+        GlafiraToolDefinition(
+            "desktop.task.claim", "Получение задания на Desktop", "Получение следующего задания из очереди владельца для связанного настольного узла.",
+            ToolRiskLevel.READ_ONLY, setOf("desktop.task.claim")
+        ),
+        GlafiraToolDefinition(
+            "desktop.task.result", "Возврат результата Desktop", "Обновление состояния и результата задания от связанного настольного узла.",
+            ToolRiskLevel.DRAFT, setOf("desktop.task.result")
+        ),
+        GlafiraToolDefinition(
+            "vault.credential.use", "Использование сохранённой учётной записи",
+            "Передача учётных данных только доверенному адаптеру для заранее разрешённого HTTPS-сайта; секрет не возвращается модели.",
+            ToolRiskLevel.DRAFT, setOf("vault.credential.use")
         ),
         GlafiraToolDefinition(
             "content.draft", "Подготовка черновика", "Создание черновика текста без публикации.",
@@ -72,6 +93,14 @@ object GlafiraToolRegistry {
         GlafiraToolDefinition(
             "payment.initiate", "Платёж", "Создание платёжной операции или перевода.",
             ToolRiskLevel.FINANCIAL, setOf("finance.payment")
+        ),
+        GlafiraToolDefinition(
+            "desktop.task.claim", "Получение задания Desktop", "Получение назначенного задания из очереди Desktop.",
+            ToolRiskLevel.DRAFT, setOf("desktop.task.claim")
+        ),
+        GlafiraToolDefinition(
+            "desktop.task.result", "Отчёт Desktop о задании", "Передача статуса и результата назначенного задания.",
+            ToolRiskLevel.DRAFT, setOf("desktop.task.result")
         ),
         GlafiraToolDefinition(
             "record.delete", "Удаление данных", "Удаление записей или файлов.",

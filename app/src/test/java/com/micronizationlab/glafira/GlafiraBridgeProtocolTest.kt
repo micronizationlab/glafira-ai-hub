@@ -34,6 +34,11 @@ class GlafiraBridgeProtocolTest {
         assertTrue(GlafiraBridgeProtocol.verifySignature(signed, secret))
     }
 
+    @Test fun acceptsTheExistingDefaultProjectIdentifier() {
+        val signed = GlafiraBridgeProtocol.sign(request().copy(projectId = "default"), secret)
+        assertNull(GlafiraBridgeProtocol.validate(signed, now))
+    }
+
     @Test fun rejectsUnsupportedProtocolVersion() {
         val signed = GlafiraBridgeProtocol.sign(request().copy(protocolVersion = 99), secret)
         assertEquals(
@@ -75,6 +80,29 @@ class GlafiraBridgeProtocolTest {
     @Test fun rejectsMissingRequiredPayloadField() {
         val signed = GlafiraBridgeProtocol.sign(
             request(GlafiraBridgeOperation.CONVERSATION_READ), secret
+        )
+        assertEquals(
+            GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD,
+            GlafiraBridgeProtocol.validate(signed, now)
+        )
+    }
+
+    @Test fun acceptsDesktopTaskClaimWithoutPayload() {
+        val signed = GlafiraBridgeProtocol.sign(
+            request(
+                GlafiraBridgeOperation.DESKTOP_TASK_CLAIM,
+                mapOf("capabilities" to "analysis", "maxParallelTasks" to "1")
+            ), secret
+        )
+        assertNull(GlafiraBridgeProtocol.validate(signed, now))
+    }
+
+    @Test fun desktopTaskResultRequiresAllBoundedFields() {
+        val signed = GlafiraBridgeProtocol.sign(
+            request(
+                GlafiraBridgeOperation.DESKTOP_TASK_RESULT,
+                mapOf("taskId" to "task-0001", "state" to "SUCCEEDED")
+            ), secret
         )
         assertEquals(
             GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD,

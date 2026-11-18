@@ -13,16 +13,20 @@ fun copyToClipboard(context: Context, text: String) {
     Toast.makeText(context, "Скопировано", Toast.LENGTH_SHORT).show()
 }
 
-fun exportChatToFile(context: Context, projectName: String, agentName: String, messages: List<Msg>) {
-    val file = File(context.filesDir, "export_${projectName}_${agentName}.txt")
-    val text = buildString {
-        appendLine("Экспорт чата с $agentName (Проект: $projectName)")
-        appendLine("=".repeat(40))
-        messages.forEach { msg ->
-            val author = if (msg.isUser) "Вы" else agentName
-            appendLine("[${msg.time}] $author: ${msg.text}")
-        }
+fun buildChatExportText(projectName: String, agentName: String, messages: List<Msg>): String = buildString {
+    appendLine("Экспорт чата с $agentName (Проект: $projectName)")
+    appendLine("=".repeat(40))
+    messages.forEach { msg ->
+        val author = if (msg.isUser) "Вы" else agentName
+        appendLine("[${msg.date} ${msg.time}] $author: ${msg.text}")
     }
-    file.writeText(text)
-    Toast.makeText(context, "Сохранено: ${file.name}", Toast.LENGTH_LONG).show()
+}
+
+fun suggestedChatExportFileName(projectName: String, agentName: String): String {
+    fun safe(value: String): String = value.trim()
+        .replace(Regex("[^A-Za-z0-9А-Яа-яЁё._-]+"), "_")
+        .trim('_', '.', '-')
+        .take(40)
+        .ifBlank { "chat" }
+    return "GLAFIRA_${safe(projectName)}_${safe(agentName)}.txt"
 }

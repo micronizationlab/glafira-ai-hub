@@ -60,11 +60,11 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                 val result = context.contentResolver.openInputStream(uri)?.use { input ->
                     GooglePasswordCsvImporter.parse(input)
                 } ?: error("Не удалось прочитать выбранный CSV-файл.")
-                val knownKeys = entries.map {
-                    it.website.trim().lowercase() + "|" + it.username.trim().lowercase()
-                }.toMutableSet()
+                // Build identities from both existing and imported rows. This prevents
+                // repeated blank-site accounts from being collapsed into one another.
+                val knownKeys = entries.map(VaultEntryIdentity::key).toMutableSet()
                 val newEntries = result.entries.filter { entry ->
-                    knownKeys.add(entry.website.trim().lowercase() + "|" + entry.username.trim().lowercase())
+                    knownKeys.add(VaultEntryIdentity.key(entry))
                 }
                 activeSession.saveEntries(entries + newEntries)
                 entries = entries + newEntries
@@ -170,7 +170,7 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                 }.padding(6.dp))
             }
             Spacer(Modifier.height(12.dp))
-            Button(onClick = { csvPicker.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv", "text/plain", "*/*")) }, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { csvPicker.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv", "application/vnd.ms-excel", "text/plain", "*/*")) }, modifier = Modifier.fillMaxWidth()) {
                 Text("ИМПОРТ CSV ИЗ GOOGLE PASSWORD MANAGER")
             }
             importStatus?.let { Text(it, color = if (it.startsWith("Импорт не")) Red else Gr, fontSize = 11.sp) }

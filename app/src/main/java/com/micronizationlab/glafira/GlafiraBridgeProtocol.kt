@@ -5,7 +5,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /** Typed Bridge envelope. It is not a network listener or a device-pairing implementation. */
-enum class GlafiraBridgeOperation { PROJECT_READ, CONVERSATION_READ, CONVERSATION_APPEND, APPROVAL_REQUEST }
+enum class GlafiraBridgeOperation { PROJECT_READ, CONVERSATION_READ, CONVERSATION_APPEND, APPROVAL_REQUEST, DESKTOP_TASK_CLAIM, DESKTOP_TASK_RESULT }
 enum class GlafiraBridgeStatus { ACCEPTED, PENDING_APPROVAL, SUCCEEDED, FAILED, CANCELLED }
 
 data class GlafiraBridgeRequest(
@@ -45,7 +45,9 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.PROJECT_READ to emptySet(),
         GlafiraBridgeOperation.CONVERSATION_READ to setOf("conversationId"),
         GlafiraBridgeOperation.CONVERSATION_APPEND to setOf("conversationId", "messageText"),
-        GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary")
+        GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary"),
+        GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to setOf("capabilities", "maxParallelTasks"),
+        GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "state", "progressPercent", "progressMessage", "result", "errorCode")
     )
     private val allowedFields = requiredFields
 
@@ -90,7 +92,7 @@ object GlafiraBridgeProtocol {
     fun validate(request: GlafiraBridgeRequest, nowEpochMs: Long = System.currentTimeMillis()): GlafiraBridgeValidationError? {
         if (request.protocolVersion != CURRENT_VERSION) return GlafiraBridgeValidationError.UNSUPPORTED_VERSION
         if (!isIdentifier(request.requestId) || !isIdentifier(request.idempotencyKey) ||
-            !isIdentifier(request.deviceId) || !isIdentifier(request.projectId)
+            !isIdentifier(request.deviceId) || !isProjectIdentifier(request.projectId)
         ) return GlafiraBridgeValidationError.INVALID_IDENTIFIER
         val ttl = request.expiresAtEpochMs - request.issuedAtEpochMs
         if (request.issuedAtEpochMs <= 0L || request.expiresAtEpochMs <= request.issuedAtEpochMs ||
@@ -109,6 +111,9 @@ object GlafiraBridgeProtocol {
             return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
         return null
     }
+
+    private fun isProjectIdentifier(value: String): Boolean =
+        value == "default" || isIdentifier(value)
 
     private fun isIdentifier(value: String): Boolean =
         value.length in 8..128 && value.all { it.isLetterOrDigit() || it in "-_." }

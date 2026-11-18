@@ -127,9 +127,16 @@ class PinnedHttpsGlafiraBridgeClient(
                     ?: throw CertificateException("Bridge server did not provide a certificate.")
                 if (authType.isNullOrBlank()) throw CertificateException("TLS authentication type is missing.")
                 leaf.checkValidity()
+                if (leaf.basicConstraints != -1 || leaf.keyUsage?.getOrNull(0) != true) {
+                    throw CertificateException("Pinned Bridge certificate key usage is invalid.")
+                }
                 val extendedUsage = leaf.extendedKeyUsage
-                if (extendedUsage != null && SERVER_AUTH_OID !in extendedUsage) {
+                    ?: throw CertificateException("Pinned certificate must declare TLS serverAuth EKU.")
+                if (SERVER_AUTH_OID !in extendedUsage) {
                     throw CertificateException("Pinned certificate is not valid for TLS server authentication.")
+                }
+                if (!leaf.publicKey.algorithm.equals("EC", ignoreCase = true)) {
+                    throw CertificateException("Pinned Bridge certificate must use an EC public key.")
                 }
                 val actualPin = MessageDigest.getInstance("SHA-256").digest(leaf.encoded)
                 if (!MessageDigest.isEqual(actualPin, expectedPin)) {
