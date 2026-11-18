@@ -34,9 +34,9 @@ Private testing is a project context, not by itself proof of permission to clone
 12. **Mandatory Yandex Alice integration:** GLAFIRA must be designed to work with Yandex Alice as an important voice-assistant integration, not merely as an optional future idea. The exact supported interaction path must be validated against currently available official Yandex interfaces and the user's account capabilities; do not assume Alice can directly ingest arbitrary audio files or control GLAFIRA without a supported integration surface.
 13. **Free-tier-first constraint:** the initial design and implementation must target the user's existing ordinary Yandex account and available free features, without requiring paid Yandex subscriptions or paid cloud infrastructure. If a desired Alice or cloud feature requires a paid plan, clearly identify the limitation and propose a free alternative before asking the user to pay.
 14. The user has an ordinary password for Yandex services. Never request that password in chat, store it in project files, or transmit it to ChatGPT. Account linking must use the official authorization flow (such as OAuth/device authorization where supported); store tokens only in secure platform storage and allow revocation.
-12. Store only the minimum file metadata and references in GLAFIRA Core's index; keep OAuth tokens/credentials in secure platform storage and never in Git, logs, prompts, or shared engineering memory.
-13. Access to cloud files must be mediated by Core authorization and audited. Use least-privilege scopes, short-lived access where supported, and avoid exposing permanent public links.
-14. Upload, download, rename, delete, synchronization, quota errors, offline behavior, and account disconnection must be handled explicitly. Deleting a local cache must not delete the cloud original; cloud deletion requires a clear user action and confirmation.
+15. Store only the minimum file metadata and references in GLAFIRA Core's index; keep OAuth tokens/credentials in secure platform storage and never in Git, logs, prompts, or shared engineering memory.
+16. Access to cloud files must be mediated by Core authorization and audited. Use least-privilege scopes, short-lived access where supported, and avoid exposing permanent public links.
+17. Upload, download, rename, delete, synchronization, quota errors, offline behavior, and account disconnection must be handled explicitly. Deleting a local cache must not delete the cloud original; cloud deletion requires a clear user action and confirmation.
 
 ## Work packages
 
@@ -46,12 +46,11 @@ Private testing is a project context, not by itself proof of permission to clone
 - Record permission/license/rights status and allowed uses.
 - Define whether the target is analysis only, authorized voice cloning, or both.
 - Define language, sample rate, duration, audio quality, target devices, latency, and offline requirements.
-- Implement and test adapters for both Google Drive and Yandex Disk.
 - Defer connecting user accounts until the Core and secure Bridge foundation is ready.
 - When connection is introduced, let the user connect either or both accounts, select dedicated library folders, and review requested permissions.
 
 ### VL-1 — Cloud file library and audio corpus
-- Implement a provider-neutral cloud storage interface with Google Drive and Yandex Disk adapters.
+- Implement and test adapters for both Google Drive and Yandex Disk through a provider-neutral cloud storage interface.
 - Make the connected cloud folder the canonical library for original recordings and large derived assets.
 - Build a local metadata index with file IDs, provider, folder, checksum, size, media type, provenance, rights status, and processing status; do not store the full audio in the index.
 - Support resumable upload/download where available, integrity verification, duplicate detection, and safe retry behavior.
@@ -113,10 +112,10 @@ Private testing is a project context, not by itself proof of permission to clone
 2. Design the cloud-library abstraction and secure Bridge file-transfer contract; do not hard-code a single provider.
 3. Keep both Google Drive and Yandex Disk in scope; defer account connection until after Core and secure Bridge are ready.
 4. Treat Yandex Alice integration as mandatory; research supported official interfaces and free-tier constraints before implementation.
-4. Ask the user to identify reference recordings and confirm their provenance and permitted use.
-5. Clarify whether the first experiment should be audio analysis only or authorized synthesis of new speech in the reference voice.
-6. Inventory available local hardware and choose a no-paid-infrastructure-first evaluation path.
-7. Create a separate implementation branch for Voice Lab only when the first technical work package is ready.
+5. Ask the user to identify reference recordings and confirm their provenance and permitted use.
+6. Clarify whether the first experiment should be audio analysis only or authorized synthesis of new speech in the reference voice.
+7. Inventory available local hardware and choose a no-paid-infrastructure-first evaluation path.
+8. Create a separate implementation branch for Voice Lab only when the first technical work package is ready.
 
 ## Current limitations
 
