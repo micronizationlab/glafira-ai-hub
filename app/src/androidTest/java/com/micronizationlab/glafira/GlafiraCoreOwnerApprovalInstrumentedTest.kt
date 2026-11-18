@@ -34,18 +34,19 @@ class GlafiraCoreOwnerApprovalInstrumentedTest {
             queue.transition(
                 taskId,
                 setOf(GlafiraTaskState.QUEUED),
-                GlafiraTaskState.WAITING_FOR_OWNER,
+                GlafiraTaskState.RUNNING,
                 now + 1L,
                 null,
-                "OWNER_APPROVAL_REQUIRED"
+                null
             )
         )
 
         val firstAdapter = GlafiraCoreOwnerApprovalStore(queue)
-        assertTrue(firstAdapter.requestApproval(task, "Send one explicitly approved test message", now + 1L))
+        assertTrue(firstAdapter.requestApproval(task, "Send one explicitly approved test message", now + 2L))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.getTask(taskId)?.state)
 
         val secondAdapter = GlafiraCoreOwnerApprovalStore(GlafiraTaskStore(context))
-        val pending = secondAdapter.pendingApprovals(now + 2L)
+        val pending = secondAdapter.pendingApprovals(now + 3L)
 
         assertEquals(taskId, pending.single { it.task.taskId == taskId }.task.taskId)
         assertEquals(setOf("communications.send"), pending.single { it.task.taskId == taskId }.requestedScopes)
