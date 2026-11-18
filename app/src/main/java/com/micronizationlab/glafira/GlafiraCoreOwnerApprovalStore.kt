@@ -66,14 +66,18 @@ class GlafiraCoreOwnerApprovalStore(
         val hash = GlafiraToolRegistry.actionHash(task, actionSummary)
         val requestedScopes = (definition.requiredScopes + task.requiredScopes).sorted()
         val existing = db.query(
-            "core_action_approvals", arrayOf("action_hash", "status"),
+            "core_action_approvals", arrayOf("action_hash", "status", "grant_expires_at"),
             "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
         ).use { cursor ->
-            if (cursor.moveToFirst()) cursor.getString(0) to cursor.getString(1) else null
+            if (cursor.moveToFirst()) Triple(
+                cursor.getString(0), cursor.getString(1),
+                if (cursor.isNull(2)) 0L else cursor.getLong(2)
+            ) else null
         }
         if (existing != null) {
             if (existing.first != hash || existing.second == REJECTED) return false
-            if (existing.second == PENDING || existing.second == APPROVED) return true
+            if (existing.second == PENDING) return true
+            if (existing.second == APPROVED && existing.third > nowMillis) return true
         }
         val values = ContentValues().apply {
             put("task_id", task.taskId)
@@ -92,8 +96,8 @@ class GlafiraCoreOwnerApprovalStore(
             db.insertWithOnConflict("core_action_approvals", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
         } else {
             db.update("core_action_approvals", values,
-                "task_id = ? AND status IN (?, ?)",
-                arrayOf(task.taskId, EXPIRED, CONSUMED)) == 1
+                "task_id = ? AND status IN (?, ?, ?)",
+                arrayOf(task.taskId, EXPIRED, CONSUMED, APPROVED)) == 1
         }
     }
 
