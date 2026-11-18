@@ -26,6 +26,7 @@ fun loadApiKey(context: Context): String =
 @Composable
 fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     val context = LocalContext.current
+    val peerConsultationKey = currentProject?.id?.let { "peer_consultation_enabled_$it" } ?: "peer_consultation_enabled"
     var gigachatKey by remember { mutableStateOf(loadApiKey(context)) }
     var openaiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENAI)) }
     var deepseekKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.DEEPSEEK)) }
@@ -44,7 +45,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var primaryProviderMenu by remember { mutableStateOf(false) }
     var peerConsultationEnabled by remember {
         mutableStateOf(context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-            .getBoolean("peer_consultation_enabled", false))
+            .getBoolean(peerConsultationKey, false))
     }
 
     LaunchedEffect(isSaved) {
@@ -218,10 +219,10 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         ) {
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("НЕЗАВИСИМЫЕ МОДЕЛИ-СОВЕТНИКИ", color = Color(0xFF202020), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(if (currentProject == null) "НЕЗАВИСИМЫЕ МОДЕЛИ-СОВЕТНИКИ" else "СОВЕТНИКИ ДЛЯ ЭТОГО ПРОЕКТА", color = Color(0xFF202020), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Если включено, Глафира может передавать до 12 последних сообщений другим подключённым моделям для независимой проверки. Типичные API-токены, пароли, email и телефоны маскируются, но это не гарантирует удаление всех персональных данных. По умолчанию выключено.",
+                        if (currentProject == null) "Если включено, Глафира может передавать до 12 последних сообщений другим подключённым моделям. По умолчанию выключено." else "Если включено, Глафира может передавать до 12 последних сообщений этого проекта другим подключённым моделям. Типичные API-токены, пароли, email и телефоны маскируются, но это не гарантирует удаление всех персональных данных. По умолчанию выключено для каждого проекта.",
                         color = Tx, fontSize = 11.sp
                     )
                 }
@@ -230,7 +231,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                     onCheckedChange = { enabled ->
                         peerConsultationEnabled = enabled
                         context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-                            .edit().putBoolean("peer_consultation_enabled", enabled).apply()
+                            .edit().putBoolean(peerConsultationKey, enabled).apply()
                     }
                 )
             }
