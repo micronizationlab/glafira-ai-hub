@@ -113,7 +113,7 @@ object GooglePasswordCsvImporter {
 
         fun finishRow() {
             finishField()
-            if (row.any { it.isNotEmpty() }) rows.add(row)
+            if (row.isNotEmpty()) rows.add(row)
             row = mutableListOf()
         }
 
