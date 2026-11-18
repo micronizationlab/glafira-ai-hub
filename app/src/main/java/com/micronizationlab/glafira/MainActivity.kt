@@ -813,12 +813,20 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             }
 
             if (!isSearching) {
-                Row(Modifier.fillMaxWidth().background(GrD).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().background(GrD).padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Box(
-                        Modifier.size(36.dp).border(1.dp, if (isListening) Red else Gr, RoundedCornerShape(2.dp)).clickable { requestOrStartVoiceInput() },
+                        Modifier
+                            .size(28.dp)
+                            .border(1.dp, if (isListening) Red else Gr, RoundedCornerShape(6.dp))
+                            .clickable { requestOrStartVoiceInput() },
                         contentAlignment = Alignment.Center
-                    ) { Text(if (isListening) "🔴" else "🎤", fontSize = 16.sp) }
-                    Spacer(Modifier.width(6.dp))
+                    ) {
+                        Text(if (isListening) "🔴" else "🎤", fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.width(8.dp))
                     TextField(
                         value = inputText,
                         onValueChange = {
@@ -826,19 +834,32 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                             saveDraft(context, project.id, agent.n, it)
                         },
                         placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 12.sp) },
-                        modifier = Modifier.weight(1f).padding(end = 6.dp),
-                        colors = TextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020), focusedIndicatorColor = Gr, unfocusedIndicatorColor = Line)
+                        modifier = Modifier.weight(1f),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedTextColor = Color(0xFF202020),
+                            unfocusedTextColor = Color(0xFF202020),
+                            focusedIndicatorColor = Gr,
+                            unfocusedIndicatorColor = Line
+                        )
                     )
+                    Spacer(Modifier.width(8.dp))
                     Box(
-                        Modifier.size(36.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable {
-                            if (inputText.isNotBlank()) {
-                                val t = inputText
-                                inputText = ""
-                                sendMessage(t)
-                            }
-                        },
+                        Modifier
+                            .size(28.dp)
+                            .border(1.dp, Gr, RoundedCornerShape(6.dp))
+                            .clickable {
+                                if (inputText.isNotBlank()) {
+                                    val t = inputText
+                                    inputText = ""
+                                    sendMessage(t)
+                                }
+                            },
                         contentAlignment = Alignment.Center
-                    ) { Text("➤", color = Gr, fontSize = 16.sp) }
+                    ) {
+                        Text("➤", color = Gr, fontSize = 13.sp)
+                    }
                 }
             }
         }
