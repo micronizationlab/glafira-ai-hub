@@ -287,9 +287,14 @@ object BackupArchive {
                 val expected = parsed.getJSONArray("files")
                 require(expected.length() == stagedFiles.size) { "Количество файлов не совпадает с manifest." }
                 val stagedByPath = stagedFiles.associateBy { it.relativePath }
+                require(stagedByPath.size == stagedFiles.size) {
+                    "В архиве обнаружены повторяющиеся пути файлов."
+                }
+                val manifestPaths = mutableSetOf<String>()
                 for (index in 0 until expected.length()) {
                     val item = expected.getJSONObject(index)
                     val relative = item.getString("path")
+                    require(manifestPaths.add(relative)) { "В manifest обнаружен повторяющийся путь." }
                     val staged = stagedByPath[relative] ?: error("В архиве отсутствует файл $relative")
                     require(staged.file.length() == item.getLong("size")) { "Размер файла не совпадает: $relative" }
                     require(sha256(staged.file) == item.getString("sha256")) { "Контрольная сумма не совпадает: $relative" }
