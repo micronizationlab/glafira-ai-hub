@@ -222,11 +222,13 @@ class GlafiraBridgeTlsHttpServer(
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_ENVELOPE"))
                     return
                 }
-                if (!deviceRateLimiter.tryAcquire(request.deviceId)) {
-                    writeResponse(client, HTTP_TOO_MANY_REQUESTS, errorResponse("DEVICE_RATE_LIMITED"))
+                val response = admission.admit(request) { authenticatedDeviceId ->
+                    deviceRateLimiter.tryAcquire(authenticatedDeviceId)
+                }
+                if (response.errorCode == "DEVICE_RATE_LIMITED") {
+                    writeResponse(client, HTTP_TOO_MANY_REQUESTS, responseJson(response))
                     return
                 }
-                val response = admission.admit(request)
                 val status = if (response.status == GlafiraBridgeStatus.ACCEPTED ||
                     response.status == GlafiraBridgeStatus.PENDING_APPROVAL
                 ) HTTP_ACCEPTED else HTTP_OK
