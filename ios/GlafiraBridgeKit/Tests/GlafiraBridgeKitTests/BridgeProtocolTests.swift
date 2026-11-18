@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import GlafiraBridgeKit
+import GlafiraIOSUI
 
 final class BridgeProtocolTests: XCTestCase {
     private func request(
@@ -19,6 +20,10 @@ final class BridgeProtocolTests: XCTestCase {
             expiresAtEpochMs: expiresAt,
             payload: payload
         )
+    }
+
+    func testSwiftUIShellCanBeConstructed() {
+        _ = GlafiraRootView()
     }
 
     func testKotlinGoldenHMACVector() throws {
