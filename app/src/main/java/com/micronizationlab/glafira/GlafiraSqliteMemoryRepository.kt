@@ -58,6 +58,9 @@ class GlafiraSqliteMemoryRepository(
             if (!decision.allowed || decision.requiresOwnerApproval) {
                 return@withContext MemoryWriteResult.Rejected("POLICY_WRITE_DENIED")
             }
+            if (!canWriteTrace(access, record.classification, record.id.value)) {
+                return@withContext MemoryWriteResult.Rejected("POLICY_TRACE_DENIED")
+            }
 
             val payload = encryptPayload(record)
             val db = database.writableDatabase
@@ -68,7 +71,8 @@ class GlafiraSqliteMemoryRepository(
                 traceService.recordInTransaction(
                     db,
                     memoryEvent(record, access, if (record.status == MemoryStatus.CONFIRMED)
-                        CoreTraceEventType.MEMORY_CONFIRMED else CoreTraceEventType.MEMORY_PROPOSED)
+                        CoreTraceEventType.MEMORY_CONFIRMED else CoreTraceEventType.MEMORY_PROPOSED),
+                    CoreActor(access.actorId, access.actorType)
                 )
                 db.setTransactionSuccessful()
                 MemoryWriteResult.Stored(record.id)
@@ -173,6 +177,9 @@ class GlafiraSqliteMemoryRepository(
         if (!decision.allowed || decision.requiresOwnerApproval) {
             return@withContext MemoryWriteResult.Rejected("POLICY_WRITE_DENIED")
         }
+        if (!canWriteTrace(access, updatedClassification, id.value)) {
+            return@withContext MemoryWriteResult.Rejected("POLICY_TRACE_DENIED")
+        }
         val updated = current.copy(
             content = change.content ?: current.content,
             classification = updatedClassification,
@@ -207,7 +214,8 @@ class GlafiraSqliteMemoryRepository(
                         MemoryStatus.DISPUTED -> CoreTraceEventType.MEMORY_DISPUTED
                         else -> CoreTraceEventType.MEMORY_UPDATED
                     }
-                )
+                ),
+                CoreActor(access.actorId, access.actorType)
             )
             db.setTransactionSuccessful()
             MemoryWriteResult.Stored(id)
@@ -227,6 +235,9 @@ class GlafiraSqliteMemoryRepository(
             if (!decision.allowed || decision.requiresOwnerApproval) {
                 return@withContext MemoryDeleteResult.Rejected("POLICY_DELETE_DENIED")
             }
+            if (!canWriteTrace(access, current.classification, id.value)) {
+                return@withContext MemoryDeleteResult.Rejected("POLICY_TRACE_DENIED")
+            }
             val db = database.writableDatabase
             db.beginTransaction()
             try {
@@ -243,7 +254,8 @@ class GlafiraSqliteMemoryRepository(
                 if (changed != 1) return@withContext MemoryDeleteResult.Rejected("MEMORY_CONCURRENT_MODIFICATION")
                 traceService.recordInTransaction(
                     db,
-                    memoryEvent(current, access, CoreTraceEventType.MEMORY_DELETED)
+                    memoryEvent(current, access, CoreTraceEventType.MEMORY_DELETED),
+                    CoreActor(access.actorId, access.actorType)
                 )
                 db.setTransactionSuccessful()
                 MemoryDeleteResult.Deleted
@@ -256,6 +268,17 @@ class GlafiraSqliteMemoryRepository(
 
     override suspend fun export(query: MemoryQuery, access: MemoryAccessContext): MemoryExport =
         MemoryExport(schemaVersion = 1, records = search(query, access))
+
+    private suspend fun canWriteTrace(
+        access: MemoryAccessContext,
+        classification: CoreDataClassification,
+        resourceId: String
+    ): Boolean {
+        val decision = policyEngine.evaluate(
+            policyRequest(access, CoreAction.WRITE_TRACE, classification, resourceId)
+        )
+        return decision.allowed && !decision.requiresOwnerApproval
+    }
 
     private fun canAccessScope(scope: MemoryScopeType, scopeId: String, access: MemoryAccessContext): Boolean {
         if (scope !in access.allowedScopes) return false
