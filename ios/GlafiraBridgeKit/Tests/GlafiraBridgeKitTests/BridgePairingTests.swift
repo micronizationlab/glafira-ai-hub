@@ -3,6 +3,45 @@ import XCTest
 @testable import GlafiraBridgeKit
 
 final class BridgePairingTests: XCTestCase {
+    func testParsesExactAndroidInvitationBundle() throws {
+        let json = try JSONSerialization.data(withJSONObject: [
+            "format": "GLAFIRA_BRIDGE_INVITATION_V1",
+            "origin": "https://192.168.1.20:47321",
+            "ticketId": "0123456789abcdef",
+            "pairingCapability": Data(repeating: 0x2A, count: 32).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: ""),
+            "serverCertificateSha256": String(repeating: "a", count: 64),
+            "expiresAtEpochMs": 2_000_000
+        ])
+        let invitation = try BridgePairingInvitation.parseAndroidBundle(json, nowEpochMs: 1_950_000)
+        XCTAssertEqual(invitation.origin, "https://192.168.1.20:47321")
+        XCTAssertEqual(invitation.ticketId, "0123456789abcdef")
+        XCTAssertEqual(invitation.expiresAtEpochMs, 2_000_000)
+    }
+
+    func testInvitationParserRejectsUnknownFieldsAndExpiredTickets() throws {
+        let base: [String: Any] = [
+            "format": "GLAFIRA_BRIDGE_INVITATION_V1",
+            "origin": "https://192.168.1.20:47321",
+            "ticketId": "0123456789abcdef",
+            "pairingCapability": Data(repeating: 0x2A, count: 32).base64EncodedString(),
+            "serverCertificateSha256": String(repeating: "a", count: 64),
+            "expiresAtEpochMs": 2_000_000
+        ]
+        var extra = base
+        extra["untrusted"] = true
+        XCTAssertThrowsError(try BridgePairingInvitation.parseAndroidBundle(
+            JSONSerialization.data(withJSONObject: extra), nowEpochMs: 1_950_000
+        ))
+        var expired = base
+        expired["expiresAtEpochMs"] = 1_949_999
+        XCTAssertThrowsError(try BridgePairingInvitation.parseAndroidBundle(
+            JSONSerialization.data(withJSONObject: expired), nowEpochMs: 1_950_000
+        ))
+    }
+
     func testPairingProofUsesAndroidCompatibleHmacConstruction() throws {
         let capability = Data(repeating: 0x2A, count: 32)
         let invitation = BridgePairingInvitation(
