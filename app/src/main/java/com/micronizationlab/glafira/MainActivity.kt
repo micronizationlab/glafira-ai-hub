@@ -165,7 +165,7 @@ fun App() {
                 }
                 val pendingHistory = history + Msg(pm.text, true, pm.time, today)
                 val reply = if (pm.agentName == "ГЛАФИРА") {
-                    GlafiraCoordinator.respond(context, provider, pendingHistory, agentPrompt)
+                    GlafiraCoordinator.respond(context, provider, pendingHistory, agentPrompt, pm.projectId)
                 } else {
                     callAiProvider(context, provider, pendingHistory, agentPrompt)
                 }
@@ -607,7 +607,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
             val reply = if (agent.n == "ГЛАФИРА") {
-                GlafiraCoordinator.respond(context, loadGlafiraPrimaryProvider(context), updatedMessages, fullPrompt)
+                GlafiraCoordinator.respond(context, loadGlafiraPrimaryProvider(context), updatedMessages, fullPrompt, project.id)
             } else {
                 callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
             }
