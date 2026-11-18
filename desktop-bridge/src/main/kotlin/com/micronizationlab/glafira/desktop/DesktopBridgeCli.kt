@@ -78,7 +78,7 @@ private fun pairAndImport(
     val invitation = readHiddenText(console, "Paste Android one-time invitation JSON (input hidden): ")
     val scopes = console.readLine(
         "Requested scopes, comma-separated (e.g. project.read,conversation.read): "
-    ).split(',').map(String::trim).filter(String::isNotEmpty).toSet()
+    ).split(',').map { it.trim() }.filter(String::isNotEmpty).toSet()
     require(scopes.isNotEmpty() && scopes.all(DesktopBridgeScopePolicy::isValidScope))
 
     val result = flow.submitInvitation(
