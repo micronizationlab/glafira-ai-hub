@@ -193,7 +193,7 @@ class GlafiraSqliteMemoryRepository(
                 "id = ? AND status != ? AND updated_at = ?",
                 arrayOf(id.value, MemoryStatus.DELETED.name, current.updatedAt.toString())
             )
-            if (changed != 1) return@withContext MemoryWriteResult.Rejected("MEMORY_NOT_FOUND")
+            if (changed != 1) return@withContext MemoryWriteResult.Rejected("MEMORY_CONCURRENT_MODIFICATION")
             traceService.recordInTransaction(
                 db,
                 memoryEvent(updated, access, if (updated.status == MemoryStatus.CONFIRMED)
