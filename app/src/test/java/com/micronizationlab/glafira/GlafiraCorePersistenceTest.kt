@@ -47,13 +47,13 @@ class GlafiraCorePersistenceTest {
         val factory = CoreAccessContextFactory(
             identityProvider = object : CoreIdentityProvider {
                 override suspend fun currentActor() = CoreActor("agent-1", CoreActorType.AGENT)
+                override suspend fun currentAgentRoleId() = AgentRoleIdentifier("researcher")
             },
             policyEngine = allowPolicy()
         )
 
         val access = factory.forMemory(
             projectId = ProjectIdentifier("project-1"),
-            agentRoleId = AgentRoleIdentifier("researcher"),
             requestedScopes = setOf(MemoryScopeType.OWNER, MemoryScopeType.PROJECT, MemoryScopeType.AGENT),
             maximumClassification = CoreDataClassification.INTERNAL
         )
