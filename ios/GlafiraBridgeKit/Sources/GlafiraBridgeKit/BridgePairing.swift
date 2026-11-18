@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Security
 
 public enum BridgeClientPlatform: String, Codable, Sendable {
     case ios = "IOS"
