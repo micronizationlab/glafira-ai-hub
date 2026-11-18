@@ -308,6 +308,10 @@ class GlafiraTaskStore(context: Context) :
 
         val source = appContext.getDatabasePath(DATABASE_NAME)
         check(source.isFile) { "Core task database does not exist." }
+        val walFile = File(source.path + "-wal")
+        check(!walFile.exists() || walFile.length() == 0L) {
+            "SQLite WAL still contains data after closing the queue; Core snapshot aborted."
+        }
         destination.parentFile?.mkdirs()
         source.copyTo(destination, overwrite = true)
         validateDatabaseSnapshot(destination)
