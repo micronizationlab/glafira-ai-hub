@@ -127,21 +127,25 @@ object DesktopBridgeCredentialVault {
                 "grantedScopes", "serverCertificateSha256"
             )
         )
-        require(json.getString("format") == "GLAFIRA_BRIDGE_CREDENTIAL_V1")
-        val scopesJson = json.getJSONArray("grantedScopes")
+        require(DesktopBridgeJson.stringField(json, "format") == "GLAFIRA_BRIDGE_CREDENTIAL_V1")
+        val scopesValue = json.get("grantedScopes")
+        require(scopesValue is org.json.JSONArray)
+        val scopesJson = scopesValue
         require(scopesJson.length() in 1..32)
         val scopes = buildSet {
             for (index in 0 until scopesJson.length()) {
-                require(add(scopesJson.getString(index)))
+                val scope = scopesJson.get(index)
+                require(scope is String)
+                require(add(scope))
             }
         }
         import(
             path = path,
-            origin = json.getString("origin"),
-            deviceId = json.getString("deviceId"),
-            hmacSecretBase64Url = json.getString("hmacSecretBase64Url"),
+            origin = DesktopBridgeJson.stringField(json, "origin"),
+            deviceId = DesktopBridgeJson.stringField(json, "deviceId"),
+            hmacSecretBase64Url = DesktopBridgeJson.stringField(json, "hmacSecretBase64Url"),
             grantedScopes = scopes,
-            serverCertificateSha256 = json.getString("serverCertificateSha256"),
+            serverCertificateSha256 = DesktopBridgeJson.stringField(json, "serverCertificateSha256"),
             passphrase = passphrase
         )
     }
