@@ -37,6 +37,8 @@ class GlafiraBridgeHostService : Service() {
             return START_NOT_STICKY
         }
 
+        getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(HOST_RUNNING_KEY, false).putInt(HOST_PID_KEY, 0).commit()
         val address = intent.getStringExtra(EXTRA_IPV4_ADDRESS)
         val port = intent.getIntExtra(EXTRA_PORT, GlafiraBridgeTlsHttpServer.DEFAULT_PORT)
         startAsForeground()
@@ -70,7 +72,10 @@ class GlafiraBridgeHostService : Service() {
                 addressRateLimiter = limiter,
                 deviceRateLimiter = deviceLimiter
             ).also { it.start(bindAddress, port) }
-            getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE).edit().putBoolean(HOST_RUNNING_KEY, true).commit()
+            getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean(HOST_RUNNING_KEY, true)
+                .putInt(HOST_PID_KEY, android.os.Process.myPid())
+                .commit()
             updateNotification("Защищённый локальный канал активен: $address:$port")
             START_NOT_STICKY
         } catch (_: Exception) {
@@ -148,7 +153,10 @@ class GlafiraBridgeHostService : Service() {
     }
 
     private fun stopHost() {
-        getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE).edit().putBoolean(HOST_RUNNING_KEY, false).commit()
+        getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(HOST_RUNNING_KEY, false)
+            .putInt(HOST_PID_KEY, 0)
+            .commit()
         runCatching { host?.close() }
         host = null
         runCatching { pairingTicketStore?.close() }
@@ -170,6 +178,7 @@ class GlafiraBridgeHostService : Service() {
         private const val NOTIFICATION_CHANNEL_ID = "glafira_bridge_host"
         const val HOST_STATE_PREFS = "glafira_bridge_host_state"
         const val HOST_RUNNING_KEY = "running"
+        const val HOST_PID_KEY = "process_id"
 
         /** Call only from an explicit owner action after selecting the device's LAN IPv4. */
         fun startFromOwnerAction(context: Context, ipv4Address: String, port: Int = GlafiraBridgeTlsHttpServer.DEFAULT_PORT) {
