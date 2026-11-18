@@ -36,6 +36,9 @@ object GlafiraBridgeIngressPolicy {
         return null
     }
 
+    fun validateHostHeader(hostHeader: String?, expectedHost: String): Boolean =
+        !hostHeader.isNullOrBlank() && hostHeader.equals(expectedHost, ignoreCase = true)
+
     fun validateContentType(contentType: String?): Boolean {
         if (contentType == null) return false
         val parts = contentType.split(';').map(String::trim)
