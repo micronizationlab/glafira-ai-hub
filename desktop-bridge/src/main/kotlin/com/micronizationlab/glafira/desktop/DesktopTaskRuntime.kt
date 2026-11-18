@@ -105,6 +105,6 @@ internal class DesktopTaskRuntime(
     companion object {
         const val DEFAULT_PARALLELISM = 2
         const val MAX_PARALLELISM = 8
-        private const val MAX_RESULT_CHARS = 24_000
+        private const val MAX_RESULT_CHARS = 12_000
     }
 }
