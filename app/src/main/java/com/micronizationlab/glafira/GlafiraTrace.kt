@@ -67,7 +67,7 @@ internal object GlafiraTraceSanitizer {
             approvalRef = safe(event.approvalRef),
             evidenceRefs = evidence,
             safeAttributes = attributes,
-            redactionApplied = true
+            redactionApplied = redacted
         )
     }
 }
@@ -88,7 +88,7 @@ class GlafiraSqliteTraceRepository(
     }
 
     internal fun appendInTransaction(db: SQLiteDatabase, event: CoreTraceEvent) {
-        db.insertOrThrow(TABLE, null, event.toValues())
+        db.insertOrThrow(TABLE, null, GlafiraTraceSanitizer.sanitize(event).toValues())
     }
 
     override suspend fun query(query: TraceQuery, access: TraceAccessContext): TracePage =
@@ -205,13 +205,13 @@ class GlafiraTraceService(
     private val repository: GlafiraSqliteTraceRepository
 ) : TraceService {
     override suspend fun record(event: CoreTraceEvent) {
-        repository.append(GlafiraTraceSanitizer.sanitize(event))
+        repository.append(event)
     }
 
     override suspend fun query(query: TraceQuery, access: TraceAccessContext): TracePage =
         repository.query(query, access)
 
     internal fun recordInTransaction(db: SQLiteDatabase, event: CoreTraceEvent) {
-        repository.appendInTransaction(db, GlafiraTraceSanitizer.sanitize(event))
+        repository.appendInTransaction(db, event)
     }
 }
