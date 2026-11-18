@@ -253,7 +253,11 @@ class GlafiraBridgeOwnerApprovalService(
             value.length in min..max && value.all { it.isLetterOrDigit() || it in "-_" }
         private fun isValidScope(value: String) =
             value.length in 1..96 && value.all { it.isLetterOrDigit() || it in "._-" }
-        private fun isValidScopes(scopes: Set<String>) =
-            scopes.isNotEmpty() && scopes.size <= MAX_REQUESTED_SCOPES && scopes.all(::isValidScope)
+        private fun isValidScopes(scopes: Set<String>): Boolean {
+            val knownScopes = GlafiraToolRegistry.all().flatMap { it.requiredScopes }.toSet()
+            return scopes.isNotEmpty() &&
+                scopes.size <= MAX_REQUESTED_SCOPES &&
+                scopes.all { isValidScope(it) && it in knownScopes }
+        }
     }
 }
