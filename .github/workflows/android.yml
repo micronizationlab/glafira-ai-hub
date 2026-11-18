@@ -62,5 +62,6 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: gradle connectedDebugAndroidTest
 
+# Emulator tests cover SQLite persistence, idempotency, retry metadata and Core backup restore.
 # APK assembly is intentionally disabled until the owner-approved Bridge
 # implementation has passed its end-to-end security and pairing acceptance checks.
