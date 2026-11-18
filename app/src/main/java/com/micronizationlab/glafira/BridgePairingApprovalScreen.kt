@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.view.WindowManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -62,7 +63,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("←", color = androidx.compose.ui.graphics.Color.White, fontSize = 22.sp,
-                modifier = Modifier.padding(end = 14.dp).then(Modifier).also { })
+                modifier = Modifier.clickable { onBack() }.padding(end = 14.dp))
             Text("СОПРЯЖЕНИЕ УСТРОЙСТВ", color = androidx.compose.ui.graphics.Color.White,
                 fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
@@ -142,7 +143,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                     OutlinedButton(
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            if (clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() == deliveryText) {
+                            if (clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString() == deliveryText) {
                                 clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
                             }
                             if (service.acknowledgeCredentialDelivery(
