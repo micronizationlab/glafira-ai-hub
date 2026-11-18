@@ -49,7 +49,9 @@ internal object GlafiraTaskPolicy {
         require(task.idempotencyKey.isNotBlank()) { "Idempotency key is required." }
         require(task.payload.length <= 512 * 1024) { "Task payload exceeds the 512 KiB limit." }
         require(task.priority in -1000..1000) { "Task priority is outside the supported range." }
-        require(task.attemptCount >= 0) { "Attempt count cannot be negative." }
+        require(task.state == GlafiraTaskState.QUEUED) { "New tasks must enter the queue in the queued state." }
+        require(task.attemptCount == 0) { "New tasks must start with zero attempts." }
+        require(task.retryAtMillis == null) { "New tasks cannot have a retry timestamp." }
         require(task.createdAtMillis > 0L) { "Creation timestamp is required." }
         require(task.updatedAtMillis >= task.createdAtMillis) { "Update timestamp cannot precede creation." }
         require(task.deadlineAtMillis == null || task.deadlineAtMillis >= task.createdAtMillis) {
