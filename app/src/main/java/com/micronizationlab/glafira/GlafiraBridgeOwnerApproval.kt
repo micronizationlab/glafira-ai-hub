@@ -101,7 +101,9 @@ interface GlafiraBridgePairingApprovalStore {
     /** Repeated reads are allowed only for the same ownerSessionId until acknowledged. */
     fun claimDelivery(
         approvalId: String,
-        ownerSessionId: String
+        ownerSessionId: String,
+        ownerSessionExpiresAtEpochMs: Long,
+        nowEpochMs: Long
     ): GlafiraBridgeDeliveryResult
 
     /** Called only after the owner UI confirms that the secret was safely received. */
@@ -184,7 +186,14 @@ class GlafiraBridgeOwnerApprovalService(
         if (!ownerSession.isValid(nowEpochMs) || !isValidApprovalId(approvalId)) {
             return GlafiraBridgeDeliveryResult.NotApproved
         }
-        return runCatching { store.claimDelivery(approvalId, ownerSession.sessionId) }
+        return runCatching {
+            store.claimDelivery(
+                approvalId,
+                ownerSession.sessionId,
+                ownerSession.expiresAtEpochMs,
+                nowEpochMs
+            )
+        }
             .getOrDefault(GlafiraBridgeDeliveryResult.StorageError)
     }
 
