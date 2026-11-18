@@ -76,7 +76,7 @@ class GooglePasswordCsvImporterTest {
             repeat(10_001) { append("Example,https://example.com,user,secret,\n") }
         }
         val error = runCatching { GooglePasswordCsvImporter.parse(csv.byteInputStream()) }.exceptionOrNull()
-        assertTrue(error?.message?.contains("10 000") == true)
+        assertTrue(error?.message?.contains("10000") == true)
     }
 
 }
