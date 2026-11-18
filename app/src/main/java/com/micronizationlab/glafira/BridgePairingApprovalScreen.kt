@@ -30,7 +30,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     val store = remember(context) { AndroidKeystoreBridgePairingApprovalStore(context) }
-    val service = remember(store) { GlafiraBridgeOwnerApprovalService(store) }
+    val service = remember(store) { GlafiraBridgeOwnerApprovalService(store) }\n    val ticketStore = remember(context) { AndroidKeystoreBridgePairingTicketStore(context) }\n    val pairingProtocol = remember(ticketStore) { GlafiraBridgePairingProtocol(ticketStore) }
     var ownerSession by remember { mutableStateOf<GlafiraBridgeOwnerSession?>(null) }
     var pending by remember { mutableStateOf(emptyList<GlafiraBridgePendingApproval>()) }
     var selectedScopes by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
@@ -38,7 +38,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var deliveryText by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("Для просмотра и подтверждения устройств подтвердите личность владельца.") }
     var isBusy by remember { mutableStateOf(false) }
-    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }
+    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }\n    var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
 
     val availableScopes = remember {
         GlafiraToolRegistry.all().flatMap { it.requiredScopes }.toSortedSet()
@@ -50,7 +50,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
         window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose {
             if (previousSecure == false) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            store.close()
+            store.close()\n            ticketStore.close()
         }
     }
 
@@ -165,6 +165,55 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                     }) { Text("ОСТАНОВИТЬ") }
                 }
                 Text("Порт: ${GlafiraBridgeTlsHttpServer.DEFAULT_PORT}. Для Desktop используй IP и fingerprint сертификата из пакета сопряжения.", color = Tx, fontSize = 10.sp)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = GrD)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("ОДНОРАЗОВОЕ ПРИГЛАШЕНИЕ ДЛЯ DESKTOP", color = Gr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("Создавайте приглашение после запуска локального сервера. Код действует не более 120 секунд и сам по себе не выдаёт прав.", color = Tx, fontSize = 10.sp)
+                Button(
+                    enabled = ownerSession?.isValid(System.currentTimeMillis()) == true,
+                    onClick = {
+                        val connection = AndroidKeystoreBridgeServerIdentityStore(context).currentConnectionDetails()
+                        if (connection == null) {
+                            status = "Сначала запустите сервер, чтобы создать TLS fingerprint и адрес."
+                        } else {
+                            invitation = runCatching { pairingProtocol.issueInvitation() }.getOrNull()
+                            status = if (invitation != null) "Одноразовое приглашение создано. Передайте его только своему Desktop." else "Не удалось создать приглашение."
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Gr)
+                ) { Text("СОЗДАТЬ ПРИГЛАШЕНИЕ") }
+                invitation?.let { issued ->
+                    Text("Ticket ID: ${issued.ticketId}", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Text("Одноразовый код: ${issued.pairingCapability}", color = Color(0xFF202020), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Text("Действует до: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(issued.expiresAtEpochMs))}", color = Tx, fontSize = 10.sp)
+                    OutlinedButton(onClick = {
+                        val connection = AndroidKeystoreBridgeServerIdentityStore(context).currentConnectionDetails()
+                        if (connection == null) {
+                            status = "Не удалось получить TLS fingerprint."
+                        } else {
+                            val bundle = org.json.JSONObject().apply {
+                                put("format", "GLAFIRA_BRIDGE_INVITATION_V1")
+                                put("origin", connection.origin)
+                                put("ticketId", issued.ticketId)
+                                put("pairingCapability", issued.pairingCapability)
+                                put("serverCertificateSha256", connection.certificateSha256)
+                                put("expiresAtEpochMs", issued.expiresAtEpochMs)
+                            }.toString()
+                            val clip = ClipData.newPlainText("GLAFIRA one-time invitation", bundle)
+                            if (Build.VERSION.SDK_INT >= 33) {
+                                clip.description.extras = android.os.PersistableBundle().apply {
+                                    putBoolean("android.content.extra.IS_SENSITIVE", true)
+                                }
+                            }
+                            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+                            status = "Одноразовое приглашение скопировано. Используйте его в Desktop до истечения срока."
+                        }
+                    }) { Text("СКОПИРОВАТЬ ПРИГЛАШЕНИЕ") }
+                }
             }
         }
 
