@@ -44,9 +44,7 @@ object DesktopBridgePairing {
     ): DesktopBridgeEnrollmentRequest {
         require(ticketId.length in 16..128 && ticketId.all { it.isLetterOrDigit() || it in "-_" })
         require(deviceLabel.trim().length in 1..MAX_LABEL_LENGTH && deviceLabel.none(Char::isISOControl))
-        require(requestedScopes.size <= 32 && requestedScopes.all { scope ->
-            scope.length in 1..96 && scope.all { it.isLetterOrDigit() || it in "._-" }
-        })
+        require(requestedScopes.size <= 32 && requestedScopes.all(DesktopBridgeScopePolicy::isValidScope))
         val capability = Base64.getUrlDecoder().decode(pairingCapability)
         require(capability.size == CAPABILITY_BYTES)
         val nonceBytes = ByteArray(NONCE_BYTES).also(random::nextBytes)
