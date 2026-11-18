@@ -29,3 +29,8 @@ The hybrid model, professional skill exchange, knowledge, evaluation and owner-a
 ## Backup and Recovery
 
 Mandatory encrypted backup, free cloud destinations and cross-device recovery are specified in [GLAFIRA_BACKUP_AND_RECOVERY.md](docs/GLAFIRA_BACKUP_AND_RECOVERY.md).
+
+
+## Engineering Roadmap
+
+Owner-prioritized delivery order, including Backup & Recovery, GLAFIRA Core, Voice Assistant and all specialist roles: [IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md).
