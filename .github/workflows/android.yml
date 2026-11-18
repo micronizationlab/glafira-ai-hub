@@ -2,8 +2,6 @@ name: GLAFIRA AI HUB Android Build
 
 on:
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
@@ -51,5 +49,44 @@ jobs:
         with:
           name: glafira-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Check for owner release signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.GLAFIRA_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.GLAFIRA_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.GLAFIRA_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.GLAFIRA_KEY_PASSWORD }}
+        run: |
+          if [[ -n "$KEYSTORE_BASE64" && -n "$STORE_PASSWORD" && -n "$KEY_ALIAS" && -n "$KEY_PASSWORD" ]]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/glafira-release.jks"
+            chmod 600 "$RUNNER_TEMP/glafira-release.jks"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Owner signing key is not configured; only a debug APK will be produced. This build cannot be updated in place."
+          fi
+
+      - name: Build stable-signed owner-test APK
+        if: steps.signing.outputs.available == 'true'
+        env:
+          GLAFIRA_KEYSTORE_PATH: ${{ runner.temp }}/glafira-release.jks
+          GLAFIRA_KEYSTORE_PASSWORD: ${{ secrets.GLAFIRA_KEYSTORE_PASSWORD }}
+          GLAFIRA_KEY_ALIAS: ${{ secrets.GLAFIRA_KEY_ALIAS }}
+          GLAFIRA_KEY_PASSWORD: ${{ secrets.GLAFIRA_KEY_PASSWORD }}
+        run: |
+          VERSION_CODE="$(git rev-list --count HEAD)"
+          gradle assembleRelease -PglafiraVersionCode="$VERSION_CODE" -PglafiraVersionName="test-$GITHUB_SHA"
+          mkdir -p app/build/outputs/apk/owner-test
+          cp app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/owner-test/glafira-$VERSION_CODE.apk"
+
+      - name: Upload stable-signed owner-test APK
+        if: steps.signing.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-owner-test-signed-apk
+          path: app/build/outputs/apk/owner-test/glafira-*.apk
           if-no-files-found: error
           retention-days: 14
