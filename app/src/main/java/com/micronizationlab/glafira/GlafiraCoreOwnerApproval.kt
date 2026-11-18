@@ -60,7 +60,7 @@ data class GlafiraPendingActionApproval(
                     val value = json.opt(key)?.toString().orEmpty().take(800)
                     "$key: ${GlafiraSecretRedactor.redact(value)}"
                 }
-            }.joinToString("\\n")
+            }.joinToString("\n")
         }.getOrDefault("")
 }
 
