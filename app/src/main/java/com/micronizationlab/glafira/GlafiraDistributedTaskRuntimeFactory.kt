@@ -16,7 +16,7 @@ internal object GlafiraDistributedTaskRuntimeFactory {
         return GlafiraDistributedTaskOrchestrator(
             desktop = GlafiraAndroidDesktopTaskPort(store),
             android = localTaskPort,
-            desktopCapabilities = desktopCapabilities,
+            desktopCapabilities = { desktopCapabilities() ?: store.nodeCapabilities() },
             safeAndroidCapabilities = safeAndroidCapabilities,
             onTaskResult = notifications::publish
         )
