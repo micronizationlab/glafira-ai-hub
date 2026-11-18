@@ -57,11 +57,15 @@ class RegistryBackedGlafiraTaskAuthorizer(
         return when (GlafiraToolRegistry.authorize(definition, task, actionSummary, grant, nowMillis)) {
             ToolAuthorizationDecision.ALLOWED ->
                 GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
-            ToolAuthorizationDecision.OWNER_APPROVAL_REQUIRED ->
+            ToolAuthorizationDecision.OWNER_APPROVAL_REQUIRED -> {
+                val queued = runCatching {
+                    grants.requestApproval(task, actionSummary, nowMillis)
+                }.getOrDefault(false)
                 GlafiraTaskAuthorizationResult(
                     GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
-                    "OWNER_APPROVAL_REQUIRED"
+                    if (queued) "OWNER_APPROVAL_REQUIRED" else "OWNER_APPROVAL_STORAGE_ERROR"
                 )
+            }
         }
     }
 }
