@@ -85,7 +85,6 @@ class GlafiraCoreOwnerApprovalStore(
             }
             if (existing != null) {
                 if (existing.first != hash || existing.second == REJECTED) return false
-                if (existing.second == APPROVED && existing.third > nowMillis) return false
             }
 
             val values = ContentValues().apply {
