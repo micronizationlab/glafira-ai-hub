@@ -57,7 +57,7 @@ class DesktopBridgeCredentialVaultTest {
             assertEquals(setOf("project.read", "conversation.read"), loaded.grantedScopes)
             assertArrayEquals(secret, loaded.hmacSecret)
         } finally {
-            password.fill('\\u0000')
+            password.fill('\u0000')
             Files.deleteIfExists(path)
             Files.deleteIfExists(directory)
         }
