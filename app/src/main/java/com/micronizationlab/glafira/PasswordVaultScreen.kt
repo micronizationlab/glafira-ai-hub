@@ -166,6 +166,7 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                 ) {
                     Column(Modifier.padding(12.dp)) {
+                        var passwordVisible by remember(entry.id) { mutableStateOf(false) }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(entry.title, color = Color(0xFF202020), fontSize = 15.sp, modifier = Modifier.weight(1f))
                             Text("УДАЛИТЬ", color = Red, fontSize = 10.sp, modifier = Modifier.clickable {
@@ -179,7 +180,10 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                             }.padding(4.dp))
                         }
                         if (entry.username.isNotBlank()) Text("Логин: ${entry.username}", color = Tx, fontSize = 12.sp)
-                        Text("Пароль: ••••••••", color = Tx, fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (passwordVisible) "Пароль: ${entry.password}" else "Пароль: ••••••••", color = Tx, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text(if (passwordVisible) "СКРЫТЬ" else "ПОКАЗАТЬ", color = Gr, fontSize = 9.sp, modifier = Modifier.clickable { passwordVisible = !passwordVisible }.padding(4.dp))
+                        }
                         if (entry.website.isNotBlank()) Text(entry.website, color = Gr, fontSize = 11.sp)
                         if (entry.notes.isNotBlank()) Text(entry.notes, color = Tx, fontSize = 11.sp)
                     }
