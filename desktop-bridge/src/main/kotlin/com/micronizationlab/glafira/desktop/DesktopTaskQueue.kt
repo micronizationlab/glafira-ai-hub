@@ -80,9 +80,10 @@ internal class DesktopTaskQueue(
         expireQueued(records, clock())
         val index = records.indices
             .filter { records[it].state == DesktopTaskState.QUEUED }
-            .maxWithOrNull(
-                compareBy<Int> { records[it].envelope.priority }
-                    .thenByDescending { -records[it].envelope.createdAt }
+            .minWithOrNull(
+                compareByDescending<Int> { records[it].envelope.priority }
+                    .thenBy { records[it].envelope.createdAt }
+                    .thenBy { it }
             )
         if (index == null) {
             writeAll(records)
