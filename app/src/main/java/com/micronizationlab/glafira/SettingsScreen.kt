@@ -89,7 +89,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Column(Modifier.weight(1f)) {
                 Text("Фоновый планировщик Core", color = Color(0xFF202020), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    if (coreRuntimeEnabled) "Планировщик включён. Выполнение остаётся закрытым до подключения постоянных разрешений и обработчиков."
+                    if (coreRuntimeEnabled) "Планировщик включён. Каждое задание проходит проверку и подтверждение владельца; производственные обработчики пока не зарегистрированы."
                     else "Выключен. Задачи не запускаются в фоне.",
                     color = Tx,
                     fontSize = 10.sp
@@ -106,7 +106,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             )
         }
         Text(
-            "Важно: это WorkManager для отложенного выполнения, а не гарантия непрерывной работы 24/7. Внешние действия не разрешаются.",
+            "Важно: WorkManager выполняет отложенные задания, но не гарантирует непрерывную работу 24/7. Внешние действия пока недоступны: проверенные обработчики ещё не подключены.",
             color = Tx,
             fontSize = 10.sp
         )
@@ -144,7 +144,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         }
                         Text("Проект: ${approval.task.projectId}", color = Tx, fontSize = 10.sp)
                         Text("Запрашиваемые полномочия: ${approval.requestedScopes.sorted().joinToString()}", color = Tx, fontSize = 10.sp)
-                        Text("Подтверждение разрешит эти области для проекта и источника; само действие получит одноразовый допуск на 10 минут.",
+                        Text("Подтверждение разрешит эти области только для этого задания; одноразовый допуск истечёт через 10 минут.",
                             color = Tx, fontSize = 10.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
