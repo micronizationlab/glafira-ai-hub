@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import XCTest
 @testable import GlafiraBridgeKit
@@ -23,7 +22,7 @@ final class BridgeProtocolTests: XCTestCase {
     }
 
     func testKotlinGoldenHMACVector() throws {
-        let secret = Data((0..<32).map(UInt8.init))
+        let secret = Data((0..<32).map { UInt8($0) })
         let signed = try BridgeProtocol.sign(request(), secret: secret)
         XCTAssertEqual(
             signed.signatureHex,
@@ -34,14 +33,14 @@ final class BridgeProtocolTests: XCTestCase {
 
     func testPayloadGoldenVectorUsesKotlinUTF16LengthsAndSortedKeys() throws {
         let secret = Data((0..<32).map { UInt8($0) })
-        let request = request(
+        let envelope = self.request(
             operation: .conversationAppend,
             payload: [
                 "messageText": "Проверь статус проекта",
                 "conversationId": "conversation-01"
             ]
         )
-        let signed = try BridgeProtocol.sign(request, secret: secret)
+        let signed = try BridgeProtocol.sign(envelope, secret: secret)
         XCTAssertEqual(
             signed.signatureHex,
             "6a8cc014b60899ab5b0855472c77d94f99e62da34971e3b9dcf4412ae1c6b614"
