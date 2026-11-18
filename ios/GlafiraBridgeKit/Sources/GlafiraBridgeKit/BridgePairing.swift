@@ -52,7 +52,7 @@ public extension BridgePairingInvitation {
         _ json: Data,
         nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
     ) throws -> BridgePairingInvitation {
-        guard json.count in 1...8_192,
+        guard (1...8_192).contains(json.count),
               let object = try JSONSerialization.jsonObject(with: json) as? [String: Any],
               Set(object.keys) == Set([
                 "format", "origin", "ticketId", "pairingCapability",
@@ -77,7 +77,7 @@ public extension BridgePairingInvitation {
               url.query == nil, url.fragment == nil,
               url.path.isEmpty || url.path == "/",
               pin.utf8.count == 64, pin.allSatisfy({ $0.isHexDigit }),
-              ticketId.utf8.count in 16...128,
+              (16...128).contains(ticketId.utf8.count),
               ticketId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
               let capabilityData = Data(base64URLEncoded: capability),
               capabilityData.count == 32 else {
@@ -100,7 +100,7 @@ public enum BridgePairing {
                                       deviceLabel: String,
                                       requestedScopes: [String],
                                       nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)) throws -> BridgePairingSubmission {
-        guard invitation.ticketId.utf8.count in 16...128,
+        guard (16...128).contains(invitation.ticketId.utf8.count),
               invitation.ticketId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
               invitation.expiresAtEpochMs > nowEpochMs,
               invitation.expiresAtEpochMs - nowEpochMs <= 120_000,
