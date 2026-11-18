@@ -5,7 +5,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /** Typed Bridge envelope. It is not a network listener or a device-pairing implementation. */
-enum class GlafiraBridgeOperation { PROJECT_READ, CONVERSATION_READ, CONVERSATION_APPEND, APPROVAL_REQUEST }
+enum class GlafiraBridgeOperation { PROJECT_READ, CONVERSATION_READ, CONVERSATION_APPEND, APPROVAL_REQUEST, DESKTOP_TASK_CLAIM, DESKTOP_TASK_RESULT }
 enum class GlafiraBridgeStatus { ACCEPTED, PENDING_APPROVAL, SUCCEEDED, FAILED, CANCELLED }
 
 data class GlafiraBridgeRequest(
@@ -45,7 +45,9 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.PROJECT_READ to emptySet(),
         GlafiraBridgeOperation.CONVERSATION_READ to setOf("conversationId"),
         GlafiraBridgeOperation.CONVERSATION_APPEND to setOf("conversationId", "messageText"),
-        GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary")
+        GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary"),
+        GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to emptySet(),
+        GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "state", "progressPercent", "progressMessage", "result", "errorCode")
     )
     private val allowedFields = requiredFields
 
