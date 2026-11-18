@@ -105,6 +105,7 @@ fun App() {
                 } else {
                     val updated = history + Msg(pm.text, true, pm.time) + Msg(reply, false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()))
                     saveHistory(context, key, updated)
+                    SoundHelper.playIncoming()
                 }
             }
             savePendingQueue(context, remaining)
@@ -404,6 +405,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var showProfile by remember { mutableStateOf(false) }
     var isSearching by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var showTransferDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -441,8 +443,9 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                             )
                         }
                     }
-                    Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 10.dp))
-                    Text("📤", fontSize = 14.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 10.dp))
+                    Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 8.dp))
+                    Text("↗", fontSize = 16.sp, color = Gr, modifier = Modifier.clickable { showTransferDialog = true }.padding(end = 8.dp))
+                    Text("📤", fontSize = 14.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 8.dp))
                     Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
                         messages = emptyList(); saveHistory(context, historyKey, emptyList())
                     })
@@ -504,10 +507,12 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                         val finalMessages = updatedMessages + queuedMsg
                                         messages = finalMessages
                                         saveHistory(context, historyKey, finalMessages)
+                                        SoundHelper.playIncoming()
                                     } else {
                                         val finalMessages = updatedMessages + Msg(reply, false, replyTime)
                                         messages = finalMessages
                                         saveHistory(context, historyKey, finalMessages)
+                                        SoundHelper.playIncoming()
                                     }
                                     isLoading = false
                                 }
@@ -517,6 +522,52 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     ) { Text("➤", color = Gr, fontSize = 16.sp) }
                 }
             }
+        }
+
+        if (showTransferDialog) {
+            val allAgents = listOf(
+                "ГЛАФИРА" to "Ты — Глафира, главный координатор проектов.",
+                "АНАЛИТИК" to "Ты — Аналитик.",
+                "ПРОГРАММИСТ" to "Ты — Программист.",
+                "GigaChat" to "Ты — GigaChat."
+            ).filter { it.first != agent.n }
+            AlertDialog(
+                onDismissRequest = { showTransferDialog = false },
+                title = { Text("Передать агенту", color = Bg) },
+                text = {
+                    Column {
+                        Text("Последние 5 сообщений будут переданы выбранному агенту в этот же проект.", color = Tx, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        allAgents.forEach { (name, _) ->
+                            Text(
+                                "→ $name",
+                                color = Gr,
+                                fontSize = 14.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    val tail = messages.takeLast(5)
+                                    val transferText = tail.joinToString("\n") { m ->
+                                        val who = if (m.isUser) "Пользователь" else agent.n
+                                        "$who: ${m.text}"
+                                    }
+                                    val targetKey = "${project.id}_$name"
+                                    val targetHistory = loadHistory(context, targetKey).toMutableList()
+                                    val sysMsg = Msg("[Передано от ${agent.n}]:\n$transferText", false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()))
+                                    targetHistory.add(sysMsg)
+                                    saveHistory(context, targetKey, targetHistory)
+                                    showTransferDialog = false
+                                    copyToClipboard(context, "Передано агенту $name")
+                                }.padding(vertical = 8.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showTransferDialog = false }) {
+                        Text("ОТМЕНА", color = Tx)
+                    }
+                }
+            )
         }
     }
 }
