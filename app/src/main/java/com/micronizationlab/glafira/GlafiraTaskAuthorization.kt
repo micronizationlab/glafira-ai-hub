@@ -9,10 +9,11 @@ data class GlafiraTaskAuthorizationResult(
     val reason: String? = null
 )
 
-/** Trusted owner-controlled grant lookup. Never source scopes or grants from model output. */
+/** Trusted owner-controlled grants and durable approval requests. Never source grants from model output. */
 interface GlafiraTaskGrantSource {
     fun grantedScopes(projectId: String, origin: String): Set<String>
-    fun approvalGrant(task: GlafiraTask, actionSummary: String): ToolApprovalGrant?
+    fun approvalGrant(task: GlafiraTask, actionSummary: String, nowMillis: Long): ToolApprovalGrant?
+    fun requestApproval(task: GlafiraTask, actionSummary: String, nowMillis: Long): Boolean
 }
 
 fun interface GlafiraTaskAuthorizer {
@@ -27,23 +28,33 @@ class RegistryBackedGlafiraTaskAuthorizer(
         val definition = GlafiraToolRegistry.find(task.taskType)
             ?: return GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.DENIED, "UNKNOWN_TOOL")
 
-        val ownerScopes = grants.grantedScopes(task.projectId, task.origin)
-        if (!ownerScopes.containsAll(definition.requiredScopes + task.requiredScopes)) {
-            return GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.DENIED, "SCOPE_DENIED")
-        }
-
         val actionSummary = runCatching {
             JSONObject(task.payload).optString("actionSummary").trim()
         }.getOrDefault("")
-        if (GlafiraToolRegistry.requiresOwnerApproval(definition.risk) && actionSummary.isBlank()) {
+        val requiredScopes = definition.requiredScopes + task.requiredScopes
+        val ownerScopes = grants.grantedScopes(task.projectId, task.origin)
+        val missingScopes = !ownerScopes.containsAll(requiredScopes)
+        val requiresApproval = GlafiraToolRegistry.requiresOwnerApproval(definition.risk)
+
+        if ((missingScopes || requiresApproval) && actionSummary.isBlank()) {
             return GlafiraTaskAuthorizationResult(
-                GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
+                GlafiraTaskAuthorizationStatus.DENIED,
                 "EXACT_ACTION_SUMMARY_REQUIRED"
             )
         }
 
-        val grant = if (actionSummary.isBlank()) null else grants.approvalGrant(task, actionSummary)
-        return when (GlafiraToolRegistry.authorize(definition, task.projectId, actionSummary, grant, nowMillis)) {
+        val grant = if (requiresApproval) grants.approvalGrant(task, actionSummary, nowMillis) else null
+        if (missingScopes || (requiresApproval && grant == null)) {
+            val queued = runCatching {
+                grants.requestApproval(task, actionSummary, nowMillis)
+            }.getOrDefault(false)
+            return GlafiraTaskAuthorizationResult(
+                GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
+                if (queued) "OWNER_APPROVAL_REQUIRED" else "OWNER_APPROVAL_STORAGE_ERROR"
+            )
+        }
+
+        return when (GlafiraToolRegistry.authorize(definition, task, actionSummary, grant, nowMillis)) {
             ToolAuthorizationDecision.ALLOWED ->
                 GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
             ToolAuthorizationDecision.OWNER_APPROVAL_REQUIRED ->
