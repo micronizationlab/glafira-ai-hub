@@ -10,7 +10,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: anthropic claude-review-${{ github.event.pull_request.number }}
+  group: anthropic-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -122,7 +122,7 @@ jobs:
           review = "\\n".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
           if not review:
               raise SystemExit("Anthropic returned an empty review: " + json.dumps(data)[:1500])
-          Path("review.md").write_text("## Anthropic Claude automated review\\n\\n" + review)
+          Path("review.md").write_text("## Anthropic Claude automated review\n\n" + review)
           print(f"Review generated: {len(review)} characters")
           PY
 
