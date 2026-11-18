@@ -55,7 +55,7 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
     }
 
     public func submitPairing(_ submission: BridgePairingSubmission) async throws -> BridgePairingPendingResponse {
-        var request = URLRequest(url: origin.appendingPathComponent("bridge/v1/pairing"))
+        var request = URLRequest(url: origin.appendingPathComponent("bridge").appendingPathComponent("v1").appendingPathComponent("pairing"))
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -83,7 +83,7 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
             reason: "Подтвердите использование ключа GLAFIRA Bridge"
         )
         let signed = try BridgeProtocol.sign(unsignedRequest, secret: credential.hmacSecret)
-        var request = URLRequest(url: origin.appendingPathComponent("bridge/v1/requests"))
+        var request = URLRequest(url: origin.appendingPathComponent("bridge").appendingPathComponent("v1").appendingPathComponent("requests"))
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -153,9 +153,7 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
 private extension JSONEncoder {
     static var bridgeEncoder: JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        // Android's JSON contract uses lower camelCase, not snake_case.
-        encoder.keyEncodingStrategy = .useDefaultKeys
+        // Android's JSON contract uses lower camelCase.
         return encoder
     }
 }
