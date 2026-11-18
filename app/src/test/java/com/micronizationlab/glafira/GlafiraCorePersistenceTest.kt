@@ -83,6 +83,24 @@ class GlafiraCorePersistenceTest {
 
 
     @Test
+    fun unsafeProjectIdentifierCannotObtainMemoryContext() = runBlocking {
+        val factory = CoreAccessContextFactory(
+            identityProvider = object : CoreIdentityProvider {
+                override suspend fun currentActor() = CoreActor("owner-1", CoreActorType.OWNER)
+            },
+            policyEngine = allowPolicy()
+        )
+
+        val access = factory.forMemory(
+            projectId = ProjectIdentifier("owner@example.com"),
+            requestedScopes = setOf(MemoryScopeType.PROJECT),
+            maximumClassification = CoreDataClassification.INTERNAL
+        )
+
+        assertNull(access)
+    }
+
+    @Test
     fun agentWithoutTrustedRoleCannotRequestAgentMemory() = runBlocking {
         val factory = CoreAccessContextFactory(
             identityProvider = object : CoreIdentityProvider {
