@@ -50,10 +50,14 @@ public enum BridgePairing {
               invitation.expiresAtEpochMs > nowEpochMs,
               invitation.expiresAtEpochMs - nowEpochMs <= 120_000,
               !deviceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              deviceLabel.utf8.count <= 128,
+              deviceLabel.count <= 64,
+              !deviceLabel.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
               requestedScopes.count <= 64,
               Set(requestedScopes).count == requestedScopes.count,
-              requestedScopes.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 128 }),
+              requestedScopes.allSatisfy({ scope in
+                  !scope.isEmpty && scope.count <= 96 &&
+                  scope.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "_" || $0 == "-" })
+              }),
               let capability = Data(base64URLEncoded: invitation.pairingCapability),
               capability.count == 32 else {
             throw BridgeTransportError.invalidHTTPResponse
