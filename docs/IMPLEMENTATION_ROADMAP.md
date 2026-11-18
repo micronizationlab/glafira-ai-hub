@@ -91,3 +91,5 @@ No external irreversible action (send, publish, purchase, delete, alter business
 - GLAFIRA Core hardening has started: cross-provider consultation is owner opt-in and disabled by default; common tokens/passwords/contact details are pattern-redacted; the primary model can return a direct answer from the planning call to avoid duplicate requests; Council synthesis now follows the configured primary model.
 - Still required for GLAFIRA Core: per-project/per-provider data-sharing scopes, coordinator tests, timeout/cancellation/fallback policy, context boundary tests, typed tool registry, approval engine and audit trail.
 - Voice runtime and SMM/social connectors remain specifications until implemented and tested.
+
+- Restore semantics hardened: selected backup now replaces the app-private file snapshot, including removing files created after that backup; safety snapshot rollback remains in place. Requires device acceptance tests.
