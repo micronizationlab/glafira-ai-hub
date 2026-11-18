@@ -72,8 +72,7 @@ class GlafiraBackupWorker(
                     if (!it.renameTo(previousName)) {
                         error("Облачное хранилище не поддерживает безопасную замену файла. Старая копия сохранена.")
                     }
-                    folder.findFile(previousName)
-                        ?: error("Не удалось найти предыдущую копию после переименования.")
+                    it
                 }
 
                 if (!temporaryRemote.renameTo(LATEST_BACKUP)) {
