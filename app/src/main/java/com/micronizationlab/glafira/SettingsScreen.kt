@@ -31,6 +31,8 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var deepseekKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.DEEPSEEK)) }
     var grokKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GROK)) }
     var yandexKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.YANDEX)) }
+    var geminiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GEMINI)) }
+    var openRouterKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENROUTER)) }
     var isSaved by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf(false) }
     var workingExpanded by remember { mutableStateOf(true) }
@@ -79,7 +81,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Spacer(Modifier.width(6.dp))
             Text("ТРЕБУЮТ КЛЮЧА", color = Tx, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.weight(1f))
-            Text("4", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Text("6", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         }
         if (pendingExpanded) {
             ProviderKeyField(
@@ -106,6 +108,18 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 onValueChange = { yandexKey = it; isSaved = false },
                 configured = yandexKey.isNotBlank()
             )
+            ProviderKeyField(
+                label = "Google Gemini API Key (есть бесплатный тариф)",
+                value = geminiKey,
+                onValueChange = { geminiKey = it; isSaved = false },
+                configured = geminiKey.isNotBlank()
+            )
+            ProviderKeyField(
+                label = "OpenRouter API Key (бесплатные модели)",
+                value = openRouterKey,
+                onValueChange = { openRouterKey = it; isSaved = false },
+                configured = openRouterKey.isNotBlank()
+            )
         }
 
         Spacer(Modifier.height(16.dp))
@@ -116,7 +130,9 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                     saveProviderKey(context, ProviderId.OPENAI, openaiKey) &&
                     saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey) &&
                     saveProviderKey(context, ProviderId.GROK, grokKey) &&
-                    saveProviderKey(context, ProviderId.YANDEX, yandexKey)
+                    saveProviderKey(context, ProviderId.YANDEX, yandexKey) &&
+                    saveProviderKey(context, ProviderId.GEMINI, geminiKey) &&
+                    saveProviderKey(context, ProviderId.OPENROUTER, openRouterKey)
                 isSaved = saved
                 saveError = !saved
             },
