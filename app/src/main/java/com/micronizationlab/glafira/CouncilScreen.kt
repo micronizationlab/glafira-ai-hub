@@ -44,7 +44,7 @@ fun CouncilScreen(onBack: () -> Unit) {
         CouncilAgent(
             "ГЛАФИРА", "🤖",
             "Ты — Глафира, главный координатор. Смотри на вопрос стратегически, выделяй главное, предлагай план действий. Отвечай чётко и по делу.",
-            ProviderId.GIGACHAT
+            loadGlafiraPrimaryProvider(context)
         ),
         CouncilAgent(
             "АНАЛИТИК", "📊",
@@ -116,11 +116,8 @@ fun CouncilScreen(onBack: () -> Unit) {
                             }
                             appendLine("Сформируй итоговое решение на основе мнений совета. Выдели главное, предложи конкретные шаги.")
                         }
-                        val synthesisProvider = listOf(
-                            ProviderId.GIGACHAT,
-                            ProviderId.OPENAI,
-                            ProviderId.DEEPSEEK
-                        ).firstOrNull { isProviderConfigured(context, it) }
+                        val synthesisProvider = loadGlafiraPrimaryProvider(context)
+                            .takeIf { isProviderConfigured(context, it) }
                         val finalAnswer = if (synthesisProvider == null) {
                             "Не подключена ни одна модель. Добавь API-ключ в Настройках."
                         } else {
