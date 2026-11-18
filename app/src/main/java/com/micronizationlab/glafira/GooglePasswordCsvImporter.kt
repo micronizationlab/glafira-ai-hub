@@ -134,9 +134,9 @@ object GooglePasswordCsvImporter {
             } else {
                 when {
                     afterClosingQuote && char == ',' -> finishField()
-                    afterClosingQuote && (char == '\\n' || char == '\\r') -> {
+                    afterClosingQuote && (char == '\n' || char == '\r') -> {
                         finishRow()
-                        if (char == '\\r' && index + 1 < source.length && source[index + 1] == '\\n') index++
+                        if (char == '\r' && index + 1 < source.length && source[index + 1] == '\n') index++
                     }
                     afterClosingQuote -> error("CSV содержит данные после закрывающей кавычки.")
                     char == '"' -> {
@@ -144,9 +144,9 @@ object GooglePasswordCsvImporter {
                         quoted = true
                     }
                     char == ',' -> finishField()
-                    char == '\\n' || char == '\\r' -> {
+                    char == '\n' || char == '\r' -> {
                         finishRow()
-                        if (char == '\\r' && index + 1 < source.length && source[index + 1] == '\\n') index++
+                        if (char == '\r' && index + 1 < source.length && source[index + 1] == '\n') index++
                     }
                     else -> field.append(char)
                 }
@@ -158,4 +158,5 @@ object GooglePasswordCsvImporter {
         row.add(field.toString())
         if (row.any { it.isNotEmpty() }) rows.add(row)
         return rows
-    }}
+    }
+}
