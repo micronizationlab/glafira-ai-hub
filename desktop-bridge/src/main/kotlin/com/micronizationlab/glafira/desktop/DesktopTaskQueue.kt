@@ -5,7 +5,6 @@ import com.google.gson.reflect.TypeToken
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.util.UUID
 
 internal enum class DesktopTaskState {
     QUEUED, DISPATCHED, ACCEPTED, RUNNING, SUCCEEDED, FAILED, CANCELLED, EXPIRED
@@ -55,7 +54,7 @@ internal class DesktopTaskQueue(
 
     init {
         require(maxQueued in 1..MAX_QUEUE_LIMIT)
-        file.parent?.let(Files::createDirectories)
+        file.parent?.let { Files.createDirectories(it) }
     }
 
     fun enqueue(envelope: DesktopTaskEnvelope): DesktopTaskRecord = synchronized(lock) {
