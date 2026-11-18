@@ -38,6 +38,12 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var showDeleteProjectConfirm by remember { mutableStateOf(false) }
     var exportResult by remember { mutableStateOf<String?>(null) }
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
+    var showPasswordVault by remember { mutableStateOf(false) }
+
+    if (showPasswordVault) {
+        PasswordVaultScreen(onBack = { showPasswordVault = false })
+        return
+    }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(
@@ -145,10 +151,10 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         ) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Вход по отпечатку", color = Color(0xFF202020), fontSize = 16.sp)
+                    Text("Биометрия приложения (пока не защищает сейф)", color = Color(0xFF202020), fontSize = 14.sp)
                     Text(
                         if (!canUseBiometric(context)) "Биометрия недоступна на устройстве"
-                        else if (biometricEnabled) "Включено" else "Выключено",
+                        else if (biometricEnabled) "Настройка включена; защита экрана ещё не подключена" else "Выключено",
                         color = Tx, fontSize = 12.sp
                     )
                 }
@@ -167,6 +173,20 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         checkedTrackColor = Gr.copy(alpha = 0.5f)
                     )
                 )
+            }
+        }
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth().clickable { showPasswordVault = true }
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("🔐", fontSize = 24.sp)
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text("Закрытое хранилище паролей", color = Color(0xFF202020), fontSize = 15.sp)
+                    Text(if (VaultSession.exists(context)) "Зашифровано · требуется мастер-пароль" else "Создать личный сейф паролей", color = Tx, fontSize = 11.sp)
+                }
             }
         }
 
