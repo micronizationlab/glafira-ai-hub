@@ -85,7 +85,9 @@ No external irreversible action (send, publish, purchase, delete, alter business
 ## Current implementation status
 
 - Architecture documents exist for GLAFIRA Core, Voice Assistant, SMM, specialist roles, Intelligence Center and Backup & Recovery.
-- First code increment for Backup & Recovery: encrypted local archive, manifest and hashes, password-based AES-GCM encryption, verification, manual export and restore UI.
-- Not yet implemented: automatic daily scheduling, Google Drive/Yandex Disk OAuth adapters, email fallback, backup rotation and clean-device restore acceptance test.
-- GLAFIRA Core coordinator code exists, but the next core sprint must audit and harden it against the acceptance criteria above.
+- Backup code now includes a versioned local archive, PBKDF2-derived AES-GCM encryption, manifest and SHA-256 checks, archive verification, manual export/restore, restore safety snapshot with rollback, Android WorkManager daily scheduling, and a user-selected Storage Access Framework cloud folder.
+- The cloud worker uploads a new timestamped archive, reads it back and verifies it before pruning older daily copies; it retains one weekly checkpoint. The selected folder can be a Google Drive or Yandex Disk document provider when exposed by an installed app. This is not a direct Drive/Yandex REST OAuth adapter.
+- Still required for Backup & Recovery: real-device/provider acceptance testing, permission-expiry and quota failure tests, clean-device restore test, status notifications, and optional email fallback. WorkManager timing is best-effort.
+- GLAFIRA Core hardening has started: cross-provider consultation is owner opt-in and disabled by default; common tokens/passwords/contact details are pattern-redacted; the primary model can return a direct answer from the planning call to avoid duplicate requests; Council synthesis now follows the configured primary model.
+- Still required for GLAFIRA Core: per-project/per-provider data-sharing scopes, coordinator tests, timeout/cancellation/fallback policy, context boundary tests, typed tool registry, approval engine and audit trail.
 - Voice runtime and SMM/social connectors remain specifications until implemented and tested.
