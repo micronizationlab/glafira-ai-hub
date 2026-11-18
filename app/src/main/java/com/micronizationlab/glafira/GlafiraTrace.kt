@@ -77,7 +77,7 @@ internal object GlafiraTraceSanitizer {
     }
 }
 
-internal class GlafiraSqliteTraceRepository(
+class GlafiraSqliteTraceRepository(
     private val database: GlafiraCoreDatabase
 ) : TraceRepository {
 
