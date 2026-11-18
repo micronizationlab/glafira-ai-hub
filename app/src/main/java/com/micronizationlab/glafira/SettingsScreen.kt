@@ -50,7 +50,6 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
         Spacer(Modifier.height(24.dp))
 
-        // Группа 1: Работающие
         Row(
             Modifier.fillMaxWidth().clickable { workingExpanded = !workingExpanded }.padding(vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -72,7 +71,6 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
         Spacer(Modifier.height(12.dp))
 
-        // Группа 2: Требуют ключа
         Row(
             Modifier.fillMaxWidth().clickable { pendingExpanded = !pendingExpanded }.padding(vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -134,7 +132,6 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
         Spacer(Modifier.height(32.dp))
 
-        // Секция безопасности
         Text("БЕЗОПАСНОСТЬ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.height(8.dp))
         Card(
@@ -170,7 +167,6 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
         Spacer(Modifier.height(32.dp))
 
-        // ===== СЕКЦИЯ ПРОЕКТА =====
         if (currentProject != null) {
             Text("ПРОЕКТ: ${currentProject.name}", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.height(8.dp))
