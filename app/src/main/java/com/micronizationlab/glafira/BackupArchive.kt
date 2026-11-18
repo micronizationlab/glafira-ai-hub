@@ -152,21 +152,24 @@ object BackupArchive {
             applyStaged(context, extracted.files, extracted.safePreferences)
             return extracted.verification
         } catch (restoreError: Exception) {
-            val rollback = decryptToStaging(safetySnapshot, passphrase)
+            safetySnapshotCanBeDeleted = false
             try {
-                val safePaths = rollback.files.map { it.relativePath }.toSet()
-                extracted.files.map { it.relativePath }.filter { it !in safePaths }.forEach { relative ->
-                    File(context.filesDir, relative).delete()
+                val rollback = decryptToStaging(safetySnapshot, passphrase)
+                try {
+                    val safePaths = rollback.files.map { it.relativePath }.toSet()
+                    extracted.files.map { it.relativePath }.filter { it !in safePaths }.forEach { relative ->
+                        File(context.filesDir, relative).delete()
+                    }
+                    applyStaged(context, rollback.files, rollback.safePreferences)
+                    safetySnapshotCanBeDeleted = true
+                } finally {
+                    rollback.directory.deleteRecursively()
                 }
-                applyStaged(context, rollback.files, rollback.safePreferences)
             } catch (rollbackError: Exception) {
-                safetySnapshotCanBeDeleted = false
                 restoreError.addSuppressed(rollbackError)
                 restoreError.addSuppressed(
                     IllegalStateException("Safety archive retained for manual recovery: ${safetySnapshot.absolutePath}")
                 )
-            } finally {
-                rollback.directory.deleteRecursively()
             }
             throw restoreError
         } finally {
