@@ -7,8 +7,8 @@ import org.junit.Test
 class BackupPreferencePolicyTest {
     @Test
     fun exportsAndRestoresPrimaryProviderAndPeerProviderSelection() {
-        assertTrue(BackupPreferencePolicy.isAllowedValue("glafira_primary_provider", "openai"))
-        assertTrue(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers", "gigachat"))
+        assertTrue(BackupPreferencePolicy.isAllowedValue("glafira_primary_provider", "OPENAI"))
+        assertTrue(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers", "GIGACHAT"))
         assertTrue(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers_project_a", "openai,gigachat"))
     }
 
@@ -23,6 +23,15 @@ class BackupPreferencePolicyTest {
         assertFalse(BackupPreferencePolicy.isAllowedValue("user_password", "secret"))
         assertFalse(BackupPreferencePolicy.isAllowedValue("api_key", "secret"))
         assertFalse(BackupPreferencePolicy.isAllowedValue("unknown_setting", true))
+    }
+
+    @Test
+    fun rejectsUnknownDuplicateAndMalformedProviderSelections() {
+        assertFalse(BackupPreferencePolicy.isAllowedValue("glafira_primary_provider", "UNKNOWN"))
+        assertFalse(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers", "OPENAI,UNKNOWN"))
+        assertFalse(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers", "OPENAI,OPENAI"))
+        assertFalse(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers_project_a", "OPENAI,"))
+        assertFalse(BackupPreferencePolicy.isAllowedValue("peer_consultation_providers_", "OPENAI"))
     }
 
     @Test
