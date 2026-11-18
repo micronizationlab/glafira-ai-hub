@@ -7,6 +7,7 @@ import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
 import java.io.File
 import java.text.DecimalFormat
+import java.util.UUID
 
 object IncomingFileHelper {
     fun importSharedFile(context: Context, intent: Intent): Msg? {
@@ -18,13 +19,19 @@ object IncomingFileHelper {
             val safeName = displayName.substringAfterLast('/').substringAfterLast('\\').replace(Regex("[^A-Za-z0-9А-Яа-я._ -]"), "_").take(120).ifBlank { "received_file" }
             val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
             val directory = File(context.filesDir, "chat_attachments").apply { mkdirs() }
-            val destination = File(directory, "${System.currentTimeMillis()}_$safeName")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                destination.outputStream().use { output -> input.copyTo(output) }
-            } ?: return null
+            val destination = File(directory, "${UUID.randomUUID()}_$safeName")
+            val input = context.contentResolver.openInputStream(uri) ?: return null
+            try {
+                input.use { source ->
+                    destination.outputStream().use { output -> source.copyTo(output) }
+                }
+            } catch (error: Exception) {
+                destination.delete()
+                throw error
+            }
             Msg(
                 text = "Получен файл",
-                isUser = false,
+                isUser = true,
                 time = "",
                 attachmentPath = destination.absolutePath,
                 attachmentName = displayName,
