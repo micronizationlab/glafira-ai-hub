@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.Color
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.view.WindowManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -50,6 +52,27 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var website by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
+    var importStatus by remember { mutableStateOf<String?>(null) }
+    val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                val activeSession = session ?: error("Сначала открой хранилище.")
+                val result = context.contentResolver.openInputStream(uri)?.use { input ->
+                    GooglePasswordCsvImporter.parse(input)
+                } ?: error("Не удалось прочитать выбранный CSV-файл.")
+                val existingKeys = entries.map { (it.website.trim().lowercase() + "|" + it.username.trim().lowercase()) }.toSet()
+                val newEntries = result.entries.filterNot {
+                    (it.website.trim().lowercase() + "|" + it.username.trim().lowercase()) in existingKeys
+                }
+                activeSession.saveEntries(entries + newEntries)
+                entries = entries + newEntries
+                importStatus = "Импортировано: ${newEntries.size}; пропущено пустых строк: ${result.skippedRows}; дубликатов: ${result.entries.size - newEntries.size}."
+                error = null
+            } catch (e: Exception) {
+                importStatus = "Импорт не выполнен: ${e.message ?: "ошибка CSV"}"
+            }
+        }
+    }
     val configured = remember { VaultSession.exists(context) }
 
     DisposableEffect(session) {
@@ -145,6 +168,12 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                 }.padding(6.dp))
             }
             Spacer(Modifier.height(12.dp))
+            Button(onClick = { csvPicker.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv", "text/plain", "*/*")) }, modifier = Modifier.fillMaxWidth()) {
+                Text("ИМПОРТ CSV ИЗ GOOGLE PASSWORD MANAGER")
+            }
+            importStatus?.let { Text(it, color = if (it.startsWith("Импорт не")) Red else Gr, fontSize = 11.sp) }
+            Text("CSV читается непосредственно из выбранного файла и не сохраняется приложением. После успешного импорта удали исходный CSV из загрузок и корзины файлов.", color = Tx, fontSize = 10.sp)
+            Spacer(Modifier.height(8.dp))
             Button(onClick = { showAdd = !showAdd }, modifier = Modifier.fillMaxWidth()) {
                 Text(if (showAdd) "ОТМЕНИТЬ ДОБАВЛЕНИЕ" else "+ ДОБАВИТЬ ЗАПИСЬ")
             }
