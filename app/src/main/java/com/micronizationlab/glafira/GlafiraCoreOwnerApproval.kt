@@ -3,6 +3,7 @@ package com.micronizationlab.glafira
 import androidx.biometric.BiometricPrompt
 import android.os.SystemClock
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Short-lived proof created only from a successful AndroidX BiometricPrompt callback.
@@ -12,9 +13,12 @@ class GlafiraCoreOwnerSession private constructor(
     val sessionId: String,
     val expiresAtElapsedRealtime: Long
 ) {
-    internal fun isValid(): Boolean =
+    private val consumed = AtomicBoolean(false)
+
+    internal fun consume(): Boolean =
         sessionId.length in 16..64 &&
-            expiresAtElapsedRealtime > SystemClock.elapsedRealtime()
+            expiresAtElapsedRealtime > SystemClock.elapsedRealtime() &&
+            consumed.compareAndSet(false, true)
 
     companion object {
         internal fun fromAuthentication(
