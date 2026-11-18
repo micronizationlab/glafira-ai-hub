@@ -22,7 +22,11 @@ class GlafiraSqliteMemoryRepository(
 
     override suspend fun put(record: CoreMemoryRecord, access: MemoryAccessContext): MemoryWriteResult =
         withContext(Dispatchers.IO) {
-            if (!record.scopeId.matches(SAFE_SCOPE_ID) || record.status == MemoryStatus.DELETED) {
+            if (!record.scopeId.matches(SAFE_SCOPE_ID) ||
+                GlafiraSecretRedactor.redact(record.scopeId) != record.scopeId ||
+                !record.id.value.matches(SAFE_SCOPE_ID) ||
+                GlafiraSecretRedactor.redact(record.id.value) != record.id.value ||
+                record.status == MemoryStatus.DELETED) {
                 return@withContext MemoryWriteResult.Rejected("MEMORY_METADATA_INVALID")
             }
             if (!canAccessScope(record.scopeType, record.scopeId, access)) {
