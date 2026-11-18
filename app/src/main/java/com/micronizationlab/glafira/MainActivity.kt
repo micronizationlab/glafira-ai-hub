@@ -1,5 +1,6 @@
 package com.micronizationlab.glafira
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -25,15 +27,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.InputStream
-import java.net.HttpURLConnection
 import java.net.URL
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
 import java.util.UUID
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.TrustManagerFactory
 
 val Bg = Color(0xFF000000)
@@ -95,12 +94,13 @@ fun ContactList(onAgentClick: (A) -> Unit) {
 
 @Composable
 fun ChatScreen(agent: A, onBack: () -> Unit) {
+    val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
     var messages by remember { mutableStateOf(listOf<Pair<String, Boolean>>()) }
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    val authKey = "MDFhMWVjMGQtMmY5ZS03MzYxLTkxYmItZGQ1NjkyMzE0OTNkOmMyZTJlMzU4LWY0MTktNGRjMS05MWE0LTUyNjNlMjJhNzYyNA=="
+    val authKey = "ВСТАВЬ_СЮДА_СВОЙ_AUTHORIZATION_KEY"
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -144,7 +144,7 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
                         inputText = ""
                         isLoading = true
                         scope.launch {
-                            val reply = callGigaChatWithTrustedCert(authKey, userMsg)
+                            val reply = callGigaChatWithTrustedCert(context, authKey, userMsg)
                             messages = messages + (reply to false)
                             isLoading = false
                         }
@@ -158,34 +158,27 @@ fun ChatScreen(agent: A, onBack: () -> Unit) {
     }
 }
 
-// Новая функция с явным доверием сертификату
-suspend fun callGigaChatWithTrustedCert(authKey: String, prompt: String): String = withContext(Dispatchers.IO) {
+suspend fun callGigaChatWithTrustedCert(context: Context, authKey: String, prompt: String): String = withContext(Dispatchers.IO) {
     try {
-        // 1. Загружаем сертификат из res/raw
+        // 1. Читаем сертификат из assets
         val certFactory = CertificateFactory.getInstance("X.509")
-        val certInputStream: InputStream = this@withContext.assets.open("russian_trusted_root_ca.crt") // ВАЖНО: путь может быть другим
-        // Пробуем разные варианты пути, так как res/raw может быть недоступен напрямую через assets
-        // В реальном приложении лучше использовать R.raw.russian_trusted_root_ca
-        // Но для простоты копирования оставим так, с обработкой ошибки
-        // В идеале: val certInputStream = resources.openRawResource(R.raw.russian_trusted_root_ca)
-        
-        // Создаем KeyStore с нашим сертификатом
+        val certInputStream = context.assets.open("russian_trusted_root_ca.crt")
+
         val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
         keyStore.load(null, null)
         keyStore.setCertificateEntry("russian_ca", certFactory.generateCertificate(certInputStream))
 
-        // Создаем TrustManagerFactory
         val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
         tmf.init(keyStore)
 
-        // Создаем SSLContext
         val sslContext = SSLContext.getInstance("TLS")
         sslContext.init(null, tmf.trustManagers, null)
+        val socketFactory = sslContext.socketFactory
 
-        // 2. Получаем Access Token (с использованием нашего SSLContext)
+        // 2. Получаем Access Token (scope=PERS, как ты подтвердил)
         val tokenUrl = URL("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
         val tokenConn = tokenUrl.openConnection() as HttpsURLConnection
-        tokenConn.sslSocketFactory = sslContext.socketFactory
+        tokenConn.sslSocketFactory = socketFactory
         tokenConn.requestMethod = "POST"
         tokenConn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
         tokenConn.setRequestProperty("Accept", "application/json")
@@ -197,16 +190,17 @@ suspend fun callGigaChatWithTrustedCert(authKey: String, prompt: String): String
         tokenConn.outputStream.use { it.write(tokenBody.toByteArray()) }
 
         if (tokenConn.responseCode != 200) {
-            return@withContext "Ошибка токена: ${tokenConn.responseCode}. Проверь ключ."
+            val errorStream = tokenConn.errorStream?.bufferedReader()?.readText() ?: "нет тела ошибки"
+            return@withContext "Ошибка токена: ${tokenConn.responseCode}. $errorStream"
         }
 
         val tokenResponse = tokenConn.inputStream.bufferedReader().readText()
         val accessToken = JSONObject(tokenResponse).getString("access_token")
 
-        // 3. Отправляем сообщение (с использованием нашего SSLContext)
+        // 3. Отправляем сообщение
         val chatUrl = URL("https://api.giga.chat/v1/chat/completions")
         val chatConn = chatUrl.openConnection() as HttpsURLConnection
-        chatConn.sslSocketFactory = sslContext.socketFactory
+        chatConn.sslSocketFactory = socketFactory
         chatConn.requestMethod = "POST"
         chatConn.setRequestProperty("Content-Type", "application/json")
         chatConn.setRequestProperty("Accept", "application/json")
