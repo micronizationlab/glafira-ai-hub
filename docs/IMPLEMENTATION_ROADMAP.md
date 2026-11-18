@@ -4,20 +4,6 @@ This roadmap records the owner's priority order. Features remain on the roadmap 
 
 ## Priority 1 — GLAFIRA Core (the brain and system authority)
 
-Goal: make Glafira a reliable coordinator for the entire AI office. Core is the highest engineering priority and the single authority for task execution, permissions and agent coordination.
-
-1. Encrypted, versioned backup archive created on-device.
-2. Integrity verification and safe restore workflow.
-3. Daily Android WorkManager schedule with retry and owner-visible status.
-4. Free off-device destinations: Google Drive and Yandex Disk using owner-authorized OAuth.
-5. Email fallback only for small archives; OAuth only, never mailbox passwords.
-6. Replace the current cloud backup only after a new upload has completed and been verified; keep one current copy in steady state.
-7. New-device restore test. API keys, OAuth tokens and device-bound Keystore secrets remain excluded by default and must be reauthorized after restore.
-
-No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
-
-## Priority 2 — Backup & Recovery
-
 Goal: protect user data before expanding the product.
 
 1. Define and enforce the authority model: owner is final decision-maker; Glafira coordinates; specialist agents advise and execute only within granted permissions; model providers are replaceable engines.
@@ -29,6 +15,20 @@ Goal: protect user data before expanding the product.
 7. Add health/diagnostics so the owner can see why a model or tool was selected and whether an operation actually completed.
 
 No external irreversible action (send, publish, purchase, delete, alter business records) without explicit approval or a narrowly scoped owner policy.
+
+## Priority 2 — Backup & Recovery
+
+Goal: make Glafira a reliable coordinator for the entire AI office. Core is the highest engineering priority and the single authority for task execution, permissions and agent coordination.
+
+1. Encrypted, versioned backup archive created on-device.
+2. Integrity verification and safe restore workflow.
+3. Daily Android WorkManager schedule with retry and owner-visible status.
+4. Free off-device destinations: Google Drive and Yandex Disk using owner-authorized OAuth.
+5. Email fallback only for small archives; OAuth only, never mailbox passwords.
+6. Replace the current cloud backup only after a new upload has completed and been verified; keep one current copy in steady state.
+7. New-device restore test. API keys, OAuth tokens and device-bound Keystore secrets remain excluded by default and must be reauthorized after restore.
+
+No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
 
 ## Priority 3 — Autonomous Runtime, Bridge, Roles and Voice
 
