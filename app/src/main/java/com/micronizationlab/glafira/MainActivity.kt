@@ -48,8 +48,9 @@ val GrD = Color(0xFF151515)
 val Tx = Color(0xFF888888)
 
 data class A(
-    val n: String, val d: String, val on: Boolean, val emoji: String, 
-    val prompt: String, val fullDesc: String
+    val n: String, val d: String, val on: Boolean, val emoji: String,
+    val prompt: String, val fullDesc: String,
+    val providerId: ProviderId = ProviderId.GIGACHAT
 )
 data class Msg(val text: String, val isUser: Boolean, val time: String)
 
@@ -91,7 +92,7 @@ fun App() {
                 onSettingsClick = { showSettings = true }
             )
             else -> ChatScreen(
-                agent = currentAgent!!, 
+                agent = currentAgent!!,
                 project = currentProject,
                 onBack = { currentAgent = null }
             )
@@ -109,22 +110,47 @@ fun ContactList(
     onAgentClick: (A) -> Unit,
     onSettingsClick: () -> Unit
 ) {
+    val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
     var showProjectMenu by remember { mutableStateOf(false) }
     var newProjectName by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var notConfiguredAgent by remember { mutableStateOf<A?>(null) }
+    // Триггер пересчёта статусов при возврате из настроек
+    var refreshTick by remember { mutableStateOf(0) }
 
-    val list = listOf(
-        A("ГЛАФИРА", "Главный координатор", true, "🤖", 
-            "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
-            "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением."),
-        A("АНАЛИТИК", "Исследование и анализ", true, "📊", 
-            "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен.",
-            "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры."),
-        A("ПРОГРАММИСТ", "Код и технические задачи", false, "💻", 
-            "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
-            "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта.")
-    )
+    val list = remember(context, refreshTick) {
+        listOf(
+            A("ГЛАФИРА", "Главный координатор", isProviderConfigured(context, ProviderId.GIGACHAT), "🤖",
+                "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
+                "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением.",
+                ProviderId.GIGACHAT),
+            A("АНАЛИТИК", "Исследование и анализ", isProviderConfigured(context, ProviderId.GIGACHAT), "📊",
+                "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен.",
+                "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры.",
+                ProviderId.GIGACHAT),
+            A("ПРОГРАММИСТ", "Код и технические задачи", isProviderConfigured(context, ProviderId.GIGACHAT), "💻",
+                "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
+                "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта.",
+                ProviderId.GIGACHAT),
+            A("ChatGPT", "OpenAI · не настроен", isProviderConfigured(context, ProviderId.OPENAI), "🟢",
+                "Ты — ChatGPT от OpenAI. Отвечай чётко, структурированно, с примерами.",
+                "Модель OpenAI. Универсальный помощник для анализа, текстов и программирования. Для работы нужен API-ключ OpenAI (платный).",
+                ProviderId.OPENAI),
+            A("DeepSeek", "DeepSeek · не настроен", isProviderConfigured(context, ProviderId.DEEPSEEK), "🔵",
+                "Ты — DeepSeek. Специализируешься на логике, коде и аналитике.",
+                "Модель DeepSeek. Логические задачи, программирование, аналитика. Для работы нужен API-ключ DeepSeek (платный, но дешёвый).",
+                ProviderId.DEEPSEEK),
+            A("Grok", "xAI · не настроен", isProviderConfigured(context, ProviderId.GROK), "⚫",
+                "Ты — Grok от xAI. Отвечай с лёгкой иронией, но по делу.",
+                "Модель xAI. Универсальный помощник. Для работы нужен API-ключ xAI (платный).",
+                ProviderId.GROK),
+            A("Алиса", "Yandex · не настроен", isProviderConfigured(context, ProviderId.YANDEX), "🟡",
+                "Ты — Алиса от Яндекс. Отвечай на русском, дружелюбно и по делу.",
+                "YandexGPT через Yandex Cloud. Русскоязычные задачи. Для работы нужен API-ключ Yandex Cloud и folder ID.",
+                ProviderId.YANDEX)
+        )
+    }
 
     Column {
         Row(Modifier.fillMaxWidth().background(GrD).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -154,7 +180,10 @@ fun ContactList(
             Spacer(Modifier.weight(1f))
             Text("+", color = Gr, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { showAddDialog = true })
             Spacer(Modifier.width(16.dp))
-            Text("⚙️", fontSize = 20.sp, modifier = Modifier.clickable { onSettingsClick() })
+            Text("⚙️", fontSize = 20.sp, modifier = Modifier.clickable {
+                onSettingsClick()
+                refreshTick++
+            })
         }
 
         if (showDeleteConfirm) {
@@ -186,9 +215,39 @@ fun ContactList(
             )
         }
 
+        if (notConfiguredAgent != null) {
+            val agent = notConfiguredAgent!!
+            AlertDialog(
+                onDismissRequest = { notConfiguredAgent = null },
+                title = { Text("${agent.n} не настроен", color = Bg) },
+                text = {
+                    Column {
+                        Text("Провайдер ${agent.providerId.displayName} пока не подключён.")
+                        Spacer(Modifier.height(8.dp))
+                        Text("Добавьте API-ключ в Настройках, чтобы активировать этот чат.", color = Tx, fontSize = 12.sp)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { notConfiguredAgent = null; onSettingsClick() }) {
+                        Text("В НАСТРОЙКИ", color = Gr)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { notConfiguredAgent = null }) {
+                        Text("ЗАКРЫТЬ", color = Tx)
+                    }
+                }
+            )
+        }
+
         LazyColumn(Modifier.weight(1f)) {
             items(list) { a ->
-                Row(Modifier.fillMaxWidth().clickable { onAgentClick(a) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().clickable {
+                        if (!a.on) notConfiguredAgent = a else onAgentClick(a)
+                    }.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Box(Modifier.size(48.dp).clip(CircleShape).background(if (a.on) Gr.copy(alpha = 0.2f) else Color.DarkGray.copy(alpha = 0.3f)).border(1.dp, if (a.on) Gr else Color.DarkGray, CircleShape), contentAlignment = Alignment.Center) {
                         Text(a.emoji, fontSize = 24.sp)
                     }
@@ -299,6 +358,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 inputText = ""
                                 isLoading = true
                                 scope.launch {
+                                    // Пока все агенты ходят в GigaChat. Новые провайдеры
+                                    // подключаются отдельным шагом, когда появятся ключи.
                                     val reply = callGigaChatWithTrustedCert(context, updatedMessages, agent.prompt)
                                     val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                                     val finalMessages = updatedMessages + Msg(reply, false, replyTime)
