@@ -8,7 +8,6 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.security.KeyStore
-import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -143,7 +142,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
         approvedAtEpochMs: Long
     ): GlafiraBridgeApprovalMutation {
         if (!validId(approvalId) || !validId(deviceId) ||
-            hmacSecret.size < MIN_SECRET_BYTES ||
+            hmacSecret.size != DEVICE_SECRET_BYTES ||
             !validScopes(ownerSelectedScopes) || approvedAtEpochMs <= 0L
         ) return GlafiraBridgeApprovalMutation.InvalidScopes
 
@@ -360,7 +359,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
                     "credential:$deviceId"
                 )
                 val scopes = decodeScopes(cursor.getString(2))
-                if (secret.size < MIN_SECRET_BYTES || !validScopes(scopes)) {
+                if (secret.size != DEVICE_SECRET_BYTES || !validScopes(scopes)) {
                     secret.fill(0)
                     null
                 } else GlafiraBridgeDeviceCredential(deviceId, secret, scopes)
@@ -417,6 +416,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
     private fun validApproval(value: GlafiraBridgePendingApproval) =
         validId(value.approvalId) && validId(value.ticketId) &&
             value.clientNonce.length in 32..128 &&
+            value.clientNonce.all { it.isLetterOrDigit() || it in "-_" } &&
             value.deviceLabel.length in 1..64 &&
             value.deviceLabel.none(Char::isISOControl) &&
             value.receivedAtEpochMs > 0L &&
@@ -463,7 +463,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
         private const val KEY_ALIAS = "glafira.bridge.approvals.aes"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
-        private const val MIN_SECRET_BYTES = 32
+        private const val DEVICE_SECRET_BYTES = 32
         private const val GCM_IV_BYTES = 12
         private const val GCM_TAG_BITS = 128
         private val APPROVAL_COLUMNS = arrayOf(
