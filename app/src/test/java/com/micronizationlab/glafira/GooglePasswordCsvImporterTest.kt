@@ -79,4 +79,28 @@ class GooglePasswordCsvImporterTest {
         assertTrue(error?.message?.contains("10000") == true)
     }
 
+    @Test
+    fun rejectsQuoteInsideUnquotedFieldAndTrailingDataAfterQuotedField() {
+        val embeddedQuote = "name,url,username,password\\nExa\"mple,https://example.com,user,secret"
+        val embeddedError = runCatching {
+            GooglePasswordCsvImporter.parse(ByteArrayInputStream(embeddedQuote.toByteArray()))
+        }.exceptionOrNull()
+        assertTrue(embeddedError?.message?.contains("кавычку внутри") == true)
+
+        val trailingData = "name,url,username,password\\n\"Example\"oops,https://example.com,user,secret"
+        val trailingError = runCatching {
+            GooglePasswordCsvImporter.parse(ByteArrayInputStream(trailingData.toByteArray()))
+        }.exceptionOrNull()
+        assertTrue(trailingError?.message?.contains("после закрывающей кавычки") == true)
+    }
+
+    @Test
+    fun rejectsDuplicateColumnNames() {
+        val csv = "name,url,username,password,name\\nExample,https://example.com,user,secret,Other"
+        val error = runCatching {
+            GooglePasswordCsvImporter.parse(ByteArrayInputStream(csv.toByteArray()))
+        }.exceptionOrNull()
+        assertTrue(error?.message?.contains("повторяющиеся") == true)
+    }
+
 }
