@@ -62,7 +62,10 @@ class CoreAccessContextFactory(
         )
     }
 
-    suspend fun forTrace(projectIds: Set<ProjectIdentifier>): TraceAccessContext? {
+    suspend fun forTrace(
+        projectIds: Set<ProjectIdentifier>,
+        maximumClassification: CoreDataClassification = CoreDataClassification.INTERNAL
+    ): TraceAccessContext? {
         val actor = identityProvider.currentActor() ?: return null
         if (!isSafePrincipal(actor.id) || projectIds.size > 100) return null
         val allowed = projectIds.filterTo(linkedSetOf()) { projectId ->
@@ -71,13 +74,13 @@ class CoreAccessContextFactory(
                     actor = actor,
                     projectId = projectId,
                     action = CoreAction.READ_TRACE,
-                    classification = CoreDataClassification.INTERNAL
+                    classification = maximumClassification
                 )
             )
             decision.allowed && !decision.requiresOwnerApproval
         }
         if (allowed.isEmpty()) return null
-        return TraceAccessContext(actor, allowed)
+        return TraceAccessContext(actor, allowed, maximumClassification)
     }
 
     private fun isSafePrincipal(value: String): Boolean =
