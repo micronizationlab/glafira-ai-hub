@@ -1,60 +1,55 @@
 package com.micronizationlab.glafira
 
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonNull
+import com.google.gson.JsonObject
+import com.google.gson.JsonPrimitive
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import java.io.StringReader
+import java.math.BigDecimal
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
-import org.json.JSONException
-import org.json.JSONObject
 
 /**
  * Strict JSON boundary codec for the paired-request HTTP route.
- *
- * Authentication and policy checks are deliberately not performed here. Every decoded
- * envelope must be passed to GlafiraBridgeRequestAdmission before any operation dispatch.
+ * Decoding does not authenticate or authorize; every envelope must pass Admission.
  */
 object GlafiraBridgeRequestJsonCodec {
     const val MAX_ENVELOPE_BYTES = GlafiraBridgeIngressPolicy.MAX_REQUEST_BODY_BYTES
-
     private val requiredKeys = setOf(
         "protocolVersion", "requestId", "idempotencyKey", "deviceId", "projectId",
         "operation", "issuedAtEpochMs", "expiresAtEpochMs", "payload", "signatureHex"
     )
 
     fun decode(bytes: ByteArray): GlafiraBridgeRequest {
-        require(bytes.isNotEmpty() && bytes.size <= MAX_ENVELOPE_BYTES) {
-            "Bridge request envelope size is invalid."
-        }
+        require(bytes.isNotEmpty() && bytes.size <= MAX_ENVELOPE_BYTES) { "Bridge request envelope size is invalid." }
         val json = Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(bytes))
-            .toString()
+            .decode(ByteBuffer.wrap(bytes)).toString()
+        val reader = JsonReader(StringReader(json)).apply { isLenient = false }
+        val root = readValue(reader).asJsonObject
+        require(reader.peek() == JsonToken.END_DOCUMENT) { "Trailing JSON content is not allowed." }
+        require(root.keySet() == requiredKeys) { "Bridge request fields are missing or unknown." }
 
-        val root = JSONObject(json)
-        val actualKeys = buildSet {
-            val keys = root.keys()
-            while (keys.hasNext()) add(keys.next())
-        }
-        require(actualKeys == requiredKeys) { "Bridge request fields are missing or unknown." }
-
-        val version = root.requiredNumber("protocolVersion").toIntExact()
-        val issuedAt = root.requiredNumber("issuedAtEpochMs").toLongExact()
-        val expiresAt = root.requiredNumber("expiresAtEpochMs").toLongExact()
+        val version = root.requiredNumber("protocolVersion").intExact()
+        val issuedAt = root.requiredNumber("issuedAtEpochMs").longExact()
+        val expiresAt = root.requiredNumber("expiresAtEpochMs").longExact()
         val operationName = root.requiredString("operation")
         val operation = GlafiraBridgeOperation.entries.firstOrNull { it.name == operationName }
             ?: throw IllegalArgumentException("Bridge operation is unsupported.")
-
-        val payloadObject = root.opt("payload") as? JSONObject
-            ?: throw IllegalArgumentException("Bridge payload must be a JSON object.")
+        val payloadJson = root.get("payload")
+        require(payloadJson != null && payloadJson.isJsonObject) { "Bridge payload must be a JSON object." }
         val payload = buildMap {
-            val keys = payloadObject.keys()
-            while (keys.hasNext()) {
-                val key = keys.next()
-                val value = payloadObject.opt(key) as? String
-                    ?: throw IllegalArgumentException("Bridge payload values must be strings.")
-                put(key, value)
+            payloadJson.asJsonObject.entrySet().forEach { (key, value) ->
+                require(value.isJsonPrimitive && value.asJsonPrimitive.isString) {
+                    "Bridge payload values must be strings."
+                }
+                put(key, value.asString)
             }
         }
-
         return GlafiraBridgeRequest(
             protocolVersion = version,
             requestId = root.requiredString("requestId"),
@@ -70,43 +65,73 @@ object GlafiraBridgeRequestJsonCodec {
     }
 
     fun encode(request: GlafiraBridgeRequest): ByteArray {
-        val payload = JSONObject()
-        request.payload.forEach { (key, value) -> payload.put(key, value) }
-        val json = JSONObject().apply {
-            put("protocolVersion", request.protocolVersion)
-            put("requestId", request.requestId)
-            put("idempotencyKey", request.idempotencyKey)
-            put("deviceId", request.deviceId)
-            put("projectId", request.projectId)
-            put("operation", request.operation.name)
-            put("issuedAtEpochMs", request.issuedAtEpochMs)
-            put("expiresAtEpochMs", request.expiresAtEpochMs)
-            put("payload", payload)
-            put("signatureHex", request.signatureHex)
-        }.toString()
-        val bytes = json.toByteArray(Charsets.UTF_8)
-        require(bytes.size <= MAX_ENVELOPE_BYTES) { "Bridge request envelope exceeds the size limit." }
-        return bytes
+        val payload = JsonObject().apply { request.payload.forEach { (key, value) -> addProperty(key, value) } }
+        val json = JsonObject().apply {
+            addProperty("protocolVersion", request.protocolVersion)
+            addProperty("requestId", request.requestId)
+            addProperty("idempotencyKey", request.idempotencyKey)
+            addProperty("deviceId", request.deviceId)
+            addProperty("projectId", request.projectId)
+            addProperty("operation", request.operation.name)
+            addProperty("issuedAtEpochMs", request.issuedAtEpochMs)
+            addProperty("expiresAtEpochMs", request.expiresAtEpochMs)
+            add("payload", payload)
+            addProperty("signatureHex", request.signatureHex)
+        }.toString().toByteArray(Charsets.UTF_8)
+        require(json.size <= MAX_ENVELOPE_BYTES) { "Bridge request envelope exceeds the size limit." }
+        return json
     }
 
-    private fun JSONObject.requiredString(key: String): String =
-        opt(key) as? String ?: throw IllegalArgumentException("Bridge field '$key' must be a string.")
-
-    private fun JSONObject.requiredNumber(key: String): Number =
-        opt(key) as? Number ?: throw IllegalArgumentException("Bridge field '$key' must be a number.")
-
-    private fun Number.toIntExact(): Int {
-        val value = toLongExact()
-        require(value in Int.MIN_VALUE..Int.MAX_VALUE) { "Bridge integer is out of range." }
-        return value.toInt()
+    private fun readValue(reader: JsonReader): JsonElement = when (reader.peek()) {
+        JsonToken.BEGIN_OBJECT -> {
+            val result = JsonObject()
+            val seen = HashSet<String>()
+            reader.beginObject()
+            while (reader.hasNext()) {
+                val name = reader.nextName()
+                require(seen.add(name)) { "Duplicate JSON object key." }
+                result.add(name, readValue(reader))
+            }
+            reader.endObject()
+            result
+        }
+        JsonToken.BEGIN_ARRAY -> {
+            val result = JsonArray()
+            reader.beginArray()
+            while (reader.hasNext()) result.add(readValue(reader))
+            reader.endArray()
+            result
+        }
+        JsonToken.STRING -> JsonPrimitive(reader.nextString())
+        JsonToken.NUMBER -> JsonPrimitive(BigDecimal(reader.nextString()))
+        JsonToken.BOOLEAN -> JsonPrimitive(reader.nextBoolean())
+        JsonToken.NULL -> { reader.nextNull(); JsonNull.INSTANCE }
+        else -> throw IllegalArgumentException("Unexpected JSON token.")
     }
 
-    private fun Number.toLongExact(): Long =
-        try {
-            java.math.BigDecimal(toString()).longValueExact()
-        } catch (_: ArithmeticException) {
-            throw IllegalArgumentException("Bridge number must be an exact integer.")
-        } catch (_: NumberFormatException) {
-            throw IllegalArgumentException("Bridge number must be an exact integer.")
+    private fun JsonObject.requiredString(key: String): String {
+        val value = get(key)
+        require(value != null && value.isJsonPrimitive && value.asJsonPrimitive.isString) {
+            "Bridge field '$key' must be a string."
+        }
+        return value.asString
+    }
+
+    private fun JsonObject.requiredNumber(key: String): BigDecimal {
+        val value = get(key)
+        require(value != null && value.isJsonPrimitive && value.asJsonPrimitive.isNumber) {
+            "Bridge field '$key' must be a number."
+        }
+        return value.asBigDecimal
+    }
+
+    private fun BigDecimal.intExact(): Int =
+        try { intValueExact() } catch (_: ArithmeticException) {
+            throw IllegalArgumentException("Bridge integer must be an exact 32-bit value.")
+        }
+
+    private fun BigDecimal.longExact(): Long =
+        try { longValueExact() } catch (_: ArithmeticException) {
+            throw IllegalArgumentException("Bridge integer must be an exact 64-bit value.")
         }
 }
