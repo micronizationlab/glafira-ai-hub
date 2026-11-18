@@ -1,6 +1,6 @@
 # GLAFIRA Multi-Provider and Application Interaction
 
-Status: approved architectural requirement; implementation not yet started.
+Status: approved architectural requirement; provider API foundations and coordinator are implemented, while the shared ChatGPT-to-Core/MCP connection and general application automation remain in progress.
 
 ## User requirement
 
@@ -36,6 +36,14 @@ The architecture must not assume every application exposes an API or permits UI 
 13. **Audit and control:** provide per-provider/app/agent enable/disable controls, visible activity history, task-level permissions, data-sharing settings, and an immediate stop control. Core remains the authority for access, policy, and audit.
 14. **Platform parity:** Android and Windows Desktop are equal clients using shared Core contracts. Platform-specific automation capabilities must be declared rather than assumed.
 
+## Current implementation snapshot
+
+- Android has a provider adapter for OpenAI's Chat Completions API and a ChatGPT model entry in the app.
+- The OpenAI API key is stored through the encrypted Android Keystore-backed credential store. This is an API-key integration, not an embedded ChatGPT web session or reuse of a ChatGPT subscription.
+- GLAFIRA can select a configured primary model and, when explicitly enabled per project, consult up to two configured and allowlisted peer providers. It redacts common secret patterns from peer context and keeps final synthesis with the selected primary model.
+- The Bridge foundation includes owner-controlled device pairing, authenticated HTTPS transport, typed project/conversation operations, and a desktop companion CLI. These foundations are not yet the live ChatGPT/MCP connection.
+- A shared engineering-memory requirement is documented, but the persistent, provenance-aware shared memory service and its Android/Desktop operations are not implemented yet.
+
 ## Acceptance criteria
 
 - A capability matrix documents each integrated provider/app/agent, its API/official integration path, UI automation path, permissions, costs, and limitations.
@@ -58,8 +66,9 @@ The architecture must not assume every application exposes an API or permits UI 
 4. Implement desktop UI automation as the first graphical interaction target, then assess Android support.
 5. Research current official capabilities and restrictions for ChatGPT, Yandex Alice/Yandex services, DeepSeek, and each additional app before choosing adapters.
 6. Add provider and application adapters incrementally, with tests and user approval at each consequential boundary.
-7. Expand shared engineering memory and agent-to-agent collaboration after secure authorization and audit foundations are in place.
+7. Implement shared engineering memory over the authenticated Bridge, including provenance, validation states, version context, and explicit promotion.
+8. Expand agent-to-agent collaboration after secure authorization and audit foundations are in place.
 
-## Current limitations
+## Remaining limitations
 
-This document records the approved requirement only. It does not mean UI automation, provider sessions, API adapters, app integrations, or agent orchestration have already been implemented or tested. Availability depends on each provider's current interfaces, account settings, terms, and device environment.
+The current Android provider API adapter does not provide access to a user's ChatGPT web/app session, browser UI, or the ChatGPT account's conversation history. The secure Bridge is not yet exposed as a live MCP server or connected to ChatGPT as a tool endpoint. General browser automation, provider UI sessions, CRM/messaging connectors, and the shared engineering-memory service remain separate implementation milestones. Availability depends on each provider's current interfaces, account settings, terms, and device environment.
