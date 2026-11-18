@@ -1,0 +1,99 @@
+# GLAFIRA Backup & Recovery
+
+## Requirement
+
+Backup and recovery are mandatory core capabilities, not an optional add-on. The first implementation must work without a rented server or paid backend. Backups are created and encrypted on the Android device before upload.
+
+## Data coverage
+
+The backup manifest must explicitly classify:
+- project metadata and settings;
+- role definitions, instructions, skill packages and assignments;
+- user-approved project memory and decision records;
+- knowledge documents and source/citation metadata;
+- chat history and selected attachments, subject to user settings;
+- provider/model configuration (provider IDs and model IDs, not live credentials by default);
+- integration configuration and non-secret metadata;
+- automation definitions, approval policies and audit records;
+- app data/schema version and restore migration metadata.
+
+Do not silently omit a data category. The archive manifest lists included, excluded and unavailable categories.
+
+## Secrets and key recovery
+
+- Default behavior excludes API keys, OAuth refresh tokens, passwords and vault secrets. After restore, integrations request reauthorization.
+- If encrypted secret export is later supported, it must be a separate explicit opt-in, re-encrypted under a user-controlled backup passphrase/key, and clearly warned. Never rely on Android Keystore device keys as the only backup decryption key.
+- Encrypt locally before upload using authenticated encryption (for example AES-256-GCM or an audited equivalent). Derive/wrap the backup key using a password-based KDF with a unique random salt and current recommended parameters. Store algorithm/version/KDF parameters in the archive header.
+- The recovery secret must be shown to and safely stored by the owner. Do not email the passphrase or store it beside the backup. If the owner loses the recovery secret and no recovery mechanism exists, the encrypted archive may be unrecoverable; state this plainly.
+- Use cryptographically secure random nonces and never reuse a nonce with the same AES-GCM key.
+
+## Archive and integrity
+
+- Use a versioned archive format with manifest, app/schema version, creation time, included categories, file sizes, content hashes and encryption metadata.
+- Compress before encryption.
+- Verify the local archive can be parsed and authenticated before upload.
+- Use authenticated encryption and a manifest checksum/hash. A plain checksum alone is not an authenticity mechanism.
+- Use a temporary remote object/file for upload; only replace the previous current backup after upload completes and remote metadata/size can be verified.
+- Keep at least one known-good restore point. Recommended free-storage policy: one current daily backup plus one weekly checkpoint; optionally a monthly checkpoint if space permits. Never delete the last known-good copy to make room for an unverified replacement.
+- Avoid retaining temporary duplicate archives after successful verification.
+
+## Free destinations (no rented server)
+
+Implement destinations as independent adapters:
+1. Google Drive: user-authorized OAuth; use the Drive API and an app-specific folder or appDataFolder where appropriate. Replace the managed backup object rather than creating an unbounded sequence. Respect API quotas and available account storage.
+2. Yandex Disk: user-authorized OAuth and official Disk REST API/WebDAV as supported by the selected flow. Use overwrite/replace semantics and verify the remote result. Respect account quota and API limits.
+3. Email: optional fallback only for small archives. Prefer a supported OAuth mail API; never ask for or store an email account password. Enforce attachment-size limits and show a clear failure when the archive is too large. Email should also be used for status notifications where configured.
+4. Local export: owner-triggered export to device storage, USB/PC or Android document picker. Local-only copies are not sufficient protection against loss of the device.
+
+Free-tier capacities, provider quotas and API terms can change; query/display current availability where possible and never promise permanent free storage.
+
+## Scheduling and retry
+
+- Use Android WorkManager for periodic background backup. Periodic work is best-effort and may run later due to Doze, battery optimization, connectivity and OS scheduling; do not promise execution at an exact clock time.
+- Default cadence: daily, with configurable preferred time/window, Wi-Fi-only and charging constraints.
+- Run a backup after important milestones or before schema migrations when appropriate, without creating unlimited copies.
+- Retry transient network failures with backoff. Distinguish authentication expiry, quota exceeded, no space, network failure, archive failure and verification failure.
+- Notify the owner of success, last verified backup time, size, destination and actionable failure. If no cloud destination is configured, warn clearly that only local data is protected.
+- Provide manual Back up now and Verify backup actions.
+
+## Restore
+
+- Restore is a deliberate owner-initiated workflow. Show archive date, app/schema version, included data, excluded secrets and source before changing local state.
+- Verify authentication tag, manifest, hashes and compatibility before applying anything.
+- Restore into a staging area, validate database and files, then atomically switch to the restored state where feasible.
+- Create a safety snapshot of current local data before restore.
+- Support migration from older archive versions and reject unsupported/corrupt archives without overwriting current data.
+- After restore, request provider/API reauthorization for excluded secrets and run a health check.
+- Include an explicit full-device/new-device recovery test in release acceptance.
+
+## UI
+
+- Backup enabled/status.
+- Destination(s) and connected/disconnected state.
+- Last attempt and last verified success.
+- Archive size and included/excluded categories.
+- Daily schedule and optional Wi-Fi/charging constraints.
+- Manual backup, verify and restore.
+- Recovery-key/passphrase setup and clear recovery warning.
+- Notifications and troubleshooting details.
+
+## Implementation sequence
+
+1. Define backup manifest, archive versioning, crypto wrapper and storage interfaces.
+2. Implement local archive creation, verification and restore tests before any cloud integration.
+3. Implement WorkManager scheduling and status/notification state.
+4. Add Google Drive adapter using owner OAuth.
+5. Add Yandex Disk adapter using owner OAuth.
+6. Add small-archive email fallback using OAuth, with strict size checks.
+7. Add rotation policy, weekly checkpoint and cross-device restore acceptance tests.
+
+## Release acceptance criteria
+
+- Backup can be created offline and verified locally.
+- A corrupt or incomplete archive never replaces a known-good remote backup.
+- No secret is stored in plaintext in the archive or logs.
+- A new device can restore the archive using only the documented recovery secret and required owner sign-ins.
+- Restore failure leaves current data intact.
+- The UI accurately reports last verified backup, not merely last attempted upload.
+- The app explains that Android background scheduling is best-effort.
+- At least one end-to-end restore test passes on a clean device/profile.
