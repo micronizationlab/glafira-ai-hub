@@ -34,7 +34,7 @@ Do not silently omit a data category. The archive manifest lists included, exclu
 - Verify the local archive can be parsed and authenticated before upload.
 - Use authenticated encryption and a manifest checksum/hash. A plain checksum alone is not an authenticity mechanism.
 - Use a temporary remote object/file for upload; only replace the previous current backup after upload completes and remote metadata/size can be verified.
-- Keep at least one known-good restore point. Recommended free-storage policy: one current daily backup plus one weekly checkpoint; optionally a monthly checkpoint if space permits. Never delete the last known-good copy to make room for an unverified replacement.
+- The selected policy is one current encrypted backup per user destination. Upload a new temporary copy, read it back and verify it, then delete the older current copy. Never delete the last known-good copy before the replacement is verified. If the provider refuses deletion, keep the new verified copy and show a cleanup warning.
 - Avoid retaining temporary duplicate archives after successful verification.
 
 ## Free destinations (no rented server)
@@ -83,7 +83,7 @@ Free-tier capacities, provider quotas and API terms can change; query/display cu
 2. Implemented initial local archive creation, verification, manual export and owner-confirmed restore.
 3. Implemented daily WorkManager scheduling and an Android Storage Access Framework folder adapter. The owner can select a Google Drive or Yandex Disk folder when that provider is exposed by an installed Android document provider; this is not a direct provider REST/OAuth connector.
 4. Verify upload by reading the remote file back and validating its authenticated archive before rotating the current backup.
-5. Keep one current backup and one weekly checkpoint; retain the previous current copy if the provider cannot safely rename/replace files.
+5. Keep one current backup only. Replace it safely using upload → read-back verification → delete old copy. If deletion fails, retain both and show a warning rather than risking data loss.
 6. Add direct Google Drive/Yandex Disk OAuth adapters only if the SAF provider path proves insufficient; add email fallback only for small archives using OAuth, never account passwords.
 7. Complete clean-device restore acceptance tests and test failure cases including expired folder permission, quota, interrupted upload and wrong recovery passphrase.
 
