@@ -361,7 +361,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                         color = Tx, fontSize = 10.sp)
                     Spacer(Modifier.height(8.dp))
                     Text("ВЫБЕРИТЕ РАЗРЕШЁННЫЕ ПРАВА", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    availableScopes.forEach { permission ->
+                    availableScopes.filter { it in request.requestedScopes }.forEach { permission ->
                         val selected = permission in selectedScopes[request.approvalId].orEmpty()
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
