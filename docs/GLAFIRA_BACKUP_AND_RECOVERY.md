@@ -80,12 +80,12 @@ Free-tier capacities, provider quotas and API terms can change; query/display cu
 ## Implementation sequence
 
 1. Define backup manifest, archive versioning, crypto wrapper and storage interfaces.
-2. Implement local archive creation, verification and restore tests before any cloud integration.
-3. Implement WorkManager scheduling and status/notification state.
-4. Add Google Drive adapter using owner OAuth.
-5. Add Yandex Disk adapter using owner OAuth.
-6. Add small-archive email fallback using OAuth, with strict size checks.
-7. Add rotation policy, weekly checkpoint and cross-device restore acceptance tests.
+2. Implemented initial local archive creation, verification, manual export and owner-confirmed restore.
+3. Implemented daily WorkManager scheduling and an Android Storage Access Framework folder adapter. The owner can select a Google Drive or Yandex Disk folder when that provider is exposed by an installed Android document provider; this is not a direct provider REST/OAuth connector.
+4. Verify upload by reading the remote file back and validating its authenticated archive before rotating the current backup.
+5. Keep one current backup and one weekly checkpoint; retain the previous current copy if the provider cannot safely rename/replace files.
+6. Add direct Google Drive/Yandex Disk OAuth adapters only if the SAF provider path proves insufficient; add email fallback only for small archives using OAuth, never account passwords.
+7. Complete clean-device restore acceptance tests and test failure cases including expired folder permission, quota, interrupted upload and wrong recovery passphrase.
 
 ## Release acceptance criteria
 
