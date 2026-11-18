@@ -53,8 +53,11 @@ data class GlafiraPendingActionApproval(
             val secretKey = Regex("(?i).*(password|passphrase|secret|token|api.?key|authorization|credential|private.?key).*")
             val keys = json.keys().asSequence().filterNot { secretKey.matches(it) }.sorted().toList()
             val visible = keys.take(MAX_REVIEW_FIELDS).map { key ->
-                val value = json.opt(key)?.toString().orEmpty().take(MAX_REVIEW_FIELD_CHARS)
-                "$key: ${GlafiraOwnerApprovalPreviewRedactor.redact(value)}"
+                val rawValue = json.opt(key)?.toString().orEmpty()
+                val truncated = rawValue.length > MAX_REVIEW_FIELD_CHARS
+                val value = rawValue.take(MAX_REVIEW_FIELD_CHARS)
+                "$key: ${GlafiraOwnerApprovalPreviewRedactor.redact(value)}" +
+                    if (truncated) " [ПОЛЕ ОБРЕЗАНО]" else ""
             }.toMutableList()
             val hidden = keys.size - visible.size
             if (hidden > 0) visible += "[ЕЩЁ СКРЫТО ПОЛЕЙ: $hidden — проверьте исходное задание перед подтверждением]"
