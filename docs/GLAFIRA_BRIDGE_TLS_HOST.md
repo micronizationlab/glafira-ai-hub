@@ -29,7 +29,7 @@ Status: implementation slice in progress. Android has a bounded HTTPS/1.1 host, 
 - Invitation-bundle parser validates format, expiry, HTTPS origin and certificate fingerprint.
 - Pairing helper creates a fresh 256-bit nonce and HMAC proof without serializing the capability into the HTTP body.
 - Pairing HTTP client posts to /bridge/v1/pairing with TLS hostname verification and the owner-supplied certificate pin.
-- Owner credential bundle import stores device ID, 256-bit HMAC secret, granted scopes, HTTPS origin and certificate pin in an AES-256-GCM encrypted vault using PBKDF2-HMAC-SHA256 (310,000 iterations).
+- Owner credential bundle import uses a bounded strict JSON parser (duplicate keys, unknown/missing fields, excessive nesting and oversized collections are rejected) and an allowlist of registered Bridge scopes; it stores device ID, 256-bit HMAC secret, granted scopes, HTTPS origin and certificate pin in an AES-256-GCM encrypted vault using PBKDF2-HMAC-SHA256 (310,000 iterations).
 - Vault writes are atomic and apply owner-only POSIX permissions where supported. Vault-backed request facade loads the credential, sends signed HTTPS requests and clears in-memory secret copies afterward.
 
 The current Desktop vault is passphrase-protected application storage, **not yet native Windows Credential Manager or macOS Keychain integration**. The module is a JVM library; a user-facing Desktop installer/UI is still outstanding.
