@@ -32,5 +32,53 @@ jobs:
       - name: Run Unit Tests
         run: gradle testDebugUnitTest
 
+
+  instrumented-tests:
+    name: Android Emulator Integration Tests
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.9 and cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Run Core persistence and backup tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set +e
+            mkdir -p app/build/outputs
+            gradle connectedDebugAndroidTest
+            test_status=$?
+            adb logcat -d -v threadtime > app/build/outputs/androidTest-logcat.txt 2>&1 || true
+            exit "$test_status"
+
+      - name: Upload emulator test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-backup-emulator-diagnostics
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-logcat.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+# Emulator tests cover SQLite persistence, idempotency, retry metadata and Core backup restore.
 # APK assembly is intentionally disabled until the owner-approved Bridge
 # implementation has passed its end-to-end security and pairing acceptance checks.

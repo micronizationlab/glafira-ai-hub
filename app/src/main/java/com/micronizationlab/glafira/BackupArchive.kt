@@ -115,6 +115,26 @@ object BackupArchive {
         }
     }
 
+    /** Verifies the authenticated archive contains a required relative data path. */
+    fun verifyContains(context: Context, file: File, passphrase: CharArray, relativePath: String): BackupVerification {
+        require(relativePath.isNotBlank() && !relativePath.startsWith("/") &&
+            relativePath.split("/").none { it == ".." || it.isBlank() }) {
+            "Недопустимый путь обязательного файла архива."
+        }
+        val extracted = decryptToStaging(file, passphrase)
+        try {
+            require(extracted.appId == context.packageName) {
+                "Резервная копия создана для другого приложения."
+            }
+            require(extracted.files.any { it.relativePath == relativePath }) {
+                "Архив не содержит обязательную базу GLAFIRA Core."
+            }
+            return extracted.verification
+        } finally {
+            extracted.directory.deleteRecursively()
+        }
+    }
+
     fun restore(context: Context, file: File, passphrase: CharArray): BackupVerification {
         // Keep a verified snapshot of the current state so a partial restore can be rolled back.
         val safetySnapshot = create(context, passphrase)
@@ -124,26 +144,37 @@ object BackupArchive {
             safetySnapshot.delete()
             throw error
         }
+        var safetySnapshotCanBeDeleted = true
         try {
+            require(extracted.appId == context.packageName) {
+                "Резервная копия создана для другого приложения."
+            }
             applyStaged(context, extracted.files, extracted.safePreferences)
             return extracted.verification
         } catch (restoreError: Exception) {
-            val rollback = decryptToStaging(safetySnapshot, passphrase)
+            safetySnapshotCanBeDeleted = false
             try {
-                val safePaths = rollback.files.map { it.relativePath }.toSet()
-                extracted.files.map { it.relativePath }.filter { it !in safePaths }.forEach { relative ->
-                    File(context.filesDir, relative).delete()
+                val rollback = decryptToStaging(safetySnapshot, passphrase)
+                try {
+                    val safePaths = rollback.files.map { it.relativePath }.toSet()
+                    extracted.files.map { it.relativePath }.filter { it !in safePaths }.forEach { relative ->
+                        File(context.filesDir, relative).delete()
+                    }
+                    applyStaged(context, rollback.files, rollback.safePreferences)
+                    safetySnapshotCanBeDeleted = true
+                } finally {
+                    rollback.directory.deleteRecursively()
                 }
-                applyStaged(context, rollback.files, rollback.safePreferences)
             } catch (rollbackError: Exception) {
                 restoreError.addSuppressed(rollbackError)
-            } finally {
-                rollback.directory.deleteRecursively()
+                restoreError.addSuppressed(
+                    IllegalStateException("Safety archive retained for manual recovery: ${safetySnapshot.absolutePath}")
+                )
             }
             throw restoreError
         } finally {
             extracted.directory.deleteRecursively()
-            safetySnapshot.delete()
+            if (safetySnapshotCanBeDeleted) safetySnapshot.delete()
         }
     }
 
@@ -189,7 +220,8 @@ object BackupArchive {
         val directory: File,
         val files: List<StagedFile>,
         val verification: BackupVerification,
-        val safePreferences: JSONObject
+        val safePreferences: JSONObject,
+        val appId: String
     )
 
     private fun decryptToStaging(file: File, passphrase: CharArray): StagedArchive {
@@ -262,12 +294,25 @@ object BackupArchive {
                 val parsed = requireNotNull(manifest) { "В архиве отсутствует manifest." }
                 require(parsed.optString("format") == "GLAFIRA_BACKUP") { "Неверный формат manifest." }
                 require(parsed.optInt("version") == FORMAT_VERSION) { "Версия manifest не поддерживается." }
+                val archiveAppId = parsed.optString("appId")
+                require(archiveAppId.isNotBlank()) { "В manifest отсутствует идентификатор приложения." }
+                require(parsed.optInt("fileCount", -1) == stagedFiles.size) {
+                    "Количество файлов не совпадает с заголовком manifest."
+                }
+                require(parsed.optLong("totalBytes", -1L) == totalBytes) {
+                    "Общий размер файлов не совпадает с manifest."
+                }
                 val expected = parsed.getJSONArray("files")
                 require(expected.length() == stagedFiles.size) { "Количество файлов не совпадает с manifest." }
                 val stagedByPath = stagedFiles.associateBy { it.relativePath }
+                require(stagedByPath.size == stagedFiles.size) {
+                    "В архиве обнаружены повторяющиеся пути файлов."
+                }
+                val manifestPaths = mutableSetOf<String>()
                 for (index in 0 until expected.length()) {
                     val item = expected.getJSONObject(index)
                     val relative = item.getString("path")
+                    require(manifestPaths.add(relative)) { "В manifest обнаружен повторяющийся путь." }
                     val staged = stagedByPath[relative] ?: error("В архиве отсутствует файл $relative")
                     require(staged.file.length() == item.getLong("size")) { "Размер файла не совпадает: $relative" }
                     require(sha256(staged.file) == item.getString("sha256")) { "Контрольная сумма не совпадает: $relative" }
@@ -280,7 +325,8 @@ object BackupArchive {
                         stagedFiles.size,
                         totalBytes
                     ),
-                    parsed.optJSONObject("safePreferences") ?: JSONObject()
+                    parsed.optJSONObject("safePreferences") ?: JSONObject(),
+                    archiveAppId
                 )
             }
         } catch (error: Exception) {

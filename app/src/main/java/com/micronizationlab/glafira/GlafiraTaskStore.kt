@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONArray
+import java.io.File
 
 /**
  * Transactional, process-death-safe queue storage for GLAFIRA Core.
@@ -13,6 +14,8 @@ import org.json.JSONArray
  */
 class GlafiraTaskStore(context: Context) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION), GlafiraTaskQueue {
+    private val appContext = context.applicationContext
+
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -58,6 +61,7 @@ class GlafiraTaskStore(context: Context) :
         throw IllegalStateException("Downgrading the GLAFIRA task database is not supported.")
     }
 
+    @Synchronized
     override fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
         GlafiraTaskPolicy.validate(task)
         val values = task.toContentValues()
@@ -76,6 +80,7 @@ class GlafiraTaskStore(context: Context) :
         return GlafiraTaskEnqueueResult(existing, false)
     }
 
+    @Synchronized
     override fun getTask(taskId: String): GlafiraTask? =
         readableDatabase.query(
             TABLE_TASKS,
@@ -88,6 +93,7 @@ class GlafiraTaskStore(context: Context) :
             "1"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.toTask() else null }
 
+    @Synchronized
     fun listTasks(
         states: Set<GlafiraTaskState> = emptySet(),
         limit: Int = 100
@@ -117,6 +123,7 @@ class GlafiraTaskStore(context: Context) :
      * Atomically claims one eligible task and increments its attempt count.
      * A worker crash after this point is recovered by a later Core recovery pass.
      */
+    @Synchronized
     override fun claimNext(nowMillis: Long): GlafiraTask? {
         val db = writableDatabase
         db.beginTransaction()
@@ -166,6 +173,7 @@ class GlafiraTaskStore(context: Context) :
      * Compare-and-set transition. Callers must supply the states they observed;
      * illegal state transitions are rejected before SQLite is modified.
      */
+    @Synchronized
     override fun transition(
         taskId: String,
         expectedStates: Set<GlafiraTaskState>,
@@ -276,6 +284,112 @@ class GlafiraTaskStore(context: Context) :
             retryAtMillis = if (isNull(retryIndex)) null else getLong(retryIndex),
             lastError = if (isNull(errorIndex)) null else getString(errorIndex)
         )
+    }
+
+
+    /**
+     * Checkpoints SQLite and exports the closed, consistent database file.
+     * The caller must hold GlafiraCoreMaintenanceGate for the whole snapshot operation.
+     */
+    @Synchronized
+    internal fun exportConsistentSnapshot(destination: File) {
+        val db = writableDatabase
+        db.rawQuery("PRAGMA wal_checkpoint(FULL)", null).use { cursor ->
+            if (cursor.moveToFirst()) {
+                check(cursor.getInt(0) == 0) { "SQLite WAL checkpoint is busy; Core snapshot aborted." }
+                if (cursor.columnCount >= 3 && cursor.getInt(1) >= 0) {
+                    check(cursor.getInt(2) >= cursor.getInt(1)) {
+                        "SQLite WAL checkpoint did not include every committed frame."
+                    }
+                }
+            }
+        }
+        close()
+
+        val source = appContext.getDatabasePath(DATABASE_NAME)
+        check(source.isFile) { "Core task database does not exist." }
+        val walFile = File(source.path + "-wal")
+        check(!walFile.exists() || walFile.length() == 0L) {
+            "SQLite WAL still contains data after closing the queue; Core snapshot aborted."
+        }
+        destination.parentFile?.mkdirs()
+        source.copyTo(destination, overwrite = true)
+        validateDatabaseSnapshot(destination)
+    }
+
+    /**
+     * Installs a previously verified database snapshot with a same-directory rollback file.
+     * The caller must hold GlafiraCoreMaintenanceGate and keep Core dispatch paused.
+     */
+    @Synchronized
+    internal fun restoreConsistentSnapshot(snapshot: File) {
+        require(snapshot.isFile && snapshot.length() > 0L) { "Core database snapshot is missing." }
+        validateDatabaseSnapshot(snapshot)
+        close()
+
+        val target = appContext.getDatabasePath(DATABASE_NAME)
+        val parent = requireNotNull(target.parentFile)
+        check(parent.exists() || parent.mkdirs()) { "Cannot prepare the Core database directory." }
+        val replacement = File(parent, "$DATABASE_NAME.restore-new")
+        val rollback = File(parent, "$DATABASE_NAME.restore-rollback")
+        replacement.delete()
+        rollback.delete()
+        snapshot.copyTo(replacement, overwrite = true)
+        validateDatabaseSnapshot(replacement)
+
+        if (target.exists()) {
+            check(target.renameTo(rollback)) { "Cannot preserve the current Core database for rollback." }
+        }
+        if (!replacement.renameTo(target)) {
+            if (rollback.exists()) rollback.renameTo(target)
+            throw IllegalStateException("Cannot activate the restored Core database.")
+        }
+
+        try {
+            File(target.path + "-wal").delete()
+            File(target.path + "-shm").delete()
+            validateDatabaseSnapshot(target)
+            val reopened = readableDatabase
+            reopened.rawQuery("PRAGMA integrity_check", null).use { cursor ->
+                check(cursor.moveToFirst() && cursor.getString(0) == "ok") {
+                    "Restored Core database failed its integrity check."
+                }
+            }
+            rollback.delete()
+        } catch (error: Exception) {
+            close()
+            target.delete()
+            File(target.path + "-wal").delete()
+            File(target.path + "-shm").delete()
+            if (rollback.exists() && !rollback.renameTo(target)) {
+                error.addSuppressed(IllegalStateException("Core database rollback file could not be restored."))
+            }
+            throw error
+        } finally {
+            replacement.delete()
+        }
+    }
+
+    private fun validateDatabaseSnapshot(file: File) {
+        val database = SQLiteDatabase.openDatabase(
+            file.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READONLY
+        )
+        try {
+            database.rawQuery("PRAGMA integrity_check", null).use { cursor ->
+                check(cursor.moveToFirst() && cursor.getString(0) == "ok") {
+                    "Core database snapshot failed SQLite integrity_check."
+                }
+            }
+            database.rawQuery("PRAGMA user_version", null).use { cursor ->
+                check(cursor.moveToFirst() && cursor.getInt(0) == DATABASE_VERSION) {
+                    "Core database snapshot schema version is incompatible."
+                }
+            }
+        } finally {
+            database.close()
+        }
     }
 
     companion object {
