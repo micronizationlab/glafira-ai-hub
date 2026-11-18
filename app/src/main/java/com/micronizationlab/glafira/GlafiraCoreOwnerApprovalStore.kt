@@ -166,7 +166,7 @@ class GlafiraCoreOwnerApprovalStore(
         ownerSession: GlafiraCoreOwnerSession,
         nowMillis: Long = System.currentTimeMillis()
     ): GlafiraCoreOwnerApprovalMutation {
-        if (!ownerSession.isValid(nowMillis)) return GlafiraCoreOwnerApprovalMutation.OWNER_AUTHENTICATION_REQUIRED
+        if (!ownerSession.isValid()) return GlafiraCoreOwnerApprovalMutation.OWNER_AUTHENTICATION_REQUIRED
         var result = GlafiraCoreOwnerApprovalMutation.STORAGE_ERROR
         db.beginTransaction()
         try {
