@@ -40,6 +40,7 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) {
         require(scopes.isNotEmpty() && scopes.all(::isValidScope)) { "Invalid device scopes." }
 
         val alias = keyAlias(deviceId)
+        val keyAlreadyExisted = keyStore.containsAlias(alias)
         val key = getOrCreateKey(alias)
         val encrypted = encrypt(key, hmacSecret)
         val encoded = listOf(
@@ -50,7 +51,7 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) {
 
         val committed = preferences.edit().putString(storageKey(deviceId), encoded).commit()
         if (!committed) {
-            keyStore.deleteEntry(alias)
+            if (!keyAlreadyExisted && keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
             throw IllegalStateException("Unable to persist Bridge device credentials.")
         }
     }
@@ -87,16 +88,15 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) {
 
     @Synchronized
     fun revokeAll(): Boolean {
-        val ids = preferences.all.keys
+        val aliases = preferences.all.keys
             .filter { it.startsWith(DEVICE_KEY_PREFIX) }
-            .map { it.removePrefix(DEVICE_KEY_PREFIX) }
+            .map { it.removePrefix(DEVICE_KEY_PREFIX).take(32) }
+            .filter { it.length == 32 }
+            .map { KEY_ALIAS_PREFIX + it }
         val committed = preferences.edit().clear().commit()
         if (!committed) return false
-        ids.forEach { id ->
-            if (isValidDeviceId(id)) {
-                val alias = keyAlias(id)
-                if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
-            }
+        aliases.forEach { alias ->
+            if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
         }
         return true
     }
