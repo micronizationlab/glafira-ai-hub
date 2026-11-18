@@ -28,11 +28,11 @@ class GlafiraBridgeOwnerApprovalTest {
         val service = GlafiraBridgeOwnerApprovalService(store)
         val queued = service.submitVerifiedEnrollment(candidate(setOf("project.read", "finance.payment")))!!
 
-        val denied = service.approve(queued.approvalId, setOf("project.read"), false, 2_000L)
+        val denied = service.approve(queued.approvalId, setOf("project.read"), expiredOwnerSession(), 2_000L)
         assertEquals(GlafiraBridgeApprovalMutation.InvalidScopes, denied)
         assertTrue(store.issuedScopes.isEmpty())
 
-        val approved = service.approve(queued.approvalId, setOf("project.read"), true, 2_001L)
+        val approved = service.approve(queued.approvalId, setOf("project.read"), ownerSession(), 2_001L)
         assertTrue(approved is GlafiraBridgeApprovalMutation.Approved)
         assertEquals(setOf("project.read"), store.issuedScopes)
         assertEquals(32, store.persistedSecret?.size)
@@ -45,7 +45,7 @@ class GlafiraBridgeOwnerApprovalTest {
         val service = GlafiraBridgeOwnerApprovalService(store)
         val queued = service.submitVerifiedEnrollment(candidate(setOf("finance.payment")))!!
 
-        val result = service.approve(queued.approvalId, setOf("project.read"), true, 2_000L)
+        val result = service.approve(queued.approvalId, setOf("project.read"), ownerSession(), 2_000L)
 
         assertTrue(result is GlafiraBridgeApprovalMutation.Approved)
         assertEquals(setOf("project.read"), store.issuedScopes)
@@ -68,7 +68,7 @@ class GlafiraBridgeOwnerApprovalTest {
         val service = GlafiraBridgeOwnerApprovalService(store)
         val queued = service.submitVerifiedEnrollment(candidate(emptySet()))!!
 
-        assertTrue(service.reject(queued.approvalId, true, 2_000L))
+        assertTrue(service.reject(queued.approvalId, ownerSession(), 2_000L))
         val result = service.approve(queued.approvalId, setOf("project.read"), true, 2_001L)
 
         assertEquals(GlafiraBridgeApprovalMutation.AlreadyDecided, result)
@@ -81,20 +81,26 @@ class GlafiraBridgeOwnerApprovalTest {
         val queued = service.submitVerifiedEnrollment(candidate(emptySet()))!!
         service.approve(queued.approvalId, setOf("project.read"), true, 2_000L)
 
-        val unauthenticated = service.claimCredentialDelivery(queued.approvalId, "owner-session-0001", false)
+        val unauthenticated = service.claimCredentialDelivery(queued.approvalId, expiredOwnerSession(), 2_001L)
         assertEquals(GlafiraBridgeDeliveryResult.NotApproved, unauthenticated)
 
-        val first = service.claimCredentialDelivery(queued.approvalId, "owner-session-0001", true)
+        val first = service.claimCredentialDelivery(queued.approvalId, ownerSession("owner-session-0001"), 2_001L)
         assertTrue(first is GlafiraBridgeDeliveryResult.Available)
-        val otherSession = service.claimCredentialDelivery(queued.approvalId, "owner-session-0002", true)
+        val otherSession = service.claimCredentialDelivery(queued.approvalId, ownerSession("owner-session-0002"), 2_001L)
         assertEquals(GlafiraBridgeDeliveryResult.ClaimedByAnotherOwnerSession, otherSession)
 
-        assertTrue(service.acknowledgeCredentialDelivery(queued.approvalId, "owner-session-0001", true))
+        assertTrue(service.acknowledgeCredentialDelivery(queued.approvalId, ownerSession("owner-session-0001"), 2_001L))
         assertEquals(
             GlafiraBridgeDeliveryResult.AlreadyAcknowledged,
             service.claimCredentialDelivery(queued.approvalId, "owner-session-0001", true)
         )
     }
+
+    private fun ownerSession(id: String = "owner-session-0001") =
+        GlafiraBridgeOwnerSession(id, 10_000L)
+
+    private fun expiredOwnerSession() =
+        GlafiraBridgeOwnerSession("owner-session-expired", 1_999L)
 
     private fun candidate(scopes: Set<String>) = GlafiraBridgePairingCandidate(
         enrollment = GlafiraBridgeVerifiedEnrollment(
