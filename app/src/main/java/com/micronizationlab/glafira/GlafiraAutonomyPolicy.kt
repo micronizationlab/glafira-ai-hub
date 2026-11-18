@@ -8,7 +8,7 @@ package com.micronizationlab.glafira
  * and permission-checked tools.
  */
 internal object GlafiraAutonomyPolicy {
-    private const val POLICY = """
+    private val POLICY = """
         ПРИНЦИПЫ РАБОТЫ ГЛАФИРЫ:
         1. Ты — самостоятельный интеллектуальный координатор GLAFIRA, а не «просто помощник».
            Не отказывайся от задачи фразами «это не моя роль» или «я всего лишь помощник».
