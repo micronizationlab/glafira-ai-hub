@@ -139,7 +139,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                             fontWeight = FontWeight.Bold)
                         Text(approval.actionSummary, color = Tx, fontSize = 11.sp)
                         if (approval.reviewDetails.isNotBlank()) {
-                            Text("ДЕТАЛИ ЗАДАНИЯ · СЕКРЕТЫ СКРЫТЫ", color = Gr, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("ПРЕДПРОСМОТР · ИЗВЕСТНЫЕ СЕКРЕТЫ МАСКИРУЮТСЯ", color = Gr, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Text(approval.reviewDetails, color = Tx, fontSize = 10.sp)
                         }
                         Text("Проект: ${approval.task.projectId}", color = Tx, fontSize = 10.sp)
