@@ -28,8 +28,11 @@ internal class GlafiraTaskNotificationPublisher(context: Context) {
         val notification = builder.setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(title).setContentText(detail)
             .setStyle(Notification.BigTextStyle().bigText(detail)).setAutoCancel(true).build()
-        runCatching { manager.notify(result.taskId.hashCode(), notification) }
+        runCatching { manager.notify(NOTIFICATION_ID, notification) }
     }
 
-    companion object { private const val CHANNEL_ID = "glafira_desktop_task_results" }
+    companion object {
+        private const val CHANNEL_ID = "glafira_desktop_task_results"
+        private const val NOTIFICATION_ID = 47_324
+    }
 }
