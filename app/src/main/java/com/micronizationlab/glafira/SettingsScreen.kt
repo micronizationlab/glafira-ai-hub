@@ -35,6 +35,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var yandexKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.YANDEX)) }
     var geminiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GEMINI)) }
     var openRouterKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENROUTER)) }
+    var braveSearchKey by remember { mutableStateOf(EncryptedApiKeyStore.load(context, "web_search_api_key")) }
     var isSaved by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf(false) }
     var workingExpanded by remember { mutableStateOf(true) }
@@ -150,6 +151,12 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 onValueChange = { openRouterKey = it; isSaved = false; saveError = false },
                 configured = openRouterKey.isNotBlank()
             )
+            ProviderKeyField(
+                label = "Brave Search API Key (веб-поиск)",
+                value = braveSearchKey,
+                onValueChange = { braveSearchKey = it; isSaved = false; saveError = false },
+                configured = braveSearchKey.isNotBlank()
+            )
         }
 
         Spacer(Modifier.height(16.dp))
@@ -164,6 +171,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                     saveProviderKey(context, ProviderId.YANDEX, yandexKey),
                     saveProviderKey(context, ProviderId.GEMINI, geminiKey),
                     saveProviderKey(context, ProviderId.OPENROUTER, openRouterKey)
+                    GlafiraBraveSearchProvider.saveApiKey(context, braveSearchKey)
                 )
                 val saved = saveResults.all { it }
                 isSaved = saved
