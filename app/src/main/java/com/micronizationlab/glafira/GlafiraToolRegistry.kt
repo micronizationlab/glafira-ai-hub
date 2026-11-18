@@ -62,6 +62,14 @@ object GlafiraToolRegistry {
             ToolRiskLevel.DRAFT, setOf("approval.request")
         ),
         GlafiraToolDefinition(
+            "desktop.task.claim", "Получение задания на Desktop", "Получение следующего задания из очереди владельца для связанного настольного узла.",
+            ToolRiskLevel.READ_ONLY, setOf("desktop.task.claim")
+        ),
+        GlafiraToolDefinition(
+            "desktop.task.result", "Возврат результата Desktop", "Обновление состояния и результата задания от связанного настольного узла.",
+            ToolRiskLevel.DRAFT, setOf("desktop.task.result")
+        ),
+        GlafiraToolDefinition(
             "vault.credential.use", "Использование сохранённой учётной записи",
             "Передача учётных данных только доверенному адаптеру для заранее разрешённого HTTPS-сайта; секрет не возвращается модели.",
             ToolRiskLevel.DRAFT, setOf("vault.credential.use")
