@@ -148,9 +148,7 @@ class GlafiraSqliteMemoryRepository(
         if (updatedStatus == MemoryStatus.DELETED) {
             return@withContext MemoryWriteResult.Rejected("USE_DELETE_OPERATION")
         }
-        if ((updatedStatus == MemoryStatus.CONFIRMED ||
-                (change.confidenceBasisOrNull() == MemoryConfidenceBasis.OWNER_CONFIRMED)) &&
-            access.actorType != CoreActorType.OWNER) {
+        if (updatedStatus == MemoryStatus.CONFIRMED && access.actorType != CoreActorType.OWNER) {
             return@withContext MemoryWriteResult.Rejected("OWNER_CONFIRMATION_REQUIRED")
         }
         val decision = policyEngine.evaluate(
