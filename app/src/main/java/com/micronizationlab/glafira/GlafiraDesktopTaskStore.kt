@@ -41,8 +41,17 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         val records = read().toMutableList()
         val now = System.currentTimeMillis()
         records.forEach { item ->
-            if (item.optString("state") == "QUEUED" && item.optLong("expiresAtEpochMs") <= now) {
+            val state = item.optString("state")
+            if (state == "QUEUED" && item.optLong("expiresAtEpochMs") <= now) {
                 item.put("state", "EXPIRED")
+                item.put("sequence", item.optLong("sequence") + 1)
+            } else if (state == "DISPATCHED" && item.optLong("leaseExpiresAtEpochMs") in 1..now) {
+                if (item.optInt("attemptCount") >= MAX_DELIVERY_ATTEMPTS) {
+                    item.put("state", "FAILED")
+                    item.put("errorCode", "DESKTOP_DELIVERY_RETRIES_EXCEEDED")
+                } else {
+                    item.put("state", "QUEUED")
+                }
                 item.put("sequence", item.optLong("sequence") + 1)
             }
         }
@@ -55,6 +64,8 @@ internal class GlafiraDesktopTaskStore(context: Context) {
             return@synchronized null
         }
         next.put("state", "DISPATCHED")
+        next.put("attemptCount", next.optInt("attemptCount") + 1)
+        next.put("leaseExpiresAtEpochMs", now + CLAIM_LEASE_MS)
         next.put("sequence", next.optLong("sequence") + 1)
         write(records)
         JSONObject(next.toString())
@@ -87,6 +98,8 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         }
         require(state in allowedNext) { "Invalid task state transition." }
         item.put("state", state)
+        if (state == "RUNNING") item.put("leaseExpiresAtEpochMs", System.currentTimeMillis() + CLAIM_LEASE_MS)
+        if (state in setOf("SUCCEEDED", "FAILED", "CANCELLED")) item.remove("leaseExpiresAtEpochMs")
         item.put("sequence", item.optLong("sequence") + 1)
         item.put("progressPercent", progressPercent)
         if (progressMessage != null) item.put("progressMessage", progressMessage)
@@ -140,5 +153,7 @@ internal class GlafiraDesktopTaskStore(context: Context) {
         private const val MAX_QUEUED = 100
         private const val MAX_RECORDS = 500
         private const val MAX_FILE_BYTES = 2 * 1024 * 1024L
+        private const val CLAIM_LEASE_MS = 10 * 60 * 1000L
+        private const val MAX_DELIVERY_ATTEMPTS = 3
     }
 }
