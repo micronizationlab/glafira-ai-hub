@@ -43,7 +43,16 @@ val Gr = Color(0xFF7EC850)
 val GrD = Color(0xFF151515)
 val Tx = Color(0xFF888888)
 
-data class A(val n: String, val d: String, val on: Boolean, val emoji: String, val prompt: String)
+// Улучшенные описания и специфика
+data class A(
+    val n: String, 
+    val d: String, 
+    val on: Boolean, 
+    val emoji: String, 
+    val prompt: String,
+    val fullDesc: String
+)
+
 data class Msg(val text: String, val isUser: Boolean, val time: String)
 
 class MainActivity : ComponentActivity() {
@@ -100,9 +109,21 @@ fun ContactList(
     var newProjectName by remember { mutableStateOf("") }
 
     val list = listOf(
-        A("ГЛАФИРА", "Главный координатор", true, "🤖", "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу."),
-        A("АНАЛИТИК", "Исследование и анализ", true, "📊", "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен."),
-        A("ПРОГРАММИСТ", "Код и технические задачи", false, "💻", "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.")
+        A(
+            "ГЛАФИРА", "Главный координатор", true, "🤖", 
+            "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
+            "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением."
+        ),
+        A(
+            "АНАЛИТИК", "Исследование и анализ", true, "📊", 
+            "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен.",
+            "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры."
+        ),
+        A(
+            "ПРОГРАММИСТ", "Код и технические задачи", false, "💻", 
+            "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
+            "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта."
+        )
     )
 
     Column {
@@ -188,79 +209,141 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     if (showProfile) {
-        AlertDialog(
-            onDismissRequest = { showProfile = false },
-            title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(agent.emoji, fontSize = 24.sp); Spacer(Modifier.width(8.dp)); Text(agent.n, color = Gr) } },
-            text = { Column { Text(agent.d, fontWeight = FontWeight.Bold, color = Bg); Spacer(Modifier.height(8.dp)); Text("Специфика: ${agent.prompt.take(100)}...", fontSize = 12.sp, color = Color.DarkGray) } },
-            confirmButton = { TextButton(onClick = { showProfile = false }) { Text("Закрыть", color = Gr) } }
-        )
-    }
+        ProfileScreen(agent = agent, onBack = { showProfile = false })
+    } else {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
+                Row(Modifier.weight(1f).clickable { showProfile = true }, verticalAlignment = Alignment.CenterVertically) {
+                    Text(agent.emoji, fontSize = 20.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text(agent.n, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text(if (agent.on) "Online" else "Offline", color = Tx, fontSize = 10.sp)
+                    }
+                }
+                Text("🗑️", fontSize = 18.sp, modifier = Modifier.clickable {
+                    messages = emptyList()
+                    saveHistory(context, historyKey, emptyList())
+                })
+            }
 
-    Column(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(messages) { msg ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
+                        Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
+                            Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f)).border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(12.dp)) {
+                                Text(msg.text, color = if (msg.isUser) Color.White else Gr, fontSize = 14.sp)
+                            }
+                            Text(msg.time, color = Tx, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                        }
+                    }
+                }
+                if (isLoading) {
+                    item { Text("Глафира печатает...", color = Tx, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
+                }
+            }
+
+            Row(Modifier.fillMaxWidth().background(GrD).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 14.sp) },
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Color.DarkGray)
+                )
+                Button(
+                    onClick = {
+                        if (inputText.isNotBlank() && !isLoading) {
+                            val userMsg = inputText
+                            val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                            val updatedMessages = messages + Msg(userMsg, true, timeNow)
+                            messages = updatedMessages
+                            saveHistory(context, historyKey, updatedMessages)
+                            inputText = ""
+                            isLoading = true
+                            
+                            scope.launch {
+                                val reply = callGigaChatWithTrustedCert(context, updatedMessages, agent.prompt)
+                                val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                                val finalMessages = updatedMessages + Msg(reply, false, replyTime)
+                                messages = finalMessages
+                                saveHistory(context, historyKey, finalMessages)
+                                isLoading = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Bg)
+                ) {
+                    Text("➤", fontSize = 18.sp)
+                }
+            }
+        }
+    }
+}
+
+// Новый полноценный экран профиля
+@Composable
+fun ProfileScreen(agent: A, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().background(Bg)) {
+        // Шапка профиля
         Row(Modifier.fillMaxWidth().background(GrD).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("←", color = Gr, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
-            Row(Modifier.weight(1f).clickable { showProfile = true }, verticalAlignment = Alignment.CenterVertically) {
-                Text(agent.emoji, fontSize = 20.sp)
-                Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(agent.n, color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    Text(if (agent.on) "Online" else "Offline", color = Tx, fontSize = 10.sp)
-                }
-            }
-            Text("🗑️", fontSize = 18.sp, modifier = Modifier.clickable {
-                messages = emptyList()
-                saveHistory(context, historyKey, emptyList())
-            })
+            Text("Профиль агента", color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
 
-        LazyColumn(Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(messages) { msg ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start) {
-                    Column(horizontalAlignment = if (msg.isUser) Alignment.End else Alignment.Start) {
-                        Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (msg.isUser) GrD else Gr.copy(alpha = 0.15f)).border(1.dp, if (msg.isUser) Color.DarkGray else Gr.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(12.dp)) {
-                            Text(msg.text, color = if (msg.isUser) Color.White else Gr, fontSize = 14.sp)
-                        }
-                        Text(msg.time, color = Tx, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
-                    }
-                }
-            }
-            if (isLoading) {
-                item { Text("Глафира печатает...", color = Tx, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
-            }
-        }
-
-        Row(Modifier.fillMaxWidth().background(GrD).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextField(
-                value = inputText,
-                onValueChange = { inputText = it },
-                placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 14.sp) },
-                modifier = Modifier.weight(1f).padding(end = 8.dp),
-                colors = TextFieldDefaults.colors(focusedContainerColor = Bg, unfocusedContainerColor = Bg, focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedIndicatorColor = Gr, unfocusedIndicatorColor = Color.DarkGray)
-            )
-            Button(
-                onClick = {
-                    if (inputText.isNotBlank() && !isLoading) {
-                        val userMsg = inputText
-                        val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                        val updatedMessages = messages + Msg(userMsg, true, timeNow)
-                        messages = updatedMessages
-                        saveHistory(context, historyKey, updatedMessages)
-                        inputText = ""
-                        isLoading = true
-                        
-                        scope.launch {
-                            val reply = callGigaChatWithTrustedCert(context, updatedMessages, agent.prompt)
-                            val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                            val finalMessages = updatedMessages + Msg(reply, false, replyTime)
-                            messages = finalMessages
-                            saveHistory(context, historyKey, finalMessages)
-                            isLoading = false
-                        }
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Bg)
+        // Контент профиля
+        Column(
+            Modifier.fillMaxSize().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Большой аватар
+            Box(
+                Modifier.size(100.dp).clip(CircleShape).background(Gr.copy(alpha = 0.2f)).border(2.dp, Gr, CircleShape),
+                contentAlignment = Alignment.Center
             ) {
-                Text("➤", fontSize = 18.sp)
+                Text(agent.emoji, fontSize = 50.sp)
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            Text(agent.n, color = Gr, fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Text(agent.d, color = Tx, fontSize = 14.sp)
+            
+            Spacer(Modifier.height(8.dp))
+            
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(if (agent.on) Color.Green else Color.Gray))
+                Spacer(Modifier.width(4.dp))
+                Text(if (agent.on) "В сети" else "Не в сети", color = if (agent.on) Color.Green else Tx, fontSize = 12.sp)
+            }
+
+            Spacer(Modifier.height(32.dp))
+            
+            // Описание
+            Card(
+                colors = CardDefaults.cardColors(containerColor = GrD),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("ОПИСАНИЕ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(agent.fullDesc, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Специфика
+            Card(
+                colors = CardDefaults.cardColors(containerColor = GrD),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("СПЕЦИФИКА РАБОТЫ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(agent.prompt, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
+                }
             }
         }
     }
