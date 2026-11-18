@@ -20,7 +20,7 @@ class GlafiraCoreBackupCoordinator(
 
     suspend fun verify(archive: File, passphrase: CharArray): BackupVerification =
         GlafiraCoreMaintenanceGate.withExclusive {
-            BackupArchive.verifyContains(archive, passphrase, CORE_DATABASE_SNAPSHOT_PATH)
+            BackupArchive.verifyContains(appContext, archive, passphrase, CORE_DATABASE_SNAPSHOT_PATH)
         }
 
     suspend fun restore(archive: File, passphrase: CharArray): BackupVerification =
