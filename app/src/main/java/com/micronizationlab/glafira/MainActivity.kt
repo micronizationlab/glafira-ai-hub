@@ -65,6 +65,7 @@ val GrD = Color(0xFFE2E2E2)
 val Tx = Color(0xFF626262)
 val Line = Color(0xFFB8B8B8)
 val Red = Color(0xFFC62828)
+val XpBlue = Color(0xFF2F73B7)
 
 
 enum class AgentGroup(val title: String) {
@@ -247,18 +248,20 @@ fun GroupHeader(title: String, count: Int, expanded: Boolean, onToggle: () -> Un
 @Composable
 fun AgentRow(a: A, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        StatusFlower(a.on, 14.dp)
+        Spacer(Modifier.width(8.dp))
         Box(
-            Modifier.size(40.dp).clip(CircleShape)
+            Modifier.size(24.dp).clip(CircleShape)
                 .background(Color.White)
-                .border(1.dp, if (a.on) Color(0xFF55B84A) else Color(0xFFB8B8B8), CircleShape),
+                .border(1.dp, Line, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Text(a.emoji, fontSize = 20.sp)
+            Text(a.emoji, fontSize = 14.sp)
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(a.n, color = if (a.on) Color(0xFF202020) else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(
@@ -341,7 +344,19 @@ fun ContactList(
         )
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().background(Bg)) {
+        Row(
+            Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("✿", color = Color.White, fontSize = 17.sp)
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text("GLAFIRA AI HUB", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("ICQ-style agent messenger", color = Color.White.copy(alpha = 0.82f), fontSize = 9.sp)
+            }
+            Text("—  □  ×", color = Color.White, fontSize = 12.sp)
+        }
         Row(Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Проект: ", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
             Box {
@@ -474,7 +489,7 @@ fun ContactList(
             }
         }
 
-        Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             StatusFlower(isOnline, 8.dp)
             Spacer(Modifier.width(6.dp))
             Text(
@@ -596,7 +611,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().background(GrD).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (isSearching) {
                     TextField(
                         value = searchQuery, onValueChange = { searchQuery = it },
