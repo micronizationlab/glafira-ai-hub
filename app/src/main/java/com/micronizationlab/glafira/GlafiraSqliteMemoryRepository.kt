@@ -22,14 +22,23 @@ class GlafiraSqliteMemoryRepository(
 
     override suspend fun put(record: CoreMemoryRecord, access: MemoryAccessContext): MemoryWriteResult =
         withContext(Dispatchers.IO) {
+            if (!record.scopeId.matches(SAFE_SCOPE_ID) || record.status == MemoryStatus.DELETED) {
+                return@withContext MemoryWriteResult.Rejected("MEMORY_METADATA_INVALID")
+            }
             if (!canAccessScope(record.scopeType, record.scopeId, access)) {
                 return@withContext MemoryWriteResult.Rejected("MEMORY_SCOPE_DENIED")
             }
-            if (record.createdBy != access.actorId || record.provenance.actorId != access.actorId) {
+            if (record.createdBy != access.actorId ||
+                record.lastModifiedBy != access.actorId ||
+                record.provenance.actorId != access.actorId) {
                 return@withContext MemoryWriteResult.Rejected("MEMORY_PROVENANCE_ACTOR_MISMATCH")
             }
             if (record.classification.ordinal > access.maximumClassification.ordinal) {
                 return@withContext MemoryWriteResult.Rejected("MEMORY_CLASSIFICATION_DENIED")
+            }
+            if (record.confidenceBasis == MemoryConfidenceBasis.OWNER_CONFIRMED &&
+                access.actorType != CoreActorType.OWNER) {
+                return@withContext MemoryWriteResult.Rejected("OWNER_CONFIRMATION_REQUIRED")
             }
             if (record.status == MemoryStatus.CONFIRMED &&
                 (access.actorType != CoreActorType.OWNER ||
@@ -87,6 +96,7 @@ class GlafiraSqliteMemoryRepository(
             val scopeNames = scopes.map { it.name }
             val scopePlaceholders = scopeNames.joinToString(",") { "?" }
             val statusValues = query.statuses.filter { it != MemoryStatus.DELETED }
+            if (query.statuses.isNotEmpty() && statusValues.isEmpty()) return@withContext emptyList()
             val statusClause = if (statusValues.isEmpty()) "status != ?" else
                 "status IN (${statusValues.joinToString(",") { "?" }})"
             val args = mutableListOf<String>().apply {
@@ -135,7 +145,12 @@ class GlafiraSqliteMemoryRepository(
             return@withContext MemoryWriteResult.Rejected("MEMORY_CLASSIFICATION_DENIED")
         }
         val updatedStatus = change.status ?: current.status
-        if (updatedStatus == MemoryStatus.CONFIRMED && access.actorType != CoreActorType.OWNER) {
+        if (updatedStatus == MemoryStatus.DELETED) {
+            return@withContext MemoryWriteResult.Rejected("USE_DELETE_OPERATION")
+        }
+        if ((updatedStatus == MemoryStatus.CONFIRMED ||
+                (change.confidenceBasisOrNull() == MemoryConfidenceBasis.OWNER_CONFIRMED)) &&
+            access.actorType != CoreActorType.OWNER) {
             return@withContext MemoryWriteResult.Rejected("OWNER_CONFIRMATION_REQUIRED")
         }
         val decision = policyEngine.evaluate(
@@ -240,7 +255,7 @@ class GlafiraSqliteMemoryRepository(
         resourceId: String?
     ) = CorePolicyRequest(
         actor = CoreActor(access.actorId, access.actorType),
-        projectId = access.projectId ?: ProjectIdentifier("unscoped"),
+        projectId = requireNotNull(access.projectId) { "A project-scoped Core context is required" },
         action = action,
         classification = classification,
         resourceId = resourceId
@@ -391,5 +406,6 @@ class GlafiraSqliteMemoryRepository(
 
     companion object {
         private const val TABLE = "memory_records"
+        private val SAFE_SCOPE_ID = Regex("[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}")
     }
 }
