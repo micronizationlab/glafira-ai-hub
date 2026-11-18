@@ -7,7 +7,9 @@ enum class ProviderId(val prefKey: String, val displayName: String) {
     OPENAI("openai_api_key", "ChatGPT"),
     DEEPSEEK("deepseek_api_key", "DeepSeek"),
     GROK("grok_api_key", "Grok"),
-    YANDEX("yandex_api_key", "Алиса")
+    YANDEX("yandex_api_key", "Алиса"),
+    GEMINI("gemini_api_key", "Google Gemini"),
+    OPENROUTER("openrouter_api_key", "OpenRouter")
 }
 
 fun isProviderConfigured(context: Context, id: ProviderId): Boolean {
