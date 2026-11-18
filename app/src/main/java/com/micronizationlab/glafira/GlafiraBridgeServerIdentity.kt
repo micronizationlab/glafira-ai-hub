@@ -118,7 +118,7 @@ class GlafiraBridgeServerIdentity private constructor(
             certificate.verify(pair.public)
             certificate.checkValidity(Date(now))
             require(certificate.subjectAlternativeNames?.any { entry ->
-                entry.size >= 2 && entry[0] == if (isIpAddress) GeneralName.iPAddress else GeneralName.dNSName &&
+                entry.size >= 2 && entry[0] == (if (isIpAddress) GeneralName.iPAddress else GeneralName.dNSName) &&
                     entry[1].toString().equals(sanHost, ignoreCase = !isIpAddress)
             } == true) { "Generated TLS certificate SAN does not match the selected host." }
             require(KeyPurposeId.id_kp_serverAuth.id in (certificate.extendedKeyUsage ?: emptyList())) {
