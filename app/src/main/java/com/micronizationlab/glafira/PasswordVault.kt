@@ -6,6 +6,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.SecureRandom
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
@@ -92,13 +94,15 @@ class VaultSession internal constructor(
         }
         val temp = File(file.parentFile, "$FILE_NAME.tmp")
         temp.writeText(envelope.toString())
-        if (file.exists() && !file.delete()) {
-            temp.delete()
-            error("Не удалось обновить файл хранилища")
-        }
-        if (!temp.renameTo(file)) {
-            temp.delete()
-            error("Не удалось сохранить хранилище")
+        try {
+            Files.move(
+                temp.toPath(),
+                file.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE
+            )
+        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
     }
 
