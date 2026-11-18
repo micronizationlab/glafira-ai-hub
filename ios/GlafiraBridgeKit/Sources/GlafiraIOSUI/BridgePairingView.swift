@@ -54,9 +54,7 @@ public struct BridgePairingView: View {
 
             Section("2. Запросить сопряжение") {
                 TextField("Имя устройства", text: $deviceLabel)
-                    .textInputAutocapitalization(.words)
                 TextField("Запрашиваемые scopes через запятую", text: $requestedScopesText)
-                    .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .disabled(pending != nil)
                 Button {
