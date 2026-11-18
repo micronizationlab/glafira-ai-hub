@@ -6,14 +6,18 @@ import CoreFoundation
 /// This is an explicit owner-mediated handoff, not a network grant endpoint.
 public struct OwnerApprovedBridgeCredentialBundle: Sendable {
     public let origin: String
+    public let approvalId: String
+    public let ticketId: String
     public let deviceId: String
     public let hmacSecret: Data
     public let grantedScopes: Set<String>
     public let serverCertificateSHA256: String
 
-    private init(origin: String, deviceId: String, hmacSecret: Data,
+    private init(origin: String, approvalId: String, ticketId: String, deviceId: String, hmacSecret: Data,
                  grantedScopes: Set<String>, serverCertificateSHA256: String) {
         self.origin = origin
+        self.approvalId = approvalId
+        self.ticketId = ticketId
         self.deviceId = deviceId
         self.hmacSecret = hmacSecret
         self.grantedScopes = grantedScopes
@@ -24,17 +28,21 @@ public struct OwnerApprovedBridgeCredentialBundle: Sendable {
         _ json: Data,
         expectedOrigin: String,
         expectedCertificateSHA256: String,
+        expectedApprovalId: String,
+        expectedTicketId: String,
         requestedScopes: Set<String>
     ) throws -> OwnerApprovedBridgeCredentialBundle {
         guard json.count in 1...8_192,
               let object = try JSONSerialization.jsonObject(with: json) as? [String: Any],
               Set(object.keys) == Set([
-                "format", "origin", "deviceId", "hmacSecretBase64Url",
+                "format", "origin", "approvalId", "ticketId", "deviceId", "hmacSecretBase64Url",
                 "grantedScopes", "serverCertificateSha256"
               ]),
               let format = object["format"] as? String,
               format == "GLAFIRA_BRIDGE_CREDENTIAL_V1",
               let origin = object["origin"] as? String,
+              let approvalId = object["approvalId"] as? String,
+              let ticketId = object["ticketId"] as? String,
               let deviceId = object["deviceId"] as? String,
               let secretText = object["hmacSecretBase64Url"] as? String,
               let scopesArray = object["grantedScopes"] as? [String],
@@ -52,7 +60,12 @@ public struct OwnerApprovedBridgeCredentialBundle: Sendable {
               pin.utf8.count == 64, pin.allSatisfy({ $0.isHexDigit }) else {
             throw BridgeCredentialBundleError.serverIdentityMismatch
         }
-        guard (8...128).contains(deviceId.utf16.count),
+        guard approvalId == expectedApprovalId, ticketId == expectedTicketId,
+              (16...128).contains(approvalId.utf8.count),
+              (16...128).contains(ticketId.utf8.count),
+              approvalId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
+              ticketId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
+              (8...128).contains(deviceId.utf16.count),
               deviceId.unicodeScalars.allSatisfy({
                   $0.value <= 0xFFFF &&
                   (CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_" || $0 == ".")
@@ -76,7 +89,7 @@ public struct OwnerApprovedBridgeCredentialBundle: Sendable {
             throw BridgeCredentialBundleError.invalidSecret
         }
         return OwnerApprovedBridgeCredentialBundle(
-            origin: origin, deviceId: deviceId, hmacSecret: secret,
+            origin: origin, approvalId: approvalId, ticketId: ticketId, deviceId: deviceId, hmacSecret: secret,
             grantedScopes: scopes, serverCertificateSHA256: pin.lowercased()
         )
     }
