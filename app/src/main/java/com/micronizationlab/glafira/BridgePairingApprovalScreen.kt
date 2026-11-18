@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
+import android.net.ConnectivityManager
+import java.net.Inet4Address
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +38,7 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
     var deliveryText by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("Для просмотра и подтверждения устройств подтвердите личность владельца.") }
     var isBusy by remember { mutableStateOf(false) }
+    var hostAddress by remember { mutableStateOf(discoverBridgeIpv4(context).orEmpty()) }
 
     val availableScopes = remember {
         GlafiraToolRegistry.all().flatMap { it.requiredScopes }.toSortedSet()
@@ -132,6 +135,38 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(8.dp))
         Text(status, color = Tx, fontSize = 11.sp)
+
+        Spacer(Modifier.height(14.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = GrD)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("ЛОКАЛЬНЫЙ ЗАЩИЩЁННЫЙ СЕРВЕР", color = Gr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text("Сервер доступен только в локальной сети. Запуск и остановка выполняются владельцем вручную.", color = Tx, fontSize = 10.sp)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = hostAddress,
+                    onValueChange = { hostAddress = it },
+                    label = { Text("IPv4 адрес этого Android-устройства") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = hostAddress.isNotBlank(),
+                        onClick = {
+                            runCatching { GlafiraBridgeHostService.startFromOwnerAction(context, hostAddress.trim()) }
+                                .onSuccess { status = "Запрос на запуск сервера отправлен. Проверьте постоянное уведомление Android." }
+                                .onFailure { status = "Не удалось запустить сервер: проверьте IPv4 адрес и разрешения Android." }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Gr)
+                    ) { Text("ЗАПУСТИТЬ") }
+                    OutlinedButton(onClick = {
+                        GlafiraBridgeHostService.stopFromOwnerAction(context)
+                        status = "Отправлена команда остановки локального сервера."
+                    }) { Text("ОСТАНОВИТЬ") }
+                }
+                Text("Порт: ${GlafiraBridgeTlsHttpServer.DEFAULT_PORT}. Для Desktop используй IP и fingerprint сертификата из пакета сопряжения.", color = Tx, fontSize = 10.sp)
+            }
+        }
 
         delivery?.let { issued ->
             Spacer(Modifier.height(16.dp))
@@ -283,3 +318,14 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
 }
 
 private const val OWNER_SESSION_LIFETIME_MS = 120_000L
+
+
+private fun discoverBridgeIpv4(context: Context): String? = runCatching {
+    val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val network = manager.activeNetwork ?: return null
+    val properties = manager.getLinkProperties(network) ?: return null
+    properties.linkAddresses.asSequence()
+        .mapNotNull { it.address as? Inet4Address }
+        .firstOrNull { it.isSiteLocalAddress && !it.isLoopbackAddress && !it.isAnyLocalAddress }
+        ?.hostAddress
+}.getOrNull()
