@@ -35,24 +35,33 @@ final class BridgeProtocolTests: XCTestCase {
     func testSignatureRejectsTamperingAndShortSecret() throws {
         let secret = Data((0..<32).map(UInt8.init))
         let signed = try BridgeProtocol.sign(request(), secret: secret)
-        var altered = signed
-        altered.projectId = "project-002"
+        let altered = BridgeRequest(
+            requestId: signed.requestId,
+            idempotencyKey: signed.idempotencyKey,
+            deviceId: signed.deviceId,
+            projectId: "project-002",
+            operation: signed.operation,
+            issuedAtEpochMs: signed.issuedAtEpochMs,
+            expiresAtEpochMs: signed.expiresAtEpochMs,
+            payload: signed.payload,
+            signatureHex: signed.signatureHex
+        )
         XCTAssertFalse(BridgeProtocol.verifySignature(altered, secret: secret))
         XCTAssertFalse(BridgeProtocol.verifySignature(signed, secret: Data(repeating: 0, count: 16)))
     }
 
     func testAcceptsProjectReadAndRejectsUnsupportedVersion() {
         XCTAssertNil(BridgeProtocol.validate(request(), nowEpochMs: 1_050_000))
-        var unsupported = request()
-        unsupported = BridgeRequest(
+        let original = request()
+        let unsupported = BridgeRequest(
             protocolVersion: 2,
-            requestId: unsupported.requestId,
-            idempotencyKey: unsupported.idempotencyKey,
-            deviceId: unsupported.deviceId,
-            projectId: unsupported.projectId,
-            operation: unsupported.operation,
-            issuedAtEpochMs: unsupported.issuedAtEpochMs,
-            expiresAtEpochMs: unsupported.expiresAtEpochMs
+            requestId: original.requestId,
+            idempotencyKey: original.idempotencyKey,
+            deviceId: original.deviceId,
+            projectId: original.projectId,
+            operation: original.operation,
+            issuedAtEpochMs: original.issuedAtEpochMs,
+            expiresAtEpochMs: original.expiresAtEpochMs
         )
         XCTAssertEqual(BridgeProtocol.validate(unsupported, nowEpochMs: 1_050_000), .unsupportedVersion)
     }
