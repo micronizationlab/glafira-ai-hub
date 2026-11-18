@@ -41,12 +41,17 @@ class GlafiraBridgeHostService : Service() {
             return START_NOT_STICKY
         }
 
-        getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(HOST_RUNNING_KEY, false).putInt(HOST_PID_KEY, 0).commit()
+        val state = getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE)
+        state.edit()
+            .putBoolean(HOST_RUNNING_KEY, false)
+            .putInt(HOST_PID_KEY, 0)
+            .remove(HOST_ERROR_KEY)
+            .commit()
         val address = intent.getStringExtra(EXTRA_IPV4_ADDRESS)
         val port = intent.getIntExtra(EXTRA_PORT, GlafiraBridgeTlsHttpServer.DEFAULT_PORT)
-        startAsForeground()
         return try {
+            // Android can reject foreground promotion; keep it inside the guarded startup path.
+            startAsForeground()
             val selectedHost = BridgeServerHost.ipv4(address ?: "")
             val bindAddress = InetAddress.getByName(selectedHost.value)
             approvalStore = AndroidKeystoreBridgePairingApprovalStore(this)
@@ -82,7 +87,13 @@ class GlafiraBridgeHostService : Service() {
                 .commit()
             updateNotification("Защищённый локальный канал активен: $address:$port")
             START_NOT_STICKY
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            val reason = failure.message?.take(240) ?: failure.javaClass.simpleName
+            state.edit()
+                .putBoolean(HOST_RUNNING_KEY, false)
+                .putInt(HOST_PID_KEY, 0)
+                .putString(HOST_ERROR_KEY, failure.javaClass.simpleName + ": " + reason)
+                .commit()
             stopHost()
             stopSelf(startId)
             START_NOT_STICKY
@@ -169,7 +180,7 @@ class GlafiraBridgeHostService : Service() {
         approvalStore = null
         runCatching { replayGuard?.close() }
         replayGuard = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
     }
 
     companion object {
@@ -183,6 +194,7 @@ class GlafiraBridgeHostService : Service() {
         const val HOST_STATE_PREFS = "glafira_bridge_host_state"
         const val HOST_RUNNING_KEY = "running"
         const val HOST_PID_KEY = "process_id"
+        const val HOST_ERROR_KEY = "startup_error"
 
         /** Call only from an explicit owner action after selecting the device's LAN IPv4. */
         fun startFromOwnerAction(context: Context, ipv4Address: String, port: Int = GlafiraBridgeTlsHttpServer.DEFAULT_PORT) {
