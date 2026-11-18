@@ -26,6 +26,9 @@ class GlafiraSqliteMemoryRepository(
                 GlafiraSecretRedactor.redact(record.scopeId) != record.scopeId ||
                 !record.id.value.matches(SAFE_SCOPE_ID) ||
                 GlafiraSecretRedactor.redact(record.id.value) != record.id.value ||
+                record.content.length > MAX_CONTENT_CHARS ||
+                record.tags.size > MAX_TAGS ||
+                record.tags.any { it.isBlank() || it.length > MAX_TAG_LENGTH } ||
                 record.status == MemoryStatus.DELETED) {
                 return@withContext MemoryWriteResult.Rejected("MEMORY_METADATA_INVALID")
             }
@@ -147,6 +150,11 @@ class GlafiraSqliteMemoryRepository(
         val updatedClassification = change.classification ?: current.classification
         if (updatedClassification.ordinal > access.maximumClassification.ordinal) {
             return@withContext MemoryWriteResult.Rejected("MEMORY_CLASSIFICATION_DENIED")
+        }
+        if ((change.content?.length ?: 0) > MAX_CONTENT_CHARS ||
+            (change.tags?.size ?: 0) > MAX_TAGS ||
+            change.tags?.any { it.isBlank() || it.length > MAX_TAG_LENGTH } == true) {
+            return@withContext MemoryWriteResult.Rejected("MEMORY_CHANGE_TOO_LARGE")
         }
         val updatedStatus = change.status ?: current.status
         if (updatedStatus == MemoryStatus.DELETED) {
@@ -435,6 +443,9 @@ class GlafiraSqliteMemoryRepository(
 
     companion object {
         private const val TABLE = "memory_records"
+        private const val MAX_CONTENT_CHARS = 100_000
+        private const val MAX_TAGS = 32
+        private const val MAX_TAG_LENGTH = 64
         private val SAFE_SCOPE_ID = Regex("[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}")
     }
 }
