@@ -73,11 +73,34 @@ enum class AgentGroup(val title: String) {
     AI("МОДЕЛИ ИИ")
 }
 
+private fun isProviderQuotaExceeded(context: Context, id: ProviderId): Boolean =
+    context.getSharedPreferences("glafira_model_status", Context.MODE_PRIVATE)
+        .getBoolean("${id.name}_quota_exceeded", false)
+
+private fun markProviderQuotaExceeded(context: Context, id: ProviderId) {
+    context.getSharedPreferences("glafira_model_status", Context.MODE_PRIVATE)
+        .edit().putBoolean("${id.name}_quota_exceeded", true).apply()
+}
+
+private fun clearProviderQuotaExceeded(context: Context, id: ProviderId) {
+    context.getSharedPreferences("glafira_model_status", Context.MODE_PRIVATE)
+        .edit().putBoolean("${id.name}_quota_exceeded", false).apply()
+}
+
+private fun isQuotaLimitError(message: String): Boolean {
+    val value = message.lowercase(Locale.ROOT)
+    return listOf(
+        "429", "rate limit", "rate_limit", "quota", "insufficient_quota",
+        "token limit", "tokens limit", "лимит", "исчерпан"
+    ).any { value.contains(it) }
+}
+
 data class A(
     val n: String, val d: String, val on: Boolean, val emoji: String,
     val prompt: String, val fullDesc: String,
     val providerId: ProviderId = ProviderId.GIGACHAT,
-    val group: AgentGroup = AgentGroup.IA
+    val group: AgentGroup = AgentGroup.IA,
+    val quotaExceeded: Boolean = false
 )
 data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "")
 
@@ -205,16 +228,20 @@ fun App() {
             else -> ChatScreen(
                 agent = currentAgent!!,
                 project = currentProject,
-                onBack = { currentAgent = null }
+                onBack = { currentAgent = null; statusRefresh++ }
             )
         }
     }
 }
 
 @Composable
-fun StatusFlower(isOnline: Boolean, size: Dp = 12.dp) {
+fun StatusFlower(isOnline: Boolean, size: Dp = 12.dp, quotaExceeded: Boolean = false) {
     Canvas(Modifier.size(size)) {
-        val c = if (isOnline) Color(0xFF55B84A) else Color(0xFF9A9A9A)
+        val c = when {
+            quotaExceeded -> Red
+            isOnline -> Color(0xFF55B84A)
+            else -> Color(0xFF9A9A9A)
+        }
         val r = size.toPx() / 4f
         repeat(5) { i ->
             val angle = (i * 72f - 90f) * PI / 180
@@ -251,7 +278,7 @@ fun AgentRow(a: A, onClick: () -> Unit) {
         Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        StatusFlower(a.on, 14.dp)
+        StatusFlower(a.on, 14.dp, a.quotaExceeded)
         Spacer(Modifier.width(8.dp))
         Box(
             Modifier.size(24.dp).clip(CircleShape)
@@ -263,13 +290,27 @@ fun AgentRow(a: A, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
-            Text(a.n, color = if (a.on) Color(0xFF202020) else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(
-                if (a.on) "${a.providerId.displayName} · готов" else "Не настроен",
-                color = Tx, fontSize = 10.sp
+                a.n,
+                color = when {
+                    a.quotaExceeded -> Red
+                    a.on -> Color(0xFF202020)
+                    else -> Tx
+                },
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                when {
+                    a.quotaExceeded -> "${a.providerId.displayName} · лимит исчерпан"
+                    a.on -> "${a.providerId.displayName} · готов"
+                    else -> "Неактивна · требуется подключение"
+                },
+                color = if (a.quotaExceeded) Red else Tx,
+                fontSize = 10.sp
             )
         }
-        StatusFlower(a.on, 12.dp)
+        StatusFlower(a.on, 12.dp, a.quotaExceeded)
     }
     Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 }
@@ -294,6 +335,9 @@ fun ContactList(
     var notConfiguredAgent by remember { mutableStateOf<A?>(null) }
     var iaExpanded by remember { mutableStateOf(true) }
     var aiExpanded by remember { mutableStateOf(true) }
+    var activeModelsExpanded by remember { mutableStateOf(true) }
+    var quotaModelsExpanded by remember { mutableStateOf(true) }
+    var inactiveModelsExpanded by remember { mutableStateOf(false) }
 
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
     var isOnline by remember { mutableStateOf(cm.activeNetwork != null) }
@@ -309,38 +353,38 @@ fun ContactList(
 
     val list = remember(context, refreshKey) {
         listOf(
-            A("ГЛАФИРА", "Главный координатор", isProviderConfigured(context, ProviderId.GIGACHAT), "🤖",
+            A("ГЛАФИРА", "Главный координатор", isProviderConfigured(context, ProviderId.GIGACHAT) && !isProviderQuotaExceeded(context, ProviderId.GIGACHAT), "🤖",
                 "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
                 "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением.",
-                ProviderId.GIGACHAT, AgentGroup.IA),
-            A("АНАЛИТИК", "Исследование и анализ", isProviderConfigured(context, ProviderId.GIGACHAT), "📊",
+                ProviderId.GIGACHAT, AgentGroup.IA, isProviderQuotaExceeded(context, ProviderId.GIGACHAT)),
+            A("АНАЛИТИК", "Исследование и анализ", isProviderConfigured(context, ProviderId.GIGACHAT) && !isProviderQuotaExceeded(context, ProviderId.GIGACHAT), "📊",
                 "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен.",
                 "Специалист по данным. Занимается исследованием рынков, поиском закономерностей, анализом конкурентов и финансовых показателей. Отвечает за факты и цифры.",
-                ProviderId.GIGACHAT, AgentGroup.IA),
-            A("ПРОГРАММИСТ", "Код и технические задачи", isProviderConfigured(context, ProviderId.GIGACHAT), "💻",
+                ProviderId.GIGACHAT, AgentGroup.IA, isProviderQuotaExceeded(context, ProviderId.GIGACHAT)),
+            A("ПРОГРАММИСТ", "Код и технические задачи", isProviderConfigured(context, ProviderId.GIGACHAT) && !isProviderQuotaExceeded(context, ProviderId.GIGACHAT), "💻",
                 "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
                 "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта.",
-                ProviderId.GIGACHAT, AgentGroup.IA),
-            A("GigaChat", "GigaChat · модель", isProviderConfigured(context, ProviderId.GIGACHAT), "🟣",
+                ProviderId.GIGACHAT, AgentGroup.IA, isProviderQuotaExceeded(context, ProviderId.GIGACHAT)),
+            A("GigaChat", "GigaChat · модель", isProviderConfigured(context, ProviderId.GIGACHAT) && !isProviderQuotaExceeded(context, ProviderId.GIGACHAT), "🟣",
                 "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке.",
                 "Прямой доступ к модели GigaChat без роли агента. Универсальный помощник.",
                 ProviderId.GIGACHAT, AgentGroup.AI),
-            A("ChatGPT", "OpenAI · не настроен", isProviderConfigured(context, ProviderId.OPENAI), "🟢",
+            A("ChatGPT", "OpenAI · не настроен", isProviderConfigured(context, ProviderId.OPENAI) && !isProviderQuotaExceeded(context, ProviderId.OPENAI), "🟢",
                 "Ты — ChatGPT от OpenAI. Отвечай чётко, структурированно, с примерами.",
                 "Модель OpenAI. Универсальный помощник для анализа, текстов и программирования. Для работы нужен API-ключ OpenAI (платный).",
-                ProviderId.OPENAI, AgentGroup.AI),
-            A("DeepSeek", "DeepSeek · не настроен", isProviderConfigured(context, ProviderId.DEEPSEEK), "🔵",
+                ProviderId.OPENAI, AgentGroup.AI, isProviderQuotaExceeded(context, ProviderId.OPENAI)),
+            A("DeepSeek", "DeepSeek · не настроен", isProviderConfigured(context, ProviderId.DEEPSEEK) && !isProviderQuotaExceeded(context, ProviderId.DEEPSEEK), "🔵",
                 "Ты — DeepSeek. Специализируешься на логике, коде и аналитике.",
                 "Модель DeepSeek. Логические задачи, программирование, аналитика. Для работы нужен API-ключ DeepSeek (платный, но дешёвый).",
-                ProviderId.DEEPSEEK, AgentGroup.AI),
-            A("Grok", "xAI · не настроен", isProviderConfigured(context, ProviderId.GROK), "⚫",
+                ProviderId.DEEPSEEK, AgentGroup.AI, isProviderQuotaExceeded(context, ProviderId.DEEPSEEK)),
+            A("Grok", "xAI · не настроен", isProviderConfigured(context, ProviderId.GROK) && !isProviderQuotaExceeded(context, ProviderId.GROK), "⚫",
                 "Ты — Grok от xAI. Отвечай с лёгкой иронией, но по делу.",
                 "Модель xAI. Универсальный помощник. Для работы нужен API-ключ xAI (платный).",
-                ProviderId.GROK, AgentGroup.AI),
-            A("Алиса", "Yandex · не настроен", isProviderConfigured(context, ProviderId.YANDEX), "🟡",
+                ProviderId.GROK, AgentGroup.AI, isProviderQuotaExceeded(context, ProviderId.GROK)),
+            A("Алиса", "Yandex · не настроен", isProviderConfigured(context, ProviderId.YANDEX) && !isProviderQuotaExceeded(context, ProviderId.YANDEX), "🟡",
                 "Ты — Алиса от Яндекс. Отвечай на русском, дружелюбно и по делу.",
                 "YandexGPT через Yandex Cloud. Русскоязычные задачи. Для работы нужен API-ключ Yandex Cloud и folder ID.",
-                ProviderId.YANDEX, AgentGroup.AI)
+                ProviderId.YANDEX, AgentGroup.AI, isProviderQuotaExceeded(context, ProviderId.YANDEX))
         )
     }
 
@@ -428,16 +472,16 @@ fun ContactList(
             val agent = notConfiguredAgent!!
             AlertDialog(
                 onDismissRequest = { notConfiguredAgent = null },
-                title = { Text("${agent.n} не настроен", color = Color(0xFF202020)) },
+                title = { Text(if (agent.quotaExceeded) "${agent.n}: лимит исчерпан" else "${agent.n} неактивна", color = if (agent.quotaExceeded) Red else Color(0xFF202020)) },
                 text = {
                     Column {
-                        Text("Провайдер ${agent.providerId.displayName} пока не подключён.")
+                        Text(if (agent.quotaExceeded) "Подключение к ${agent.providerId.displayName} сохранено, но провайдер сообщил об исчерпании лимита." else "Провайдер ${agent.providerId.displayName} пока не подключён.")
                         Spacer(Modifier.height(8.dp))
-                        Text("Добавьте API-ключ в Настройках, чтобы активировать этот чат.", color = Tx, fontSize = 12.sp)
+                        Text(if (agent.quotaExceeded) "Модель отмечена красным. Проверьте лимит и баланс у провайдера или попробуйте позже." else "Модель находится в серой папке «Неактивные». Добавьте API-ключ в Настройках, чтобы активировать её.", color = Tx, fontSize = 12.sp)
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { notConfiguredAgent = null; onSettingsClick() }) {
+                    TextButton(onClick = { notConfiguredAgent = null; if (!agent.quotaExceeded) onSettingsClick() }) {
                         Text("В НАСТРОЙКИ", color = Gr)
                     }
                 },
@@ -479,11 +523,43 @@ fun ContactList(
                 }
                 if (aiExpanded) {
                     val aiList = list.filter { it.group == AgentGroup.AI }
-                    itemsIndexed(
-                        items = aiList,
-                        key = { _, a -> a.n }
-                    ) { _, a ->
-                        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
+                    val activeModels = aiList.filter { it.on }
+                    val quotaModels = aiList.filter { it.quotaExceeded }
+                    val inactiveModels = aiList.filter { !it.on && !it.quotaExceeded }
+
+                    item {
+                        GroupHeader("АКТИВНЫЕ", activeModels.size, activeModelsExpanded) {
+                            activeModelsExpanded = !activeModelsExpanded
+                        }
+                    }
+                    if (activeModelsExpanded) {
+                        itemsIndexed(activeModels, key = { _, a -> "active_${a.n}" }) { _, a ->
+                            AgentRow(a) { onAgentClick(a) }
+                        }
+                    }
+
+                    if (quotaModels.isNotEmpty()) {
+                        item {
+                            GroupHeader("ЛИМИТ ИСЧЕРПАН", quotaModels.size, quotaModelsExpanded) {
+                                quotaModelsExpanded = !quotaModelsExpanded
+                            }
+                        }
+                        if (quotaModelsExpanded) {
+                            itemsIndexed(quotaModels, key = { _, a -> "quota_${a.n}" }) { _, a ->
+                                AgentRow(a) { notConfiguredAgent = a }
+                            }
+                        }
+                    }
+
+                    item {
+                        GroupHeader("НЕАКТИВНЫЕ", inactiveModels.size, inactiveModelsExpanded) {
+                            inactiveModelsExpanded = !inactiveModelsExpanded
+                        }
+                    }
+                    if (inactiveModelsExpanded) {
+                        itemsIndexed(inactiveModels, key = { _, a -> "inactive_${a.n}" }) { _, a ->
+                            AgentRow(a) { notConfiguredAgent = a }
+                        }
                     }
                 }
             }
@@ -589,6 +665,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
             val reply = callGigaChatWithTrustedCert(context, updatedMessages, fullPrompt)
+            if (isQuotaLimitError(reply)) {
+                markProviderQuotaExceeded(context, agent.providerId)
+            } else if (!reply.startsWith("Ошибка сети")) {
+                clearProviderQuotaExceeded(context, agent.providerId)
+            }
             val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
             if (reply.startsWith("Ошибка сети")) {
@@ -628,7 +709,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         Column {
                             Text(agent.n, color = Gr, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                             Text(
-                                if (agent.on) "Online · ${agent.providerId.displayName} · ${messages.size} сообщ." else "Offline",
+                                when {
+                                    agent.quotaExceeded -> "Лимит исчерпан · ${agent.providerId.displayName}"
+                                    agent.on -> "Online · ${agent.providerId.displayName} · ${messages.size} сообщ."
+                                    else -> "Offline"
+                                },
                                 color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace
                             )
                         }
