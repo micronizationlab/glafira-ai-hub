@@ -4,6 +4,11 @@ import android.content.Context
 import java.io.File
 
 fun deleteProject(context: Context, project: Project, allProjects: List<Project>): List<Project> {
+    if (allProjects.size <= 1) {
+        ToastHelper.short(context, "Нельзя удалить последний проект")
+        return allProjects
+    }
+
     // Удаляем файлы истории, связанные с этим проектом
     val files = context.filesDir.listFiles()
     files?.forEach { file ->
