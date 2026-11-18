@@ -146,11 +146,30 @@ fun BridgePairingApprovalScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(8.dp))
                     Button(
                         onClick = {
-                            val payload = "${issued.deviceId}:${Base64.getUrlEncoder().withoutPadding().encodeToString(issued.hmacSecret)}"
+                            val connection = AndroidKeystoreBridgeServerIdentityStore(context)
+                                .currentConnectionDetails()
+                            if (connection == null) {
+                                status = "Нет сохранённой TLS-идентичности сервера. Сначала запустите локальный Bridge."
+                                return@Button
+                            }
+                            val payload = org.json.JSONObject().apply {
+                                put("format", "GLAFIRA_BRIDGE_CREDENTIAL_V1")
+                                put("origin", connection.origin)
+                                put("deviceId", issued.deviceId)
+                                put("hmacSecretBase64Url", Base64.getUrlEncoder().withoutPadding().encodeToString(issued.hmacSecret))
+                                put("grantedScopes", org.json.JSONArray(issued.grantedScopes.sorted()))
+                                put("serverCertificateSha256", connection.certificateSha256)
+                            }.toString()
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("GLAFIRA device credential", payload))
+                            val clip = ClipData.newPlainText("GLAFIRA encrypted-import bundle", payload)
+                            if (Build.VERSION.SDK_INT >= 33) {
+                                clip.description.extras = android.os.PersistableBundle().apply {
+                                    putBoolean("android.content.extra.IS_SENSITIVE", true)
+                                }
+                            }
+                            clipboard.setPrimaryClip(clip)
                             deliveryText = payload
-                            status = "Учётные данные скопированы. Передайте их только сопрягаемому устройству."
+                            status = "Пакет сопряжения скопирован. Импортируйте его в Desktop-хранилище с паролем владельца."
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Gr)
                     ) { Text("СКОПИРОВАТЬ ДАННЫЕ СОПРЯЖЕНИЯ") }
