@@ -23,7 +23,7 @@ internal class GlafiraTaskNotificationPublisher(context: Context) {
 
     fun publish(result: GlafiraDistributedTaskResult) {
         val title = if (result.succeeded) "Задача Глафиры завершена" else "Задача Глафиры не выполнена"
-        val detail = result.output?.take(180) ?: result.errorCode?.let { "Код ошибки: $it" } ?: "Задача " + result.taskId.take(12)
+        val detail = if (result.succeeded) "Результат готов. Откройте проект в GLAFIRA." else "Не удалось выполнить задачу. Откройте проект для подробностей."
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(appContext, CHANNEL_ID) else Notification.Builder(appContext)
         val notification = builder.setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(title).setContentText(detail)
