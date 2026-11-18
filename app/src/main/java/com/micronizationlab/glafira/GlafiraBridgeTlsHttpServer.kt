@@ -265,7 +265,7 @@ class GlafiraBridgeTlsHttpServer(
             HTTP_TOO_LARGE -> "Payload Too Large"
             HTTP_UNSUPPORTED_MEDIA -> "Unsupported Media Type"
             HTTP_REQUEST_TIMEOUT -> "Request Timeout"
-            HTTP_TOO_MANY_REQUESTS -> "Too Many Requests"
+            HTTP_TOO_MANY_REQUESTS -> "Too Many Requests"\n            HTTP_FORBIDDEN -> "Forbidden"\n            HTTP_SERVICE_UNAVAILABLE -> "Service Unavailable"
             else -> "Error"
         }
         val headers = "HTTP/1.1 $status $reason\r\n" +
@@ -300,6 +300,6 @@ class GlafiraBridgeTlsHttpServer(
         private const val HTTP_TOO_LARGE = 413
         private const val HTTP_UNSUPPORTED_MEDIA = 415
         private const val HTTP_REQUEST_TIMEOUT = 408
-        private const val HTTP_TOO_MANY_REQUESTS = 429
+        private const val HTTP_TOO_MANY_REQUESTS = 429\n        private const val HTTP_FORBIDDEN = 403\n        private const val HTTP_SERVICE_UNAVAILABLE = 503
     }
 }
