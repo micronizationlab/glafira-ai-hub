@@ -30,7 +30,11 @@ object GlafiraBridgeRequestJsonCodec {
             .toString()
 
         val root = JSONObject(json)
-        require(root.keySet() == requiredKeys) { "Bridge request fields are missing or unknown." }
+        val actualKeys = buildSet {
+            val keys = root.keys()
+            while (keys.hasNext()) add(keys.next())
+        }
+        require(actualKeys == requiredKeys) { "Bridge request fields are missing or unknown." }
 
         val version = root.requiredNumber("protocolVersion").toIntExact()
         val issuedAt = root.requiredNumber("issuedAtEpochMs").toLongExact()
