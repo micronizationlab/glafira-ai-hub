@@ -69,6 +69,7 @@ class GlafiraBridgeHostService : Service() {
                 addressRateLimiter = limiter,
                 deviceRateLimiter = deviceLimiter
             ).also { it.start(bindAddress, port) }
+            getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE).edit().putBoolean(HOST_RUNNING_KEY, true).commit()
             updateNotification("Защищённый локальный канал активен: $address:$port")
             START_NOT_STICKY
         } catch (_: Exception) {
@@ -146,6 +147,7 @@ class GlafiraBridgeHostService : Service() {
     }
 
     private fun stopHost() {
+        getSharedPreferences(HOST_STATE_PREFS, Context.MODE_PRIVATE).edit().putBoolean(HOST_RUNNING_KEY, false).commit()
         runCatching { host?.close() }
         host = null
         runCatching { pairingTicketStore?.close() }
@@ -165,6 +167,8 @@ class GlafiraBridgeHostService : Service() {
         private const val NOTIFICATION_ID = 47321
         private const val STOP_REQUEST_CODE = 47322
         private const val NOTIFICATION_CHANNEL_ID = "glafira_bridge_host"
+        const val HOST_STATE_PREFS = "glafira_bridge_host_state"
+        const val HOST_RUNNING_KEY = "running"
 
         /** Call only from an explicit owner action after selecting the device's LAN IPv4. */
         fun startFromOwnerAction(context: Context, ipv4Address: String, port: Int = GlafiraBridgeTlsHttpServer.DEFAULT_PORT) {
