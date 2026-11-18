@@ -17,16 +17,6 @@ class GlafiraCoreOwnerApprovalStore(
 
     init {
         db.execSQL(
-            """CREATE TABLE IF NOT EXISTS core_owner_scope_grants (
-                project_id TEXT NOT NULL,
-                origin TEXT NOT NULL,
-                scope TEXT NOT NULL,
-                granted_at INTEGER NOT NULL,
-                expires_at INTEGER,
-                PRIMARY KEY(project_id, origin, scope)
-            )""".trimIndent()
-        )
-        db.execSQL(
             """CREATE TABLE IF NOT EXISTS core_action_approvals (
                 task_id TEXT PRIMARY KEY NOT NULL,
                 project_id TEXT NOT NULL,
@@ -45,15 +35,25 @@ class GlafiraCoreOwnerApprovalStore(
     }
 
     @Synchronized
-    override fun grantedScopes(projectId: String, origin: String): Set<String> =
-        db.query(
-            "core_owner_scope_grants", arrayOf("scope"),
-            "project_id = ? AND origin = ? AND (expires_at IS NULL OR expires_at > ?)",
-            arrayOf(projectId, origin, System.currentTimeMillis().toString()),
-            null, null, "scope"
+    override fun grantedScopes(task: GlafiraTask): Set<String> {
+        val summary = runCatching {
+            org.json.JSONObject(task.payload).optString("actionSummary").trim()
+        }.getOrDefault("")
+        if (summary.isBlank()) return emptySet()
+        val hash = GlafiraToolRegistry.actionHash(task, summary)
+        return db.query(
+            "core_action_approvals", arrayOf("requested_scopes"),
+            "task_id = ? AND project_id = ? AND tool_id = ? AND action_hash = ? AND status = ? AND grant_expires_at > ?",
+            arrayOf(task.taskId, task.projectId, task.taskType, hash, APPROVED, System.currentTimeMillis().toString()),
+            null, null, null, "1"
         ).use { cursor ->
-            buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
+            if (!cursor.moveToFirst()) emptySet()
+            else {
+                val json = JSONArray(cursor.getString(0))
+                buildSet { for (i in 0 until json.length()) add(json.getString(i)) }
+            }
         }
+    }
 
     @Synchronized
     override fun requestApproval(task: GlafiraTask, actionSummary: String, nowMillis: Long): Boolean {
@@ -206,15 +206,6 @@ class GlafiraCoreOwnerApprovalStore(
                     if (!validSelection) {
                         result = GlafiraCoreOwnerApprovalMutation.INVALID_SCOPE_SELECTION
                     } else {
-                        selectedScopes.forEach { scope ->
-                            db.insertWithOnConflict("core_owner_scope_grants", null, ContentValues().apply {
-                                put("project_id", task.projectId)
-                                put("origin", task.origin)
-                                put("scope", scope)
-                                put("granted_at", nowMillis)
-                                putNull("expires_at")
-                            }, SQLiteDatabase.CONFLICT_REPLACE)
-                        }
                         val approved = db.update("core_action_approvals", ContentValues().apply {
                             put("status", APPROVED)
                             put("approved_at", nowMillis)
@@ -272,19 +263,6 @@ class GlafiraCoreOwnerApprovalStore(
         return result
     }
 
-    @Synchronized
-    fun revokeScope(
-        projectId: String,
-        origin: String,
-        scope: String,
-        ownerSession: GlafiraCoreOwnerSession,
-        nowMillis: Long = System.currentTimeMillis()
-    ): Boolean {
-        if (!ownerSession.isValid(nowMillis)) return false
-        return db.delete("core_owner_scope_grants",
-            "project_id = ? AND origin = ? AND scope = ?",
-            arrayOf(projectId, origin, scope)) == 1
-    }
 
     private data class ApprovalRow(
         val projectId: String, val toolId: String, val actionHash: String,
