@@ -36,6 +36,8 @@ fun SettingsScreen(onBack: () -> Unit) {
     var grokKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GROK)) }
     var yandexKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.YANDEX)) }
     var isSaved by remember { mutableStateOf(false) }
+    var workingExpanded by remember { mutableStateOf(true) }
+    var pendingExpanded by remember { mutableStateOf(true) }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -45,39 +47,65 @@ fun SettingsScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(24.dp))
 
-        Text("КЛЮЧИ ПРОВАЙДЕРОВ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-        Spacer(Modifier.height(8.dp))
+        // Группа 1: Работающие
+        Row(
+            Modifier.fillMaxWidth().clickable { workingExpanded = !workingExpanded }.padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(if (workingExpanded) "▼" else "▶", color = Gr, fontSize = 10.sp)
+            Spacer(Modifier.width(6.dp))
+            Text("РАБОТАЮЩИЕ", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.weight(1f))
+            Text("1", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        }
+        if (workingExpanded) {
+            ProviderKeyField(
+                label = "GigaChat (Authorization Key)",
+                value = gigachatKey,
+                onValueChange = { gigachatKey = it; isSaved = false },
+                configured = gigachatKey.isNotBlank()
+            )
+        }
 
-        ProviderKeyField(
-            label = "GigaChat (Authorization Key)",
-            value = gigachatKey,
-            onValueChange = { gigachatKey = it; isSaved = false },
-            configured = gigachatKey.isNotBlank()
-        )
-        ProviderKeyField(
-            label = "ChatGPT (OpenAI API Key, sk-...)",
-            value = openaiKey,
-            onValueChange = { openaiKey = it; isSaved = false },
-            configured = openaiKey.isNotBlank()
-        )
-        ProviderKeyField(
-            label = "DeepSeek API Key",
-            value = deepseekKey,
-            onValueChange = { deepseekKey = it; isSaved = false },
-            configured = deepseekKey.isNotBlank()
-        )
-        ProviderKeyField(
-            label = "Grok (xAI API Key)",
-            value = grokKey,
-            onValueChange = { grokKey = it; isSaved = false },
-            configured = grokKey.isNotBlank()
-        )
-        ProviderKeyField(
-            label = "Алиса (Yandex Cloud API Key)",
-            value = yandexKey,
-            onValueChange = { yandexKey = it; isSaved = false },
-            configured = yandexKey.isNotBlank()
-        )
+        Spacer(Modifier.height(12.dp))
+
+        // Группа 2: Требуют ключа
+        Row(
+            Modifier.fillMaxWidth().clickable { pendingExpanded = !pendingExpanded }.padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(if (pendingExpanded) "▼" else "▶", color = Gr, fontSize = 10.sp)
+            Spacer(Modifier.width(6.dp))
+            Text("ТРЕБУЮТ КЛЮЧА", color = Tx, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.weight(1f))
+            Text("4", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        }
+        if (pendingExpanded) {
+            ProviderKeyField(
+                label = "ChatGPT (OpenAI API Key, sk-...)",
+                value = openaiKey,
+                onValueChange = { openaiKey = it; isSaved = false },
+                configured = openaiKey.isNotBlank()
+            )
+            ProviderKeyField(
+                label = "DeepSeek API Key",
+                value = deepseekKey,
+                onValueChange = { deepseekKey = it; isSaved = false },
+                configured = deepseekKey.isNotBlank()
+            )
+            ProviderKeyField(
+                label = "Grok (xAI API Key)",
+                value = grokKey,
+                onValueChange = { grokKey = it; isSaved = false },
+                configured = grokKey.isNotBlank()
+            )
+            ProviderKeyField(
+                label = "Алиса (Yandex Cloud API Key)",
+                value = yandexKey,
+                onValueChange = { yandexKey = it; isSaved = false },
+                configured = yandexKey.isNotBlank()
+            )
+        }
 
         Spacer(Modifier.height(16.dp))
 
@@ -138,8 +166,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             Column(Modifier.padding(16.dp)) {
                 Text("ВЕРСИЯ ПРИЛОЖЕНИЯ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("GLAFIRA AI HUB v0.7", color = Color.White, fontSize = 14.sp)
-                Text("Sprint 7.0 — Мультипровайдерность (офлайн)", color = Tx, fontSize = 12.sp)
+                Text("GLAFIRA AI HUB v0.8", color = Color.White, fontSize = 14.sp)
+                Text("Sprint 8.0 — Звук, Передача, Офлайн, Группы ключей", color = Tx, fontSize = 12.sp)
             }
         }
 
@@ -154,7 +182,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .clickable {
                     val files = context.filesDir.listFiles()
                     files?.forEach { file ->
-                        if (file.name.startsWith("chat_") || file.name == "projects.json") {
+                        if (file.name.startsWith("chat_") || file.name == "projects.json" || file.name == "pending_queue.json") {
                             file.delete()
                         }
                     }
