@@ -496,8 +496,13 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var showClearConfirm by remember { mutableStateOf(false) }
     var expandedMessages by remember { mutableStateOf(setOf<Int>()) }
     var isListening by remember { mutableStateOf(false) }
+    var speakingIndex by remember { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        TtsHelper.init(context)
+    }
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -610,6 +615,10 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     Text("📌", fontSize = 14.sp, modifier = Modifier.clickable { showPinnedPanel = !showPinnedPanel }.padding(end = 8.dp))
                     Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 8.dp))
                     Text("↗", fontSize = 16.sp, color = Gr, modifier = Modifier.clickable { showTransferDialog = true }.padding(end = 8.dp))
+                    Text("🔇", fontSize = 14.sp, modifier = Modifier.clickable {
+                        TtsHelper.stop()
+                        speakingIndex = null
+                    }.padding(end = 8.dp))
                     Text("📋", fontSize = 14.sp, modifier = Modifier.clickable {
                         copyToClipboard(context, messages.joinToString("\n") { m -> val who = if (m.isUser) "Вы" else agent.n; "[${m.date} ${m.time}] $who: ${m.text}" })
                     }.padding(end = 8.dp))
@@ -702,6 +711,22 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 if (isPinned) Text("📌 ", fontSize = 8.sp)
                                 Text(msg.time, color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 2.dp))
+                                if (!msg.isUser) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        if (speakingIndex == realIdx) "⏹" else "🔊",
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.clickable {
+                                            if (speakingIndex == realIdx) {
+                                                TtsHelper.stop()
+                                                speakingIndex = null
+                                            } else {
+                                                TtsHelper.speak(msg.text) { speakingIndex = null }
+                                                speakingIndex = realIdx
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -784,6 +809,13 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 savePinned(context, historyKey, pinned)
                                 messageActionIndex = null
                             }.padding(vertical = 6.dp))
+                            if (!msg.isUser) {
+                                Text("Озвучить", color = Gr, fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+                                    TtsHelper.speak(msg.text) { speakingIndex = null }
+                                    speakingIndex = idx
+                                    messageActionIndex = null
+                                }.padding(vertical = 6.dp))
+                            }
                         }
                     }
                 },
