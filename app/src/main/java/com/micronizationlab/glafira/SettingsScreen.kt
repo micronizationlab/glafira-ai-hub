@@ -43,7 +43,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
-    var peerConsultationEnabled by remember {
+    var peerConsultationEnabled by remember(peerConsultationKey) {
         mutableStateOf(context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
             .getBoolean(peerConsultationKey, false))
     }
