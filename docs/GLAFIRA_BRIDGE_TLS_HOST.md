@@ -32,7 +32,7 @@ Status: implementation slice in progress. Android has a bounded HTTPS/1.1 host, 
 - Owner credential bundle import uses a bounded strict JSON parser (duplicate keys, unknown/missing fields, excessive nesting and oversized collections are rejected) and an allowlist of registered Bridge scopes; it stores device ID, 256-bit HMAC secret, granted scopes, HTTPS origin and certificate pin in an AES-256-GCM encrypted vault using PBKDF2-HMAC-SHA256 (310,000 iterations).
 - Vault writes are atomic and apply owner-only POSIX permissions where supported. Vault-backed request facade loads the credential, sends signed HTTPS requests and clears in-memory secret copies afterward.
 
-The current Desktop vault is passphrase-protected application storage, **not yet native Windows Credential Manager or macOS Keychain integration**. The module is a JVM library; a user-facing Desktop installer/UI is still outstanding.
+The current Desktop vault is passphrase-protected application storage, **not yet native Windows Credential Manager or macOS Keychain integration**. A small terminal CLI is now included as a real LAN pairing/request test client; it hides invitation, credential-bundle and passphrase entry and supports project read, conversation read and append. It is a validation utility, not the final Desktop messenger UI/installer.
 
 ## Pairing sequence
 
