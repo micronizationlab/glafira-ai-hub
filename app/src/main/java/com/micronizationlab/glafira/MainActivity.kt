@@ -96,6 +96,8 @@ fun App() {
     var currentProject by remember { mutableStateOf(projects.first()) }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(context) { SoundHelper.init(context) }
+
     var unlocked by remember {
         mutableStateOf(!isBiometricEnabled(context))
     }
@@ -290,9 +292,12 @@ fun ContactList(
 
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
     var isOnline by remember { mutableStateOf(cm.activeNetwork != null) }
+    var previousOnline by remember { mutableStateOf(isOnline) }
     LaunchedEffect(Unit) {
         while (true) {
             isOnline = cm.activeNetwork != null
+            if (isOnline && !previousOnline) SoundHelper.playOnline()
+            previousOnline = isOnline
             delay(2000)
         }
     }
@@ -562,6 +567,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         saveHistory(context, historyKey, updatedMessages)
         clearDraft(context, project.id, agent.n)
         isLoading = true
+        SoundHelper.playSent()
         scope.launch {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
@@ -574,7 +580,6 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 val finalMessages = updatedMessages + queuedMsg
                 messages = finalMessages
                 saveHistory(context, historyKey, finalMessages)
-                SoundHelper.playIncoming()
             } else {
                 val finalMessages = updatedMessages + Msg(reply, false, replyTime, replyDate)
                 messages = finalMessages
