@@ -36,14 +36,13 @@ public enum BridgeCredentialGrantError: Error, Equatable, Sendable {
 /// device-only, current-biometric-set Keychain. The grant is never accepted
 /// from the PENDING pairing response and never persisted before Face ID/Touch ID.
 public enum BridgeCredentialGrantImporter {
-    public static func importApprovedGrant(
+    public static func validate(
         _ grant: OwnerApprovedBridgeCredentialGrant,
         expectedApprovalId: String,
         expectedTicketId: String,
         requestedScopes: Set<String>,
-        credentialStore: KeychainBridgeCredentialStore,
-        nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
-    ) async throws {
+        nowEpochMs: Int64
+    ) throws -> BridgeDeviceCredential {
         guard !expectedApprovalId.isEmpty,
               grant.approvalId == expectedApprovalId,
               !expectedTicketId.isEmpty,
@@ -51,9 +50,11 @@ public enum BridgeCredentialGrantImporter {
               !grant.deviceId.isEmpty else {
             throw BridgeCredentialGrantError.invalidApprovalBinding
         }
-        guard grant.issuedAtEpochMs > 0,
+        let (latestIssuedAt, overflow) = nowEpochMs.addingReportingOverflow(30_000)
+        guard !overflow,
+              grant.issuedAtEpochMs > 0,
               grant.expiresAtEpochMs > nowEpochMs,
-              grant.issuedAtEpochMs <= nowEpochMs + 30_000,
+              grant.issuedAtEpochMs <= latestIssuedAt,
               grant.expiresAtEpochMs > grant.issuedAtEpochMs,
               grant.expiresAtEpochMs - grant.issuedAtEpochMs <= 5 * 60 * 1_000 else {
             throw BridgeCredentialGrantError.expiredGrant
@@ -71,7 +72,24 @@ public enum BridgeCredentialGrantImporter {
               (32...64).contains(secret.count) else {
             throw BridgeCredentialGrantError.invalidSecret
         }
-        let credential = try BridgeDeviceCredential(deviceId: grant.deviceId, hmacSecret: secret)
+        return try BridgeDeviceCredential(deviceId: grant.deviceId, hmacSecret: secret)
+    }
+
+    public static func importApprovedGrant(
+        _ grant: OwnerApprovedBridgeCredentialGrant,
+        expectedApprovalId: String,
+        expectedTicketId: String,
+        requestedScopes: Set<String>,
+        credentialStore: KeychainBridgeCredentialStore,
+        nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
+    ) async throws {
+        let credential = try validate(
+            grant,
+            expectedApprovalId: expectedApprovalId,
+            expectedTicketId: expectedTicketId,
+            requestedScopes: requestedScopes,
+            nowEpochMs: nowEpochMs
+        )
         try await credentialStore.store(
             credential,
             ownerConfirmationReason: "Подтвердите сохранение ключа одобренного GLAFIRA Bridge"
