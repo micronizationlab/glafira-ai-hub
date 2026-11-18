@@ -80,3 +80,34 @@ A Desktop crash or network loss must preserve accepted task state or mark it rec
 ## 10. Current implementation boundary
 
 The existing Android Bridge and Desktop JVM CLI provide pairing and a bounded project/conversation transport. They do **not** yet implement this distributed task runtime, general desktop control, model execution, or remote browser automation. This document is the accepted target architecture, not a claim that those features are already complete.
+## 11. First implementation slice (2026-11-18)
+
+The following code paths are now present on the feature branch:
+
+- Android persists the Desktop task inbox/outbox in app-private storage, with bounded records, atomic replacement, expiry, delivery leases and retry limits.
+- The authenticated Android Bridge exposes DESKTOP_TASK_CLAIM and DESKTOP_TASK_RESULT. Both have distinct scopes (desktop.task.claim, desktop.task.result) and pass through the existing signature, replay, rate-limit and authorization pipeline.
+- Desktop advertises supported task capabilities and worker concurrency during polling. Android records a short-lived authenticated heartbeat and only offers tasks whose required capabilities are supported.
+- Desktop pulls tasks over the existing certificate-pinned HTTPS Bridge, enqueues them locally, runs bounded parallel workers and posts progress/final results back.
+- GLAFIRA Core has a dependency-aware orchestrator, node-capability-aware routing, Android fallback policy, and an Android task port that awaits Desktop completion.
+- Complex coordinator requests can request a bounded JSON plan, validate it through GlafiraTaskPlanner, delegate eligible subtasks to a live Desktop node, and synthesize the returned results.
+- Android completion notifications are published through the task-result callback.
+- Desktop includes an optional loopback-only Ollama adapter. The CLI exposes a task-worker mode; the owner supplies an already installed local model name.
+
+## 12. Enabling the first Desktop worker
+
+1. Build/install the current Android app and start its owner-controlled Bridge host on the same trusted LAN as Desktop.
+2. Pair Desktop again if necessary and explicitly grant both desktop.task.claim and desktop.task.result. Existing paired credentials do not silently gain new scopes.
+3. Install and start Ollama locally on Desktop, then ensure the chosen model is already downloaded.
+4. Launch the Desktop Bridge CLI in a real terminal, choose the task-worker mode, unlock the encrypted Desktop credential vault, enter the project ID and the exact installed Ollama model name.
+5. Keep the worker running. The Android node heartbeat expires after 45 seconds without a successful poll.
+
+The CLI is still a terminal worker, not a polished desktop UI or Windows service. The task queue/runtime does not provide arbitrary shell execution. File references are opaque at this stage; document-content transfer and indexing are separate follow-up work.
+
+## 13. Validation still required before calling this production-ready
+
+- Green Android CI and Desktop JVM tests on the latest commit.
+- Add Android tests for durable task-store persistence, lease expiry, state transitions and task result notification behavior.
+- Exercise pairing and the two new scopes on a physical Android device.
+- Run a real LAN round trip: Android submits a task, Desktop claims it, a local model executes it, Android receives the result and displays a notification.
+- Test Desktop restart, Android restart, network loss, expired leases, duplicate requests and queue saturation.
+- The app coordinator now has the delegation path, but the local Ollama model, Desktop worker process and owner-granted scopes must be configured before it can execute end-to-end.
