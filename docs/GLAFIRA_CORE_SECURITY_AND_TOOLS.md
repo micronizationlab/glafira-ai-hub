@@ -18,6 +18,16 @@
 
 Credentials, API keys, bearer tokens and passwords must never be included in model prompts. The current client applies pattern-based redaction for common API tokens, bearer values, passwords, email addresses and phone-like values before peer consultation. This is defense in depth, not complete data-loss prevention. Enabling peer consultation can still disclose business or personal information to other providers. Per-provider data classifications, field-level sharing scopes and a user-visible routing audit remain required next steps; the current allowlist is project-scoped at provider level.
 
+## Typed tool registry and approval gate
+
+The Android core now defines a typed registry for project reads, content drafts, message sending, social publishing, CRM writes, payments and destructive data actions. Each definition declares a risk level and required scope names.
+
+- Read-only and draft actions may pass the local policy gate without an approval grant.
+- External writes, financial operations and destructive actions require an owner approval grant.
+- A grant is bound to the exact project ID, tool ID and normalized action summary using a SHA-256 fingerprint, and it expires.
+- A grant for one project, tool or action cannot authorize a different action.
+- The current increment is policy and registry infrastructure only. No external tool adapter is connected or executed by this registry yet. The next step is a persistent approval inbox, owner review UI, and tool-broker integration that checks the gate immediately before execution.
+
 ## Tool and account access model
 
 Glafira should access external systems through a tool broker, not by handing credentials to an LLM.
