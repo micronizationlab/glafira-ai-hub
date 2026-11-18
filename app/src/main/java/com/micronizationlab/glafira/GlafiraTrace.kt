@@ -210,7 +210,7 @@ internal class GlafiraSqliteTraceRepository(
 }
 
 /** Applies sanitization before every append, including memory writes in their transaction. */
-class GlafiraTraceService(
+internal class GlafiraTraceService(
     private val repository: GlafiraSqliteTraceRepository,
     private val identityProvider: CoreIdentityProvider,
     private val policyEngine: CorePolicyEngine
