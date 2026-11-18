@@ -23,14 +23,19 @@ object GlafiraCoordinator {
     ): String {
         val consultationKey = projectId?.let { "peer_consultation_enabled_$it" }
             ?: "peer_consultation_enabled"
-        val peerConsultationEnabled = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-            .getBoolean(consultationKey, false)
+        val coordinatorPrefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val peerConsultationEnabled = coordinatorPrefs.getBoolean(consultationKey, false)
         if (!peerConsultationEnabled || history.isEmpty()) {
             return callAiProvider(context, primaryProvider, history, systemPrompt)
         }
-
+        val providerKey = projectId?.let { "peer_consultation_providers_$it" }
+            ?: "peer_consultation_providers"
+        val approvedPeerIds = coordinatorPrefs.getString(providerKey, "")
+            .orEmpty().split(",").mapNotNull { value ->
+                runCatching { ProviderId.valueOf(value) }.getOrNull()
+            }.toSet()
         val availablePeers = ProviderId.values().filter {
-            it != primaryProvider && isProviderConfigured(context, it) &&
+            it != primaryProvider && it in approvedPeerIds && isProviderConfigured(context, it) &&
                 it != ProviderId.YANDEX
         }
         if (availablePeers.isEmpty()) {
