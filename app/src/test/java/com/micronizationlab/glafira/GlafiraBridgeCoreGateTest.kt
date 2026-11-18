@@ -65,7 +65,7 @@ class GlafiraBridgeCoreGateTest {
         assertEquals(GlafiraBridgeStatus.ACCEPTED, allowed.response.status)
     }
 
-    @Test fun approvalRequestReturnsPendingStateButDoesNotCreateGrant() {
+    @Test fun approvalRequestFailsClosedUntilDurableOwnerQueueExists() {
         val request = signed(
             GlafiraBridgeOperation.APPROVAL_REQUEST,
             mapOf("toolId" to "message.send", "actionSummary" to "Send approved reply to customer")
@@ -73,9 +73,8 @@ class GlafiraBridgeCoreGateTest {
         val result = GlafiraBridgeCoreGate.authorize(
             request, "device-0001", secret, setOf("approval.request"), nowEpochMs = now
         )
-        assertEquals(GlafiraBridgeStatus.PENDING_APPROVAL, result.response.status)
-        assertEquals("message.send", result.response.result["toolId"])
-        assertEquals(null, result.response.result["approvalGrant"])
+        assertEquals(GlafiraBridgeStatus.FAILED, result.response.status)
+        assertEquals(GlafiraBridgeAuthorizationError.APPROVAL_QUEUE_UNAVAILABLE, result.error)
     }
 
     @Test fun rejectsApprovalRequestsForUnknownOrNonPrivilegedTools() {
