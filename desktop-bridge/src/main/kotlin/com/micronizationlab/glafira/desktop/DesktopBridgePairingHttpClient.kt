@@ -31,6 +31,9 @@ class DesktopBridgePairingHttpClient(private val timeout: Duration = Duration.of
             override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
                 val leaf = chain?.firstOrNull() ?: throw java.security.cert.CertificateException("Missing Bridge TLS certificate.")
                 leaf.checkValidity()
+                if (leaf.basicConstraints != -1 || leaf.keyUsage?.getOrNull(0) != true) {
+                    throw java.security.cert.CertificateException("Bridge certificate key usage is invalid.")
+                }
                 if ("1.3.6.1.5.5.7.3.1" !in (leaf.extendedKeyUsage ?: emptyList())) throw java.security.cert.CertificateException("Bridge certificate is not server-authenticated.")
                 val actual = MessageDigest.getInstance("SHA-256").digest(leaf.encoded)
                 if (!MessageDigest.isEqual(actual, expectedPin)) throw java.security.cert.CertificateException("Bridge TLS certificate pin mismatch.")
