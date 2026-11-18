@@ -1,6 +1,6 @@
 # GLAFIRA Bridge trusted device pairing protocol
 
-Status: implementation specification for the Bridge integration branch. This document does not claim that pairing, HTTPS hosting, or a live ChatGPT connection is implemented.
+Status: pairing-ticket proof primitives and encrypted Android ticket persistence are implemented on the Gateway branch. Owner approval UI, long-term device credential issuance, joining-client storage, transport, HTTPS hosting, rate limiting, and live ChatGPT connectivity are NOT implemented yet.
 
 ## Security goals
 - Only a person controlling the GLAFIRA owner device can authorize a new client.
@@ -68,3 +68,24 @@ Status: implementation specification for the Bridge integration branch. This doc
 
 ## Release gate
 Pairing is not complete until the protocol, durable ticket store, owner confirmation UI, secure client storage, revocation path, automated tests, and physical-device tests all pass. A protocol document or a green APK build alone is not proof of a working Bridge connection.
+
+
+## Implementation checkpoint — 2026-11-18
+
+Implemented in the Gateway branch:
+- 256-bit random one-time capability and random ticket identifier.
+- Maximum ticket lifetime enforced at 120 seconds.
+- Versioned HMAC-SHA-256 proof bound to ticket ID and a 256-bit client nonce.
+- Constant-time proof comparison and atomic one-time consume contract.
+- Android ticket store encrypts verifier keys with AES-GCM under a non-exportable Android Keystore key; the raw capability is not persisted.
+- Unit tests cover capability size, expiry, altered/wrong-ticket proofs, replay rejection and the maximum lifetime.
+
+Not yet implemented or accepted:
+- An owner-facing approval/rejection queue and UI.
+- Generation and one-time delivery of a separate long-term device ID/HMAC credential after owner approval.
+- Secure storage on the joining Desktop client and pairing UI/QR scanner.
+- Concrete HTTPS server/client transport, certificate lifecycle/pinning policy and rate limiting.
+- End-to-end Android↔Desktop enrollment tests and physical-device Keystore validation.
+- MCP server and ChatGPT connector endpoint.
+
+A successful ticket proof only establishes possession of the short-lived pairing capability. It must never be interpreted as owner approval, device pairing completion, or permission to access project data.
