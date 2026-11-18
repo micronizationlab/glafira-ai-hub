@@ -5,7 +5,9 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class GlafiraBridgePairingJsonCodecTest {
-    private fun decode(value: String) = GlafiraBridgePairingJsonCodec.decode(value.toByteArray(Charsets.UTF_8))\n\n    private val request = GlafiraBridgePairingHttpRequest(
+    private fun decode(value: String) = GlafiraBridgePairingJsonCodec.decode(value.toByteArray(Charsets.UTF_8))
+
+    private val request = GlafiraBridgePairingHttpRequest(
         ticketId = "ticket_identifier_123",
         clientNonce = "A".repeat(43),
         proofHex = "a".repeat(64),
@@ -22,7 +24,7 @@ class GlafiraBridgePairingJsonCodecTest {
     @Test fun rejectsDuplicateUnknownAndMissingFields() {
         val encoded = String(GlafiraBridgePairingJsonCodec.encode(request), Charsets.UTF_8)
         assertThrows(IllegalArgumentException::class.java) {
-            decode(encoded.replaceFirst("{", "{\"ticketId\":\"duplicate_value\",") )
+            decode(encoded.replaceFirst("{", "{\"ticketId\":\"duplicate_value\",")
         }
         assertThrows(IllegalArgumentException::class.java) {
             decode(encoded.replace("\"platform\":\"DESKTOP\",", ""))
