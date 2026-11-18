@@ -14,7 +14,7 @@ internal class DesktopBridgeTaskWorker(
     private val queue: DesktopTaskQueue,
     handlers: Map<String, DesktopAgentExecutor>,
     private val client: DesktopBridgeHttpsClient = DesktopBridgeHttpsClient(),
-    maxParallelTasks: Int = DesktopTaskRuntime.DEFAULT_PARALLELISM,
+    private val maxParallelTasks: Int = DesktopTaskRuntime.DEFAULT_PARALLELISM,
     onResult: (DesktopAgentResult) -> Unit = {}
 ) : AutoCloseable {
     init {
