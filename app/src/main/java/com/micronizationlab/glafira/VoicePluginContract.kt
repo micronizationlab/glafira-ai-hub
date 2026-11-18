@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 
 enum class VoiceCapability {
     SPEECH_TO_TEXT,
@@ -93,9 +94,10 @@ class VoicePluginRegistry {
         require(actual == descriptor.capabilities) {
             "Voice plugin capability declaration does not match its provider adapters."
         }
-        require(plugins.putIfAbsent(descriptor.pluginId, plugin) == null) {
+        require(!plugins.containsKey(descriptor.pluginId)) {
             "Voice plugin is already registered."
         }
+        plugins[descriptor.pluginId] = plugin
     }
 
     @Synchronized
@@ -137,7 +139,7 @@ sealed class VoiceRuntimeResult<out T> {
  */
 class VoiceAssistantRuntime(
     private val registry: VoicePluginRegistry,
-    private val nowEpochMs: () -> Long = System::currentTimeMillis
+    private val nowEpochMs: () -> Long = { System.currentTimeMillis() }
 ) {
     @Volatile private var enabled = false
     @Volatile private var activeSession: VoiceSession? = null
@@ -205,6 +207,8 @@ class VoiceAssistantRuntime(
                 result.providerId.isBlank() || result.modelId.isBlank()
             ) VoiceRuntimeResult.Failure(VoiceRuntimeError.PROVIDER_FAILURE)
             else VoiceRuntimeResult.Success(result)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             VoiceRuntimeResult.Failure(VoiceRuntimeError.PROVIDER_FAILURE)
         }
@@ -248,6 +252,8 @@ class VoiceAssistantRuntime(
                     )
                 )
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             VoiceRuntimeResult.Failure(VoiceRuntimeError.PROVIDER_FAILURE)
         }
