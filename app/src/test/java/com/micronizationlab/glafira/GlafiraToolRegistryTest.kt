@@ -22,6 +22,39 @@ class GlafiraToolRegistryTest {
     }
 
     @Test
+    fun bridgeConversationOperationsAreRegisteredWithDedicatedScopes() {
+        val conversationRead = GlafiraToolRegistry.find("conversation.read")!!
+        val conversationAppend = GlafiraToolRegistry.find("conversation.append")!!
+        val approvalRequest = GlafiraToolRegistry.find("approval.request")!!
+
+        assertEquals(ToolRiskLevel.READ_ONLY, conversationRead.risk)
+        assertEquals(setOf("conversation.read"), conversationRead.requiredScopes)
+        assertEquals(ToolRiskLevel.DRAFT, conversationAppend.risk)
+        assertEquals(setOf("conversation.append"), conversationAppend.requiredScopes)
+        assertEquals(ToolRiskLevel.DRAFT, approvalRequest.risk)
+        assertEquals(setOf("approval.request"), approvalRequest.requiredScopes)
+
+        assertEquals(
+            ToolAuthorizationDecision.ALLOWED,
+            GlafiraToolRegistry.authorize(
+                conversationRead, "project-a", "Read conversation conversation-1", null
+            )
+        )
+        assertEquals(
+            ToolAuthorizationDecision.ALLOWED,
+            GlafiraToolRegistry.authorize(
+                conversationAppend, "project-a", "Append message to conversation conversation-1", null
+            )
+        )
+        assertEquals(
+            ToolAuthorizationDecision.ALLOWED,
+            GlafiraToolRegistry.authorize(
+                approvalRequest, "project-a", "Request approval for message.send", null
+            )
+        )
+    }
+
+    @Test
     fun externalWriteFinancialAndDestructiveActionsRequireApproval() {
         listOf("message.send", "payment.initiate", "record.delete").forEach { id ->
             val definition = GlafiraToolRegistry.find(id)!!
