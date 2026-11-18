@@ -4,7 +4,7 @@ This roadmap records the owner's priority order. Features remain on the roadmap 
 
 ## Priority 1 — GLAFIRA Core (the brain and system authority)
 
-Goal: protect user data before expanding the product.
+Goal: make Glafira a reliable coordinator for the entire AI office. Core is the highest engineering priority and the single authority for task execution, permissions and agent coordination.
 
 1. Define and enforce the authority model: owner is final decision-maker; Glafira coordinates; specialist agents advise and execute only within granted permissions; model providers are replaceable engines.
 2. Stabilize provider registry, primary-model selection, fallback, timeout, retry, cancellation and error reporting.
@@ -18,7 +18,7 @@ No external irreversible action (send, publish, purchase, delete, alter business
 
 ## Priority 2 — Backup & Recovery
 
-Goal: make Glafira a reliable coordinator for the entire AI office. Core is the highest engineering priority and the single authority for task execution, permissions and agent coordination.
+Goal: protect user data before expanding the product.
 
 1. Encrypted, versioned backup archive created on-device.
 2. Integrity verification and safe restore workflow.
