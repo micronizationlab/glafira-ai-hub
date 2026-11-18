@@ -21,16 +21,18 @@ internal object GlafiraTraceSanitizer {
         "queueDepth", "resultCode", "componentVersion", "toolId"
     )
     private val safeToken = Regex("[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}")
+    private fun isSafeIdentifier(value: String) =
+        value.matches(safeToken) && GlafiraSecretRedactor.redact(value) == value
 
     fun sanitize(event: CoreTraceEvent): CoreTraceEvent {
         require(!event.secretValuesStored) { "Trace cannot persist secret values" }
-        require(event.eventId.value.matches(safeToken))
-        require(event.correlationId.value.matches(safeToken))
-        require(event.actor.id.matches(safeToken))
-        require(event.projectId == null || event.projectId.value.matches(safeToken))
-        require(event.taskId == null || event.taskId.value.matches(safeToken))
-        require(event.parentTaskId == null || event.parentTaskId.value.matches(safeToken))
-        require(event.causationId == null || event.causationId.value.matches(safeToken))
+        require(isSafeIdentifier(event.eventId.value))
+        require(isSafeIdentifier(event.correlationId.value))
+        require(isSafeIdentifier(event.actor.id))
+        require(event.projectId == null || isSafeIdentifier(event.projectId.value))
+        require(event.taskId == null || isSafeIdentifier(event.taskId.value))
+        require(event.parentTaskId == null || isSafeIdentifier(event.parentTaskId.value))
+        require(event.causationId == null || isSafeIdentifier(event.causationId.value))
 
         var redacted = event.redactionApplied
         fun safe(value: String?): String? {
