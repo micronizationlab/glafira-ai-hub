@@ -72,40 +72,45 @@ internal class GlafiraDistributedTaskOrchestrator(
         val batches = GlafiraTaskPlanner.readyBatches(plan)
         val results = mutableListOf<GlafiraDistributedTaskResult>()
         for (batch in batches) {
-            val batchResults = batch.map { subtask ->
-                async {
-                    val required = requiredCapabilities(subtask.executor)
-                    val task = GlafiraDistributedTask(
-                        taskId = UUID.randomUUID().toString(),
-                        projectId = projectId,
-                        parentTaskId = parentId,
-                        subtaskId = subtask.id,
-                        title = subtask.title,
-                        instruction = subtask.instruction,
-                        executor = subtask.executor,
-                        requiredCapabilities = required,
-                        priority = 5,
-                        createdAtEpochMs = clock(),
-                        expiresAtEpochMs = clock() + ttlMs
-                    )
-                    val desktopNode = desktopCapabilities()
-                    val result = if (desktopNode != null && desktopNode.available &&
-                        desktopNode.maxParallelTasks > 0 &&
-                        desktopNode.capabilities.containsAll(required)
-                    ) {
-                        desktop.submit(task)
-                    } else {
-                        require(required.all { it in safeAndroidCapabilities }) {
-                            "DESKTOP_REQUIRED_UNAVAILABLE"
+            val desktopNode = desktopCapabilities()
+            val concurrency = if (desktopNode?.available == true) {
+                desktopNode.maxParallelTasks.coerceIn(1, 8)
+            } else 1
+            for (subBatch in batch.chunked(concurrency)) {
+                val batchResults = subBatch.map { subtask ->
+                    async {
+                        val required = requiredCapabilities(subtask.executor)
+                        val task = GlafiraDistributedTask(
+                            taskId = UUID.randomUUID().toString(),
+                            projectId = projectId,
+                            parentTaskId = parentId,
+                            subtaskId = subtask.id,
+                            title = subtask.title,
+                            instruction = subtask.instruction,
+                            executor = subtask.executor,
+                            requiredCapabilities = required,
+                            priority = 5,
+                            createdAtEpochMs = clock(),
+                            expiresAtEpochMs = clock() + ttlMs
+                        )
+                        val node = desktopCapabilities()
+                        val result = if (node != null && node.available &&
+                            node.maxParallelTasks > 0 && node.capabilities.containsAll(required)
+                        ) {
+                            desktop.submit(task)
+                        } else {
+                            require(required.all { it in safeAndroidCapabilities }) {
+                                "DESKTOP_REQUIRED_UNAVAILABLE"
+                            }
+                            android.execute(task)
                         }
-                        android.execute(task)
+                        runCatching { onTaskResult(result) }
+                        result
                     }
-                    runCatching { onTaskResult(result) }
-                    result
-                }
-            }.awaitAll()
-            results += batchResults
-            if (batchResults.any { !it.succeeded }) break
+                }.awaitAll()
+                results += batchResults
+                if (batchResults.any { !it.succeeded }) return@coroutineScope results
+            }
         }
         results
     }
