@@ -45,6 +45,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var showPasswordVault by remember { mutableStateOf(false) }
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
+    var coreRuntimeEnabled by remember { mutableStateOf(GlafiraCoreRuntimeOwner.get(context).isEnabled) }
     var peerConsultationEnabled by remember(peerConsultationKey) {
         mutableStateOf(context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
             .getBoolean(peerConsultationKey, false))
@@ -76,6 +77,38 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         }
 
         Spacer(Modifier.height(24.dp))
+
+        Text("АВТОНОМНАЯ РАБОТА GLAFIRA", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Фоновый планировщик Core", color = Color(0xFF202020), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    if (coreRuntimeEnabled) "Планировщик включён. Выполнение остаётся закрытым до подключения постоянных разрешений и обработчиков."
+                    else "Выключен. Задачи не запускаются в фоне.",
+                    color = Tx,
+                    fontSize = 10.sp
+                )
+            }
+            Switch(
+                checked = coreRuntimeEnabled,
+                onCheckedChange = { enabled ->
+                    runCatching {
+                        GlafiraCoreRuntimeOwner.get(context).setEnabled(enabled)
+                        coreRuntimeEnabled = enabled
+                    }
+                }
+            )
+        }
+        Text(
+            "Важно: это WorkManager для отложенного выполнения, а не гарантия непрерывной работы 24/7. Внешние действия не разрешаются.",
+            color = Tx,
+            fontSize = 10.sp
+        )
+
+        Spacer(Modifier.height(18.dp))
 
         Row(
             Modifier.fillMaxWidth().clickable { workingExpanded = !workingExpanded }.padding(vertical = 6.dp),
