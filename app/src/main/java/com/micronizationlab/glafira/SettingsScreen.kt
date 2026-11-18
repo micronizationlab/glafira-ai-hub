@@ -17,9 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-fun saveApiKey(context: Context, key: String) {
+fun saveApiKey(context: Context, key: String): Boolean =
     EncryptedApiKeyStore.save(context, "gigachat_api_key", key)
-}
 
 fun loadApiKey(context: Context): String =
     EncryptedApiKeyStore.load(context, "gigachat_api_key")
@@ -33,6 +32,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var grokKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GROK)) }
     var yandexKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.YANDEX)) }
     var isSaved by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf(false) }
     var workingExpanded by remember { mutableStateOf(true) }
     var pendingExpanded by remember { mutableStateOf(true) }
     var showDeleteProjectConfirm by remember { mutableStateOf(false) }
@@ -112,12 +112,13 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
         Button(
             onClick = {
-                saveApiKey(context, gigachatKey.trim())
-                saveProviderKey(context, ProviderId.OPENAI, openaiKey)
-                saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey)
-                saveProviderKey(context, ProviderId.GROK, grokKey)
-                saveProviderKey(context, ProviderId.YANDEX, yandexKey)
-                isSaved = true
+                val saved = saveApiKey(context, gigachatKey.trim()) &&
+                    saveProviderKey(context, ProviderId.OPENAI, openaiKey) &&
+                    saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey) &&
+                    saveProviderKey(context, ProviderId.GROK, grokKey) &&
+                    saveProviderKey(context, ProviderId.YANDEX, yandexKey)
+                isSaved = saved
+                saveError = !saved
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White)
@@ -125,9 +126,13 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Text("СОХРАНИТЬ ВСЕ КЛЮЧИ", fontWeight = FontWeight.Bold)
         }
 
-        if (isSaved) {
+        if (isSaved || saveError) {
             Spacer(Modifier.height(8.dp))
-            Text("Ключи успешно сохранены!", color = Gr, fontSize = 12.sp)
+            Text(
+                if (isSaved) "Ключи зашифрованы и сохранены." else "Не удалось безопасно сохранить ключи. Повторите попытку.",
+                color = if (isSaved) Gr else Red,
+                fontSize = 12.sp
+            )
         }
 
         Spacer(Modifier.height(32.dp))
