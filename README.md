@@ -34,3 +34,7 @@ Mandatory encrypted backup, free cloud destinations and cross-device recovery ar
 ## Engineering Roadmap
 
 Owner-prioritized delivery order, including Backup & Recovery, GLAFIRA Core, Voice Assistant and all specialist roles: [IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md).
+
+
+## Account identity and connected services
+See [Account Auth and Identity](docs/ACCOUNT_AUTH_AND_IDENTITY.md) for owner-issued onboarding, profiles, Google/Yandex linking, least-privilege Drive/Mail permissions and multi-user isolation.
