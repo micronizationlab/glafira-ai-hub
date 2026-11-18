@@ -23,13 +23,11 @@ fun main() {
     println("Vault: $vaultPath")
     println("1 — Pair this Desktop with Android")
     println("2 — Use an already imported device credential")
-    when (console.readLine("Select: ").trim()) {
+    val passphrase = when (console.readLine("Select: ").trim()) {
         "1" -> pairAndImport(console, flow, vaultPath)
-        "2" -> Unit
+        "2" -> readSecret(console, "Vault passphrase: ")
         else -> error("Unknown menu choice.")
     }
-
-    val passphrase = readSecret(console, "Vault passphrase: ")
     try {
         val projectId = console.readLine("Project ID (default is allowed): ").trim()
         require(projectId.isNotBlank())
@@ -74,7 +72,7 @@ private fun pairAndImport(
     console: java.io.Console,
     flow: DesktopBridgeEnrollmentFlow,
     vaultPath: Path
-) {
+): CharArray {
     val invitation = readHiddenText(console, "Paste Android one-time invitation JSON (input hidden): ")
     val scopes = console.readLine(
         "Requested scopes, comma-separated (e.g. project.read,conversation.read): "
@@ -93,11 +91,13 @@ private fun pairAndImport(
         "After owner approval, paste the one-time credential bundle (input hidden): "
     )
     val passphrase = readSecret(console, "Create Desktop vault passphrase (12+ characters): ")
-    try {
+    return try {
         flow.importOwnerApprovedCredential(vaultPath, credentialBundle, passphrase)
         println("Credential bundle imported into the encrypted Desktop vault.")
-    } finally {
+        passphrase
+    } catch (error: Exception) {
         passphrase.fill(0.toChar())
+        throw error
     }
 }
 
