@@ -47,8 +47,8 @@ Keep authentication identity separate from profile data. Never use email address
 
 Google ID and Yandex ID are optional sign-in identities, not blanket permissions to all services.
 - Link an identity only after the user has authenticated to the existing GLAFIRA account and completes the provider's OAuth flow.
-- Require re-authentication/confirmation before linking a provider identity to an existing account.
-- Never silently merge accounts solely because email strings match.
+- Prefer explicit/manual linking. Supabase documents automatic linking for matching verified email addresses and manual linking as a beta capability; this behavior must be deliberately configured and security-tested rather than assumed.
+- Require verified email claims and an authenticated existing session before linking. Never treat an unverified email string as proof of ownership.
 - Support unlinking, token revocation, device/session logout and account deletion.
 - Show which identity is used for sign-in and which API permissions are separately connected.
 
@@ -57,7 +57,7 @@ Google ID and Yandex ID are optional sign-in identities, not blanket permissions
 Use independent, revocable OAuth connections for each capability:
 - Google Drive backup: request the narrowest available file scope (prefer app-created/app-shared files such as drive.file) and keep backups inside a dedicated GLAFIRA folder.
 - Gmail: separate consent for reading metadata, reading messages, drafting and sending. Start with the least powerful required scope; sending mail is a separate capability and requires user confirmation or a narrow policy.
-- Yandex Disk: separate Yandex OAuth app/permission grant for Disk access; do not assume Yandex ID login itself grants Disk access.
+- Yandex Disk: separate Yandex OAuth app/permission grant for Disk access; do not assume Yandex ID login itself grants Disk access. Yandex distinguishes user-login apps from API-access apps; register the appropriate app types separately because their permission rules differ.
 - Yandex Mail: separate integration and permission proof; do not infer that Yandex ID login grants mailbox access.
 
 Tokens are stored encrypted using Android Keystore-backed local protection and, if sync is introduced, a separately designed end-to-end encrypted token envelope. Tokens never enter model prompts, logs, backups in plaintext or Git. Revocation and expiry must be visible to the owner.
