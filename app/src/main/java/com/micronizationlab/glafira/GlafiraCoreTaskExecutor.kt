@@ -57,14 +57,17 @@ class GlafiraCoreTaskExecutor(
         }
     }
 
-    suspend fun executeNext(): GlafiraTaskExecutionResult = withContext(dispatcher) {
-        executionMutex.withLock {
-            val now = clock()
-            val task = queue.claimNext(now)
-                ?: return@withLock GlafiraTaskExecutionResult(null, GlafiraTaskExecutionStatus.IDLE)
-            executeClaimed(task, now)
+    suspend fun executeNext(): GlafiraTaskExecutionResult =
+        GlafiraCoreMaintenanceGate.withExclusive {
+            withContext(dispatcher) {
+                executionMutex.withLock {
+                    val now = clock()
+                    val task = queue.claimNext(now)
+                        ?: return@withLock GlafiraTaskExecutionResult(null, GlafiraTaskExecutionStatus.IDLE)
+                    executeClaimed(task, now)
+                }
+            }
         }
-    }
 
     private suspend fun executeClaimed(
         task: GlafiraTask,
