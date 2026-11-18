@@ -44,7 +44,9 @@ public enum BridgePairing {
                                       deviceLabel: String,
                                       requestedScopes: [String],
                                       nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)) throws -> BridgePairingSubmission {
-        guard invitation.expiresAtEpochMs > nowEpochMs,
+        guard invitation.ticketId.utf8.count in 16...128,
+              invitation.ticketId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
+              invitation.expiresAtEpochMs > nowEpochMs,
               invitation.expiresAtEpochMs - nowEpochMs <= 120_000,
               !deviceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               deviceLabel.utf8.count <= 128,
@@ -71,7 +73,8 @@ public enum BridgePairing {
     public static func submit(_ submission: BridgePairingSubmission,
                               invitation: BridgePairingInvitation,
                               client: PinnedBridgeHTTPSClient) async throws -> BridgePairingPendingResponse {
-        guard invitation.expiresAtEpochMs > Int64(Date().timeIntervalSince1970 * 1_000) else {
+        guard submission.ticketId == invitation.ticketId,
+              invitation.expiresAtEpochMs > Int64(Date().timeIntervalSince1970 * 1_000) else {
             throw BridgeTransportError.invalidHTTPResponse
         }
         return try await client.submitPairing(submission)
