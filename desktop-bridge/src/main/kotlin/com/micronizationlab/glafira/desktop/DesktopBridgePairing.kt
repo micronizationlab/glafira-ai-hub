@@ -82,8 +82,14 @@ fun DesktopBridgePairing.fromInvitationBundle(
     requestedScopes: Set<String>,
     nowEpochMs: Long = System.currentTimeMillis()
 ): DesktopBridgePairingSession {
-    require(bundleJson.toByteArray(Charsets.UTF_8).size <= 8 * 1024)
-    val json = JSONObject(bundleJson)
+    val json = DesktopBridgeJson.parseExactObject(
+        bundleJson,
+        maxBytes = 8 * 1024,
+        expectedKeys = setOf(
+            "format", "origin", "ticketId", "pairingCapability",
+            "serverCertificateSha256", "expiresAtEpochMs"
+        )
+    )
     require(json.getString("format") == "GLAFIRA_BRIDGE_INVITATION_V1")
     val expiry = json.getLong("expiresAtEpochMs")
     require(expiry > nowEpochMs && expiry - nowEpochMs <= GlafiraPairingMaximumLifetimeMs)
