@@ -101,3 +101,6 @@ Free-tier capacities, provider quotas and API terms can change; query/display cu
 
 ## Restore semantics
 Restore applies an exact snapshot of app-private files: it writes verified archive entries and removes app-private files absent from the selected archive. It first creates an encrypted safety snapshot and attempts rollback if applying the selected archive fails. Real-device tests must verify both replacement and removal behavior before release.
+
+## Optional email fallback
+Email delivery is for small encrypted archives only and is not the primary destination. The user chooses the recipient address and explicitly connects a mail account with OAuth. Apply a strict attachment-size cap, verify the archive locally before sending, and never fall back to sending an unencrypted archive. If the archive exceeds the cap or the provider rejects it, keep the last verified cloud/local copy and show a clear warning; do not silently omit the backup.
