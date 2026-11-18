@@ -28,7 +28,8 @@ class GlafiraBridgeTlsHttpServer(
     private val identity: BridgeServerIdentity,
     private val admission: GlafiraBridgeRequestAdmission,
     private val enrollmentCoordinator: GlafiraBridgeEnrollmentCoordinator,
-    private val addressRateLimiter: GlafiraBridgeRateLimiter
+    private val addressRateLimiter: GlafiraBridgeRateLimiter,
+    private val deviceRateLimiter: GlafiraBridgeRateLimiter
 ) : AutoCloseable {
     @Volatile private var running = false
     private var serverSocket: SSLServerSocket? = null
@@ -145,6 +146,11 @@ class GlafiraBridgeTlsHttpServer(
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_HEADERS"))
                     return
                 }
+                val expectedHost = if (port == 443) identity.host else "${identity.host}:$port"
+                if (!headers["host"].equals(expectedHost, ignoreCase = true)) {
+                    writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_HOST"))
+                    return
+                }
                 if (headers.containsKey("transfer-encoding") ||
                     headers.containsKey("content-encoding") ||
                     headers.containsKey("expect")
@@ -214,6 +220,10 @@ class GlafiraBridgeTlsHttpServer(
                     GlafiraBridgeRequestJsonCodec.decode(accepted.bytes)
                 } catch (_: Exception) {
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_ENVELOPE"))
+                    return
+                }
+                if (!deviceRateLimiter.tryAcquire(request.deviceId)) {
+                    writeResponse(client, HTTP_TOO_MANY_REQUESTS, errorResponse("DEVICE_RATE_LIMITED"))
                     return
                 }
                 val response = admission.admit(request)
