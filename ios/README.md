@@ -76,3 +76,12 @@ Requires Swift 5.9 or later and the Apple CryptoKit framework.
 4. SwiftUI app target with adaptive iPhone/iPad project and conversation shell.
 5. Encrypted local cache, idempotent outbox and conflict handling after the
    shared Core memory/event contract is stable.
+
+
+## Native Android pairing screen
+
+The `GlafiraIOSUI` target now includes `BridgePairingView`, linked from the root navigation. The flow accepts the Android one-time invitation JSON, validates its HTTPS origin, certificate fingerprint and expiry, creates the cross-platform HMAC proof, and submits it to `/bridge/v1/pairing`. It displays the server-issued approval ID while the Android owner reviews the request.
+
+After owner approval, paste the Android `GLAFIRA_BRIDGE_CREDENTIAL_V1` bundle into the import section. The importer requires the approval ID returned by this exact request and the original invitation ticket ID, in addition to matching server identity and requested scopes. It then requires local Face ID / Touch ID and stores the 256-bit secret in device-only Keychain. The secret is never sent back to Android or written to ordinary preferences.
+
+The Android handoff schema now includes `approvalId` and `ticketId`. Android obtains these from the durable approval record/outbox relation; neither value is regenerated during credential delivery.
