@@ -22,7 +22,7 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
     private let host: String
     private let expectedPin: Data
     private let maximumResponseBytes: Int
-    private lazy var session: URLSession = {
+    lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil
         configuration.httpCookieStorage = nil
@@ -52,6 +52,29 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
         self.expectedPin = pin
         self.maximumResponseBytes = maximumResponseBytes
         super.init()
+    }
+
+    public func submitPairing(_ submission: BridgePairingSubmission) async throws -> BridgePairingPendingResponse {
+        var request = URLRequest(url: origin.appendingPathComponent("bridge/v1/pairing"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("close", forHTTPHeaderField: "Connection")
+        request.httpBody = try JSONEncoder().encode(submission)
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 202 else {
+            throw BridgeTransportError.invalidHTTPResponse
+        }
+        var data = Data()
+        for try await byte in bytes {
+            guard data.count < maximumResponseBytes else { throw BridgeTransportError.responseTooLarge }
+            data.append(byte)
+        }
+        let pending = try JSONDecoder().decode(BridgePairingPendingResponse.self, from: data)
+        guard pending.status == "PENDING_OWNER_APPROVAL" else { throw BridgeTransportError.invalidHTTPResponse }
+        return pending
     }
 
     public func send(_ unsignedRequest: BridgeRequest, credentialStore: KeychainBridgeCredentialStore) async throws -> BridgeResponse {
