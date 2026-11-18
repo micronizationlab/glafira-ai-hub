@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira.desktop
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -62,4 +63,35 @@ class DesktopTaskRuntimeTest {
         assertEquals(DesktopTaskState.FAILED, queue.get("task_missing")?.state)
         assertEquals("NO_AGENT_HANDLER", results.single().errorCode)
     }
+    @Test fun closeDrainsAnAlreadyRunningTaskBeforeReturning() {
+        val queue = DesktopTaskQueue(temp.root.toPath().resolve("tasks-close.json")) { now }
+        queue.enqueue(task("task_close"))
+        val started = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val runtime = DesktopTaskRuntime(
+            queue,
+            mapOf("analysis.document" to DesktopAgentExecutor {
+                started.countDown()
+                check(finish.await(3, TimeUnit.SECONDS))
+                "finished:${it.taskId}"
+            })
+        )
+        assertEquals(1, runtime.dispatchAvailable())
+        assertTrue(started.await(3, TimeUnit.SECONDS))
+
+        val closeEntered = CountDownLatch(1)
+        val closer = Thread {
+            closeEntered.countDown()
+            runtime.close()
+        }
+        closer.start()
+        assertTrue(closeEntered.await(1, TimeUnit.SECONDS))
+        finish.countDown()
+        closer.join(3_000)
+
+        assertFalse("close() should return after the worker drains.", closer.isAlive)
+        assertEquals(DesktopTaskState.SUCCEEDED, queue.get("task_close")?.state)
+        assertEquals("finished:task_close", queue.get("task_close")?.result)
+    }
+
 }
