@@ -45,7 +45,7 @@ class GlafiraCoreTaskExecutor(
     private val maxAttempts: Int = 6,
     private val baseRetryDelayMillis: Long = 5_000L,
     private val maxRetryDelayMillis: Long = 15 * 60_000L,
-    private val runtimeBudget: GlafiraRuntimeBudget = GlafiraRuntimeBudget(),
+    private val runtimeBudget: () -> GlafiraRuntimeBudget = { GlafiraRuntimeBudget() },
     private val costMeter: GlafiraTaskCostMeter? = null
 ) {
     private val executionMutex = Mutex()
@@ -114,7 +114,7 @@ class GlafiraCoreTaskExecutor(
             task = task,
             nowMillis = clock(),
             budgetStartedAtMillis = task.createdAtMillis,
-            budget = runtimeBudget.copy(maxRetries = minOf(runtimeBudget.maxRetries, maxAttempts - 1)),
+            budget = runtimeBudget().copy(maxRetries = minOf(runtimeBudget().maxRetries, maxAttempts - 1)),
             measuredCostMicros = runCatching { costMeter?.measuredCostMicros(task.taskId) }.getOrNull()
         )
         if (!budgetDecision.allowed) return fail(task, budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED")
@@ -178,7 +178,8 @@ class GlafiraCoreTaskExecutor(
         reason: String,
         nowMillis: Long
     ): GlafiraTaskExecutionResult {
-        if (task.attemptCount >= maxAttempts) return fail(task, "RETRY_LIMIT_REACHED:$reason")
+        val retryLimit = minOf(maxAttempts - 1, runtimeBudget().maxRetries)
+        if (task.attemptCount >= retryLimit + 1) return fail(task, "RETRY_LIMIT_REACHED:$reason")
         val exponent = (task.attemptCount - 1).coerceIn(0, 20)
         val delay = (baseRetryDelayMillis * (1L shl exponent)).coerceAtMost(maxRetryDelayMillis)
         val retryAt = if (Long.MAX_VALUE - nowMillis < delay) Long.MAX_VALUE else nowMillis + delay
