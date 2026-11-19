@@ -248,4 +248,50 @@ class GlafiraCoreTaskExecutorTest {
         assertFalse(queue.task?.lastError?.contains("never-store-this") == true)
     }
 
+
+    @Test
+    fun dryRunInspectsRiskyTaskWithoutEnqueuingApprovalOrCallingHandler() = runBlocking {
+        val queued = task().copy(
+            taskType = "message.send",
+            payload = """{"actionSummary":"Send customer message","recipient":"private@example.com"}"""
+        )
+        val queue = FakeQueue(queued)
+        var approvalRequestCreated = false
+        var handlerCalled = false
+        val grants = object : GlafiraTaskGrantSource {
+            override fun grantedScopes(task: GlafiraTask): Set<String> = emptySet()
+            override fun approvalGrant(
+                task: GlafiraTask,
+                actionSummary: String,
+                nowMillis: Long
+            ): ToolApprovalGrant? = null
+            override fun requestApproval(
+                task: GlafiraTask,
+                actionSummary: String,
+                nowMillis: Long
+            ): Boolean {
+                approvalRequestCreated = true
+                return true
+            }
+        }
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = RegistryBackedGlafiraTaskAuthorizer(grants),
+            handlers = listOf("message.send" to GlafiraTaskHandler {
+                handlerCalled = true
+                GlafiraTaskExecutionOutcome.Succeeded()
+            }),
+            clock = { 10_000L },
+            executionMode = { GlafiraExecutionMode.DRY_RUN }
+        )
+
+        val result = worker.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED, result.status)
+        assertFalse(approvalRequestCreated)
+        assertFalse(handlerCalled)
+        assertTrue(result.detail?.contains("NOT_SIMULATABLE") == true)
+        assertTrue(result.detail?.contains("WAITING_FOR_OWNER") == true)
+    }
+
 }
