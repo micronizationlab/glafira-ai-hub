@@ -1,6 +1,10 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import androidx.biometric.BiometricPrompt
+import androidx.biometric.BiometricManager.Authenticators
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +40,7 @@ import java.net.NetworkInterface
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 @Composable
 fun AndroidBridgeSettingsSection() {
@@ -228,13 +234,64 @@ fun AndroidBridgeSettingsSection() {
                     Text("Ожидающих запросов нет.", color = Tx, fontSize = 11.sp)
                 } else {
                     pending.forEach { request ->
+                        var selectedScopes by remember(request.approvalId) { mutableStateOf(emptySet<String>()) }
                         Spacer(Modifier.height(8.dp))
                         androidx.compose.material3.HorizontalDivider(color = Line)
                         Spacer(Modifier.height(6.dp))
                         Text(request.deviceLabel, color = Color(0xFF202020), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Text("Платформа: ${request.platform}", color = Tx, fontSize = 10.sp)
-                        Text("Запрошенные области: ${request.requestedScopes.sorted().joinToString()}", color = Tx, fontSize = 10.sp)
+                        Text("Запрошенные области (по умолчанию ничего не разрешено):", color = Tx, fontSize = 10.sp)
+                        request.requestedScopes.sorted().forEach { scope ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = scope in selectedScopes,
+                                    onCheckedChange = { checked ->
+                                        selectedScopes = if (checked) selectedScopes + scope else selectedScopes - scope
+                                    }
+                                )
+                                Text(scope, color = Color(0xFF202020), fontSize = 10.sp)
+                            }
+                        }
                         Text("Статус: ${request.status} · ${request.approvalId}", color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                enabled = selectedScopes.isNotEmpty(),
+                                onClick = {
+                                    authenticateBridgeOwner(context) { ownerSession ->
+                                        var store: AndroidKeystoreBridgePairingApprovalStore? = null
+                                        val result = runCatching {
+                                            store = AndroidKeystoreBridgePairingApprovalStore(context)
+                                            GlafiraBridgeOwnerApprovalService(store!!).approve(
+                                                request.approvalId,
+                                                selectedScopes,
+                                                ownerSession
+                                            )
+                                        }.getOrElse { GlafiraBridgeApprovalMutation.StorageError }
+                                        store?.close()
+                                        actionMessage = "Результат подтверждения: $result"
+                                        refresh()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White)
+                            ) { Text("ОДОБРИТЬ ВЫБРАННОЕ") }
+                            OutlinedButton(
+                                onClick = {
+                                    authenticateBridgeOwner(context) { ownerSession ->
+                                        var store: AndroidKeystoreBridgePairingApprovalStore? = null
+                                        val rejected = runCatching {
+                                            store = AndroidKeystoreBridgePairingApprovalStore(context)
+                                            GlafiraBridgeOwnerApprovalService(store!!).reject(
+                                                request.approvalId,
+                                                ownerSession
+                                            )
+                                        }.getOrDefault(false)
+                                        store?.close()
+                                        actionMessage = if (rejected) "Запрос отклонён." else "Не удалось отклонить запрос."
+                                        refresh()
+                                    }
+                                }
+                            ) { Text("ОТКЛОНИТЬ") }
+                        }
                     }
                 }
             }
@@ -258,3 +315,35 @@ private fun findPrivateIpv4Address(): String? = runCatching {
     }
     candidates.sorted().firstOrNull()
 }.getOrNull()
+
+private fun authenticateBridgeOwner(
+    context: Context,
+    onAuthenticated: (GlafiraBridgeOwnerSession) -> Unit
+) {
+    val activity = context as? FragmentActivity ?: return
+    val executor = ContextCompat.getMainExecutor(context)
+    val prompt = BiometricPrompt(
+        activity,
+        executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                val now = System.currentTimeMillis()
+                onAuthenticated(
+                    GlafiraBridgeOwnerSession(
+                        sessionId = UUID.randomUUID().toString(),
+                        expiresAtEpochMs = now + 3 * 60 * 1000L
+                    )
+                )
+            }
+        }
+    )
+    val info = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Подтверждение владельца GLAFIRA")
+        .setSubtitle("Разрешение на сопряжение устройства")
+        .setAllowedAuthenticators(
+            Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL
+        )
+        .build()
+    prompt.authenticate(info)
+}
