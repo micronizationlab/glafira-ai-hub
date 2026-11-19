@@ -82,9 +82,11 @@ The owner explicitly asked GLAFIRA to work on multiple independent project tasks
 | [#63](https://github.com/micronizationlab/glafira-ai-hub/pull/63) | `glafira/bridge-keystore-signer-fix` | `fix/android-bridge-settings-ui` | Android Keystore TLS signer, instrumentation test, side-by-side ownerTest APK | Latest run #1010 in progress; prior JVM passed; emulator retry in progress; ownerTest APK pending |
 | [#64](https://github.com/micronizationlab/glafira-ai-hub/pull/64) | `glafira/desktop-shutdown-drain-guard` | `codex/p0-desktop-queue-persistence` | Desktop worker shutdown, OS queue lock and HMAC secret retention | Latest recorded Android JVM, Desktop JVM, API 35 emulator and APK checks passed |
 | [#65](https://github.com/micronizationlab/glafira-ai-hub/pull/65) | `glafira/dual-core-ownership-contract` | `codex/p1-result-delivery` | Dual-Core ownership, fencing, reconciliation and failover contract | Android JVM, API 35 emulator and APK checks passed; documentation-only contract |
-| [#66](https://github.com/micronizationlab/glafira-ai-hub/pull/66) | `glafira/project-dispatcher-v1` | `main` | Read-only cross-workstream CI dispatcher | Dispatcher job #5 passed; unrelated Android build check fails on missing Runtime Foundation symbols in current main |
-| [#67](https://github.com/micronizationlab/glafira-ai-hub/pull/67) | `glafira/bridge-owner-apk-validation` | Bridge signer branch | Superseded debug APK validation | Debug APK built, but unsafe for in-place update; do not merge or deliver |
-| [#68](https://github.com/micronizationlab/glafira-ai-hub/pull/68) | `glafira/bridge-owner-test-apk-validation-v2` | Bridge signer branch | Side-by-side ownerTest APK validation | OwnerTest APK build and standard PR checks in progress |
+| [#66](https://github.com/micronizationlab/glafira-ai-hub/pull/66) | `glafira/project-dispatcher-v1` | `main` | Read-only cross-workstream CI dispatcher plus shared project context | Dispatcher job #5 passed; repository Android build still fails on missing Runtime Foundation symbols in current main |
+| [#67](https://github.com/micronizationlab/glafira-ai-hub/pull/67) | `glafira/bridge-owner-apk-validation` | Bridge signer branch | Superseded debug APK validation | Closed; debug APK built but intentionally not delivered |
+| [#68](https://github.com/micronizationlab/glafira-ai-hub/pull/68) | `glafira/bridge-owner-test-apk-validation-v2` | Bridge signer branch | Superseded ownerTest validation without distinct launcher label | Closed; artifact retained but superseded by #69 |
+| [#69](https://github.com/micronizationlab/glafira-ai-hub/pull/69) | `glafira/bridge-owner-test-apk-validation-v3` | Bridge signer branch | Labeled side-by-side ownerTest APK validation | APK run #11 built and uploaded; Android JVM passed; API 35 emulator still running |
+| [#70](https://github.com/micronizationlab/glafira-ai-hub/pull/70) | `glafira/desktop-bridge-client-validation` | Desktop shutdown branch | Portable Desktop Bridge CLI package validation | distZip run #3 passed and artifact uploaded; repo test retry pending |
 
 Read the corresponding documents before touching each branch:
 - Android: this file on branch `glafira/bridge-keystore-signer-fix`.
@@ -93,6 +95,11 @@ Read the corresponding documents before touching each branch:
 
 
 Additional work:
+Owner test artifacts currently available:
+- APK: run #11, artifact ID `14572302730`, package `com.micronizationlab.glafira.ownertest`, launcher label `GLAFIRA Bridge Test`. Built from the Bridge signer branch with the ownerTest variant; install side-by-side only.
+- Desktop CLI: run #3, artifact ID `14571474502`, portable ZIP includes Windows `desktop-bridge.bat`; requires Java 17 and a real terminal.
+- User-facing downloads were verified in the working container; do not use artifacts from superseded PRs #67/#68.
+
 - [Project Dispatcher design and operating contract](https://github.com/micronizationlab/glafira-ai-hub/blob/glafira/project-dispatcher-v1/docs/GLAFIRA_PROJECT_DISPATCHER.md). The dispatcher has a read-only Actions job that passed once; its PR remains Draft while the repository-wide base build issue is understood.
 - [PR #66](https://github.com/micronizationlab/glafira-ai-hub/pull/66) is not an autonomous code-writing agent. It reconciles all open PRs against exact current head SHAs and reports statuses.
 - PR #68 is validation-only and must not be merged; it exists to produce a safe side-by-side owner test APK.
