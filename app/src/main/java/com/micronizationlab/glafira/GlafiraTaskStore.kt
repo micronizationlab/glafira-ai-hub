@@ -515,7 +515,7 @@ class GlafiraTaskStore(context: Context) :
     ): Boolean {
         require(taskId.isNotBlank() && nowMillis > 0L)
         require(expectedStates == setOf(GlafiraTaskState.RUNNING))
-        require(result.length <= MAX_CORE_RESULT_CHARS) { "CORE_TASK_RESULT_TOO_LARGE" }
+        require(result.length <= GlafiraCoreTaskResultPersistence.MAX_RESULT_CHARS) { "CORE_TASK_RESULT_TOO_LARGE" }
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -971,6 +971,5 @@ class GlafiraTaskStore(context: Context) :
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
         private const val TABLE_CORE_RESULTS = "core_task_results"
-        private const val MAX_CORE_RESULT_CHARS = 24_000
     }
 }
