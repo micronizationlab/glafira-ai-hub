@@ -21,6 +21,8 @@ data class GlafiraDryRunPlan(
     val expectedChanges: List<String>,
     val requiredPermissions: List<String>,
     val approvalPoints: List<String>,
+    val authorizationStatus: GlafiraTaskAuthorizationStatus,
+    val authorizationReason: String?,
     val planHash: String,
     val limitations: List<String>
 ) {
@@ -36,6 +38,8 @@ data class GlafiraDryRunPlan(
         put("expectedChanges", JSONArray(expectedChanges))
         put("requiredPermissions", JSONArray(requiredPermissions))
         put("approvalPoints", JSONArray(approvalPoints))
+        put("authorizationStatus", authorizationStatus.name)
+        put("authorizationReason", authorizationReason)
         put("planHash", planHash)
         put("limitations", JSONArray(limitations))
     }.toString()
@@ -47,7 +51,10 @@ object GlafiraDryRunPlanner {
         "fileName", "amount", "currency", "url", "projectId"
     )
 
-    fun build(task: GlafiraTask): GlafiraDryRunPlan {
+    fun build(
+        task: GlafiraTask,
+        authorization: GlafiraTaskAuthorizationResult = GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+    ): GlafiraDryRunPlan {
         val definition = GlafiraToolRegistry.find(task.taskType)
         val parsed = runCatching { JSONObject(task.payload) }.getOrNull()
         val targetFields = parsed?.keys()?.asSequence()
@@ -70,12 +77,18 @@ object GlafiraDryRunPlanner {
             if (GlafiraToolRegistry.requiresOwnerApproval(risk)) {
                 add("Требуется отдельное подтверждение владельца для точного действия.")
             }
+            if (authorization.status != GlafiraTaskAuthorizationStatus.AUTHORIZED) {
+                add("Core policy requires owner review before LIVE execution.")
+            }
             add("Перед LIVE потребуется отдельное задание с разрешением, связанным с этим planHash.")
         }
         val limitations = buildList {
             if (parsed == null) add("Payload не является корректным JSON; симуляция недоступна.")
             if (!simulatable) add("Для этого инструмента нет проверенного безопасного симулятора.")
             if (!summaryPresent) add("В задании отсутствует actionSummary; точное действие нельзя считать полностью описанным.")
+            if (authorization.status != GlafiraTaskAuthorizationStatus.AUTHORIZED) {
+                add("Live execution is not authorized: ${authorization.reason ?: authorization.status.name}.")
+            }
             add("Dry Run не вызывает обработчик инструмента и не обращается к внешним сервисам.")
             add("Значения полей и секреты намеренно скрыты; перечислены только безопасные имена полей.")
         }
@@ -99,6 +112,8 @@ object GlafiraDryRunPlanner {
             expectedChanges = expected,
             requiredPermissions = ((definition?.requiredScopes ?: emptySet()) + task.requiredScopes).sorted(),
             approvalPoints = approvals,
+            authorizationStatus = authorization.status,
+            authorizationReason = authorization.reason,
             planHash = hash,
             limitations = limitations
         )
