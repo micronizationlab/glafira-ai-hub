@@ -22,6 +22,17 @@ preview must not implicitly enable LIVE mode.
 
 ## Implemented durable boundaries
 
+For PROJECT_READ, CONVERSATION_READ and CONVERSATION_APPEND, the committed Core task
+row is also the durable acceptance receipt. These enqueue-only operations use the same
+pairing/HMAC/scope/expiry/rate checks but do not first consume a separate replay-ledger row.
+A crash before enqueue permits safe authenticated resubmission; a lost acceptance reply
+returns the existing task ID through the SQL-unique `(projectId,idempotencyKey)` receipt.
+The origin device, tool, scopes and semantic payload (excluding transport request ID) must
+match. A different payload/device produces a conflict without returning the old task ID.
+A terminal receipt is returned without changing state or requeueing execution. Only the
+three enqueue-only operations use this path; control operations retain their replay guard.
+Clients must retain the logical key across transport retries. A fresh key means a new action.
+
 1. Android Core success writes its actual result and `SUCCEEDED` in one SQLite transaction.
    The result journal uses the task DB, so a committed state cannot outlive an absent journal
    entry for executions using this persistence adapter. SQLite state-history triggers participate
@@ -68,8 +79,9 @@ is an unavoidable ambiguous window between an external service accepting an acti
 result persistence unless that service participates in idempotency/reconciliation. Storage failure
 at that boundary quarantines the task rather than automatically replaying its handler.
 
-Desktop pending output requires the persistent queue supplied by the CLI; the in-memory
-constructor is intended for tests. History capacity applies backpressure when all records are
+Desktop pending output requires an explicitly supplied persistent queue; the in-memory
+constructor is intended for tests. Production CLI wiring must supply that queue and be
+covered by a restart regression: library persistence tests do not prove the launch path. History capacity applies backpressure when all records are
 unacknowledged. Large outputs beyond existing protocol limits need chunked upload/artifact
 transfer; they remain pending rather than being truncated. Full UI rendering, independent Core
 authority arbitration, ownership-generation enforcement, complete history pagination, cloud

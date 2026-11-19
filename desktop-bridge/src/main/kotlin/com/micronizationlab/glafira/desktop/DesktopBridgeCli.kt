@@ -6,9 +6,12 @@ import java.nio.file.Path
  * Terminal test client for owner-approved Android LAN pairing.
  *
  * Run from a real terminal so invitation, credential bundle and passphrase entry can be hidden.
+ * Usage: glafira-desktop [--operation-id message-2026-001]
+ * Repeating an uncertain append requires the same ID, project, operation and exact payload.
  * No credentials or raw audio are logged. This is a validation utility, not the final Desktop UI.
  */
-fun main() {
+fun main(args: Array<String>) {
+    val logicalOperationId = parseDesktopOperationId(args)
     val console = System.console()
         ?: error("Run GLAFIRA Desktop Bridge from a real terminal; hidden secret input is required.")
     val flow = DesktopBridgeEnrollmentFlow()
@@ -20,11 +23,15 @@ fun main() {
     )
 
     println("GLAFIRA AI HUB — Desktop Bridge test client")
+    println("Usage: glafira-desktop [--operation-id message-2026-001]")
     println("Vault: $vaultPath")
     println("1 — Pair this Desktop with Android")
     println("2 — Use an already imported device credential")
     println("3 — Run the Desktop task worker (requires local Ollama)")
     val selection = console.readLine("Select: ").trim()
+    require(selection != "3" || logicalOperationId == null) {
+        "--operation-id applies to an individual Core operation, not the task worker."
+    }
     val passphrase = when (selection) {
         "1" -> pairAndImport(console, flow, vaultPath)
         "2", "3" -> readSecret(console, "Vault passphrase: ")
@@ -80,6 +87,9 @@ fun main() {
                 DesktopBridgeOperation.CONVERSATION_READ to mapOf("conversationId" to conversationId)
             }
             "3" -> {
+                require(logicalOperationId != null) {
+                    "Appending a message requires --operation-id <stable-id>. Choose a unique ID and reuse it with the same project and message after an uncertain response."
+                }
                 val conversationId = console.readLine("Conversation ID (projectId_agentName): ").trim()
                 val message = console.readLine("Message to append: ")
                 DesktopBridgeOperation.CONVERSATION_APPEND to mapOf(
@@ -90,13 +100,17 @@ fun main() {
             else -> error("Unknown operation.")
         }
 
-        val response = flow.postFromVault(
-            vaultPath = vaultPath,
-            vaultPassphrase = passphrase,
-            projectId = projectId,
-            operation = operation,
-            payload = payload
-        )
+        logicalOperationId?.let {
+            println("Logical operation ID: $it. Reuse it only for this same project, operation and payload.")
+        }
+        val response = try {
+            flow.postFromVault(vaultPath, passphrase, projectId, operation, payload, logicalOperationId)
+        } catch (error: java.io.IOException) {
+            if (logicalOperationId != null) {
+                System.err.println("Response not confirmed. No automatic retry was made. Keep operation ID $logicalOperationId and the exact same project and payload for reconciliation or explicit retry.")
+            }
+            throw error
+        }
         println("Bridge status: ${response.status}")
         response.errorCode?.let { println("Error code: $it") }
         response.result.forEach { (key, value) ->
@@ -153,3 +167,15 @@ private fun readHiddenText(console: java.io.Console, prompt: String): String {
 
 private fun readSecret(console: java.io.Console, prompt: String): CharArray =
     console.readPassword("%s", prompt) ?: error("Secret input was cancelled.")
+
+/** Parse before opening the vault or asking for secrets; flags are never inferred from previous runs. */
+internal fun parseDesktopOperationId(args: Array<String>): String? {
+    if (args.isEmpty()) return null
+    val value = when {
+        args.size == 2 && args[0] == "--operation-id" -> args[1]
+        args.size == 1 && args[0].startsWith("--operation-id=") -> args[0].substringAfter('=')
+        else -> throw IllegalArgumentException("Usage: glafira-desktop [--operation-id <stable-id>]")
+    }
+    DesktopBridgeHttpsClient.validateLogicalOperationId(value)
+    return value
+}
