@@ -56,9 +56,9 @@ object GlafiraDryRunPlanner {
             ?.toList()
             .orEmpty()
         val risk = definition?.risk ?: ToolRiskLevel.DESTRUCTIVE
-        val simulatable = definition != null &&
-            risk in setOf(ToolRiskLevel.READ_ONLY, ToolRiskLevel.DRAFT)
         val summaryPresent = parsed?.optString("actionSummary")?.isNotBlank() == true
+        val simulatable = definition != null && parsed != null && summaryPresent &&
+            risk in setOf(ToolRiskLevel.READ_ONLY, ToolRiskLevel.DRAFT)
         val expected = when (risk) {
             ToolRiskLevel.READ_ONLY -> listOf("Проверить доступность данных без их изменения.")
             ToolRiskLevel.DRAFT -> listOf("Подготовить локальный черновик операции; не сохранять и не отправлять его.")
@@ -73,6 +73,7 @@ object GlafiraDryRunPlanner {
             add("Перед LIVE потребуется отдельное задание с разрешением, связанным с этим planHash.")
         }
         val limitations = buildList {
+            if (parsed == null) add("Payload не является корректным JSON; симуляция недоступна.")
             if (!simulatable) add("Для этого инструмента нет проверенного безопасного симулятора.")
             if (!summaryPresent) add("В задании отсутствует actionSummary; точное действие нельзя считать полностью описанным.")
             add("Dry Run не вызывает обработчик инструмента и не обращается к внешним сервисам.")
@@ -96,7 +97,7 @@ object GlafiraDryRunPlanner {
                 else GlafiraDryRunSimulationStatus.NOT_SIMULATABLE,
             targetFields = targetFields,
             expectedChanges = expected,
-            requiredPermissions = definition?.requiredScopes?.sorted().orEmpty(),
+            requiredPermissions = ((definition?.requiredScopes ?: emptySet()) + task.requiredScopes).sorted(),
             approvalPoints = approvals,
             planHash = hash,
             limitations = limitations
