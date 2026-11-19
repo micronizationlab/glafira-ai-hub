@@ -10,12 +10,12 @@ import kotlinx.coroutines.withContext
  * Coroutine-safe dynamic concurrency limiter. A new permit uses the current configured limit;
  * lowering the limit never interrupts already-running work and simply stops admitting new work.
  */
-internal class GlafiraCoreExecutionLimiter {
+class GlafiraCoreExecutionLimiter internal constructor() {
     private val lock = Mutex()
     private var active = 0
     private var changed = CompletableDeferred<Unit>()
 
-    suspend fun <T> withPermit(limit: Int, block: suspend () -> T): T {
+    internal suspend fun <T> withPermit(limit: Int, block: suspend () -> T): T {
         require(limit in 1..GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS) {
             "Core concurrency limit is outside the supported range."
         }
