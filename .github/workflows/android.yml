@@ -103,7 +103,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          if grep -Eq 'include\\(["'\'' ]*:desktop-bridge|include\\(.*desktop-bridge' settings.gradle.kts; then
+          if grep -Fq ':desktop-bridge' settings.gradle.kts; then
             ./gradlew :app:testDebugUnitTest :desktop-bridge:test --no-daemon --stacktrace
           else
             ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
