@@ -77,7 +77,8 @@ data class A(
     val n: String, val d: String, val on: Boolean, val emoji: String,
     val prompt: String, val fullDesc: String,
     val providerId: ProviderId = ProviderId.GIGACHAT,
-    val group: AgentGroup = AgentGroup.IA
+    val group: AgentGroup = AgentGroup.IA,
+    val agentId: String = n
 )
 data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "")
 
@@ -152,6 +153,7 @@ fun App() {
                     "ГЛАФИРА" -> "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу."
                     "АНАЛИТИК" -> "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен."
                     "ПРОГРАММИСТ" -> "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение."
+                    HrIntelligenceAgent.DISPLAY_NAME -> HrIntelligenceAgent.prompt()
                     "GigaChat" -> "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке."
                     else -> "Ты — помощник."
                 }
@@ -331,6 +333,10 @@ fun ContactList(
                 "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
                 "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта.",
                 ProviderId.GIGACHAT, AgentGroup.IA),
+            A(HrIntelligenceAgent.DISPLAY_NAME, "Личные и деловые контакты", isProviderConfigured(context, ProviderId.GIGACHAT), "🗂️",
+                HrIntelligenceAgent.prompt(),
+                "Кадровик GLAFIRA. Организует подтверждённые сведения о людях и организациях, историю взаимодействий, договорённости и связи. Отмечает источники, уверенность и противоречия. Не получает доступ к аккаунтам автоматически и не отправляет сообщения без разрешения.",
+                ProviderId.GIGACHAT, AgentGroup.IA, HrIntelligenceAgent.ROLE_ID),
             A("GigaChat", "GigaChat · модель", isProviderConfigured(context, ProviderId.GIGACHAT), "🟣",
                 "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке.",
                 "Прямой доступ к модели GigaChat без роли агента. Универсальный помощник.",
@@ -874,6 +880,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 "ГЛАФИРА" to "Ты — Глафира, главный координатор проектов.",
                 "АНАЛИТИК" to "Ты — Аналитик.",
                 "ПРОГРАММИСТ" to "Ты — Программист.",
+                HrIntelligenceAgent.DISPLAY_NAME to HrIntelligenceAgent.prompt(),
                 "GigaChat" to "Ты — GigaChat."
             ).filter { it.first != agent.n }
             AlertDialog(
