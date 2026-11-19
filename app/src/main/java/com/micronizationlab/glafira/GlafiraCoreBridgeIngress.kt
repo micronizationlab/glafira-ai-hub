@@ -93,6 +93,8 @@ class GlafiraCoreBridgeIngress(
         authenticatedDeviceId, capabilities, maxParallelTasks
     )
 
+    fun desktopTaskLeaseExpiry(taskId: String): Long? = runtime.desktopTaskLeaseExpiry(taskId)
+
     fun updateDesktopTask(
         taskId: String,
         authenticatedDeviceId: String,
