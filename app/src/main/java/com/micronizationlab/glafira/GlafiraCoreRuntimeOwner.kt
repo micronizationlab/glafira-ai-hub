@@ -178,6 +178,30 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         return null
     }
 
+    /**
+     * Returns a redacted Desktop Dry Run plan without claiming or leasing the task.
+     * This is a read-only view over Core's durable queue; Desktop never receives the
+     * executable instruction or payload values through this preview path.
+     */
+    fun previewDesktopTask(capabilities: Set<String>): GlafiraDryRunPlan? {
+        if (executionMode != GlafiraExecutionMode.DRY_RUN) return null
+        require(capabilities.size <= 16)
+        val authorizer = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource)
+        val now = System.currentTimeMillis()
+        val candidates = taskStore.listTasks(setOf(GlafiraTaskState.QUEUED), 100)
+        for (candidate in candidates) {
+            if (candidate.taskType != GlafiraTaskStore.DESKTOP_TASK_TYPE) continue
+            val required = runCatching {
+                val values = org.json.JSONObject(candidate.payload).getJSONArray("requiredCapabilities")
+                buildSet { for (index in 0 until values.length()) add(values.getString(index)) }
+            }.getOrNull() ?: continue
+            if (!capabilities.containsAll(required)) continue
+            val authorization = authorizer.inspectForDryRun(candidate, now)
+            return GlafiraDryRunPlanner.build(candidate, authorization)
+        }
+        return null
+    }
+
     fun updateDesktopTask(
         taskId: String,
         deviceId: String,
