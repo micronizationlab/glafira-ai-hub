@@ -217,6 +217,8 @@ internal class DesktopTaskQueue(
     private fun readAll(): List<DesktopTaskRecord> {
         val target = file ?: return memoryRecords.toList()
         if (!Files.exists(target)) return emptyList()
+        val size = Files.size(target)
+        require(size in 1..MAX_QUEUE_FILE_BYTES.toLong()) { "Desktop task queue file size is invalid." }
         val type = object : TypeToken<List<DesktopTaskRecord>>() {}.type
         return gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type) ?: emptyList()
     }
@@ -226,15 +228,26 @@ internal class DesktopTaskQueue(
             memoryRecords = records.toMutableList()
             return
         }
-        val temp = target.resolveSibling(target.fileName.toString() + ".tmp")
-        Files.writeString(temp, gson.toJson(records))
-        setOwnerOnly(temp)
-        try {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
+        val serialized = gson.toJson(records)
+        require(serialized.toByteArray(Charsets.UTF_8).size <= MAX_QUEUE_FILE_BYTES) {
+            "Desktop task queue exceeds its storage limit."
         }
-        setOwnerOnly(target)
+        val parent = target.toAbsolutePath().parent
+            ?: throw IllegalStateException("Desktop task queue has no parent directory.")
+        Files.createDirectories(parent)
+        val temp = Files.createTempFile(parent, ".glafira-task-queue-", ".tmp")
+        try {
+            setOwnerOnly(temp)
+            Files.writeString(temp, serialized, Charsets.UTF_8)
+            try {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
+            }
+            setOwnerOnly(target)
+        } finally {
+            Files.deleteIfExists(temp)
+        }
     }
 
     private fun setOwnerOnly(path: Path) {
@@ -262,6 +275,7 @@ internal class DesktopTaskQueue(
         private const val MAX_SCOPES = 32
         private const val MAX_PROGRESS_CHARS = 500
         private const val MAX_RESULT_CHARS = 24_000
+        private const val MAX_QUEUE_FILE_BYTES = 16 * 1024 * 1024
         private const val MAX_CLOCK_SKEW_MS = 60_000L
     }
 }
