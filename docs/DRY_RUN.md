@@ -21,6 +21,19 @@ Dry Run creates a redacted, deterministic preview of a Core task without invokin
 - A NOT_SIMULATABLE plan is still useful as an action preview, but it must never be described as a successful simulation.
 - A plan hash binds the exact task identity, project, tool, origin, payload and required scopes. Any change to the action produces a different hash.
 
+## Desktop Bridge preview channel
+
+- An authenticated Desktop claim poll is still admitted by the existing TLS/HMAC, paired-device scope, replay and rate-limit checks.
+- While Core is in Dry Run, the claim method returns no lease. The Bridge then performs a separate read-only query over queued `desktop.execute` tasks and selects a task matching the paired node's advertised capabilities.
+- Core returns only the redacted `GlafiraDryRunPlan` JSON, including task ID, project ID, tool ID, risk, simulation status, required permissions, approval points, limitations and plan hash.
+- The raw task instruction, task payload values, secrets and executable handler arguments are not sent to Desktop in this path.
+- The Desktop worker validates a strict preview schema and invokes its `onDryRunPreview` callback. It does not enqueue the preview in the Desktop task queue, invoke an agent executor, or send a task-result update.
+- If no compatible queued task exists, the normal `available=false` response is returned. Malformed preview envelopes fail closed.
+
+## Ten Desktop preview hardening checks
+
+The Desktop preview codec has focused unit coverage for: valid redacted preview acceptance; rejection of LIVE mode; missing fields; unexpected fields; malformed plan hashes; unknown risk levels; unknown simulation states; unknown authorization states; unsafe target-field names; and malformed or oversized string arrays.
+
 ## Not yet complete
 
 - The Desktop preview/result protocol is not implemented; claims are safely blocked rather than previewed.
