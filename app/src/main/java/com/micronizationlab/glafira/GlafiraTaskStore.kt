@@ -233,6 +233,26 @@ class GlafiraTaskStore(context: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
+            // Recover crashed Desktop workers: expired leases return to the same Core queue.
+            db.execSQL(
+                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+                    "WHERE task_type = ? AND state = ? AND task_id IN " +
+                    "(SELECT task_id FROM core_desktop_leases WHERE lease_expires_at <= ?) AND attempt_count < 3",
+                arrayOf(
+                    GlafiraTaskState.QUEUED.databaseValue, nowMillis, "DESKTOP_LEASE_EXPIRED",
+                    DESKTOP_TASK_TYPE, GlafiraTaskState.RUNNING.databaseValue, nowMillis
+                )
+            )
+            db.execSQL(
+                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+                    "WHERE task_type = ? AND state = ? AND task_id IN " +
+                    "(SELECT task_id FROM core_desktop_leases WHERE lease_expires_at <= ?) AND attempt_count >= 3",
+                arrayOf(
+                    GlafiraTaskState.FAILED.databaseValue, nowMillis, "DESKTOP_DELIVERY_RETRIES_EXCEEDED",
+                    DESKTOP_TASK_TYPE, GlafiraTaskState.RUNNING.databaseValue, nowMillis
+                )
+            )
+            db.delete("core_desktop_leases", "lease_expires_at <= ?", arrayOf(nowMillis.toString()))
             val active = db.rawQuery("SELECT COUNT(*) FROM core_desktop_leases WHERE device_id = ? AND lease_expires_at > ?",
                 arrayOf(deviceId, nowMillis.toString())).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
             if (active >= maxParallelTasks) { db.setTransactionSuccessful(); return null }
