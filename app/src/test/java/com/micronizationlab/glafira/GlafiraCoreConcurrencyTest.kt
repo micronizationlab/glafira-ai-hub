@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -154,7 +155,7 @@ class GlafiraCoreConcurrencyTest {
         assertEquals(5, results.count { it.status == GlafiraTaskExecutionStatus.SUCCEEDED })
         assertEquals(5, claimedIds.size)
         assertEquals(5, queue.completedCount())
-        repeat(1..5) { index -> assertEquals("task-$index", queue.result("task-$index")) }
+        (1..5).forEach { index -> assertEquals("task-$index", queue.result("task-$index")) }
         assertEquals(1, queue.recoveryCalls)
         assertEquals(0, active.get())
     }
