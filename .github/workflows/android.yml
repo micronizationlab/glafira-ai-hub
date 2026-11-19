@@ -70,30 +70,66 @@ jobs:
           gradle-version: '8.9'
 
       - name: Run Core persistence and backup tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          emulator-boot-timeout: 900
-          disable-animations: false
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set +e
-            mkdir -p app/build/outputs
-            adb devices -l > app/build/outputs/androidTest-adb-devices.txt 2>&1
-            adb logcat -c
-            adb logcat -b all -v threadtime > app/build/outputs/androidTest-logcat-live.txt 2>&1 &
-            LOGCAT_PID=$!
-            gradle connectedDebugAndroidTest --stacktrace
-            test_status=$?
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p app/build/outputs
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          AVDMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/avdmanager"
+
+          if [[ ! -x "$SDKMANAGER" || ! -x "$AVDMANAGER" ]]; then
+            echo "Android command-line tools were not found under $SDK_ROOT" >&2
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
+          printf 'no\n' | "$AVDMANAGER" create avd --force --name glafira-ci --package "system-images;android-35;google_apis;x86_64" --device pixel_2
+
+          adb start-server
+          adb devices -l > app/build/outputs/androidTest-adb-devices.txt 2>&1
+          "$SDK_ROOT/emulator/emulator" -port 5554 -avd glafira-ci -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -accel off > app/build/outputs/androidTest-emulator-console.txt 2>&1 &
+          EMULATOR_PID=$!
+
+          collect_diagnostics() {
+            status=$?
             adb logcat -b crash -d -v threadtime > app/build/outputs/androidTest-crash-logcat.txt 2>&1 || true
             adb shell dumpsys activity instrumentation > app/build/outputs/androidTest-instrumentation.txt 2>&1 || true
             adb logcat -d -v threadtime > app/build/outputs/androidTest-logcat.txt 2>&1 || true
-            kill "$LOGCAT_PID" 2>/dev/null || true
-            wait "$LOGCAT_PID" 2>/dev/null || true
-            exit "$test_status"
+            adb -s emulator-5554 emu kill >/dev/null 2>&1 || kill "$EMULATOR_PID" 2>/dev/null || true
+            wait "$EMULATOR_PID" 2>/dev/null || true
+            exit "$status"
+          }
+          trap collect_diagnostics EXIT
+
+          booted=false
+          for attempt in $(seq 1 240); do
+            if boot_state=$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null) && [[ "$boot_state" == "1" ]]; then
+              booted=true
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$booted" != true ]]; then
+            echo "Android emulator did not finish booting within 20 minutes" >&2
+            exit 1
+          fi
+
+          # The upstream emulator-runner unconditionally sends keyevent 82 after
+          # boot. On this hosted image that input-service call breaks the ADB
+          # connection, so boot readiness is checked without injecting key events.
+          adb wait-for-device
+          for attempt in $(seq 1 60); do
+            if adb -s emulator-5554 shell pm path android >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          adb logcat -c
+          adb logcat -b all -v threadtime > app/build/outputs/androidTest-logcat-live.txt 2>&1 &
+          LOGCAT_PID=$!
+          gradle connectedDebugAndroidTest --stacktrace
 
       - name: Upload emulator test diagnostics
         if: always()
