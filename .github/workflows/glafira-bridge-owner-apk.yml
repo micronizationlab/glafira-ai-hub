@@ -36,12 +36,12 @@ jobs:
       - name: Build debug APK
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon assembleDebug
+          ./gradlew --no-daemon assembleOwnerTest
 
       - name: Upload owner test APK
         uses: actions/upload-artifact@v4
         with:
-          name: glafira-bridge-owner-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: glafira-bridge-owner-test-apk
+          path: app/build/outputs/apk/ownerTest/*.apk
           if-no-files-found: error
           retention-days: 14
