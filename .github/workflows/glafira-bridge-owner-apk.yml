@@ -1,0 +1,47 @@
+name: GLAFIRA Bridge Owner Test APK
+
+on:
+  push:
+    branches:
+      - glafira/bridge-keystore-signer-fix
+  pull_request:
+    branches:
+      - glafira/bridge-keystore-signer-fix
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glafira-bridge-owner-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug-apk:
+    name: Build installable Android debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact Bridge fix commit
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleOwnerTest
+
+      - name: Upload owner test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-bridge-owner-test-apk
+          path: app/build/outputs/apk/ownerTest/*.apk
+          if-no-files-found: error
+          retention-days: 14

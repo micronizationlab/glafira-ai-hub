@@ -156,8 +156,10 @@ class AndroidKeystoreBridgeServerIdentityStore(context: Context) {
             false,
             ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth)
         )
+        // Let JCA select the Android Keystore-compatible Signature provider for this
+        // non-exportable key. Android registers its Keystore workaround provider ahead
+        // of Bouncy Castle specifically to avoid BC claiming unsupported Keystore keys.
         val signer = JcaContentSignerBuilder(SIGNATURE_ALGORITHM)
-            .setProvider(ANDROID_KEY_STORE)
             .build(privateKey)
         return JcaX509CertificateConverter()
             .setProvider(BouncyCastleProvider())
