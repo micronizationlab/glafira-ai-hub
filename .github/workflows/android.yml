@@ -83,7 +83,7 @@ jobs:
             exit 1
           fi
 
-          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --licenses < <(yes) >/dev/null
           "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
           printf 'no\n' | "$AVDMANAGER" create avd --force --name glafira-ci --package "system-images;android-35;google_apis;x86_64" --device pixel_2
 
