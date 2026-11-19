@@ -110,11 +110,17 @@ class GlafiraCoreTaskExecutor(
         }
 
         val handler = handlerMap[task.taskType] ?: return fail(task, "NO_HANDLER_REGISTERED")
+        // Read the owner-controlled budget once so the policy and retry path use one
+        // coherent configuration snapshot for this attempt.
+        val configuredBudget = runtimeBudget()
+        val effectiveBudget = configuredBudget.copy(
+            maxRetries = minOf(configuredBudget.maxRetries, maxAttempts - 1)
+        )
         val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
             task = task,
             nowMillis = clock(),
             budgetStartedAtMillis = task.createdAtMillis,
-            budget = runtimeBudget().copy(maxRetries = minOf(runtimeBudget().maxRetries, maxAttempts - 1)),
+            budget = effectiveBudget,
             measuredCostMicros = runCatching { costMeter?.measuredCostMicros(task.taskId) }.getOrNull()
         )
         if (!budgetDecision.allowed) return fail(task, budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED")
