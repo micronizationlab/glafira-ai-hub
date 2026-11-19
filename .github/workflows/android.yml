@@ -165,7 +165,7 @@ jobs:
       - id: apple-toolchain
         name: Identify Apple toolchain for safe cache keys
         run: |
-          swift_version="$(swift --version | sed -n '1s/.*version \\([^ ]*\\).*/\\1/p')"
+          swift_version="$(swift --version | awk '{ for (i=1; i<=NF; i++) if ($i == "version") { print $(i+1); exit } }')"
           xcode_version="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
           echo "swift_version=$swift_version" >> "$GITHUB_OUTPUT"
           echo "xcode_version=$xcode_version" >> "$GITHUB_OUTPUT"
