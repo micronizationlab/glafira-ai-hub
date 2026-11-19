@@ -167,4 +167,14 @@ class GlafiraRuntimeBudgetTest {
         )
         assertTrue(result.allowed)
     }
+
+    @Test
+    fun rejectsSecondAttemptWhenRetryBudgetIsZero() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task(attempts = 2), nowMillis = 2_000L, budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxRetries = 0), measuredCostMicros = null
+        )
+        assertFalse(result.allowed)
+        assertEquals("RUNTIME_RETRY_LIMIT_EXCEEDED", result.reason)
+    }
 }
