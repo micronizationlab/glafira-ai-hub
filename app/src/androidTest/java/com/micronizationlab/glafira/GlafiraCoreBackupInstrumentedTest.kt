@@ -311,10 +311,14 @@ class GlafiraCoreBackupInstrumentedTest {
     fun backupRestorePreservesProviderSelectionPreferences() {
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val passphrase = "GLAFIRA-provider-backup-test".toCharArray()
+        val providers = listOf(ProviderId.OPENAI, ProviderId.DEEPSEEK).joinToString(",") { it.name }
+        val modelKey = "provider_model_${ProviderId.OPENAI.name}"
+        val originalModel = preferences.getString(modelKey, null)
         assertTrue(
             preferences.edit()
-                .putString("peer_consultation_providers_acceptance", "openai,local")
+                .putString("peer_consultation_providers_acceptance", providers)
                 .putBoolean("peer_consultation_enabled_acceptance", true)
+                .putString(modelKey, "owner-selected-model-v2")
                 .commit()
         )
         val archive = BackupArchive.create(context, passphrase)
@@ -322,25 +326,75 @@ class GlafiraCoreBackupInstrumentedTest {
             // Mutate preferences after backup; restore must return to the archived values.
             assertTrue(
                 preferences.edit()
-                    .putString("peer_consultation_providers_acceptance", "changed")
+                    .putString("peer_consultation_providers_acceptance", ProviderId.GEMINI.name)
                     .putBoolean("peer_consultation_enabled_acceptance", false)
+                    .putString(modelKey, "changed-after-backup")
                     .commit()
             )
 
             BackupArchive.restore(context, archive, passphrase)
 
             assertEquals(
-                "openai,local",
+                providers,
                 preferences.getString("peer_consultation_providers_acceptance", null)
             )
             assertTrue(preferences.getBoolean("peer_consultation_enabled_acceptance", false))
+            assertEquals("owner-selected-model-v2", loadProviderModel(context, ProviderId.OPENAI, "default"))
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
             preferences.edit()
                 .remove("peer_consultation_providers_acceptance")
                 .remove("peer_consultation_enabled_acceptance")
+                .also { editor -> if (originalModel == null) editor.remove(modelKey) else editor.putString(modelKey, originalModel) }
                 .commit()
+        }
+    }
+
+    @Test
+    fun backupRestoreRejectsInvalidModelSettingsAndDoesNotTransferCredentialSlots() {
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val modelKey = "provider_model_${ProviderId.OPENAI.name}"
+        val unknownModelKey = "provider_model_NOT_A_PROVIDER"
+        val credentialKey = "openai_api_key"
+        val keys = listOf(modelKey, unknownModelKey, credentialKey)
+        val previous = preferences.all.filterKeys { it in keys }
+        val passphrase = "GLAFIRA-invalid-model-backup-test".toCharArray()
+        var archive: File? = null
+        try {
+            assertTrue(preferences.edit()
+                .putString(modelKey, "invalid model\n")
+                .putString(unknownModelKey, "source-unknown-model")
+                .putString(credentialKey, "source-secret-must-not-transfer")
+                .commit())
+            val created = BackupArchive.create(context, passphrase)
+            archive = created
+            assertTrue(preferences.edit()
+                .putString(modelKey, "destination-model")
+                .putString(unknownModelKey, "destination-unknown-model")
+                .putString(credentialKey, "destination-secret-must-remain")
+                .commit())
+
+            BackupArchive.restore(context, created, passphrase)
+
+            assertEquals("safe-default", loadProviderModel(context, ProviderId.OPENAI, "safe-default"))
+            assertEquals("destination-unknown-model", preferences.getString(unknownModelKey, null))
+            assertEquals("destination-secret-must-remain", preferences.getString(credentialKey, null))
+        } finally {
+            archive?.delete()
+            passphrase.fill('\u0000')
+            val editor = preferences.edit()
+            keys.forEach { editor.remove(it) }
+            previous.forEach { (key, value) ->
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Float -> editor.putFloat(key, value)
+                }
+            }
+            assertTrue(editor.commit())
         }
     }
 
