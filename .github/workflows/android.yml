@@ -73,6 +73,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          test -c /dev/kvm || { echo "KVM is required for bounded Android emulator acceptance." >&2; exit 1; }
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
           mkdir -p app/build/outputs
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
@@ -84,7 +87,7 @@ jobs:
           fi
 
           "$SDKMANAGER" --licenses < <(yes) >/dev/null
-          timeout 15m "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "system-images;android-35;google_apis;x86_64" 2>&1 | tee app/build/outputs/androidTest-sdkmanager.txt
+          timeout 15m "$SDKMANAGER" --install "platform-tools" "emulator" "platforms;android-35" "system-images;android-35;google_apis;x86_64" 2>&1 | tee app/build/outputs/androidTest-sdkmanager.txt
           # sdkmanager installs adb into platform-tools; expose SDK tools to every later step.
           export PATH="$SDK_ROOT/platform-tools:$SDK_ROOT/emulator:$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           if [[ ! -x "$SDK_ROOT/platform-tools/adb" ]]; then
@@ -95,7 +98,7 @@ jobs:
 
           adb start-server
           adb devices -l > app/build/outputs/androidTest-adb-devices.txt 2>&1
-          "$SDK_ROOT/emulator/emulator" -port 5554 -avd glafira-ci -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -accel off > app/build/outputs/androidTest-emulator-console.txt 2>&1 &
+          "$SDK_ROOT/emulator/emulator" -port 5554 -avd glafira-ci -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -accel on > app/build/outputs/androidTest-emulator-console.txt 2>&1 &
           EMULATOR_PID=$!
 
           collect_diagnostics() {
