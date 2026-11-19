@@ -20,6 +20,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +42,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.roundToInt
 
 @Composable
 fun AndroidBridgeSettingsSection() {
@@ -57,6 +59,10 @@ fun AndroidBridgeSettingsSection() {
     var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
     var pending by remember { mutableStateOf(emptyList<GlafiraBridgePendingApproval>()) }
     var actionMessage by remember { mutableStateOf<String?>(null) }
+    var parallelTasks by remember(context) {
+        mutableStateOf(GlafiraCoreRuntimeOwner.get(context).runtimeBudget().maxConcurrentTasks)
+    }
+    var budgetMessage by remember { mutableStateOf<String?>(null) }
     val port = GlafiraBridgeTlsHttpServer.DEFAULT_PORT
 
     fun refresh() {
@@ -210,6 +216,44 @@ fun AndroidBridgeSettingsSection() {
                         fontSize = 10.sp
                     )
                 }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text("ПАРАЛЛЕЛЬНЫЕ ИСПОЛНИТЕЛИ GLAFIRA CORE", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Количество независимых заданий, которые Core может обрабатывать одновременно. Диапазон: 1–8. Desktop Bridge дополнительно соблюдает собственный лимит узла.",
+                    color = Tx,
+                    fontSize = 10.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("$parallelTasks из 8 исполнителей", color = Color(0xFF202020), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Slider(
+                    value = parallelTasks.toFloat(),
+                    onValueChange = { parallelTasks = it.roundToInt().coerceIn(1, GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS) },
+                    valueRange = 1f..GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS.toFloat(),
+                    steps = GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS - 2,
+                    onValueChangeFinished = {
+                        runCatching {
+                            val runtime = GlafiraCoreRuntimeOwner.get(context)
+                            runtime.setRuntimeBudget(
+                                runtime.runtimeBudget().copy(maxConcurrentTasks = parallelTasks)
+                            )
+                            if (runtime.isEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(context)
+                        }.onSuccess {
+                            budgetMessage = "Лимит сохранён: $parallelTasks."
+                        }.onFailure {
+                            budgetMessage = it.message ?: "Не удалось сохранить лимит."
+                        }
+                    }
+                )
+                budgetMessage?.let { Text(it, color = Tx, fontSize = 10.sp) }
             }
         }
 
