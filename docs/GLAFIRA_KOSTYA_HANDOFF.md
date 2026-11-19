@@ -44,11 +44,11 @@ The API 35 emulator instrumentation test now exercises the actual Android Keysto
 - checks connection details are available;
 - cleans up the test key alias and preferences before/after the test.
 
-This test was added after the first CI run had already started, so that first run does NOT include this new regression test. A subsequent PR workflow run must execute it.
+This test was added after the first CI run had already started. Run #982 therefore does NOT include it. Run #984 is based on the updated branch and includes the test in `connectedDebugAndroidTest`; its Android Unit Tests job passed (140 executed, 0 skipped), but the API 35 emulator job is still running. Do not mark the instrumentation test passed until its JUnit report confirms this exact class executed successfully.
 
 ## Validation status — NOT YET ACCEPTED
 
-The source change and focused instrumentation regression test are committed to this isolated branch, but no Android device/emulator validation is accepted yet. Do not tell the owner the Bridge is fixed until the following pass:
+The source change and focused instrumentation regression test are committed to this isolated branch. Android JVM tests passed in run #984 (140 executed, 0 skipped); the API 35 emulator job remains in progress. No Bridge TLS listener or physical-device validation is accepted yet. Do not tell the owner the Bridge is fixed until the following pass:
 
 1. Android Keystore EC P-256 key generation succeeds.
 2. `SHA256withECDSA` signer creation and certificate issuance succeed on API 35.
@@ -68,3 +68,21 @@ If the provider name is absent on a supported Android API/device, investigate pr
 - Do not weaken Bridge pairing, owner approval, scopes, replay protection, TLS pinning, or Core authorization.
 - The user's architectural decision remains: Android and Desktop each need independent Core capability; neither is a permanent single point of failure.
 - Kostya's existing PRs and branches must be reviewed before integration; this branch is an isolated focused fix, not a replacement for that work.
+
+
+## Parallel work index — 2026-11-19
+
+The owner explicitly asked GLAFIRA to work on multiple independent project tasks in parallel while Kostya is inactive. Each task is isolated in its own branch and Draft PR:
+
+| PR | Branch | Base | Scope | Current acceptance |
+| --- | --- | --- | --- | --- |
+| [#63](https://github.com/micronizationlab/glafira-ai-hub/pull/63) | `glafira/bridge-keystore-signer-fix` | `fix/android-bridge-settings-ui` | Android Keystore TLS signer and instrumentation regression test | Android JVM passed; API 35 emulator pending |
+| [#64](https://github.com/micronizationlab/glafira-ai-hub/pull/64) | `glafira/desktop-shutdown-drain-guard` | `codex/p0-desktop-queue-persistence` | Desktop worker shutdown, OS queue lock and HMAC secret retention | JVM passed on intermediate heads; newest cross-process test pending CI; emulator/APK pending |
+| [#65](https://github.com/micronizationlab/glafira-ai-hub/pull/65) | `glafira/dual-core-ownership-contract` | `codex/p1-result-delivery` | Dual-Core ownership, fencing, reconciliation and failover contract | Android JVM passed; emulator pending; documentation-only change |
+
+Read the corresponding documents before touching each branch:
+- Android: this file.
+- Desktop: `docs/GLAFIRA_DESKTOP_SHUTDOWN_HANDOFF.md`.
+- Dual-Core: `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md`.
+
+Do not merge these branches into one another or into `main` blindly. PR #64 depends on PR #62's Desktop queue branch; PR #65 depends on PR #58's result-delivery branch. PR #63 remains stacked on the Android Bridge settings branch. Preserve those dependencies when planning integration.
