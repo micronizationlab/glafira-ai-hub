@@ -52,6 +52,30 @@ class DesktopTaskRuntimeTest {
         assertTrue(results.all { it.state == DesktopTaskState.SUCCEEDED })
     }
 
+    @Test fun runtimeMarksOrphanedRunningTasksFailedBeforeDispatch() {
+        val queue = DesktopTaskQueue(temp.root.toPath().resolve("tasks-recovery.json")) { now }
+        queue.enqueue(task("task_interrupted"))
+        queue.claimNext()
+        queue.transition("task_interrupted", DesktopTaskState.ACCEPTED)
+        queue.transition("task_interrupted", DesktopTaskState.RUNNING)
+        val executions = AtomicInteger()
+
+        DesktopTaskRuntime(
+            queue,
+            mapOf("analysis.document" to DesktopAgentExecutor {
+                executions.incrementAndGet()
+                "should-not-run"
+            })
+        ).use { runtime ->
+            assertEquals(0, runtime.dispatchAvailable())
+        }
+
+        val recovered = requireNotNull(queue.get("task_interrupted"))
+        assertEquals(DesktopTaskState.FAILED, recovered.state)
+        assertEquals("WORKER_INTERRUPTED", recovered.errorCode)
+        assertEquals(0, executions.get())
+    }
+
     @Test fun missingAgentHandlerFailsClosed() {
         val queue = DesktopTaskQueue(temp.root.toPath().resolve("tasks.json")) { now }
         queue.enqueue(task("task_missing"))
