@@ -69,16 +69,24 @@ class GlafiraCoreTaskExecutor(
             withContext(dispatcher) {
                 executionMutex.withLock {
                     val now = clock()
+                    // One budget snapshot governs both orphan recovery and this attempt.
+                    val configuredBudget = runtimeBudget()
+                    val effectiveBudget = configuredBudget.copy(
+                        maxRetries = minOf(configuredBudget.maxRetries, maxAttempts - 1)
+                    )
+                    (queue as? GlafiraInterruptedTaskRecovery)
+                        ?.recoverInterruptedCoreTasks(now, effectiveBudget.maxRetries)
                     val task = queue.claimNext(now)
                         ?: return@withLock GlafiraTaskExecutionResult(null, GlafiraTaskExecutionStatus.IDLE)
-                    executeClaimed(task, now)
+                    executeClaimed(task, now, effectiveBudget)
                 }
             }
         }
 
     private suspend fun executeClaimed(
         task: GlafiraTask,
-        nowMillis: Long
+        nowMillis: Long,
+        effectiveBudget: GlafiraRuntimeBudget
     ): GlafiraTaskExecutionResult {
         val mode = executionMode()
         val authorization = try {
@@ -123,12 +131,6 @@ class GlafiraCoreTaskExecutor(
         }
 
         val handler = handlerMap[task.taskType] ?: return fail(task, "NO_HANDLER_REGISTERED")
-        // Read the owner-controlled budget once so the policy and retry path use one
-        // coherent configuration snapshot for this attempt.
-        val configuredBudget = runtimeBudget()
-        val effectiveBudget = configuredBudget.copy(
-            maxRetries = minOf(configuredBudget.maxRetries, maxAttempts - 1)
-        )
         val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
             task = task,
             nowMillis = clock(),
