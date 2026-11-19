@@ -39,7 +39,7 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) : GlafiraBridgeCred
         val encrypted = encrypt(key, hmacSecret)
         try {
             val encoded = listOf(
-                encrypted.first,
+                Base64.encodeToString(encrypted.first, Base64.NO_WRAP),
                 Base64.encodeToString(encrypted.second, Base64.NO_WRAP),
                 scopes.sorted().joinToString(",")
             ).joinToString(":")
@@ -50,7 +50,7 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) : GlafiraBridgeCred
                 throw IllegalStateException("Unable to persist Bridge device credentials.")
             }
         } finally {
-            encrypted.first.toByteArray(Charsets.UTF_8).fill(0)
+            encrypted.first.fill(0)
             encrypted.second.fill(0)
         }
     }
@@ -130,11 +130,11 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) : GlafiraBridgeCred
         keyStore.getKey(alias, null) as? SecretKey
             ?: throw IllegalStateException("Bridge credential key is missing; re-pair the device.")
 
-    private fun encrypt(key: SecretKey, plaintext: ByteArray): Pair<String, ByteArray> {
+    private fun encrypt(key: SecretKey, plaintext: ByteArray): Pair<ByteArray, ByteArray> {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key)
         val ciphertext = cipher.doFinal(plaintext)
-        return Base64.encodeToString(cipher.iv, Base64.NO_WRAP) to ciphertext
+        return cipher.iv to ciphertext
     }
 
     private fun decrypt(key: SecretKey, iv: ByteArray, ciphertext: ByteArray): ByteArray {
