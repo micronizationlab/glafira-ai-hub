@@ -187,4 +187,14 @@ class GlafiraRuntimeBudgetTest {
         assertFalse(result.allowed)
         assertEquals("RUNTIME_TIME_LIMIT_EXCEEDED", result.reason)
     }
+
+    @Test
+    fun wallClockBudgetCapsTimeoutWhenNoTaskDeadlineExists() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task(), nowMillis = 2_000L, budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxWallClockMillis = 10_000L), measuredCostMicros = null
+        )
+        assertTrue(result.allowed)
+        assertEquals(9_000L, result.timeoutMillis)
+    }
 }
