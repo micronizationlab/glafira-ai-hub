@@ -38,6 +38,10 @@ interface GlafiraCoreTaskResultPersistence {
         result: String,
         nowMillis: Long
     ): Boolean
+
+    companion object {
+        const val MAX_RESULT_CHARS = 24_000
+    }
 }
 
 
