@@ -23,6 +23,7 @@ class GlafiraCoreDrainWorker(
                 when (runtime.executeNext().status) {
                     GlafiraTaskExecutionStatus.IDLE -> return Result.success()
                     GlafiraTaskExecutionStatus.SUCCEEDED -> Unit
+                    GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED -> return Result.success()
                     GlafiraTaskExecutionStatus.RETRY_SCHEDULED -> {
                         GlafiraCoreWorkScheduler.scheduleRetry(applicationContext, RETRY_DELAY_MILLIS)
                         return Result.success()
