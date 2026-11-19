@@ -136,7 +136,7 @@ class GlafiraCoreConcurrencyTest {
     }
 
     @Test
-    fun maintenanceWaitsForHandlersAndBlocksNewExecutionLeases() = runBlocking {
+    fun maintenanceWaitsForHandlersAndBlocksNewExecutionLeases(): Unit = runBlocking {
         val firstStarted = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
         val maintenanceStarted = CompletableDeferred<Unit>()
