@@ -215,15 +215,30 @@ class GlafiraCoreTaskExecutor(
 
         return when (outcome) {
             is GlafiraTaskExecutionOutcome.Succeeded -> {
-                val changed = queue.transition(
-                    task.taskId, setOf(GlafiraTaskState.RUNNING),
-                    GlafiraTaskState.SUCCEEDED, clock()
-                )
+                val rawSummary = outcome.summary.orEmpty()
+                val summary = if (rawSummary.length > GlafiraCoreTaskResultPersistence.MAX_RESULT_CHARS) {
+                    rawSummary.take(GlafiraCoreTaskResultPersistence.MAX_RESULT_CHARS - 14) + "...[TRUNCATED]"
+                } else rawSummary
+                val now = clock()
+                val resultPersistence = queue as? GlafiraCoreTaskResultPersistence
+                val changed = try {
+                    resultPersistence?.persistCoreTaskResult(
+                        task.taskId, setOf(GlafiraTaskState.RUNNING), summary, now
+                    ) ?: queue.transition(
+                        task.taskId, setOf(GlafiraTaskState.RUNNING),
+                        GlafiraTaskState.SUCCEEDED, now
+                    )
+                } catch (_: Exception) {
+                    return reconcileResultPersistenceFailure(task, effectiveBudget.maxRetries, now)
+                }
+                if (!changed && resultPersistence != null) {
+                    return reconcileResultPersistenceFailure(task, effectiveBudget.maxRetries, now)
+                }
                 GlafiraTaskExecutionResult(
                     task.taskId,
                     if (changed) GlafiraTaskExecutionStatus.SUCCEEDED
                     else GlafiraTaskExecutionStatus.FAILED,
-                    outcome.summary
+                    if (changed) summary else "CORE_RESULT_PERSIST_FAILED"
                 )
             }
             is GlafiraTaskExecutionOutcome.RetryableFailure ->
@@ -253,6 +268,38 @@ class GlafiraCoreTaskExecutor(
                 )
             }
         }
+    }
+
+    /**
+     * If a completed handler cannot commit its result, never blindly replay a possible write.
+     * Read-only work may retry; writes are quarantined for owner reconciliation.
+     */
+    private fun reconcileResultPersistenceFailure(
+        task: GlafiraTask,
+        maxRetries: Int,
+        nowMillis: Long
+    ): GlafiraTaskExecutionResult {
+        val decision = GlafiraTaskRecoveryPolicy.interrupted(task, maxRetries)
+        val changed = runCatching {
+            queue.transition(
+                task.taskId,
+                setOf(GlafiraTaskState.RUNNING),
+                decision.state,
+                nowMillis,
+                retryAtMillis = if (decision.state == GlafiraTaskState.RETRY_SCHEDULED) nowMillis else null,
+                lastError = "CORE_RESULT_PERSIST_FAILED:${decision.reason}"
+            )
+        }.getOrDefault(false)
+        val status = if (!changed) {
+            GlafiraTaskExecutionStatus.FAILED
+        } else {
+            when (decision.state) {
+                GlafiraTaskState.RETRY_SCHEDULED -> GlafiraTaskExecutionStatus.RETRY_SCHEDULED
+                GlafiraTaskState.WAITING_FOR_OWNER -> GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
+                else -> GlafiraTaskExecutionStatus.FAILED
+            }
+        }
+        return GlafiraTaskExecutionResult(task.taskId, status, "CORE_RESULT_PERSIST_FAILED")
     }
 
     private fun scheduleRetry(
