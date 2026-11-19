@@ -264,10 +264,7 @@ class GlafiraBridgeTlsHttpServer(
                                         "executor" to payload.optString("executor"),
                                         "requiredCapabilities" to payload.optJSONArray("requiredCapabilities").toString(),
                                         "expiresAtEpochMs" to (task.deadlineAtMillis ?: 0L).toString(),
-                                        "leaseExpiresAtEpochMs" to (coreIngress.status(task.taskId)?.let {
-                                            // Lease expiry is intentionally not sourced from the request.
-                                            System.currentTimeMillis() + 10 * 60_000L
-                                        } ?: 0L).toString()
+                                        "leaseExpiresAtEpochMs" to (coreIngress.desktopTaskLeaseExpiry(task.taskId) ?: 0L).toString()
                                     )
                                 )
                             }
