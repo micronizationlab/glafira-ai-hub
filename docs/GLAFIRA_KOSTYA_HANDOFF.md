@@ -48,19 +48,22 @@ This test was added after the first CI run had already started. Run #982 therefo
 
 ## Validation status — NOT YET ACCEPTED
 
-The source change and focused instrumentation regression test are committed to this isolated branch. Android JVM tests passed in run #984 (140 executed, 0 skipped); the API 35 emulator job remains in progress. No Bridge TLS listener or physical-device validation is accepted yet. Do not tell the owner the Bridge is fixed until the following pass:
+Latest branch head at this handoff update: `f76bff1a4ed55f54b392158223cfe7304186d852`.
 
-1. Android Keystore EC P-256 key generation succeeds.
-2. `SHA256withECDSA` signer creation and certificate issuance succeed on API 35.
-3. Certificate SAN contains the selected LAN IPv4 address and EKU contains serverAuth.
-4. A second `getOrCreate()` reuses the existing key/certificate.
-5. HTTPS server binds to the selected private IPv4 address.
-6. TLS handshake succeeds from a paired/trusting client.
-7. Stop/start cycle succeeds without regenerating or losing identity.
-8. Run Android JVM and instrumentation suites; report exact counts and failures.
-9. Build and install the APK over the owner's existing installation; verify app data and Bridge settings remain intact.
+- Run #1010 is validating this latest head; Android Unit Tests were still in progress at the last check.
+- Run #1003 on the preceding source head passed Android Unit Tests on retry. Its emulator job first failed before instrumentation began because the hosted runner could not download the Android Emulator SDK package. A retry of that emulator job is now running.
+- The API 35 emulator must confirm that `AndroidKeystoreBridgeServerIdentityInstrumentedTest` actually executed and passed. Do not infer this from a successful JVM suite.
+- Validation-only PR #68 triggers the dedicated `GLAFIRA Bridge Owner Test APK` workflow for the `ownerTest` variant. Its APK build is in progress; no artifact is accepted or available for delivery yet.
+- Validation-only PR #67 built a normal debug APK successfully, but it uses the ordinary package ID and an ephemeral CI debug signing key. Do NOT deliver it as an update to the owner's installed app.
 
-If the provider name is absent on a supported Android API/device, investigate provider registration and Android version behavior; do not silently fall back to exporting the key or a software private key. A fallback may only be considered if it continues to sign through the Android Keystore key and is covered by device tests.
+Required before delivery:
+1. Latest Android JVM tests pass.
+2. API 35 instrumentation confirms the Keystore signer test actually executed and passed.
+3. `assembleOwnerTest` succeeds and its uploaded artifact is tied to the Bridge-fix source snapshot.
+4. The APK installs as `com.micronizationlab.glafira.ownertest` alongside the existing app without uninstalling or replacing it.
+5. Physical TLS handshake, owner pairing, listener stop/start and identity reuse are tested on the owner's devices.
+
+The side-by-side test app has its own app data and a fresh Bridge identity. This avoids disturbing the existing app but does not migrate its pairing credentials. No claim that the owner's installed Bridge is fixed.
 
 ## Existing project boundaries
 
@@ -76,14 +79,23 @@ The owner explicitly asked GLAFIRA to work on multiple independent project tasks
 
 | PR | Branch | Base | Scope | Current acceptance |
 | --- | --- | --- | --- | --- |
-| [#63](https://github.com/micronizationlab/glafira-ai-hub/pull/63) | `glafira/bridge-keystore-signer-fix` | `fix/android-bridge-settings-ui` | Android Keystore TLS signer and instrumentation regression test | Android JVM passed; API 35 emulator pending |
-| [#64](https://github.com/micronizationlab/glafira-ai-hub/pull/64) | `glafira/desktop-shutdown-drain-guard` | `codex/p0-desktop-queue-persistence` | Desktop worker shutdown, OS queue lock and HMAC secret retention | JVM passed on intermediate heads; newest cross-process test pending CI; emulator/APK pending |
-| [#65](https://github.com/micronizationlab/glafira-ai-hub/pull/65) | `glafira/dual-core-ownership-contract` | `codex/p1-result-delivery` | Dual-Core ownership, fencing, reconciliation and failover contract | Android JVM passed; emulator pending; documentation-only change |
+| [#63](https://github.com/micronizationlab/glafira-ai-hub/pull/63) | `glafira/bridge-keystore-signer-fix` | `fix/android-bridge-settings-ui` | Android Keystore TLS signer, instrumentation test, side-by-side ownerTest APK | Latest run #1010 in progress; prior JVM passed; emulator retry in progress; ownerTest APK pending |
+| [#64](https://github.com/micronizationlab/glafira-ai-hub/pull/64) | `glafira/desktop-shutdown-drain-guard` | `codex/p0-desktop-queue-persistence` | Desktop worker shutdown, OS queue lock and HMAC secret retention | Latest recorded Android JVM, Desktop JVM, API 35 emulator and APK checks passed |
+| [#65](https://github.com/micronizationlab/glafira-ai-hub/pull/65) | `glafira/dual-core-ownership-contract` | `codex/p1-result-delivery` | Dual-Core ownership, fencing, reconciliation and failover contract | Android JVM, API 35 emulator and APK checks passed; documentation-only contract |
+| [#66](https://github.com/micronizationlab/glafira-ai-hub/pull/66) | `glafira/project-dispatcher-v1` | `main` | Read-only cross-workstream CI dispatcher | Dispatcher job #5 passed; unrelated Android build check fails on missing Runtime Foundation symbols in current main |
+| [#67](https://github.com/micronizationlab/glafira-ai-hub/pull/67) | `glafira/bridge-owner-apk-validation` | Bridge signer branch | Superseded debug APK validation | Debug APK built, but unsafe for in-place update; do not merge or deliver |
+| [#68](https://github.com/micronizationlab/glafira-ai-hub/pull/68) | `glafira/bridge-owner-test-apk-validation-v2` | Bridge signer branch | Side-by-side ownerTest APK validation | OwnerTest APK build and standard PR checks in progress |
 
 Read the corresponding documents before touching each branch:
 - Android: this file on branch `glafira/bridge-keystore-signer-fix`.
 - Desktop: [handoff document on branch `glafira/desktop-shutdown-drain-guard`](https://github.com/micronizationlab/glafira-ai-hub/blob/glafira/desktop-shutdown-drain-guard/docs/GLAFIRA_DESKTOP_SHUTDOWN_HANDOFF.md).
 - Dual-Core: [ownership contract on branch `glafira/dual-core-ownership-contract`](https://github.com/micronizationlab/glafira-ai-hub/blob/glafira/dual-core-ownership-contract/docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md).
+
+
+Additional work:
+- [Project Dispatcher design and operating contract](https://github.com/micronizationlab/glafira-ai-hub/blob/glafira/project-dispatcher-v1/docs/GLAFIRA_PROJECT_DISPATCHER.md). The dispatcher has a read-only Actions job that passed once; its PR remains Draft while the repository-wide base build issue is understood.
+- [PR #66](https://github.com/micronizationlab/glafira-ai-hub/pull/66) is not an autonomous code-writing agent. It reconciles all open PRs against exact current head SHAs and reports statuses.
+- PR #68 is validation-only and must not be merged; it exists to produce a safe side-by-side owner test APK.
 
 Do not merge these branches into one another or into `main` blindly. PR #64 depends on PR #62's Desktop queue branch; PR #65 depends on PR #58's result-delivery branch. PR #63 remains stacked on the Android Bridge settings branch. Preserve those dependencies when planning integration.
 
