@@ -36,5 +36,14 @@ Mandatory encrypted backup, free cloud destinations and cross-device recovery ar
 Owner-prioritized delivery order, including Backup & Recovery, GLAFIRA Core, Voice Assistant and all specialist roles: [IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md).
 
 
+## Autonomous Runtime
+
+The five-step P3 plan, implementation status and acceptance gates are tracked in [AUTONOMOUS_RUNTIME_P3_IMPLEMENTATION.md](docs/AUTONOMOUS_RUNTIME_P3_IMPLEMENTATION.md).
+
+## Developer references
+
+- [Local testing guide](docs/LOCAL_TESTING.md)
+- [Core terminology](docs/CORE_TERMINOLOGY.md)
+
 ## Account identity and connected services
 See [Account Auth and Identity](docs/ACCOUNT_AUTH_AND_IDENTITY.md) for owner-issued onboarding, profiles, Google/Yandex linking, least-privilege Drive/Mail permissions and multi-user isolation.
