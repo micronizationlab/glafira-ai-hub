@@ -58,3 +58,15 @@ Fixture:
 
 ## Current limitations
 This is a schema and contract draft, not a running broker, transport, enrollment service or signed application. Platform implementations must be integrated and tested before interoperability is claimed.
+
+## Generated cross-platform DTOs
+
+`generate-models.mjs` derives each message family separately from the canonical schema. The CI job is pinned to quicktype 26.0.0 and publishes a SHA-scoped artifact containing:
+
+- Kotlin data classes using kotlinx.serialization (Kotlin serialization plugin/runtime must be enabled by the consuming module).
+- Swift Codable structs.
+- C# models using System.Text.Json.
+
+The generator keeps the seven message families separate instead of flattening the top-level `oneOf` into one permissive object. Generated DTOs provide typed transport shapes; the canonical JSON Schema validator remains authoritative for conditional and cross-field rules such as mandatory owner approval for external side effects and reconciliation requirements for `OUTCOME_UNKNOWN`. Do not treat deserialization alone as policy validation.
+
+Generated artifacts are build outputs at this stage. Platform modules must adopt the DTOs deliberately and run the shared lifecycle fixtures before interoperability is claimed.
