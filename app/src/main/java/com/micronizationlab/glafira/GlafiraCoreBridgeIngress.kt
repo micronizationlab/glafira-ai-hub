@@ -85,6 +85,27 @@ internal class GlafiraCoreBridgeIngress(
         return Submission(result.task.taskId, result.inserted, result.task.state)
     }
 
+    fun claimDesktopTask(
+        authenticatedDeviceId: String,
+        capabilities: Set<String>,
+        maxParallelTasks: Int
+    ): GlafiraTask? = runtime.claimDesktopTask(
+        authenticatedDeviceId, capabilities, maxParallelTasks
+    )
+
+    fun updateDesktopTask(
+        taskId: String,
+        authenticatedDeviceId: String,
+        state: String,
+        progressPercent: Int,
+        progressMessage: String?,
+        result: String?,
+        errorCode: String?
+    ): Boolean = runtime.updateDesktopTask(
+        taskId, authenticatedDeviceId, state, progressPercent,
+        progressMessage, result, errorCode
+    )
+
     fun status(taskId: String): GlafiraTask? {
         require(taskId.startsWith("bridge-") && taskId.length <= 64)
         return runtime.taskStore.getTask(taskId)
