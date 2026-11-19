@@ -57,7 +57,11 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                         put("time", SimpleDateFormat("HH:mm", Locale.ROOT).format(now))
                         put("date", SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(now))
                     })
-                    writeAtomically(file, messages.toString().toByteArray(Charsets.UTF_8))
+                    val encodedMessages = messages.toString().toByteArray(Charsets.UTF_8)
+                    require(encodedMessages.size <= MAX_CONVERSATION_BYTES) {
+                        "Conversation exceeds the Bridge storage limit."
+                    }
+                    writeAtomically(file, encodedMessages)
                     succeeded(
                         request,
                         mapOf(
