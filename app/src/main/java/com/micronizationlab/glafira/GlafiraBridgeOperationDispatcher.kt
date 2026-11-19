@@ -4,9 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
 import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -32,7 +30,7 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                     val conversationId = request.payload.getValue("conversationId")
                     val file = conversationFile(request.projectId, conversationId)
                     if (!file.isFile) return failed(request, "CONVERSATION_NOT_FOUND")
-                    val messages = readMessages(file)
+                    val messages = messagesJson(loadHistory(appContext, conversationId))
                     succeeded(
                         request,
                         mapOf(
@@ -47,36 +45,28 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                     val conversationId = request.payload.getValue("conversationId")
                     val messageText = request.payload.getValue("messageText")
                     require(messageText.isNotBlank() && messageText.length <= MAX_MESSAGE_CHARS)
-                    val file = conversationFile(request.projectId, conversationId)
-                    val messages = if (file.exists()) readMessages(file) else JSONArray()
-                    require(messages.length() < MAX_MESSAGES)
+                    conversationFile(request.projectId, conversationId) // validate the same project-bound history key
                     val now = Date()
-                    messages.put(JSONObject().apply {
-                        put("text", messageText)
-                        put("isUser", true)
-                        put("time", SimpleDateFormat("HH:mm", Locale.ROOT).format(now))
-                        put("date", SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(now))
-                    })
-                    val encodedMessages = messages.toString().toByteArray(Charsets.UTF_8)
-                    try {
-                        require(encodedMessages.size <= MAX_CONVERSATION_BYTES) {
-                            "Conversation exceeds the Bridge storage limit."
-                        }
-                        writeAtomically(file, encodedMessages)
-                    } finally {
-                        encodedMessages.fill(0)
-                    }
+                    val messages = appendHistory(appContext, conversationId, listOf(Msg(
+                        text = messageText,
+                        isUser = true,
+                        time = SimpleDateFormat("HH:mm", Locale.ROOT).format(now),
+                        date = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(now),
+                        operationId = "bridge:${request.projectId}:${request.idempotencyKey}"
+                    )))
                     succeeded(
                         request,
                         mapOf(
                             "projectId" to project.first,
                             "conversationId" to conversationId,
-                            "messageCount" to messages.length().toString()
+                            "messageCount" to messages.size.toString()
                         )
                     )
                 }
                 GlafiraBridgeOperation.APPROVAL_REQUEST ->
                     failed(request, "APPROVAL_QUEUE_NOT_CONNECTED")
+                GlafiraBridgeOperation.TASK_STATUS,
+                GlafiraBridgeOperation.TASK_RESULT_ACK,
                 GlafiraBridgeOperation.DESKTOP_TASK_CLAIM,
                 GlafiraBridgeOperation.DESKTOP_TASK_RESULT ->
                     failed(request, "DESKTOP_OPERATIONS_REQUIRE_CORE_QUEUE")
@@ -86,21 +76,8 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
         }
     }
 
-    private fun findProject(projectId: String): Pair<String, String>? {
-        val file = File(filesRoot, PROJECTS_FILE)
-        if (!isDirectChild(file) || !file.isFile || file.length() !in 1..MAX_PROJECTS_FILE_BYTES) return null
-        val projects = JSONArray(file.readText(Charsets.UTF_8))
-        if (projects.length() > MAX_PROJECTS) return null
-        for (index in 0 until projects.length()) {
-            val item = projects.getJSONObject(index)
-            val id = item.getString("id")
-            val name = item.getString("name")
-            if (id == projectId && name.isNotBlank() && name.length <= MAX_PROJECT_NAME_CHARS) {
-                return id to name
-            }
-        }
-        return null
-    }
+    private fun findProject(projectId: String): Pair<String, String>? =
+        loadProjects(appContext).firstOrNull { it.id == projectId }?.let { it.id to it.name }
 
     private fun conversationFile(projectId: String, conversationId: String): File {
         require(isAllowedConversationId(projectId, conversationId))
@@ -109,50 +86,11 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
         return file
     }
 
-    private fun readMessages(file: File): JSONArray {
-        require(isDirectChild(file) && file.isFile && file.length() in 1..MAX_CONVERSATION_BYTES)
-        val parsed = JSONArray(file.readText(Charsets.UTF_8))
-        require(parsed.length() <= MAX_MESSAGES)
-        val safe = JSONArray()
-        for (index in 0 until parsed.length()) {
-            val item = parsed.getJSONObject(index)
-            val text = item.getString("text")
-            require(text.length <= MAX_MESSAGE_CHARS)
-            val isUser = item.getBoolean("isUser")
-            val time = item.optString("time", "")
-            val date = item.optString("date", "")
-            require(time.length <= 16 && date.length <= 16)
-            safe.put(JSONObject().apply {
-                put("text", text)
-                put("isUser", isUser)
-                put("time", time)
-                put("date", date)
-            })
-        }
-        return safe
-    }
-
-    private fun writeAtomically(target: File, bytes: ByteArray) {
-        require(isDirectChild(target))
-        val temp = Files.createTempFile(filesRoot.toPath(), ".glafira-bridge-", ".tmp").toFile()
-        try {
-            FileOutputStream(temp).use { output ->
-                output.write(bytes)
-                output.fd.sync()
-            }
-            try {
-                Files.move(
-                    temp.toPath(), target.toPath(),
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING
-                )
-            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-                Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            }
-        } finally {
-            temp.delete()
-            bytes.fill(0)
-        }
+    private fun messagesJson(messages: List<Msg>): JSONArray = JSONArray().apply {
+        messages.forEach { message -> put(JSONObject().apply {
+            put("text", message.text); put("isUser", message.isUser)
+            put("time", message.time); put("date", message.date)
+        }) }
     }
 
     private fun isDirectChild(file: File): Boolean {
@@ -180,12 +118,6 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
         )
 
     companion object {
-        private const val PROJECTS_FILE = "projects.json"
-        private const val MAX_PROJECTS_FILE_BYTES = 256 * 1024L
-        private const val MAX_PROJECTS = 2_000
-        private const val MAX_PROJECT_NAME_CHARS = 128
-        private const val MAX_CONVERSATION_BYTES = 512 * 1024L
-        private const val MAX_MESSAGES = 2_000
         private const val MAX_MESSAGE_CHARS = 16_384
         private val KNOWN_AGENT_IDS = setOf(
             "ГЛАФИРА", "АНАЛИТИК", "ПРОГРАММИСТ", "GigaChat", "ChatGPT",

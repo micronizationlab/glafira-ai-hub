@@ -26,28 +26,26 @@ internal class DesktopBridgeTaskWorker(
 
     private val advertisedCapabilities = handlers.keys.map(::capabilityForTaskType).toSet()
     private val deliveredDryRunPlanHashes = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val resultOutbox = DesktopResultOutbox(queue, projectId, ::sendTerminal)
     private val runtime = DesktopTaskRuntime(
         queue = queue,
         handlers = handlers,
         maxParallelTasks = maxParallelTasks,
         onProgress = { taskId, percent, message ->
+            // This first callback is an authority preflight, not optional telemetry.
+            // An expired/revoked binding must stop the handler before it performs effects.
             postTaskUpdate(taskId, "RUNNING", percent, message, "none", "none")
         },
         onResult = { result ->
-            postTaskUpdate(
-                result.taskId,
-                if (result.state == DesktopTaskState.SUCCEEDED) "SUCCEEDED" else "FAILED",
-                if (result.state == DesktopTaskState.SUCCEEDED) 100 else 0,
-                "completed",
-                result.result ?: "none",
-                result.errorCode ?: "none"
-            )
+            runCatching { queue.get(result.taskId)?.let { resultOutbox.deliver(it) } }
             onResult(result)
         }
     )
 
     /** Polls one Android inbox item and starts available parallel work. */
     fun pollOnce(): Int {
+        // Retry persisted results before requesting more work, including after process restart.
+        flushPendingResults()
         val response = client.post(
             origin, credentials, projectId,
             DesktopBridgeOperation.DESKTOP_TASK_CLAIM,
@@ -88,28 +86,13 @@ internal class DesktopBridgeTaskWorker(
                 put("priority", response.result.getValue("priority").toInt())
             }
             val task = decodeTask(json)
+            require(task.projectId == projectId) { "DESKTOP_TASK_PROJECT_MISMATCH" }
             val existing = queue.get(task.taskId)
             when (existing?.state) {
-                DesktopTaskState.SUCCEEDED -> {
-                    postTaskUpdate(task.taskId, "ACCEPTED", 0, "restored completed task", "none", "none")
-                    postTaskUpdate(
-                        task.taskId, "RUNNING", 99, "restoring result",
-                        existing.result ?: "none", "none"
-                    )
-                    postTaskUpdate(
-                        task.taskId, "SUCCEEDED", 100, "completed",
-                        existing.result ?: "none", "none"
-                    )
-                }
-                DesktopTaskState.FAILED, DesktopTaskState.CANCELLED, DesktopTaskState.EXPIRED -> {
-                    postTaskUpdate(task.taskId, "ACCEPTED", 0, "restored terminal task", "none", "none")
-                    postTaskUpdate(
-                        task.taskId, "RUNNING", 99, "restoring failure", "none", "none"
-                    )
-                    postTaskUpdate(
-                        task.taskId, "FAILED", 0, "completed with failure",
-                        "none", existing.errorCode ?: "DESKTOP_TASK_FAILED"
-                    )
+                DesktopTaskState.SUCCEEDED, DesktopTaskState.FAILED,
+                DesktopTaskState.CANCELLED, DesktopTaskState.EXPIRED -> {
+                    // Never move a completed operation backwards or execute its handler again.
+                    resultOutbox.deliver(existing)
                 }
                 DesktopTaskState.DISPATCHED, DesktopTaskState.ACCEPTED, DesktopTaskState.RUNNING -> {
                     val failed = runCatching { queue.fail(task.taskId, "RECOVERY_REQUIRES_REVIEW") }.getOrNull()
@@ -146,13 +129,27 @@ internal class DesktopBridgeTaskWorker(
         }
     }
 
+    /** One failed delivery cannot hide another terminal result. Local ACK follows remote commit. */
+    fun flushPendingResults(): Int = resultOutbox.flush()
+
+    private fun sendTerminal(record: DesktopTaskRecord) {
+        postTaskUpdate(record.envelope.taskId,
+            when (record.state) {
+                DesktopTaskState.SUCCEEDED -> "SUCCEEDED"
+                DesktopTaskState.CANCELLED -> "CANCELLED"
+                else -> "FAILED"
+            }, if (record.state == DesktopTaskState.SUCCEEDED) 100 else 0, "completed",
+            record.result?.let(JSONObject::quote) ?: "null", record.errorCode ?: if (record.state == DesktopTaskState.EXPIRED) "TASK_EXPIRED" else "none", resultEncoding = "json")
+    }
+
     private fun postTaskUpdate(
         taskId: String,
         state: String,
         progress: Int,
         progressMessage: String,
         result: String,
-        errorCode: String
+        errorCode: String,
+        resultEncoding: String? = null
     ) {
         var lastError: Exception? = null
         repeat(3) { attempt ->
@@ -167,7 +164,7 @@ internal class DesktopBridgeTaskWorker(
                         "progressMessage" to progressMessage,
                         "result" to result,
                         "errorCode" to errorCode
-                    )
+                    ) + (resultEncoding?.let { mapOf("resultEncoding" to it) } ?: emptyMap())
                 )
                 if (response.status != DesktopBridgeStatus.SUCCEEDED) {
                     throw IllegalStateException(response.errorCode ?: "DESKTOP_TASK_RESULT_FAILED")

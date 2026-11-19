@@ -266,6 +266,48 @@ class GlafiraBridgeTlsHttpServer(
                 val response = if (admitted.status != GlafiraBridgeStatus.ACCEPTED) {
                     admitted
                 } else when (request.operation) {
+                    GlafiraBridgeOperation.TASK_STATUS, GlafiraBridgeOperation.TASK_RESULT_ACK -> {
+                        try {
+                            val taskId = request.payload.getValue("taskId")
+                            val task = coreIngress.status(taskId, request.projectId, request.deviceId)
+                                ?: throw IllegalArgumentException("TASK_NOT_FOUND")
+                            // A status capability is never a way to bypass the original tool scopes.
+                            val requiredReadScopes = when (task.taskType) {
+                                "conversation.read", "conversation.append" -> setOf("conversation.read")
+                                GlafiraTaskStore.DESKTOP_TASK_TYPE -> setOf("desktop.task.result")
+                                else -> setOf("project.read")
+                            }
+                            val readAuthorized = coreIngress.hasActiveReadScopes(request.deviceId, requiredReadScopes)
+                            require(readAuthorized) { "SCOPE_DENIED" }
+                            val values = if (request.operation == GlafiraBridgeOperation.TASK_RESULT_ACK) {
+                                require(coreIngress.acknowledgeResult(taskId, request.projectId,
+                                    request.payload.getValue("resultId"), request.deviceId)) { "RESULT_ACK_REJECTED" }
+                                mapOf("acknowledged" to "true")
+                            } else {
+                                val result = coreIngress.result(taskId, request.projectId)
+                                val serialized = result?.let { JSONObject(it.values.toSortedMap()).toString() } ?: ""
+                                val offset = request.payload.getValue("resultOffset").toInt()
+                                require(offset in 0..serialized.length) { "RESULT_OFFSET_INVALID" }
+                                require(offset == 0 || offset == serialized.length ||
+                                    !(serialized[offset].isLowSurrogate() && serialized[offset - 1].isHighSurrogate()))
+                                var chunkEnd = minOf(offset + 8000, serialized.length)
+                                if (chunkEnd < serialized.length && chunkEnd > offset &&
+                                    serialized[chunkEnd - 1].isHighSurrogate()) chunkEnd--
+                                mapOf("taskId" to taskId, "state" to task.state.databaseValue,
+                                    "resultAvailable" to (result != null).toString(),
+                                    "resultId" to (result?.resultId ?: ""),
+                                    "resultOffset" to offset.toString(),
+                                    "resultLength" to serialized.length.toString(),
+                                    "resultChunk" to serialized.substring(offset, chunkEnd),
+                                    "historyJson" to coreIngress.history(taskId, request.projectId))
+                            }
+                            GlafiraBridgeResponse(GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                GlafiraBridgeStatus.SUCCEEDED, result = values)
+                        } catch (_: Exception) {
+                            GlafiraBridgeResponse(GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                GlafiraBridgeStatus.FAILED, errorCode = "TASK_QUERY_REJECTED")
+                        }
+                    }
                     GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> {
                         try {
                             val capabilityJson = org.json.JSONArray(request.payload.getValue("capabilities"))
@@ -278,11 +320,11 @@ class GlafiraBridgeTlsHttpServer(
                                 }
                             }
                             val parallel = request.payload.getValue("maxParallelTasks").toInt()
-                            val task = coreIngress.claimDesktopTask(request.deviceId, capabilities, parallel)
+                            val task = coreIngress.claimDesktopTask(request.deviceId, request.projectId, capabilities, parallel)
                             if (task == null) {
                                 // In Dry Run the claim path intentionally returns no executable
                                 // task. A separate read-only query may return a redacted plan.
-                                val preview = coreIngress.previewDesktopTask(capabilities)
+                                val preview = coreIngress.previewDesktopTask(request.deviceId, request.projectId, capabilities)
                                 if (preview == null) {
                                     GlafiraBridgeResponse(
                                         GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
@@ -331,11 +373,19 @@ class GlafiraBridgeTlsHttpServer(
                     GlafiraBridgeOperation.DESKTOP_TASK_RESULT -> {
                         try {
                             val taskId = request.payload.getValue("taskId")
-                            val resultValue = request.payload.getValue("result").takeUnless { it == "none" }
+                            val resultValue = if (request.payload["resultEncoding"] == "json") {
+                                val value = org.json.JSONArray("[" + request.payload.getValue("result") + "]")
+                                require(value.length() == 1)
+                                if (value.isNull(0)) null else value.get(0).let { require(it is String); it }
+                            } else {
+                                require(request.payload["resultEncoding"] == null)
+                                request.payload.getValue("result").takeUnless { it == "none" }
+                            }
                             val messageValue = request.payload.getValue("progressMessage").takeUnless { it == "none" }
                             val errorValue = request.payload.getValue("errorCode").takeUnless { it == "none" }
                             val updated = coreIngress.updateDesktopTask(
                                 taskId = taskId,
+                                projectId = request.projectId,
                                 authenticatedDeviceId = request.deviceId,
                                 state = request.payload.getValue("state"),
                                 progressPercent = request.payload.getValue("progressPercent").toInt(),

@@ -41,7 +41,8 @@ internal data class DesktopTaskRecord(
     val progressPercent: Int = 0,
     val progressMessage: String? = null,
     val result: String? = null,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val deliveryAcknowledged: Boolean = false
 )
 
 /** Small durable queue; execution workers and Bridge transport are deliberately separate. */
@@ -178,11 +179,12 @@ internal class DesktopTaskQueue(
         require(current.state == DesktopTaskState.RUNNING) { "Task is not running." }
         val expired = current.envelope.expiresAt <= clock()
         val updated = current.copy(
-            state = if (expired) DesktopTaskState.FAILED else DesktopTaskState.SUCCEEDED,
+            state = DesktopTaskState.SUCCEEDED,
             sequence = current.sequence + 1,
-            progressPercent = if (expired) current.progressPercent else 100,
-            result = if (expired) null else result,
-            errorCode = if (expired) "TASK_EXPIRED" else null
+            progressPercent = 100,
+            result = result,
+            progressMessage = if (expired) "Completed after deadline" else current.progressMessage,
+            errorCode = null
         )
         records[index] = updated
         writeAll(records)
@@ -203,6 +205,26 @@ internal class DesktopTaskQueue(
     }
 
     fun list(): List<DesktopTaskRecord> = synchronized(lock) { readAll().toList() }
+
+    /** Terminal records are the outbox: result and pending delivery are saved atomically. */
+    fun pendingResults(projectId: String): List<DesktopTaskRecord> = synchronized(lock) {
+        readAll().filter { it.envelope.projectId == projectId && isTerminal(it.state) && !it.deliveryAcknowledged }
+    }
+
+    fun acknowledgeResult(taskId: String, expectedSequence: Long): Boolean = synchronized(lock) {
+        val records = readAll().toMutableList()
+        val index = records.indexOfFirst { it.envelope.taskId == taskId }
+        if (index < 0) return@synchronized false
+        val record = records[index]
+        if (!isTerminal(record.state) || record.sequence != expectedSequence) return@synchronized false
+        records[index] = record.copy(deliveryAcknowledged = true)
+        writeAll(records)
+        true
+    }
+
+    private fun isTerminal(state: DesktopTaskState): Boolean = state in setOf(
+        DesktopTaskState.SUCCEEDED, DesktopTaskState.FAILED, DesktopTaskState.CANCELLED, DesktopTaskState.EXPIRED
+    )
 
     private fun updateTerminal(
         taskId: String,
@@ -248,15 +270,10 @@ internal class DesktopTaskQueue(
         while (records.size >= MAX_RETAINED_RECORDS) {
             val oldestTerminal = records.indices
                 .filter { index ->
-                    records[index].state !in setOf(
-                        DesktopTaskState.QUEUED,
-                        DesktopTaskState.DISPATCHED,
-                        DesktopTaskState.ACCEPTED,
-                        DesktopTaskState.RUNNING
-                    )
+                    isTerminal(records[index].state) && records[index].deliveryAcknowledged
                 }
                 .minByOrNull { records[it].envelope.createdAt }
-                ?: throw IllegalStateException("Desktop task history is full of active work.")
+                ?: throw IllegalStateException("Desktop task history is full of active or unacknowledged work.")
             records.removeAt(oldestTerminal)
         }
     }
