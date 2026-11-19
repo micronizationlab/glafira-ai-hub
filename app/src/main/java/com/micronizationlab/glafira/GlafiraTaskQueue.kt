@@ -25,3 +25,18 @@ interface GlafiraInterruptedTaskRecovery {
         maxRetries: Int
     ): Int
 }
+
+
+/** Returns true only when a bounded batch needs a follow-up drain. */
+internal suspend fun drainGlafiraCoreBatch(
+    maxTasks: Int,
+    isStopped: () -> Boolean,
+    executeNext: suspend () -> GlafiraTaskExecutionResult
+): Boolean {
+    require(maxTasks > 0)
+    repeat(maxTasks) {
+        if (isStopped()) return false
+        if (executeNext().status == GlafiraTaskExecutionStatus.IDLE) return false
+    }
+    return true
+}
