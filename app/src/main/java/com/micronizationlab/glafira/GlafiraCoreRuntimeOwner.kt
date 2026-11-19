@@ -29,6 +29,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
     // Live mode remains unavailable until a separate owner-approved run API is implemented.
     private val executionMode = GlafiraExecutionMode.DRY_RUN
+    internal val executionLimiter = GlafiraCoreExecutionLimiter()
 
     private val executor = GlafiraCoreTaskExecutor(
         queue = taskStore,
@@ -40,7 +41,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         ),
         runtimeBudget = { loadRuntimeBudget() },
         executionMode = { executionMode },
-        dryRunPreviewPersistence = taskStore
+        dryRunPreviewPersistence = taskStore,
+        executionLimiter = executionLimiter
     )
 
     private fun executeBridgeTask(task: GlafiraTask): GlafiraTaskExecutionOutcome {
