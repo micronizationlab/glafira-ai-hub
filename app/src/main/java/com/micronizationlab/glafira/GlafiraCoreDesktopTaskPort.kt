@@ -57,6 +57,20 @@ internal class GlafiraCoreDesktopTaskPort(
                     task.taskId, GlafiraExecutionNode.DESKTOP, false,
                     errorCode = current.lastError ?: current.state.databaseValue.uppercase()
                 )
+                GlafiraTaskState.WAITING_FOR_OWNER -> {
+                    val preview = runtime.dryRunPreview(task.taskId)
+                    if (preview != null) {
+                        return GlafiraDistributedTaskResult(
+                            task.taskId, GlafiraExecutionNode.DESKTOP, false,
+                            output = preview.lastError?.removePrefix("DRY_RUN_PREVIEW:"),
+                            errorCode = "DRY_RUN_PREVIEWED"
+                        )
+                    }
+                    return GlafiraDistributedTaskResult(
+                        task.taskId, GlafiraExecutionNode.DESKTOP, false,
+                        errorCode = current.lastError ?: "WAITING_FOR_OWNER"
+                    )
+                }
                 else -> delay(pollIntervalMs)
             }
         }
