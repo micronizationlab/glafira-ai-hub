@@ -27,7 +27,7 @@ enum class ToolAuthorizationDecision {
  * A grant is issued by the app's owner-approval flow, never by an LLM response.
  * It is bound to one project, one tool and one exact action summary.
  */
-data class ToolApprovalGrant internal constructor(
+class ToolApprovalGrant internal constructor(
     val projectId: String,
     val toolId: String,
     val actionHash: String,
