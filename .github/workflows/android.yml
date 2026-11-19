@@ -162,18 +162,22 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - id: apple-toolchain
+        name: Identify Apple toolchain for safe cache keys
+        run: |
+          swift_version="$(swift --version | sed -n '1s/.*version \\([^ ]*\\).*/\\1/p')"
+          xcode_version="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
+          echo "swift_version=$swift_version" >> "$GITHUB_OUTPUT"
+          echo "xcode_version=$xcode_version" >> "$GITHUB_OUTPUT"
       - name: Cache Swift package dependencies and build products
         uses: actions/cache@v4
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
             ios/GlafiraBridgeKit/.build
-          key: ${{ runner.os }}-swiftpm-${{ hashFiles('ios/GlafiraBridgeKit/Package.swift', 'ios/GlafiraBridgeKit/Package.resolved') }}
+          key: ${{ runner.os }}-xcode-${{ steps.apple-toolchain.outputs.xcode_version }}-swift-${{ steps.apple-toolchain.outputs.swift_version }}-${{ hashFiles('ios/GlafiraBridgeKit/Package.swift', 'ios/GlafiraBridgeKit/Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-swiftpm-
-      - run: |
-          swift --version
-          xcodebuild -version
+            ${{ runner.os }}-xcode-${{ steps.apple-toolchain.outputs.xcode_version }}-swift-${{ steps.apple-toolchain.outputs.swift_version }}-
       - run: swift test --package-path ios/GlafiraBridgeKit
 
   windows-agent-tests:
