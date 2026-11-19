@@ -94,7 +94,7 @@ class GlafiraCoreBridgeIngress(
         return runtime.claimDesktopTask(authenticatedDeviceId, capabilities, maxParallelTasks)
     }
 
-    /** Read-only Desktop preview path. It never claims a lease or changes task state. */
+    /** Core-owned Dry Run path: persists a redacted preview, but never claims a lease or exposes executable payload. */
     fun previewDesktopTask(capabilities: Set<String>): GlafiraDryRunPlan? =
         runtime.previewDesktopTask(capabilities)
 
