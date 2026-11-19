@@ -26,6 +26,7 @@ jobs:
       ios: ${{ steps.detect.outputs.ios }}
       agent: ${{ steps.detect.outputs.agent }}
       contracts: ${{ steps.detect.outputs.contracts }}
+      workflow_lint: ${{ steps.detect.outputs.workflow_lint }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,7 +42,7 @@ jobs:
           CURRENT_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
-          android=false; android_acceptance=false; ios=false; agent=false; contracts=false
+          android=false; android_acceptance=false; ios=false; agent=false; contracts=false; workflow_lint=false
           if [[ "$EVENT_NAME" == pull_request ]]; then
             mapfile -t changed < <(git diff --name-only "$PR_BASE" "$PR_HEAD")
           elif [[ "$EVENT_NAME" == push && "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]]; then
@@ -55,10 +56,10 @@ jobs:
               ios/*) ios=true ;;
               windows-agent/*) agent=true ;;
               contracts/*) contracts=true ;;
-              .github/workflows/android.yml) android=true ;;
-              .github/workflows/ios.yml) ios=true ;;
-              .github/workflows/windows-agent.yml) agent=true ;;
-              .github/workflows/contracts.yml) contracts=true ;;
+              .github/workflows/android.yml) android=true; workflow_lint=true ;;
+              .github/workflows/ios.yml) ios=true; workflow_lint=true ;;
+              .github/workflows/windows-agent.yml) agent=true; workflow_lint=true ;;
+              .github/workflows/contracts.yml) contracts=true; workflow_lint=true ;;
               .github/scripts/*) android=true ;;
             esac
             case "$path" in
@@ -78,8 +79,23 @@ jobs:
             echo "ios=$ios"
             echo "agent=$agent"
             echo "contracts=$contracts"
+            echo "workflow_lint=$workflow_lint"
           } >> "$GITHUB_OUTPUT"
           printf 'Selected: Android=%s Emulator=%s iOS=%s Agent=%s Contracts=%s\n' "$android" "$android_acceptance" "$ios" "$agent" "$contracts"
+
+  workflow-lint:
+    name: GitHub Actions workflow lint
+    needs: changes
+    if: needs.changes.outputs.workflow_lint == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: Validate workflow syntax and expressions
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/android.yml
 
   android-tests:
     name: Android JVM tests
@@ -220,13 +236,14 @@ jobs:
   ci-summary:
     name: Exact-head CI summary
     if: always()
-    needs: [changes, android-tests, android-apk, android-emulator, ios-tests, windows-agent-tests, contract-conformance]
+    needs: [changes, workflow-lint, android-tests, android-apk, android-emulator, ios-tests, windows-agent-tests, contract-conformance]
     runs-on: ubuntu-latest
     steps:
       - name: Publish exact SHA and honest component status
         env:
           SHA: ${{ github.sha }}
           CHANGES: ${{ needs.changes.result }}
+          WORKFLOW_LINT: ${{ needs.workflow-lint.result }}
           ANDROID: ${{ needs.android-tests.result }}
           APK: ${{ needs.android-apk.result }}
           EMULATOR: ${{ needs.android-emulator.result }}
@@ -242,6 +259,7 @@ jobs:
             echo "| Validation | Result |"
             echo "|---|---|"
             echo "| Change detection | $CHANGES |"
+            echo "| Workflow lint | $WORKFLOW_LINT |"
             echo "| Android JVM | $ANDROID |"
             echo "| Android APK | $APK |"
             echo "| Android emulator | $EMULATOR |"
@@ -251,6 +269,6 @@ jobs:
             echo
             echo "Skipped means not selected for this commit; it is not a passing test result."
           } >> "$GITHUB_STEP_SUMMARY"
-          for result in "$CHANGES" "$ANDROID" "$APK" "$EMULATOR" "$IOS" "$AGENT" "$CONTRACTS"; do
+          for result in "$CHANGES" "$WORKFLOW_LINT" "$ANDROID" "$APK" "$EMULATOR" "$IOS" "$AGENT" "$CONTRACTS"; do
             if [[ "$result" == failure || "$result" == cancelled ]]; then exit 1; fi
           done
