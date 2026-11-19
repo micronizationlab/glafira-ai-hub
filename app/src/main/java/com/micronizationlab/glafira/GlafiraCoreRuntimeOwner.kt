@@ -1,8 +1,6 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
-import androidx.work.WorkManager
-import java.util.UUID
 
 /**
  * Application-scoped owner for the persistent Core queue and its single executor.
@@ -25,14 +23,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
 
-    private val executor = GlafiraCoreTaskExecutor(
+    private val executor = GlafiraRuntimeFoundation.createExecutor(
         queue = taskStore,
         authorizer = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource),
         handlers = listOf(
             "project.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) }
-        )
+        ),
+        dryRunPreviewPersistence = taskStore
     )
 
     private fun executeBridgeTask(task: GlafiraTask): GlafiraTaskExecutionOutcome {
@@ -103,6 +102,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         capabilities: Set<String>,
         maxParallelTasks: Int
     ): GlafiraTask? {
+        // Compilation recovery must not enable live execution through a second entry point.
+        if (!GlafiraRuntimeFoundation.allowsDesktopTaskClaims || !isEnabled) return null
         val now = System.currentTimeMillis()
         for (candidate in taskStore.queuedDesktopTasks()) {
             val leased = taskStore.claimDesktopTask(
