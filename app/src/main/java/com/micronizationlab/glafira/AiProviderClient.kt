@@ -29,7 +29,16 @@ internal fun readBoundedProviderResponse(
     while (true) {
         val count = input.read(buffer)
         if (count < 0) break
-        if (count == 0) continue
+        if (count == 0) {
+            val single = input.read()
+            if (single < 0) break
+            if (total >= maxBytes) {
+                throw IllegalStateException("Provider response exceeded the allowed size.")
+            }
+            output.write(single)
+            total++
+            continue
+        }
         if (count > maxBytes - total) {
             throw IllegalStateException("Provider response exceeded the allowed size.")
         }
