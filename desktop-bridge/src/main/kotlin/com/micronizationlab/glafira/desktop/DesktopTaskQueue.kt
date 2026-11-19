@@ -100,6 +100,37 @@ internal class DesktopTaskQueue(
         claimed
     }
 
+    /**
+     * Marks work left in a non-terminal execution state by a previous Desktop process as
+     * failed closed. Replaying it automatically could duplicate an operation whose result
+     * was lost after the handler had already run.
+     */
+    fun recoverInterruptedTasks(): Int = synchronized(lock) {
+        val records = readAll().toMutableList()
+        var recovered = 0
+        for (index in records.indices) {
+            val current = records[index]
+            if (current.state !in setOf(
+                    DesktopTaskState.DISPATCHED,
+                    DesktopTaskState.ACCEPTED,
+                    DesktopTaskState.RUNNING
+                )
+            ) continue
+            records[index] = current.copy(
+                state = if (current.envelope.expiresAt <= clock()) {
+                    DesktopTaskState.EXPIRED
+                } else {
+                    DesktopTaskState.FAILED
+                },
+                sequence = current.sequence + 1,
+                errorCode = if (current.envelope.expiresAt <= clock()) null else "WORKER_INTERRUPTED"
+            )
+            recovered++
+        }
+        if (recovered > 0) writeAll(records)
+        recovered
+    }
+
     fun transition(taskId: String, next: DesktopTaskState): DesktopTaskRecord = synchronized(lock) {
         val records = readAll().toMutableList()
         val index = records.indexOfFirst { it.envelope.taskId == taskId }
