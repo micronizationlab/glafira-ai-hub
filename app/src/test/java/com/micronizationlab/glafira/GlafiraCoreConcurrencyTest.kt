@@ -267,4 +267,27 @@ class GlafiraCoreConcurrencyTest {
         assertNull(queue.result("write-task"))
     }
 
+    @Test
+    fun externalWriteHandlerExceptionIsQuarantinedInsteadOfRetried() = runBlocking {
+        val queue = ConcurrentQueue(listOf(task("external-write").copy(taskType = "message.send")))
+        val executor = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("message.send" to GlafiraTaskHandler {
+                throw IllegalStateException("simulated failure after possible external send")
+            }),
+            dispatcher = Dispatchers.Default,
+            clock = { 10_000L },
+            runtimeBudget = { GlafiraRuntimeBudget(maxConcurrentTasks = 1) }
+        )
+
+        val result = executor.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.WAITING_FOR_OWNER, result.status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.getTask("external-write")?.state)
+        assertNull(queue.result("external-write"))
+    }
+
 }
