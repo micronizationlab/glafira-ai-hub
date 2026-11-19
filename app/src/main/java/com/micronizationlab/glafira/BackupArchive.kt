@@ -106,8 +106,8 @@ object BackupArchive {
         }
     }
 
-    fun verify(file: File, passphrase: CharArray): BackupVerification {
-        val extracted = decryptToStaging(file, passphrase)
+    fun verify(context: Context, file: File, passphrase: CharArray): BackupVerification {
+        val extracted = decryptToStaging(context, file, passphrase)
         try {
             return extracted.verification
         } finally {
@@ -121,7 +121,7 @@ object BackupArchive {
             relativePath.split("/").none { it == ".." || it.isBlank() }) {
             "Недопустимый путь обязательного файла архива."
         }
-        val extracted = decryptToStaging(file, passphrase)
+        val extracted = decryptToStaging(context, file, passphrase)
         try {
             require(extracted.appId == context.packageName) {
                 "Резервная копия создана для другого приложения."
@@ -154,7 +154,7 @@ object BackupArchive {
         } catch (restoreError: Exception) {
             safetySnapshotCanBeDeleted = false
             try {
-                val rollback = decryptToStaging(safetySnapshot, passphrase)
+                val rollback = decryptToStaging(context, safetySnapshot, passphrase)
                 try {
                     val safePaths = rollback.files.map { it.relativePath }.toSet()
                     extracted.files.map { it.relativePath }.filter { it !in safePaths }.forEach { relative ->
@@ -224,10 +224,13 @@ object BackupArchive {
         val appId: String
     )
 
-    private fun decryptToStaging(file: File, passphrase: CharArray): StagedArchive {
+    private fun decryptToStaging(context: Context, file: File, passphrase: CharArray): StagedArchive {
         require(file.exists() && file.length() > 0L) { "Файл резервной копии пуст или отсутствует." }
         require(file.length() <= MAX_ARCHIVE_BYTES) { "Файл резервной копии слишком большой." }
-        val staging = File(file.parentFile, "glafira-restore-${System.currentTimeMillis()}").apply { mkdirs() }
+        // Decrypted staging data must stay in the app-private cache, never beside a
+        // user-selected archive which may live in Downloads or shared storage.
+        val staging = File(context.cacheDir, "glafira-restore-${java.util.UUID.randomUUID()}")
+        check(staging.mkdir()) { "Не удалось создать защищённый каталог восстановления." }
         try {
             DataInputStream(BufferedInputStream(FileInputStream(file))).use { input ->
                 val magic = ByteArray(MAGIC.size)
