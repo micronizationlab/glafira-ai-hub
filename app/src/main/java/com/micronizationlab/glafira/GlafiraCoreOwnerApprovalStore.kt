@@ -75,13 +75,10 @@ class GlafiraCoreOwnerApprovalStore(
             ) return false
 
             val existing = database.query(
-                "core_action_approvals", arrayOf("action_hash", "status", "grant_expires_at"),
+                "core_action_approvals", arrayOf("action_hash", "status"),
                 "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
             ).use { cursor ->
-                if (cursor.moveToFirst()) Triple(
-                    cursor.getString(0), cursor.getString(1),
-                    if (cursor.isNull(2)) 0L else cursor.getLong(2)
-                ) else null
+                if (cursor.moveToFirst()) cursor.getString(0) to cursor.getString(1) else null
             }
             if (existing != null) {
                 if (existing.first != hash || existing.second == REJECTED) return false
