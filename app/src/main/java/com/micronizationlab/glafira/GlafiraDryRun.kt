@@ -5,7 +5,7 @@ import org.json.JSONObject
 import java.security.MessageDigest
 
 enum class GlafiraExecutionMode { DRY_RUN, LIVE }
-enum class GlafiraDryRunSimulationStatus { PREVIEW_ONLY, NOT_PREVIEW_ONLY }
+enum class GlafiraDryRunSimulationStatus { PREVIEW_ONLY, NOT_SIMULATABLE }
 
 /**
  * A redacted, deterministic preview. It deliberately contains field names, never payload
@@ -95,7 +95,7 @@ object GlafiraDryRunPlanner {
         val canonical = listOf(
             task.taskId, task.projectId, task.taskType, task.origin,
             task.payload, task.requiredScopes.sorted().joinToString("\u0000"),
-            risk.name, if (previewable) "PREVIEW_ONLY" else "NOT_PREVIEW_ONLY"
+            risk.name, if (previewable) "PREVIEW_ONLY" else "NOT_SIMULATABLE"
         ).joinToString("") { "${it.length}:$it" }
         val hash = MessageDigest.getInstance("SHA-256")
             .digest(canonical.toByteArray(Charsets.UTF_8))
@@ -107,7 +107,7 @@ object GlafiraDryRunPlanner {
             toolId = task.taskType,
             risk = risk,
             simulationStatus = if (previewable) GlafiraDryRunSimulationStatus.PREVIEW_ONLY
-                else GlafiraDryRunSimulationStatus.NOT_PREVIEW_ONLY,
+                else GlafiraDryRunSimulationStatus.NOT_SIMULATABLE,
             targetFields = targetFields,
             expectedChanges = expected,
             requiredPermissions = ((definition?.requiredScopes ?: emptySet()) + task.requiredScopes).sorted(),
