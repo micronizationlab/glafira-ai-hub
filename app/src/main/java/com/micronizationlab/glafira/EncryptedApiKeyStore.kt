@@ -26,11 +26,21 @@ object EncryptedApiKeyStore {
             if (value.isBlank()) {
                 prefs.edit().remove(preferenceKey).commit()
             } else {
-                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-                val encrypted = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-                val encoded = ENCRYPTED_PREFIX + Base64.encodeToString(encrypted, Base64.NO_WRAP)
-                prefs.edit().putString(preferenceKey, encoded).commit()
+                val plaintext = value.toByteArray(Charsets.UTF_8)
+                var ciphertext: ByteArray? = null
+                var payload: ByteArray? = null
+                try {
+                    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                    cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+                    ciphertext = cipher.doFinal(plaintext)
+                    payload = cipher.iv + ciphertext
+                    val encoded = ENCRYPTED_PREFIX + Base64.encodeToString(payload, Base64.NO_WRAP)
+                    prefs.edit().putString(preferenceKey, encoded).commit()
+                } finally {
+                    plaintext.fill(0)
+                    ciphertext?.fill(0)
+                    payload?.fill(0)
+                }
             }
         } catch (_: Exception) {
             false
@@ -49,12 +59,27 @@ object EncryptedApiKeyStore {
 
         return try {
             val payload = Base64.decode(stored.removePrefix(ENCRYPTED_PREFIX), Base64.NO_WRAP)
-            if (payload.size <= IV_LENGTH) return ""
-            val iv = payload.copyOfRange(0, IV_LENGTH)
-            val ciphertext = payload.copyOfRange(IV_LENGTH, payload.size)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
-            String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+            var iv: ByteArray? = null
+            var ciphertext: ByteArray? = null
+            var plaintext: ByteArray? = null
+            try {
+                if (payload.size <= IV_LENGTH) return ""
+                iv = payload.copyOfRange(0, IV_LENGTH)
+                ciphertext = payload.copyOfRange(IV_LENGTH, payload.size)
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
+                plaintext = cipher.doFinal(ciphertext)
+                Charsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(plaintext))
+                    .toString()
+            } finally {
+                payload.fill(0)
+                iv?.fill(0)
+                ciphertext?.fill(0)
+                plaintext?.fill(0)
+            }
         } catch (_: Exception) {
             ""
         }
