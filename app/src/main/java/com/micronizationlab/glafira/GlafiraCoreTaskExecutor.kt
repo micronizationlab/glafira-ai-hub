@@ -53,9 +53,6 @@ class GlafiraCoreTaskExecutor(
 
     init {
         require(maxAttempts in 1..20)
-        require(runtimeBudget.maxRetries <= maxAttempts - 1) {
-            "Runtime retry budget cannot exceed the executor's hard attempt limit."
-        }
         require(baseRetryDelayMillis > 0L)
         require(maxRetryDelayMillis >= baseRetryDelayMillis)
         require(handlerMap.size == handlers.size) { "Duplicate GLAFIRA task handler registration." }
@@ -117,8 +114,8 @@ class GlafiraCoreTaskExecutor(
             task = task,
             nowMillis = clock(),
             budgetStartedAtMillis = task.createdAtMillis,
-            budget = runtimeBudget,
-            measuredCostMicros = costMeter?.measuredCostMicros(task.taskId)
+            budget = runtimeBudget.copy(maxRetries = minOf(runtimeBudget.maxRetries, maxAttempts - 1)),
+            measuredCostMicros = runCatching { costMeter?.measuredCostMicros(task.taskId) }.getOrNull()
         )
         if (!budgetDecision.allowed) return fail(task, budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED")
 
