@@ -181,4 +181,41 @@ class GlafiraCoreConcurrencyTest {
         first.await()
         second.await()
     }
+    @Test
+    fun oneHandlerFailureDoesNotCancelAnotherParallelHandler() = runBlocking {
+        val queue = ConcurrentQueue(listOf(task("bad"), task("good")))
+        val active = AtomicInteger()
+        val bothStarted = CompletableDeferred<Unit>()
+        val executor = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler { item ->
+                val current = active.incrementAndGet()
+                if (current == 2) bothStarted.complete(Unit)
+                try {
+                    bothStarted.await()
+                    if (item.taskId == "bad") throw IllegalStateException("simulated worker failure")
+                    GlafiraTaskExecutionOutcome.Succeeded("independent task completed")
+                } finally {
+                    active.decrementAndGet()
+                }
+            }),
+            dispatcher = Dispatchers.Default,
+            clock = { 10_000L },
+            runtimeBudget = { GlafiraRuntimeBudget(maxConcurrentTasks = 2) }
+        )
+
+        val results = withTimeout(5_000L) {
+            (1..2).map { async { executor.executeNext() } }.awaitAll()
+        }
+
+        assertEquals(1, results.count { it.status == GlafiraTaskExecutionStatus.RETRY_SCHEDULED })
+        assertEquals(1, results.count { it.status == GlafiraTaskExecutionStatus.SUCCEEDED })
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, queue.getTask("bad")?.state)
+        assertEquals(GlafiraTaskState.SUCCEEDED, queue.getTask("good")?.state)
+        assertEquals(0, active.get())
+    }
+
 }
