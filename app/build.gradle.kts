@@ -19,6 +19,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Side-by-side owner validation build. It uses the same source and debug
+    // signing config but a distinct package/data sandbox, so it cannot replace
+    // or damage the owner's currently installed app.
+    buildTypes {
+        create("ownerTest") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".ownertest"
+            versionNameSuffix = "-owner-test"
+            matchingFallbacks += listOf("debug")
+        }
+    }
+
     testOptions {
         animationsDisabled = true
     }
