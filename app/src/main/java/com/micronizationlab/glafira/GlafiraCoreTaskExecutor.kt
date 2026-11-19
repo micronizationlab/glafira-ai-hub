@@ -105,13 +105,16 @@ class GlafiraCoreTaskExecutor(
     private suspend fun ensureInterruptedTaskRecovery(maxRetries: Int) {
         recoveryMutex.withLock {
             if (recoveredMaintenanceEpoch == GlafiraCoreMaintenanceGate.maintenanceEpoch) return
+            var recoveryEpoch = -1L
             GlafiraCoreMaintenanceGate.withExclusive {
+                // withExclusive advances the epoch exactly once when it leaves the gate.
+                recoveryEpoch = GlafiraCoreMaintenanceGate.maintenanceEpoch + 1L
                 withContext(dispatcher) {
                     (queue as? GlafiraInterruptedTaskRecovery)
                         ?.recoverInterruptedCoreTasks(clock(), maxRetries)
                 }
             }
-            recoveredMaintenanceEpoch = GlafiraCoreMaintenanceGate.maintenanceEpoch
+            recoveredMaintenanceEpoch = recoveryEpoch
         }
     }
 
