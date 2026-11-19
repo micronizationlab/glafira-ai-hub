@@ -11,6 +11,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -281,6 +282,29 @@ class GlafiraCoreBackupInstrumentedTest {
         val deleted = store.writableDatabase.delete("core_tasks", "task_id = ?", arrayOf(task.taskId))
         assertEquals(1, deleted)
         assertNull(store.dryRunPreview(task.taskId))
+    }
+
+    @Test
+    fun backupRejectsTamperedAesGcmAuthenticationTag() {
+        val passphrase = "GLAFIRA-authentication-tag-test".toCharArray()
+        val archive = BackupArchive.create(context, passphrase)
+        val tampered = File(context.cacheDir, "glafira-tampered-${System.currentTimeMillis()}.glb")
+        try {
+            val bytes = archive.readBytes()
+            try {
+                bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
+                tampered.writeBytes(bytes)
+            } finally {
+                bytes.fill(0)
+            }
+            assertThrows(Exception::class.java) {
+                BackupArchive.verify(context, tampered, passphrase)
+            }
+        } finally {
+            archive.delete()
+            tampered.delete()
+            passphrase.fill('\u0000')
+        }
     }
 
     @Test
