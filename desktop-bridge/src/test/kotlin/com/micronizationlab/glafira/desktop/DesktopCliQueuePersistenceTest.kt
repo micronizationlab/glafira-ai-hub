@@ -123,9 +123,12 @@ class DesktopCliQueuePersistenceTest {
             closeDesktopWorkerAndSession(stuckWorker, session)
         }
         assertThrows(IllegalStateException::class.java) { desktopCliTaskSession(path) }
+        val lockPath = path.parent.resolve("tasks.lock")
+        assertEquals("A separate JVM must not acquire the OS lock after worker close fails.", 23, childLockProbe(lockPath))
 
         // The caller may release only after it has independently confirmed worker termination.
         session.close()
+        assertEquals("The OS lock becomes available only after safe session release.", 0, childLockProbe(lockPath))
         desktopCliTaskSession(path).use { assertTrue(it.queue.list().isEmpty()) }
     }
 
