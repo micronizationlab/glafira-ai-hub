@@ -65,10 +65,7 @@ internal class DesktopTaskRuntime(
                 // unless both durable state transitions succeeded.
                 queue.transition(task.taskId, DesktopTaskState.ACCEPTED)
                 queue.transition(task.taskId, DesktopTaskState.RUNNING)
-            } catch (_: IllegalArgumentException) {
-                slots.release()
-                continue
-            } catch (_: IllegalStateException) {
+            } catch (_: Exception) {
                 slots.release()
                 continue
             }
@@ -76,9 +73,8 @@ internal class DesktopTaskRuntime(
             active[task.taskId] = future
             try {
                 workers.execute {
-                    var result: DesktopAgentResult? = null
                     try {
-                        result = try {
+                        val result = try {
                             onProgress(task.taskId, 1, "started")
                             val output = handler.execute(task)
                             require(output.isNotBlank() && output.length <= MAX_RESULT_CHARS)
