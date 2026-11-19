@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -189,6 +190,17 @@ class GlafiraCoreBackupInstrumentedTest {
         assertTrue(store.persistDryRunPreview(reviewed.taskId, setOf(GlafiraTaskState.QUEUED), reviewedPlan, 2_000L))
         assertTrue(store.reviewDryRunPreview(reviewed.taskId, reviewedPlan.planHash, GlafiraDryRunReviewStatus.REJECTED))
         assertEquals(listOf(pending.taskId), store.dryRunPreviews(includeReviewed = false).map { it.taskId })
+    }
+
+    @Test
+    fun deletingCoreTaskCascadesItsTypedDryRunPreview() {
+        val task = previewTask()
+        store.enqueue(task)
+        val plan = GlafiraDryRunPlanner.build(task)
+        assertTrue(store.persistDryRunPreview(task.taskId, setOf(GlafiraTaskState.QUEUED), plan, 2_000L))
+        val deleted = store.writableDatabase.delete("core_tasks", "task_id = ?", arrayOf(task.taskId))
+        assertEquals(1, deleted)
+        assertNull(store.dryRunPreview(task.taskId))
     }
 
     @Test
