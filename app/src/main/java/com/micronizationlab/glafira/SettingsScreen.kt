@@ -49,6 +49,8 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var showPasswordVault by remember { mutableStateOf(false) }
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
+    var modelId by remember(primaryProvider) { mutableStateOf(loadProviderModel(context, primaryProvider, defaultProviderModel(primaryProvider))) }
+    var modelMessage by remember(primaryProvider) { mutableStateOf<String?>(null) }
     var coreRuntimeEnabled by remember { mutableStateOf(GlafiraCoreRuntimeOwner.get(context).isEnabled) }
     var ownerApprovals by remember { mutableStateOf(emptyList<GlafiraPendingActionApproval>()) }
     var ownerApprovalsVisible by remember { mutableStateOf(false) }
@@ -268,12 +270,14 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         openAiTestStatus = if (!saved) {
                             "Не удалось безопасно сохранить API-ключ."
                         } else {
-                            val answer = callAiProvider(
+                            val result = callAiProviderResult(
                                 context, ProviderId.OPENAI, emptyList(),
                                 "Проверка соединения GLAFIRA. Ответь только словом OK."
                             )
-                            if (answer.startsWith("Ошибка")) answer
-                            else "Соединение с OpenAI API работает: ${answer.take(80)}"
+                            when (result) {
+                                is AiProviderResult.Success -> "Выбранная модель OpenAI ответила: ${result.text.take(80)}"
+                                is AiProviderResult.Failure -> result.userText()
+                            }
                         }
                         openAiTesting = false
                     }
@@ -387,6 +391,18 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         }
                     }
                 }
+                OutlinedTextField(
+                    value = modelId, onValueChange = { modelId = it; modelMessage = null },
+                    label = { Text("ID модели ${primaryProvider.displayName}") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedButton(onClick = {
+                    modelMessage = if (saveProviderModel(context, primaryProvider, modelId))
+                        "Модель сохранена. Доступность подтверждается ответом API."
+                    else "Не удалось сохранить ID модели."
+                }) { Text("СОХРАНИТЬ МОДЕЛЬ") }
+                Text("Укажите ID из кабинета провайдера. Наличие ключа не подтверждает доступность модели или бесплатный тариф.", color = Tx, fontSize = 10.sp)
+                modelMessage?.let { Text(it, color = Tx, fontSize = 10.sp) }
                 if (configuredProviders.isEmpty()) {
                     Text("Сначала подключи хотя бы одну модель выше.", color = Tx, fontSize = 10.sp)
                 }

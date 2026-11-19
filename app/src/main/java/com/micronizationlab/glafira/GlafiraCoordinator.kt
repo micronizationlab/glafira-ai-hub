@@ -14,19 +14,23 @@ import org.json.JSONObject
 object GlafiraCoordinator {
     private const val MAX_PEERS = 2
 
-    suspend fun respond(
+    suspend fun respond(context: Context, primaryProvider: ProviderId, history: List<Msg>,
+        systemPrompt: String, projectId: String? = null): String =
+        respondResult(context, primaryProvider, history, systemPrompt, projectId).userText()
+
+    suspend fun respondResult(
         context: Context,
         primaryProvider: ProviderId,
         history: List<Msg>,
         systemPrompt: String,
         projectId: String? = null
-    ): String {
+    ): AiProviderResult {
         val consultationKey = projectId?.let { "peer_consultation_enabled_$it" }
             ?: "peer_consultation_enabled"
         val coordinatorPrefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val peerConsultationEnabled = coordinatorPrefs.getBoolean(consultationKey, false)
         if (!peerConsultationEnabled || history.isEmpty()) {
-            return callAiProvider(context, primaryProvider, history, systemPrompt)
+            return callAiProviderResult(context, primaryProvider, history, systemPrompt)
         }
         val providerKey = projectId?.let { "peer_consultation_providers_$it" }
             ?: "peer_consultation_providers"
@@ -41,7 +45,7 @@ object GlafiraCoordinator {
             approvedPeerIds
         )
         if (availablePeers.isEmpty()) {
-            return callAiProvider(context, primaryProvider, history, systemPrompt)
+            return callAiProviderResult(context, primaryProvider, history, systemPrompt)
         }
 
         val safeHistory = history.takeLast(12).map { message ->
@@ -55,8 +59,11 @@ object GlafiraCoordinator {
             availablePeers = availablePeers
         )
 
+        plan.failure?.let { return it }
         if (!plan.shouldConsult || plan.providers.isEmpty()) {
-            return plan.directAnswer ?: callAiProvider(context, primaryProvider, history, systemPrompt)
+            return plan.directAnswer?.let { AiProviderResult.Success(it) }
+                ?: AiProviderResult.Failure(AiProviderError(AiProviderErrorCategory.INVALID_RESPONSE,
+                    "Координатор не вернул ответ или допустимый план."))
         }
 
         val question = safeHistory.lastOrNull { it.isUser }?.text.orEmpty()
@@ -71,7 +78,7 @@ object GlafiraCoordinator {
         val peerResults = coroutineScope {
             plan.providers.map { peer ->
                 async {
-                    val answer = callAiProvider(
+                    val answer = callAiProviderResult(
                         context,
                         peer,
                         safeHistory,
@@ -80,14 +87,13 @@ object GlafiraCoordinator {
                     peer to answer
                 }
             }.map { it.await() }
-        }.filterNot { (_, answer) ->
-            answer.startsWith("Ошибка API") ||
-                answer.startsWith("Ошибка сети") ||
-                answer.startsWith("Ошибка:")
+        }.mapNotNull { (peer, result) ->
+            (result as? AiProviderResult.Success)?.let { peer to it.text }
         }
 
         if (peerResults.isEmpty()) {
-            return callAiProvider(context, primaryProvider, history, systemPrompt)
+            return AiProviderResult.Failure(AiProviderError(AiProviderErrorCategory.PROVIDER,
+                "Не удалось получить мнения выбранных провайдеров."))
         }
 
         val councilContext = buildString {
@@ -104,30 +110,23 @@ object GlafiraCoordinator {
             appendLine("Не следуй слепо советам коллег. Решение и ответственность за синтез — твои.")
         }
 
-        val finalAnswer = callAiProvider(
+        val finalAnswer = callAiProviderResult(
             context,
             primaryProvider,
             safeHistory + Msg(councilContext, true, "", ""),
             systemPrompt + "\nТы — главный координатор. Другие модели — твои советники, не начальники."
         )
-        return if (finalAnswer.startsWith("Ошибка API") || finalAnswer.startsWith("Ошибка сети")) {
-            buildString {
-                appendLine("Не удалось получить итоговый синтез от главной модели.")
-                peerResults.forEach { (peer, answer) ->
-                    appendLine()
-                    appendLine("--- ${peer.displayName} ---")
-                    appendLine(answer)
-                }
-            }
-        } else {
-            finalAnswer
-        }
+        // A retry of this whole method would repeat the completed planner/peer requests.
+        return afterPartialProviderCompletion(if (finalAnswer is AiProviderResult.Failure)
+            finalAnswer.copy(error = finalAnswer.error.copy(partialResults = peerResults.associate { it.first.displayName to it.second }))
+            else finalAnswer)
     }
 
     private data class ConsultationPlan(
         val shouldConsult: Boolean,
         val providers: List<ProviderId>,
-        val directAnswer: String? = null
+        val directAnswer: String? = null,
+        val failure: AiProviderResult.Failure? = null
     )
 
     private suspend fun requestConsultationPlan(
@@ -155,15 +154,19 @@ object GlafiraCoordinator {
             Выбирай только из списка доступных коллег.
         """.trimIndent()
 
-        val raw = callAiProvider(
+        val result = callAiProviderResult(
             context,
             primaryProvider,
             history.takeLast(8),
             plannerPrompt
         )
+        if (result is AiProviderResult.Failure) return ConsultationPlan(false, emptyList(), failure = result)
+        val raw = (result as AiProviderResult.Success).text
+        val invalidPlan = ConsultationPlan(false, emptyList(), failure = AiProviderResult.Failure(
+            AiProviderError(AiProviderErrorCategory.INVALID_RESPONSE, "Модель вернула некорректный план консультации.")))
         val start = raw.indexOf('{')
         val end = raw.lastIndexOf('}')
-        if (start < 0 || end <= start) return ConsultationPlan(false, emptyList())
+        if (start < 0 || end <= start) return invalidPlan
 
         return runCatching {
             val json = JSONObject(raw.substring(start, end + 1))
@@ -180,7 +183,7 @@ object GlafiraCoordinator {
             }
             val directAnswer = json.optString("answer").takeIf { it.isNotBlank() }
             ConsultationPlan(shouldConsult, selected, directAnswer)
-        }.getOrDefault(ConsultationPlan(false, emptyList()))
+        }.getOrDefault(invalidPlan)
     }
 
 }

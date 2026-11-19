@@ -13,9 +13,16 @@ import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLException
+import javax.net.ssl.TrustManagerFactory
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
+import java.net.SocketTimeoutException
+import java.util.UUID
 
 /** Endpoint defaults are deliberately centralized so provider model IDs can be updated without UI changes. */
-private data class CompatibleEndpoint(val url: String, val model: String)
+private data class CompatibleEndpoint(val url: String)
 
 private const val PROVIDER_CONNECT_TIMEOUT_MS = 20_000
 private const val PROVIDER_READ_TIMEOUT_MS = 90_000
@@ -56,92 +63,111 @@ internal fun readBoundedProviderResponse(
         .toString()
 }
 
-suspend fun callAiProvider(
-    context: Context,
-    providerId: ProviderId,
-    history: List<Msg>,
-    systemPrompt: String
-): String {
-    if (providerId == ProviderId.GIGACHAT) {
-        return callGigaChatWithTrustedCert(context, history, systemPrompt)
-    }
+/** Compatibility API. Queue decisions must use the typed result API below. */
+suspend fun callAiProvider(context: Context, providerId: ProviderId, history: List<Msg>,
+    systemPrompt: String): String = callAiProviderResult(context, providerId, history, systemPrompt).userText()
 
-    val endpoint = when (providerId) {
-        ProviderId.OPENAI -> CompatibleEndpoint("https://api.openai.com/v1/chat/completions", "gpt-4o-mini")
-        ProviderId.DEEPSEEK -> CompatibleEndpoint("https://api.deepseek.com/chat/completions", "deepseek-chat")
-        ProviderId.GROK -> CompatibleEndpoint("https://api.x.ai/v1/chat/completions", "grok-4.7")
-        ProviderId.GEMINI -> CompatibleEndpoint("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-3.8-flash")
-        ProviderId.OPENROUTER -> CompatibleEndpoint("https://openrouter.ai/api/v1/chat/completions", "openrouter/free")
-        ProviderId.GIGACHAT -> return callGigaChatWithTrustedCert(context, history, systemPrompt)
-        ProviderId.YANDEX -> return "Ошибка: подключение YandexGPT пока не реализовано."
-    }
-
+suspend fun callAiProviderResult(context: Context, providerId: ProviderId, history: List<Msg>,
+    systemPrompt: String): AiProviderResult {
+    if (providerId == ProviderId.YANDEX) return AiProviderResult.Failure(AiProviderError(
+        AiProviderErrorCategory.UNSUPPORTED, "Подключение YandexGPT пока не реализовано.",
+        outcome = AiRequestOutcome.NOT_SENT))
     val apiKey = loadProviderKey(context, providerId)
-    if (apiKey.isBlank()) {
-        return "Ошибка: API-ключ ${providerId.displayName} не задан. Добавьте его в Настройках."
-    }
-
+    if (apiKey.isBlank()) return AiProviderResult.Failure(AiProviderError(
+        AiProviderErrorCategory.NOT_CONFIGURED, "API-ключ ${providerId.displayName} не задан.",
+        outcome = AiRequestOutcome.NOT_SENT))
     return withContext(Dispatchers.IO) {
         var connection: HttpsURLConnection? = null
+        var tokenConnection: HttpsURLConnection? = null
+        var modelPostAttempted = false
         try {
-            connection = (URL(endpoint.url).openConnection() as HttpsURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = PROVIDER_CONNECT_TIMEOUT_MS
-                readTimeout = PROVIDER_READ_TIMEOUT_MS
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("Authorization", "Bearer $apiKey")
-                if (providerId == ProviderId.OPENROUTER) {
-                    setRequestProperty("X-Title", "GLAFIRA AI HUB")
-                    setRequestProperty("HTTP-Referer", "https://github.com/micronizationlab/glafira-ai-hub")
-                }
+            val endpoint = when (providerId) {
+                ProviderId.OPENAI -> CompatibleEndpoint("https://api.openai.com/v1/chat/completions")
+                ProviderId.DEEPSEEK -> CompatibleEndpoint("https://api.deepseek.com/chat/completions")
+                ProviderId.GROK -> CompatibleEndpoint("https://api.x.ai/v1/chat/completions")
+                ProviderId.GEMINI -> CompatibleEndpoint("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
+                ProviderId.OPENROUTER -> CompatibleEndpoint("https://openrouter.ai/api/v1/chat/completions")
+                ProviderId.GIGACHAT -> CompatibleEndpoint("https://api.giga.chat/v1/chat/completions")
+                ProviderId.YANDEX -> error("Unsupported provider")
             }
-
+            var bearer = apiKey
+            val socketFactory = if (providerId == ProviderId.GIGACHAT) {
+                val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
+                context.assets.open("russian_trusted_root_ca.crt").use {
+                    keyStore.setCertificateEntry("russian_ca", CertificateFactory.getInstance("X.509").generateCertificate(it))
+                }
+                val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(keyStore) }
+                SSLContext.getInstance("TLS").apply { init(null, trust.trustManagers, null) }.socketFactory
+            } else null
+            if (providerId == ProviderId.GIGACHAT) {
+                val token = providerConnection("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
+                tokenConnection = token
+                token.sslSocketFactory = socketFactory
+                token.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                token.setRequestProperty("RqUID", UUID.randomUUID().toString())
+                token.setRequestProperty("Authorization", "Basic $apiKey")
+                token.outputStream.use { it.write("scope=GIGACHAT_API_PERS".toByteArray(Charsets.UTF_8)) }
+                val status = token.responseCode
+                if (status !in 200..299) {
+                    val failure = providerHttpFailure(status, token.getHeaderField("Retry-After"))
+                    return@withContext failure.copy(error = failure.error.copy(outcome = AiRequestOutcome.NOT_SENT))
+                }
+                bearer = JSONObject(token.inputStream.use { readBoundedProviderResponse(it) }).getString("access_token")
+                require(bearer.isNotBlank()) { "Empty access token" }
+            }
             val messages = JSONArray().apply {
-                put(JSONObject().apply {
-                    put("role", "system")
-                    put("content", systemPrompt)
-                })
-                history.forEach { message ->
-                    put(JSONObject().apply {
-                        put("role", if (message.isUser) "user" else "assistant")
-                        put("content", message.text)
-                    })
-                }
+                put(JSONObject().put("role", "system").put("content", systemPrompt))
+                history.forEach { put(JSONObject().put("role", if (it.isUser) "user" else "assistant").put("content", it.text)) }
             }
-            val body = JSONObject().apply {
-                put("model", endpoint.model)
-                put("messages", messages)
-            }.toString()
-
-            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            val status = connection.responseCode
-            val responseStream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val responseText = responseStream?.use { readBoundedProviderResponse(it) }.orEmpty()
-
-            if (status in 200..299) {
-                JSONObject(responseText)
-                    .getJSONArray("choices")
-                    .getJSONObject(0)
-                    .getJSONObject("message")
-                    .optString("content")
-                    .ifBlank { "Модель вернула пустой ответ." }
-            } else {
-                val details = try {
-                    JSONObject(responseText).optJSONObject("error")?.optString("message").orEmpty()
-                } catch (_: Exception) {
-                    ""
-                }
-                val safeDetails = GlafiraSecretRedactor.redact(details).take(400)
-                "Ошибка API ${providerId.displayName}: HTTP $status${if (safeDetails.isBlank()) "" else " — $safeDetails"}"
+            val body = JSONObject().put("model", loadProviderModel(context, providerId, defaultProviderModel(providerId)))
+                .put("messages", messages).toString().toByteArray(Charsets.UTF_8)
+            val chat = providerConnection(endpoint.url)
+            connection = chat
+            if (socketFactory != null) chat.sslSocketFactory = socketFactory
+            chat.setRequestProperty("Authorization", "Bearer $bearer")
+            if (providerId == ProviderId.OPENROUTER) {
+                chat.setRequestProperty("X-Title", "GLAFIRA AI HUB")
+                chat.setRequestProperty("HTTP-Referer", "https://github.com/micronizationlab/glafira-ai-hub")
             }
+            chat.setFixedLengthStreamingMode(body.size)
+            // TLS/DNS/connect failure here cannot have submitted a model request body.
+            chat.connect()
+            modelPostAttempted = true
+            chat.outputStream.use { it.write(body) }
+            val status = chat.responseCode
+            if (status !in 200..299) return@withContext providerHttpFailure(status, chat.getHeaderField("Retry-After"))
+            val response = chat.inputStream.use { readBoundedProviderResponse(it) }
+            val text = JSONObject(response).getJSONArray("choices").getJSONObject(0)
+                .getJSONObject("message").getString("content")
+            if (text.isBlank()) AiProviderResult.Failure(AiProviderError(
+                AiProviderErrorCategory.INVALID_RESPONSE, "Модель вернула пустой ответ."))
+            else AiProviderResult.Success(text)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            "Ошибка соединения с ${providerId.displayName}. Проверьте сеть, настройки ключа и повторите попытку."
+        } catch (failure: Exception) {
+            val category = when (failure) {
+                is SSLException -> AiProviderErrorCategory.TLS
+                is SocketTimeoutException -> AiProviderErrorCategory.TIMEOUT
+                is java.io.IOException -> AiProviderErrorCategory.NETWORK
+                else -> AiProviderErrorCategory.INVALID_RESPONSE
+            }
+            AiProviderResult.Failure(AiProviderError(category,
+                "Не удалось получить ответ ${providerId.displayName}.",
+                outcome = if (modelPostAttempted) AiRequestOutcome.UNKNOWN else AiRequestOutcome.NOT_SENT))
         } finally {
             connection?.disconnect()
+            tokenConnection?.disconnect()
         }
     }
 }
+
+private fun providerConnection(url: String): HttpsURLConnection =
+    (URL(url).openConnection() as HttpsURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = PROVIDER_CONNECT_TIMEOUT_MS
+        readTimeout = PROVIDER_READ_TIMEOUT_MS
+        instanceFollowRedirects = false
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json")
+        setRequestProperty("Accept", "application/json")
+    }
