@@ -139,6 +139,20 @@ Unified operational memory is a Priority 1 GLAFIRA Core responsibility and is sp
 
 These are roadmap capabilities, not a claim that they are already implemented. Each requires an implementation plan, tests and end-to-end acceptance evidence before being marked complete.
 
+## Owner-requested specialist agent — Кадровик (GLAFIRA HR Intelligence)
+
+Add a dedicated `hr-intelligence` role to the in-app agent catalog. Its purpose is to maintain source-grounded personal and business contact cards, relationship context, interaction timelines, commitments and owner-only summaries.
+
+The versioned role and training contract is [HR Intelligence Agent — Role, Training and Acceptance Contract](HR_INTELLIGENCE_AGENT_TRAINING.md). It defines:
+- Broad read visibility over owner-connected and owner-authorized sources, with auditable/revocable source permissions; role membership never bypasses access controls or grants access to secrets.
+- Evidence/provenance, confidence, identity disambiguation, contradiction handling and privacy minimization for every dossier fact.
+- Nightly incremental refresh and owner-facing morning reports, with honest connector coverage and no automatic outbound contact.
+- The owner's requested all-eligible-agent memory review gate: every eligible enabled agent is consulted; unavailable or unauthorized agents are marked NOT_REVIEWED; policy checks and owner approval apply before promotion.
+- A staged training curriculum, synthetic/approved examples, role-specific evaluation suite and versioned promotion/rollback.
+- In-app catalog status for enablement, source permissions, schedule, last refresh, pending reviews and training version.
+
+The first Android vertical slice adds the role to the agent catalog and defines typed, provenance-backed dossier/review contracts. It does not yet connect external sources or persist dossiers. Full implementation remains gated on encrypted persistence, approved connector adapters, scheduled refresh, owner approvals and end-to-end tests. Do not mark the agent operational until these acceptance gates pass.
+
 ## Continuous requirements across all priorities
 
 - Project isolation and least privilege.
