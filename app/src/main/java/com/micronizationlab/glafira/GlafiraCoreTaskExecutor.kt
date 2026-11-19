@@ -78,8 +78,13 @@ class GlafiraCoreTaskExecutor(
         task: GlafiraTask,
         nowMillis: Long
     ): GlafiraTaskExecutionResult {
+        val mode = executionMode()
         val authorization = try {
-            authorizer.authorize(task, nowMillis)
+            if (mode == GlafiraExecutionMode.DRY_RUN) {
+                authorizer.inspectForDryRun(task, nowMillis)
+            } else {
+                authorizer.authorize(task, nowMillis)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -87,25 +92,30 @@ class GlafiraCoreTaskExecutor(
         }
 
         when (authorization.status) {
-            GlafiraTaskAuthorizationStatus.DENIED ->
-                return fail(task, authorization.reason ?: "AUTHORIZATION_DENIED")
-            GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER -> {
-                val currentState = queue.getTask(task.taskId)?.state
-                val changed = when (currentState) {
-                    GlafiraTaskState.WAITING_FOR_OWNER -> true
-                    GlafiraTaskState.RUNNING -> queue.transition(
-                        task.taskId, setOf(GlafiraTaskState.RUNNING),
-                        GlafiraTaskState.WAITING_FOR_OWNER, nowMillis,
-                        lastError = authorization.reason
-                    )
-                    else -> false
+            GlafiraTaskAuthorizationStatus.DENIED -> {
+                if (mode == GlafiraExecutionMode.LIVE) {
+                    return fail(task, authorization.reason ?: "AUTHORIZATION_DENIED")
                 }
-                return GlafiraTaskExecutionResult(
-                    task.taskId,
-                    if (changed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
-                    else GlafiraTaskExecutionStatus.FAILED,
-                    authorization.reason
-                )
+            }
+            GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER -> {
+                if (mode == GlafiraExecutionMode.LIVE) {
+                    val currentState = queue.getTask(task.taskId)?.state
+                    val changed = when (currentState) {
+                        GlafiraTaskState.WAITING_FOR_OWNER -> true
+                        GlafiraTaskState.RUNNING -> queue.transition(
+                            task.taskId, setOf(GlafiraTaskState.RUNNING),
+                            GlafiraTaskState.WAITING_FOR_OWNER, nowMillis,
+                            lastError = authorization.reason
+                        )
+                        else -> false
+                    }
+                    return GlafiraTaskExecutionResult(
+                        task.taskId,
+                        if (changed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
+                        else GlafiraTaskExecutionStatus.FAILED,
+                        authorization.reason
+                    )
+                }
             }
             GlafiraTaskAuthorizationStatus.AUTHORIZED -> Unit
         }
@@ -129,8 +139,8 @@ class GlafiraCoreTaskExecutor(
         // Dry Run is a planning path, not a mock invocation of the live handler.
         // It persists a redacted preview in the existing Core task state and never
         // calls the registered handler or any Bridge/provider adapter.
-        if (executionMode() == GlafiraExecutionMode.DRY_RUN) {
-            val plan = GlafiraDryRunPlanner.build(task)
+        if (mode == GlafiraExecutionMode.DRY_RUN) {
+            val plan = GlafiraDryRunPlanner.build(task, authorization)
             val preview = "DRY_RUN_PREVIEW:" + plan.toSafeJson()
             val changed = queue.transition(
                 task.taskId, setOf(GlafiraTaskState.RUNNING),
