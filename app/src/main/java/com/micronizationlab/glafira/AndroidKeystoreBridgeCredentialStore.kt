@@ -157,7 +157,8 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) : GlafiraBridgeCred
         value.length in 8..128 && value.all { it.isLetterOrDigit() || it in "-_." }
 
     private fun isValidScope(value: String): Boolean =
-        value.length in 1..96 && value.all { it.isLetterOrDigit() || it in "._-" }
+        value.length in 1..96 && value.all { it.isLetterOrDigit() || it in "._-" } &&
+            GlafiraToolRegistry.isKnownScope(value)
 
     companion object {
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"

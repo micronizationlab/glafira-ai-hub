@@ -45,7 +45,13 @@ data class GlafiraBridgeCredentialDelivery(
     /** Sensitive: expose only to the authenticated owner delivery surface. */
     val hmacSecret: ByteArray,
     val grantedScopes: Set<String>
-)
+) {
+    /** Call immediately after the owner has transferred the credential to the paired node. */
+    fun wipeSecret() = hmacSecret.fill(0)
+
+    override fun toString(): String =
+        "GlafiraBridgeCredentialDelivery(approvalId=$approvalId, ticketId=$ticketId, deviceId=$deviceId, hmacSecret=[REDACTED], grantedScopes=$grantedScopes)"
+}
 
 data class GlafiraBridgePendingCredentialDelivery(
     val approvalId: String,
@@ -256,6 +262,7 @@ class GlafiraBridgeOwnerApprovalService(
         private fun isValidScope(value: String) =
             value.length in 1..96 && value.all { it.isLetterOrDigit() || it in "._-" }
         private fun isValidScopes(scopes: Set<String>) =
-            scopes.isNotEmpty() && scopes.size <= MAX_REQUESTED_SCOPES && scopes.all(::isValidScope)
+            scopes.isNotEmpty() && scopes.size <= MAX_REQUESTED_SCOPES &&
+                scopes.all { isValidScope(it) && GlafiraToolRegistry.isKnownScope(it) }
     }
 }

@@ -97,6 +97,10 @@ object GlafiraToolRegistry {
     fun find(toolId: String): GlafiraToolDefinition? =
         definitions.firstOrNull { it.id == toolId }
 
+    /** Only scopes attached to a registered tool may ever be granted to a paired device. */
+    fun isKnownScope(scope: String): Boolean =
+        definitions.any { scope in it.requiredScopes }
+
     fun requiresOwnerApproval(risk: ToolRiskLevel): Boolean =
         risk == ToolRiskLevel.EXTERNAL_WRITE ||
             risk == ToolRiskLevel.FINANCIAL ||

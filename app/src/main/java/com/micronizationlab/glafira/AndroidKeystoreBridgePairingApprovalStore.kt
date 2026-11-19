@@ -541,7 +541,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
     private fun validScopes(value: Set<String>) =
         value.isNotEmpty() &&
             value.size <= GlafiraBridgeOwnerApprovalService.MAX_REQUESTED_SCOPES &&
-            value.all(::validScope)
+            value.all { validScope(it) && GlafiraToolRegistry.isKnownScope(it) }
 
     private fun encodeScopes(value: Set<String>) = value.sorted().joinToString(",")
 

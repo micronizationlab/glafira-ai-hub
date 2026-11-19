@@ -77,11 +77,19 @@ class GlafiraBridgePairingApprovalInstrumentedTest {
             sessionId = "owner-session-acceptance-001",
             expiresAtEpochMs = now + 60_000L
         )
+        val unknownScope = service.approve(
+            pendingApproval.approvalId,
+            setOf("admin.root"),
+            ownerSession,
+            now + 4L
+        )
+        assertEquals(GlafiraBridgeApprovalMutation.InvalidScopes, unknownScope)
+
         val approved = service.approve(
             pendingApproval.approvalId,
             setOf("project.read"),
             ownerSession,
-            now + 4L
+            now + 5L
         )
         val deviceId = (approved as? GlafiraBridgeApprovalMutation.Approved)?.deviceId
             ?: error("Owner approval did not issue a paired device credential.")
@@ -89,7 +97,7 @@ class GlafiraBridgePairingApprovalInstrumentedTest {
         val claimed = service.claimCredentialDelivery(
             pendingApproval.approvalId,
             ownerSession,
-            now + 5L
+            now + 6L
         )
         val delivery = (claimed as? GlafiraBridgeDeliveryResult.Available)?.delivery
             ?: error("Owner credential delivery could not be claimed.")
@@ -101,14 +109,16 @@ class GlafiraBridgePairingApprovalInstrumentedTest {
         assertEquals(delivery.grantedScopes, storedCredential.grantedScopes)
 
         assertTrue(service.acknowledgeCredentialDelivery(
-            pendingApproval.approvalId, ownerSession, now + 6L
+            pendingApproval.approvalId, ownerSession, now + 7L
         ))
         assertTrue(
-            service.claimCredentialDelivery(pendingApproval.approvalId, ownerSession, now + 7L)
+            service.claimCredentialDelivery(pendingApproval.approvalId, ownerSession, now + 8L)
                 is GlafiraBridgeDeliveryResult.AlreadyAcknowledged
         )
 
-        delivery.hmacSecret.fill(0)
+        assertFalse(invitation.toString().contains(invitation.pairingCapability))
+        assertFalse(delivery.toString().contains(delivery.hmacSecret.joinToString("") { "%02x".format(it) }))
+        delivery.wipeSecret()
         storedCredential.hmacSecret.fill(0)
     }
 
