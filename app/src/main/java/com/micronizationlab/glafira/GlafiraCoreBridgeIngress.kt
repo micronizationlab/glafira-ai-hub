@@ -24,7 +24,9 @@ class GlafiraCoreBridgeIngress(
         CONVERSATION_APPEND("conversation.append", "conversation.append")
     }
 
-    data class VerifiedRequest(
+    // Internal construction keeps this trust-boundary DTO out of public callers.
+    // Only the authenticated Bridge ingress in this application module may create it.
+    data class VerifiedRequest internal constructor(
         val requestId: String,
         val idempotencyKey: String,
         val authenticatedDeviceId: String,
