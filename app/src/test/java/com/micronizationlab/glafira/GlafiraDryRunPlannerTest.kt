@@ -67,4 +67,12 @@ class GlafiraDryRunPlannerTest {
         assertEquals(GlafiraDryRunSimulationStatus.NOT_SIMULATABLE, plan.simulationStatus)
         assertEquals(ToolRiskLevel.DESTRUCTIVE, plan.risk)
     }
+
+    @Test
+    fun malformedPayloadIsNotMarkedSimulatable() {
+        val plan = GlafiraDryRunPlanner.build(task(payload = "not-json"))
+        assertEquals(GlafiraDryRunSimulationStatus.NOT_SIMULATABLE, plan.simulationStatus)
+        assertTrue(plan.limitations.any { it.contains("корректным JSON") })
+    }
+
 }
