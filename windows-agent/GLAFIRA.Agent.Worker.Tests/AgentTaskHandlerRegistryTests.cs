@@ -1,3 +1,4 @@
+using Xunit;
 using GLAFIRA.Agent.Worker;
 
 namespace GLAFIRA.Agent.Worker.Tests;
