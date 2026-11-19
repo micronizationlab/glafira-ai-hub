@@ -124,7 +124,7 @@ object GlafiraBridgeProtocol {
         if (request.issuedAtEpochMs > nowEpochMs + MAX_FUTURE_SKEW_MS)
             return GlafiraBridgeValidationError.REQUEST_TOO_FAR_IN_FUTURE
         if (request.expiresAtEpochMs <= nowEpochMs) return GlafiraBridgeValidationError.EXPIRED_REQUEST
-        if (request.payload.entries.sumOf { it.key.length + it.value.length } > MAX_PAYLOAD_CHARS)
+        if (request.payload.entries.sumOf { it.key.length.toLong() + it.value.length.toLong() } > MAX_PAYLOAD_CHARS.toLong())
             return GlafiraBridgeValidationError.PAYLOAD_TOO_LARGE
         val allowed = allowedFields.getValue(request.operation)
         if (request.payload.keys.any { it !in allowed }) return GlafiraBridgeValidationError.UNKNOWN_PAYLOAD_FIELD
