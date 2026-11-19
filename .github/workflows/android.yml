@@ -52,10 +52,17 @@ jobs:
           fi
           for path in "${changed[@]}"; do
             case "$path" in
-              app/*|desktop-bridge/*|gradle/*|gradlew|gradle.properties|build.gradle.kts|settings.gradle.kts) android=true ;;
-              ios/*) ios=true ;;
-              windows-agent/*) agent=true ;;
-              contracts/*) contracts=true ;;
+              app/*|desktop-bridge/*|gradle/*|gradlew|gradle.properties|build.gradle.kts|settings.gradle.kts)
+                android=true; [[ -d contracts ]] && contracts=true ;;
+              ios/*)
+                ios=true; [[ -d contracts ]] && contracts=true ;;
+              windows-agent/*)
+                agent=true; [[ -d contracts ]] && contracts=true ;;
+              contracts/*)
+                contracts=true
+                [[ -f settings.gradle.kts ]] && android=true
+                [[ -f ios/GlafiraBridgeKit/Package.swift ]] && ios=true
+                [[ -f windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj ]] && agent=true ;;
               .github/workflows/android.yml) android=true; workflow_lint=true ;;
               .github/workflows/ios.yml) ios=true; workflow_lint=true ;;
               .github/workflows/windows-agent.yml) agent=true; workflow_lint=true ;;
