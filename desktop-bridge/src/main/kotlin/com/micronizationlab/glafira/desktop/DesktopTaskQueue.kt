@@ -134,7 +134,17 @@ internal class DesktopTaskQueue(
         require(index >= 0) { "Unknown task." }
         val current = records[index]
         require(isAllowed(current.state, next)) { "Invalid task state transition." }
-        val updated = current.copy(state = next, sequence = current.sequence + 1)
+        val updated = if (
+            next in setOf(DesktopTaskState.ACCEPTED, DesktopTaskState.RUNNING) &&
+            current.envelope.expiresAt <= clock()
+        ) {
+            current.copy(
+                state = DesktopTaskState.EXPIRED,
+                sequence = current.sequence + 1
+            )
+        } else {
+            current.copy(state = next, sequence = current.sequence + 1)
+        }
         records[index] = updated
         writeAll(records)
         updated
@@ -165,11 +175,13 @@ internal class DesktopTaskQueue(
         require(index >= 0) { "Unknown task." }
         val current = records[index]
         require(current.state == DesktopTaskState.RUNNING) { "Task is not running." }
+        val expired = current.envelope.expiresAt <= clock()
         val updated = current.copy(
-            state = DesktopTaskState.SUCCEEDED,
+            state = if (expired) DesktopTaskState.FAILED else DesktopTaskState.SUCCEEDED,
             sequence = current.sequence + 1,
-            progressPercent = 100,
-            result = result
+            progressPercent = if (expired) current.progressPercent else 100,
+            result = if (expired) null else result,
+            errorCode = if (expired) "TASK_EXPIRED" else null
         )
         records[index] = updated
         writeAll(records)
