@@ -1,6 +1,9 @@
 name: GLAFIRA Project Dispatcher
 
 on:
+  push:
+    branches:
+      - glafira/project-dispatcher-v1
   workflow_run:
     workflows:
       - GLAFIRA AI HUB Android and Desktop Checks
