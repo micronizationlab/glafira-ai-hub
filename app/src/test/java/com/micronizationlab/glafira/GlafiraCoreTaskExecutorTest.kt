@@ -184,8 +184,9 @@ class GlafiraCoreTaskExecutorTest {
         assertThrows(CancellationException::class.java) {
             runBlocking { worker.executeNext() }
         }
-        assertEquals(GlafiraTaskState.RUNNING, queue.task?.state)
-        assertNull(queue.lastRetryAt)
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, queue.task?.state)
+        assertEquals(15_000L, queue.lastRetryAt)
+        assertEquals("EXECUTION_CANCELLED", queue.task?.lastError)
     }
 
     @Test
