@@ -1,5 +1,6 @@
 package com.micronizationlab.glafira
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -113,15 +114,31 @@ internal class GlafiraDistributedTaskOrchestrator(
                         expiresAtEpochMs = clock() + ttlMs
                     )
                     val node = desktopCapabilities()
-                    val result = if (node != null && node.available &&
+                    val useDesktop = node != null && node.available &&
                         node.maxParallelTasks > 0 && node.capabilities.containsAll(required)
-                    ) {
-                        desktopPermits.withPermit { desktop.submit(task) }
-                    } else {
-                        require(required.all { it in safeAndroidCapabilities }) {
-                            "DESKTOP_REQUIRED_UNAVAILABLE"
+                    val targetNode = if (useDesktop) GlafiraExecutionNode.DESKTOP else GlafiraExecutionNode.ANDROID
+                    val result = try {
+                        if (useDesktop) {
+                            desktopPermits.withPermit { desktop.submit(task) }
+                        } else {
+                            require(required.all { it in safeAndroidCapabilities }) {
+                                "DESKTOP_REQUIRED_UNAVAILABLE"
+                            }
+                            androidPermits.withPermit { android.execute(task) }
                         }
-                        androidPermits.withPermit { android.execute(task) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        // A failed node/handler is isolated to this subtask. Siblings in the
+                        // same dependency-ready batch are allowed to finish and persist results.
+                        GlafiraDistributedTaskResult(
+                            taskId = task.taskId,
+                            node = targetNode,
+                            succeeded = false,
+                            errorCode = failure.javaClass.simpleName.uppercase()
+                                .replace(Regex("[^A-Z0-9_]"), "_").take(48)
+                                .ifBlank { "TASK_EXECUTION_FAILED" }
+                        )
                     }
                     runCatching { onTaskResult(result) }
                     result
