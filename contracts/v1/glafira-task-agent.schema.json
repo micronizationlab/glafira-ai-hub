@@ -170,7 +170,34 @@
             }
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "riskClass": {
+                "enum": [
+                  "EXTERNAL_SIDE_EFFECT",
+                  "PRIVILEGED"
+                ]
+              }
+            },
+            "required": [
+              "riskClass"
+            ]
+          },
+          "then": {
+            "required": [
+              "approvalRef"
+            ],
+            "properties": {
+              "approvalRef": {
+                "$ref": "#/$defs/Identifier"
+              }
+            }
+          }
+        }
+      ]
     },
     "TaskResultEnvelope": {
       "type": "object",
@@ -502,7 +529,7 @@
         "enrollmentId",
         "agentId",
         "decision",
-        "approvedByDeviceId",
+        "decidedByDeviceId",
         "decidedAt",
         "grantedCapabilities"
       ],
@@ -523,9 +550,6 @@
             "REVOKED"
           ]
         },
-        "approvedByDeviceId": {
-          "$ref": "#/$defs/Identifier"
-        },
         "decidedAt": {
           "type": "string",
           "format": "date-time"
@@ -537,6 +561,9 @@
           },
           "uniqueItems": true,
           "maxItems": 128
+        },
+        "decidedByDeviceId": {
+          "$ref": "#/$defs/Identifier"
         }
       }
     },
