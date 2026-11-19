@@ -48,6 +48,9 @@ fun DryRunReviewScreen(onBack: () -> Unit) {
         ) {
             TextButton(onClick = onBack) { Text("← НАЗАД", color = Color.White) }
             Text("ПЛАНЫ DRY RUN", color = Color.White, fontWeight = FontWeight.Bold)
+            TextButton(onClick = { previews = runtime.dryRunPreviewRecords() }) {
+                Text("ОБНОВИТЬ", color = Color.White)
+            }
         }
         Spacer(Modifier.height(8.dp))
         Text(
@@ -55,6 +58,7 @@ fun DryRunReviewScreen(onBack: () -> Unit) {
             color = Tx, fontSize = 11.sp
         )
         message?.let { Text(it, color = Gr, fontSize = 11.sp, modifier = Modifier.padding(vertical = 6.dp)) }
+        Text("Всего сохранено планов: ${previews.size}", color = Tx, fontSize = 10.sp)
         if (previews.isEmpty()) {
             Text("Сохранённых планов пока нет.", color = Tx, modifier = Modifier.padding(16.dp))
         } else {
@@ -72,6 +76,8 @@ fun DryRunReviewScreen(onBack: () -> Unit) {
                             Text("Риск: ${record.risk} · Симуляция: ${record.simulationStatus}", color = Tx, fontSize = 11.sp)
                             Text("Авторизация: ${json.optString("authorizationStatus")} · ${json.optString("authorizationReason", "без замечаний")}", color = Tx, fontSize = 10.sp)
                             Spacer(Modifier.height(6.dp))
+                            Text("ЦЕЛЕВЫЕ ПОЛЯ: ${PreviewArray(json.optJSONArray("targetFields")).joinToString().ifBlank { "не указаны" }}",
+                                color = Tx, fontSize = 10.sp)
                             Text("ОЖИДАЕМЫЕ ИЗМЕНЕНИЯ", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             PreviewArray(json.optJSONArray("expectedChanges")).forEach {
                                 Text("• $it", color = Color(0xFF202020), fontSize = 11.sp)
