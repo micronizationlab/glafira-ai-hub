@@ -25,6 +25,7 @@ In `DesktopTaskRuntime.close()`, the previous implementation:
 - A repeated close attempt remains an error while workers are alive, and succeeds once the executor is actually terminated.
 - `DesktopBridgeTaskWorker.close()` naturally does not reach HMAC-secret zeroization when runtime close fails. Callers must keep the instance lock and credentials until the worker has really stopped.
 - The CLI previously nested `worker.use { }` inside `session.use { }`; Kotlin's outer `use` would release the OS queue lock even when worker close threw. Replace this with `closeDesktopWorkerAndSession(worker, session)`, which releases the session only after worker close succeeds. A regression test verifies the lock remains held after failed worker close.
+- The CLI also had an outer `finally` that unconditionally zeroed the worker HMAC secret. Guard this cleanup: when worker construction fails, release the session and clear the secret; when worker shutdown succeeds, clear the secret; when shutdown fails, retain both the session lock and the secret while the process/handler remains alive.
 - Add a deterministic regression test with a handler that deliberately ignores interruption until a latch is released. It proves close fails closed, the task remains visible as active, and the handler can finish and persist its result after the failed close attempt.
 
 ## Validation required
@@ -33,7 +34,7 @@ This branch has not yet passed CI. Required checks:
 - Desktop JVM test suite, including the new non-cooperative shutdown test.
 - Existing Android JVM, emulator, CI harness and APK build checks inherited through the PR stack.
 - Review the CLI owner/instance-lock lifecycle to confirm callers do not release the lock when `close()` throws.
-- Add a process-level test that holds the real CLI session lock while a non-cooperative handler survives the shutdown timeout; the current helper test verifies lock retention at the session boundary.
+- Add a process-level test that holds the real CLI session lock and worker credential while a non-cooperative handler survives the shutdown timeout; current tests verify the runtime shutdown and session lock helper separately.
 
 ## Integration boundaries
 
