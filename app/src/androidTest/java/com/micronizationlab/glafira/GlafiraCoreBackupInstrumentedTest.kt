@@ -89,6 +89,107 @@ class GlafiraCoreBackupInstrumentedTest {
         assertTrue(!store.enqueue(task()).inserted)
     }
 
+    private fun previewTask(id: String = "preview-task") = GlafiraTask(
+        taskId = id,
+        projectId = "preview-project",
+        taskType = "project.read",
+        payload = """{"actionSummary":"Inspect project","projectId":"preview-project","token":"never-store-this-value"}""",
+        origin = "owner",
+        createdAtMillis = 1_000L,
+        updatedAtMillis = 1_000L,
+        idempotencyKey = "preview-project:$id"
+    )
+
+    @Test
+    fun databaseUsesReviewedSchemaVersionThree() {
+        store.writableDatabase.rawQuery("PRAGMA user_version", null).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(3, cursor.getInt(0))
+        }
+    }
+
+    @Test
+    fun typedDryRunPreviewPersistsEncryptedAndCanBeReadAfterReopen() {
+        val task = previewTask()
+        store.enqueue(task)
+        val plan = GlafiraDryRunPlanner.build(task)
+        assertTrue(store.persistDryRunPreview(task.taskId, setOf(GlafiraTaskState.QUEUED), plan, 2_000L))
+        val row = requireNotNull(store.dryRunPreview(task.taskId))
+        assertEquals(plan.planHash, row.planHash)
+        assertEquals(GlafiraDryRunReviewStatus.PENDING, row.reviewStatus)
+        assertFalse(row.planJson.contains("never-store-this-value"))
+        val ciphertext = store.writableDatabase.rawQuery(
+            "SELECT plan_ciphertext FROM core_dry_run_previews WHERE task_id = ?",
+            arrayOf(task.taskId)
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        assertFalse(ciphertext.contains("Inspect project"))
+        store.close()
+        store = GlafiraTaskStore(context)
+        assertEquals(plan.planHash, requireNotNull(store.dryRunPreview(task.taskId)).planHash)
+    }
+
+    @Test
+    fun previewPersistenceMovesTaskAndStoresOnlyMarkerInTaskMetadata() {
+        val task = previewTask()
+        store.enqueue(task)
+        val plan = GlafiraDryRunPlanner.build(task)
+        assertTrue(store.persistDryRunPreview(task.taskId, setOf(GlafiraTaskState.QUEUED), plan, 2_000L))
+        val savedTask = requireNotNull(store.getTask(task.taskId))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, savedTask.state)
+        assertEquals("DRY_RUN_PREVIEW_STORED", savedTask.lastError)
+    }
+
+    @Test
+    fun samePreviewHashIsIdempotentAndDifferentHashIsRejected() {
+        val task = previewTask()
+        store.enqueue(task)
+        val plan = GlafiraDryRunPlanner.build(task)
+        assertTrue(store.persistDryRunPreview(task.taskId, setOf(GlafiraTaskState.QUEUED), plan, 2_000L))
+        assertTrue(store.persistDryRunPreview(task.taskId, setOf(GlafiraTaskState.QUEUED), plan, 3_000L))
+        val changed = GlafiraDryRunPlanner.build(task.copy(payload = """{"actionSummary":"Different action"}"""))
+        try {
+            store.persistDryRunPreview(task.taskId, setOf(GlafiraTaskState.QUEUED), changed, 4_000L)
+            throw AssertionError("Expected hash conflict.")
+        } catch (_: IllegalStateException) { }
+    }
+
+    @Test
+    fun previewCannotBePersistedFromUnexpectedTaskState() {
+        val task = previewTask()
+        store.enqueue(task)
+        assertTrue(store.transition(task.taskId, setOf(GlafiraTaskState.QUEUED), GlafiraTaskState.FAILED, 2_000L))
+        val plan = GlafiraDryRunPlanner.build(task)
+        assertFalse(store.persistDryRunPreview(task.taskId, setOf(GlafiraTaskState.QUEUED), plan, 3_000L))
+    }
+
+    @Test
+    fun reviewRequiresExactHashAndCanBeRecordedOnlyOnce() {
+        val task = previewTask()
+        store.enqueue(task)
+        val plan = GlafiraDryRunPlanner.build(task)
+        assertTrue(store.persistDryRunPreview(task.taskId, setOf(GlafiraTaskState.QUEUED), plan, 2_000L))
+        assertFalse(store.reviewDryRunPreview(task.taskId, "0".repeat(64), GlafiraDryRunReviewStatus.ACKNOWLEDGED))
+        assertTrue(store.reviewDryRunPreview(task.taskId, plan.planHash, GlafiraDryRunReviewStatus.ACKNOWLEDGED, 3_000L))
+        assertFalse(store.reviewDryRunPreview(task.taskId, plan.planHash, GlafiraDryRunReviewStatus.REJECTED, 4_000L))
+        val reviewed = requireNotNull(store.dryRunPreview(task.taskId))
+        assertEquals(GlafiraDryRunReviewStatus.ACKNOWLEDGED, reviewed.reviewStatus)
+        assertEquals(3_000L, reviewed.reviewedAtMillis)
+    }
+
+    @Test
+    fun pendingPreviewListExcludesReviewedRecords() {
+        val pending = previewTask("preview-pending")
+        val reviewed = previewTask("preview-reviewed")
+        store.enqueue(pending)
+        store.enqueue(reviewed)
+        val pendingPlan = GlafiraDryRunPlanner.build(pending)
+        val reviewedPlan = GlafiraDryRunPlanner.build(reviewed)
+        assertTrue(store.persistDryRunPreview(pending.taskId, setOf(GlafiraTaskState.QUEUED), pendingPlan, 2_000L))
+        assertTrue(store.persistDryRunPreview(reviewed.taskId, setOf(GlafiraTaskState.QUEUED), reviewedPlan, 2_000L))
+        assertTrue(store.reviewDryRunPreview(reviewed.taskId, reviewedPlan.planHash, GlafiraDryRunReviewStatus.REJECTED))
+        assertEquals(listOf(pending.taskId), store.dryRunPreviews(includeReviewed = false).map { it.taskId })
+    }
+
     @Test
     fun backupRestoreRecoversCoreQueueStateAndPayload() = runBlocking {
         store.enqueue(task())
