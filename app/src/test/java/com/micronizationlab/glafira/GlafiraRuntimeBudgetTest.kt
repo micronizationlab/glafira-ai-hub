@@ -158,4 +158,13 @@ class GlafiraRuntimeBudgetTest {
         )
         assertTrue(result.allowed)
     }
+
+    @Test
+    fun allowsFirstAttemptWhenRetryBudgetIsZero() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task(attempts = 1), nowMillis = 2_000L, budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxRetries = 0), measuredCostMicros = null
+        )
+        assertTrue(result.allowed)
+    }
 }
