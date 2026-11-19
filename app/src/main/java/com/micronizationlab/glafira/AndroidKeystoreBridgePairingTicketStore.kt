@@ -148,14 +148,16 @@ class AndroidKeystoreBridgePairingTicketStore(
     }
 
     @Synchronized
-    fun pruneExpired(nowEpochMs: Long = System.currentTimeMillis()): Int =
-        runCatching {
+    override fun pruneExpired(nowEpochMs: Long): Int {
+        if (nowEpochMs <= 0L) return 0
+        return runCatching {
             writableDatabase.delete(
                 TABLE_NAME,
                 "expires_at <= ?",
                 arrayOf(nowEpochMs.toString())
             )
         }.getOrDefault(0)
+    }
 
     private fun getOrCreateKey(): SecretKey {
         (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
