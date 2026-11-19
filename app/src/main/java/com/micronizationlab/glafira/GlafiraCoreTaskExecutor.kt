@@ -138,8 +138,8 @@ class GlafiraCoreTaskExecutor(
         if (!budgetDecision.allowed) return fail(task, budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED")
 
         // Dry Run is a planning path, not a mock invocation of the live handler.
-        // It persists a redacted preview in the existing Core task state and never
-        // calls the registered handler or any Bridge/provider adapter.
+        // When Core supplies the typed persistence port, the encrypted preview row and
+        // WAITING_FOR_OWNER transition are committed atomically. The handler is never called.
         if (mode == GlafiraExecutionMode.DRY_RUN) {
             val plan = GlafiraDryRunPlanner.build(task, authorization)
             val preview = "DRY_RUN_PREVIEW:" + plan.toSafeJson()
