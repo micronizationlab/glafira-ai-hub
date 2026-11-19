@@ -66,7 +66,9 @@ object GlafiraDryRunPlanner {
         val summaryPresent = parsed?.optString("actionSummary")?.isNotBlank() == true
         val previewable = definition != null && parsed != null && summaryPresent &&
             risk in setOf(ToolRiskLevel.READ_ONLY, ToolRiskLevel.DRAFT)
-        val expected = when (risk) {
+        val expected = if (task.taskType == GlafiraTaskStore.DESKTOP_TASK_TYPE) {
+            listOf("Задание может быть передано Desktop-узлу только в отдельном LIVE запуске; сейчас передача и исполнение не выполняются.")
+        } else when (risk) {
             ToolRiskLevel.READ_ONLY -> listOf("Проверить доступность данных без их изменения.")
             ToolRiskLevel.DRAFT -> listOf("Подготовить локальный черновик операции; не сохранять и не отправлять его.")
             ToolRiskLevel.EXTERNAL_WRITE -> listOf("Предлагаемое внешнее изменение не выполняется.")
