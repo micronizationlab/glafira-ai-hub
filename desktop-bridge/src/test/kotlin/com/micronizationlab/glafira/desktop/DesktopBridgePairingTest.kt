@@ -68,6 +68,16 @@ class DesktopBridgePairingTest {
         }
     }
 
+    @Test fun strictOwnerBundleParserRejectsOversizedInputBeforeParsing() {
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            DesktopBridgeJson.parseExactObject(
+                " ".repeat(8 * 1024 + 1),
+                8 * 1024,
+                setOf("format")
+            )
+        }
+    }
+
     @Test fun strictOwnerBundleParserRejectsCoercedFieldTypesAndFractionalExpiry() {
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
             DesktopBridgeJson.stringField(org.json.JSONObject("""{"format":7}"""), "format")
