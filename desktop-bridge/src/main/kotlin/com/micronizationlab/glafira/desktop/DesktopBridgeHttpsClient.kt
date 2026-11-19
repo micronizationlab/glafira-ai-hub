@@ -23,7 +23,9 @@ enum class DesktopBridgeOperation {
     CONVERSATION_APPEND,
     APPROVAL_REQUEST,
     DESKTOP_TASK_CLAIM,
-    DESKTOP_TASK_RESULT
+    DESKTOP_TASK_RESULT,
+    TASK_STATUS,
+    TASK_RESULT_ACK
 }
 
 enum class DesktopBridgeStatus {

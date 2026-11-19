@@ -89,6 +89,53 @@ class GlafiraCoreTaskExecutorTest {
     )
 
     @Test
+    fun fullResultIsPassedToAtomicCompletionPort() = runBlocking {
+        val queue = FakeQueue(task())
+        val actual = mapOf("messageId" to "created-message", "messageText" to "actual content")
+        var persisted: Map<String, String>? = null
+        val worker = GlafiraCoreTaskExecutor(queue,
+            GlafiraTaskAuthorizer { _, _ -> GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED) },
+            listOf("project.read" to GlafiraTaskHandler { GlafiraTaskExecutionOutcome.Succeeded("summary", actual) }),
+            clock = { 10_000L }, resultPersistence = GlafiraTaskResultPersistence { task, values, now ->
+                persisted = values
+                queue.transition(task.taskId, setOf(GlafiraTaskState.RUNNING), GlafiraTaskState.SUCCEEDED, now)
+            })
+        assertEquals(GlafiraTaskExecutionStatus.SUCCEEDED, worker.executeNext().status)
+        assertEquals(actual, persisted)
+        assertEquals(GlafiraTaskState.SUCCEEDED, queue.task?.state)
+    }
+
+    @Test
+    fun resultStorageFailureQuarantinesCompletedHandlerWithoutReplay() = runBlocking {
+        val queue = FakeQueue(task())
+        var calls = 0
+        val worker = GlafiraCoreTaskExecutor(queue,
+            GlafiraTaskAuthorizer { _, _ -> GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED) },
+            listOf("project.read" to GlafiraTaskHandler { calls++; GlafiraTaskExecutionOutcome.Succeeded(result = mapOf("answer" to "real")) }),
+            clock = { 10_000L }, resultPersistence = GlafiraTaskResultPersistence { _, _, _ -> error("disk failure") })
+        assertEquals(GlafiraTaskExecutionStatus.WAITING_FOR_OWNER, worker.executeNext().status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.task?.state)
+        assertEquals("CORE_EXECUTION_OUTCOME_UNKNOWN", queue.task?.lastError)
+        assertEquals(GlafiraTaskExecutionStatus.IDLE, worker.executeNext().status)
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun ambiguousDraftFailureRequiresOwnerReconciliation() = runBlocking {
+        val queue = FakeQueue(task().copy(taskType = "conversation.append"))
+        var calls = 0
+        val worker = GlafiraCoreTaskExecutor(queue,
+            GlafiraTaskAuthorizer { _, _ -> GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED) },
+            listOf("conversation.append" to GlafiraTaskHandler { calls++; throw IllegalStateException("reply lost") }),
+            clock = { 10_000L })
+        assertEquals(GlafiraTaskExecutionStatus.WAITING_FOR_OWNER, worker.executeNext().status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.task?.state)
+        assertTrue(queue.task!!.lastError!!.startsWith("CORE_EXECUTION_OUTCOME_UNKNOWN"))
+        assertEquals(GlafiraTaskExecutionStatus.IDLE, worker.executeNext().status)
+        assertEquals(1, calls)
+    }
+
+    @Test
     fun emptyQueueReturnsIdle() = runBlocking {
         val result = executor(FakeQueue(null)).executeNext()
         assertEquals(GlafiraTaskExecutionStatus.IDLE, result.status)

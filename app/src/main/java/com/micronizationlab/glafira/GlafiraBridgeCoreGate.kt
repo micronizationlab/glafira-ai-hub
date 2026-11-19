@@ -65,6 +65,7 @@ object GlafiraBridgeCoreGate {
             GlafiraBridgeOperation.CONVERSATION_READ -> "conversation.read"
             GlafiraBridgeOperation.CONVERSATION_APPEND -> "conversation.append"
             GlafiraBridgeOperation.APPROVAL_REQUEST -> error("Handled above")
+            GlafiraBridgeOperation.TASK_STATUS, GlafiraBridgeOperation.TASK_RESULT_ACK -> "project.read"
             GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> "desktop.task.claim"
             GlafiraBridgeOperation.DESKTOP_TASK_RESULT -> "desktop.task.result"
         }
@@ -80,6 +81,8 @@ object GlafiraBridgeCoreGate {
             GlafiraBridgeOperation.CONVERSATION_APPEND ->
                 "Append message to conversation ${request.payload.getValue("conversationId")}"
             GlafiraBridgeOperation.APPROVAL_REQUEST -> error("Handled above")
+            GlafiraBridgeOperation.TASK_STATUS -> "Read own task status"
+            GlafiraBridgeOperation.TASK_RESULT_ACK -> "Acknowledge own task result"
             GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> "Claim next Desktop task"
             GlafiraBridgeOperation.DESKTOP_TASK_RESULT -> "Report Desktop task result ${request.payload["taskId"]}"
         }

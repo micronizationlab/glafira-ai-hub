@@ -16,6 +16,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     private val preferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
     val taskStore = GlafiraTaskStore(appContext)
+    val resultStore = GlafiraTaskResultStore(taskStore)
     private val ownerApprovalStore = GlafiraCoreOwnerApprovalStore(taskStore)
     // Pairing approval writes device credentials into this same encrypted approval DB.
     // Reading from the legacy SharedPreferences store would make newly paired devices
@@ -40,7 +41,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         ),
         runtimeBudget = { loadRuntimeBudget() },
         executionMode = { executionMode },
-        dryRunPreviewPersistence = taskStore
+        dryRunPreviewPersistence = taskStore,
+        resultPersistence = resultStore
     )
 
     private fun executeBridgeTask(task: GlafiraTask): GlafiraTaskExecutionOutcome {
@@ -69,7 +71,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             )
             val response = bridgeDispatcher.dispatch(request)
             if (response.status == GlafiraBridgeStatus.SUCCEEDED) {
-                GlafiraTaskExecutionOutcome.Succeeded("Bridge operation completed.")
+                GlafiraTaskExecutionOutcome.Succeeded("Bridge operation completed.", response.result)
             } else {
                 GlafiraTaskExecutionOutcome.PermanentFailure(
                     response.errorCode ?: "BRIDGE_OPERATION_FAILED"
@@ -116,6 +118,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
+        requireStorageAvailable()
         val result = taskStore.enqueue(task)
         if (result.inserted && isEnabled) {
             GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
@@ -124,6 +127,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     internal suspend fun executeNext(): GlafiraTaskExecutionResult {
+        requireStorageAvailable()
         check(isEnabled) { "GLAFIRA autonomous runtime is paused by owner." }
         return executor.executeNext()
     }
@@ -132,14 +136,17 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     /** Authenticated Desktop workers claim only after the same Core authorizer approves the task. */
     fun claimDesktopTask(
         deviceId: String,
+        projectId: String,
         capabilities: Set<String>,
         maxParallelTasks: Int
     ): GlafiraTask? {
+        if (!hasActiveReadScopes(deviceId, setOf("desktop.task.claim"))) return null
         // Desktop workers cannot bypass the Core Dry Run gate. Preview plans are delivered
         // through previewDesktopTask; this claim API never issues a lease in DRY_RUN.
         if (executionMode == GlafiraExecutionMode.DRY_RUN) return null
         val now = System.currentTimeMillis()
-        for (candidate in taskStore.queuedDesktopTasks()) {
+        for (candidate in taskStore.queuedDesktopTasks(projectId = projectId)) {
+            if (candidate.projectId != projectId) continue
             val configuredConcurrency = loadRuntimeBudget().maxConcurrentTasks
             val leased = taskStore.claimDesktopTask(
                 candidate.taskId, deviceId, capabilities,
@@ -186,14 +193,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
      * Builds and persists one redacted Desktop Dry Run preview without claiming or leasing
      * the task. Only the plan is returned over Bridge; executable payload values stay in Core.
      */
-    fun previewDesktopTask(capabilities: Set<String>): GlafiraDryRunPlan? {
+    fun previewDesktopTask(deviceId: String, projectId: String, capabilities: Set<String>): GlafiraDryRunPlan? {
+        if (!hasActiveReadScopes(deviceId, setOf("desktop.task.claim"))) return null
         if (executionMode != GlafiraExecutionMode.DRY_RUN) return null
         require(capabilities.size <= 16)
         val authorizer = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource)
         val now = System.currentTimeMillis()
-        val candidates = taskStore.listTasks(setOf(GlafiraTaskState.QUEUED), 100)
+        val candidates = taskStore.listTasks(setOf(GlafiraTaskState.QUEUED), 100, projectId = projectId)
         for (candidate in candidates) {
-            if (candidate.taskType != GlafiraTaskStore.DESKTOP_TASK_TYPE) continue
+            if (candidate.projectId != projectId || candidate.taskType != GlafiraTaskStore.DESKTOP_TASK_TYPE) continue
             val required = runCatching {
                 val values = org.json.JSONObject(candidate.payload).getJSONArray("requiredCapabilities")
                 buildSet { for (index in 0 until values.length()) add(values.getString(index)) }
@@ -211,18 +219,32 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     fun updateDesktopTask(
         taskId: String,
+        projectId: String,
         deviceId: String,
         state: String,
         progressPercent: Int,
         progressMessage: String?,
         result: String?,
         errorCode: String?
-    ): Boolean = taskStore.updateDesktopTask(
-        taskId, deviceId, state, progressPercent, progressMessage, result, errorCode
+    ): Boolean = hasActiveReadScopes(deviceId, setOf("desktop.task.result")) && resultStore.receiveDesktop(
+        taskId, projectId, deviceId, state, progressPercent, progressMessage, result, errorCode
     )
 
-    fun recordDesktopNode(deviceId: String, capabilities: Set<String>, maxParallelTasks: Int) =
+    private fun requireStorageAvailable() {
+        check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "CORE_RESTORE_RECOVERY_REQUIRED" }
+    }
+
+    internal fun hasActiveReadScopes(deviceId: String, scopes: Set<String>): Boolean {
+        if (GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) return false
+        val credential = bridgeCredentialStore.load(deviceId) ?: return false
+        return try { credential.scopes.containsAll(scopes) }
+        finally { credential.hmacSecret.fill(0) }
+    }
+
+    fun recordDesktopNode(deviceId: String, capabilities: Set<String>, maxParallelTasks: Int) {
+        if (!hasActiveReadScopes(deviceId, setOf("desktop.task.claim"))) return
         taskStore.recordDesktopNode(deviceId, capabilities, maxParallelTasks)
+    }
 
     fun desktopNodeCapabilities(): GlafiraNodeCapabilities? = taskStore.desktopNodeCapabilities()
 

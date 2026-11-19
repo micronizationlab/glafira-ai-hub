@@ -5,7 +5,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /** Typed Bridge envelope. It is not a network listener or a device-pairing implementation. */
-enum class GlafiraBridgeOperation { PROJECT_READ, CONVERSATION_READ, CONVERSATION_APPEND, APPROVAL_REQUEST, DESKTOP_TASK_CLAIM, DESKTOP_TASK_RESULT }
+enum class GlafiraBridgeOperation { PROJECT_READ, CONVERSATION_READ, CONVERSATION_APPEND, APPROVAL_REQUEST, DESKTOP_TASK_CLAIM, DESKTOP_TASK_RESULT, TASK_STATUS, TASK_RESULT_ACK }
 enum class GlafiraBridgeStatus { ACCEPTED, PENDING_APPROVAL, SUCCEEDED, FAILED, CANCELLED }
 
 data class GlafiraBridgeRequest(
@@ -46,10 +46,13 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.CONVERSATION_READ to setOf("conversationId"),
         GlafiraBridgeOperation.CONVERSATION_APPEND to setOf("conversationId", "messageText"),
         GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary"),
+        GlafiraBridgeOperation.TASK_STATUS to setOf("taskId", "resultOffset"),
+        GlafiraBridgeOperation.TASK_RESULT_ACK to setOf("taskId", "resultId"),
         GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to setOf("capabilities", "maxParallelTasks"),
         GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "state", "progressPercent", "progressMessage", "result", "errorCode")
     )
-    private val allowedFields = requiredFields
+    private val allowedFields = requiredFields + (GlafiraBridgeOperation.DESKTOP_TASK_RESULT to
+        (requiredFields.getValue(GlafiraBridgeOperation.DESKTOP_TASK_RESULT) + "resultEncoding"))
 
     fun sign(request: GlafiraBridgeRequest, deviceSecret: ByteArray): GlafiraBridgeRequest {
         require(deviceSecret.size >= 32) { "Device secret must contain at least 256 bits." }

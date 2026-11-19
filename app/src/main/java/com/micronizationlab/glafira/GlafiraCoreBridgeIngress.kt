@@ -89,21 +89,23 @@ class GlafiraCoreBridgeIngress(
 
     fun claimDesktopTask(
         authenticatedDeviceId: String,
+        projectId: String,
         capabilities: Set<String>,
         maxParallelTasks: Int
     ): GlafiraTask? {
         runtime.recordDesktopNode(authenticatedDeviceId, capabilities, maxParallelTasks)
-        return runtime.claimDesktopTask(authenticatedDeviceId, capabilities, maxParallelTasks)
+        return runtime.claimDesktopTask(authenticatedDeviceId, projectId, capabilities, maxParallelTasks)
     }
 
     /** Core-owned Dry Run path: persists a redacted preview, but never claims a lease or exposes executable payload. */
-    fun previewDesktopTask(capabilities: Set<String>): GlafiraDryRunPlan? =
-        runtime.previewDesktopTask(capabilities)
+    fun previewDesktopTask(deviceId: String, projectId: String, capabilities: Set<String>): GlafiraDryRunPlan? =
+        runtime.previewDesktopTask(deviceId, projectId, capabilities)
 
     fun desktopTaskLeaseExpiry(taskId: String): Long? = runtime.desktopTaskLeaseExpiry(taskId)
 
     fun updateDesktopTask(
         taskId: String,
+        projectId: String,
         authenticatedDeviceId: String,
         state: String,
         progressPercent: Int,
@@ -111,14 +113,38 @@ class GlafiraCoreBridgeIngress(
         result: String?,
         errorCode: String?
     ): Boolean = runtime.updateDesktopTask(
-        taskId, authenticatedDeviceId, state, progressPercent,
+        taskId, projectId, authenticatedDeviceId, state, progressPercent,
         progressMessage, result, errorCode
     )
 
-    fun status(taskId: String): GlafiraTask? {
-        require(taskId.startsWith("bridge-") && taskId.length <= 64)
-        return runtime.taskStore.getTask(taskId)
-    }
+    /** Only authenticated callers holding the task's read scopes may query this API. */
+    fun status(taskId: String, projectId: String, deviceId: String): GlafiraTask? =
+        runtime.taskStore.getTask(taskId)?.takeIf {
+            it.projectId == projectId && (it.origin == "android-desktop-bridge:$deviceId" ||
+                it.taskType == GlafiraTaskStore.DESKTOP_TASK_TYPE)
+        }
+
+    fun hasActiveReadScopes(deviceId: String, scopes: Set<String>): Boolean =
+        runtime.hasActiveReadScopes(deviceId, scopes)
+
+    fun result(taskId: String, projectId: String): GlafiraStoredTaskResult? =
+        runtime.resultStore.get(taskId, projectId)
+
+    fun acknowledgeResult(taskId: String, projectId: String, resultId: String, deviceId: String): Boolean =
+        status(taskId, projectId, deviceId) != null &&
+            runtime.resultStore.acknowledge(taskId, projectId, resultId, deviceId, clock())
+
+    fun history(taskId: String, projectId: String): String =
+        runtime.taskStore.readableDatabase.rawQuery("""SELECT from_state, to_state, changed_at, attempt_count
+            FROM core_task_history WHERE task_id = ? AND project_id = ? ORDER BY event_id DESC LIMIT 100""".trimIndent(),
+            arrayOf(taskId, projectId)).use { cursor ->
+            val events = org.json.JSONArray()
+            while (cursor.moveToNext()) events.put(JSONObject().apply {
+                put("from", if (cursor.isNull(0)) JSONObject.NULL else cursor.getString(0))
+                put("to", cursor.getString(1)); put("at", cursor.getLong(2)); put("attempt", cursor.getInt(3))
+            })
+            events.toString()
+        }
 
     private fun validatePayload(operation: Operation, payload: Map<String, String>) {
         require(payload.size <= MAX_PAYLOAD_FIELDS)

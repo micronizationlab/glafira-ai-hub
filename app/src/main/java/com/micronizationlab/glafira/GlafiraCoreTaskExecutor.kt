@@ -11,7 +11,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 sealed class GlafiraTaskExecutionOutcome {
-    data class Succeeded(val summary: String? = null) : GlafiraTaskExecutionOutcome()
+    data class Succeeded(val summary: String? = null, val result: Map<String, String> = emptyMap()) : GlafiraTaskExecutionOutcome()
     data class RetryableFailure(val reason: String) : GlafiraTaskExecutionOutcome()
     data class PermanentFailure(val reason: String) : GlafiraTaskExecutionOutcome()
     data object WaitingForNetwork : GlafiraTaskExecutionOutcome()
@@ -49,7 +49,8 @@ class GlafiraCoreTaskExecutor(
     private val runtimeBudget: () -> GlafiraRuntimeBudget = { GlafiraRuntimeBudget() },
     private val costMeter: GlafiraTaskCostMeter? = null,
     private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE },
-    private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null
+    private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null,
+    private val resultPersistence: GlafiraTaskResultPersistence? = null
 ) {
     private val executionMutex = Mutex()
     private val handlerMap = handlers.toMap()
@@ -166,33 +167,47 @@ class GlafiraCoreTaskExecutor(
             // bounds cooperative suspend handlers and cancels them when their allowance ends.
             withTimeout(budgetDecision.timeoutMillis) { handler.execute(task) }
         } catch (timeout: TimeoutCancellationException) {
-            return fail(task, "RUNTIME_TIME_LIMIT_EXCEEDED")
+            return uncertainOrFail(task, "RUNTIME_TIME_LIMIT_EXCEEDED")
         } catch (cancelled: CancellationException) {
             // Persist a bounded retry even while the parent coroutine is cancelling,
             // then preserve structured concurrency by propagating cancellation.
             withContext(NonCancellable) {
-                scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+                if (isReplaySafe(task)) scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+                else quarantine(task, "EXECUTION_CANCELLED")
             }
             throw cancelled
         } catch (failure: Exception) {
-            return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock(), effectiveBudget.maxRetries)
+            return if (isReplaySafe(task)) scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock(), effectiveBudget.maxRetries)
+            else quarantine(task, "HANDLER_ERROR")
         }
 
         return when (outcome) {
             is GlafiraTaskExecutionOutcome.Succeeded -> {
-                val changed = queue.transition(
-                    task.taskId, setOf(GlafiraTaskState.RUNNING),
-                    GlafiraTaskState.SUCCEEDED, clock()
-                )
+                var persistenceFailed = false
+                val changed = try {
+                    resultPersistence?.complete(task, outcome.result, clock()) ?: queue.transition(
+                        task.taskId, setOf(GlafiraTaskState.RUNNING),
+                        GlafiraTaskState.SUCCEEDED, clock()
+                    )
+                } catch (_: Exception) {
+                    persistenceFailed = true
+                    // Handler may already have acted. A storage failure must never retry it.
+                    queue.transition(task.taskId, setOf(GlafiraTaskState.RUNNING),
+                        GlafiraTaskState.WAITING_FOR_OWNER, clock(),
+                        lastError = "CORE_EXECUTION_OUTCOME_UNKNOWN")
+                    false
+                }
                 GlafiraTaskExecutionResult(
                     task.taskId,
                     if (changed) GlafiraTaskExecutionStatus.SUCCEEDED
+                    else if (persistenceFailed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
                     else GlafiraTaskExecutionStatus.FAILED,
-                    outcome.summary
+                    if (persistenceFailed) "CORE_RESULT_COMMIT_UNKNOWN" else outcome.summary
                 )
             }
             is GlafiraTaskExecutionOutcome.RetryableFailure ->
-                scheduleRetry(task, outcome.reason, clock(), effectiveBudget.maxRetries)
+                if (isReplaySafe(task)) scheduleRetry(task, outcome.reason, clock(), effectiveBudget.maxRetries)
+                else quarantine(task, outcome.reason)
             is GlafiraTaskExecutionOutcome.PermanentFailure -> fail(task, outcome.reason)
             GlafiraTaskExecutionOutcome.WaitingForNetwork -> {
                 val changed = queue.transition(
@@ -218,6 +233,21 @@ class GlafiraCoreTaskExecutor(
                 )
             }
         }
+    }
+
+    private fun isReplaySafe(task: GlafiraTask): Boolean =
+        GlafiraToolRegistry.find(task.taskType)?.risk == ToolRiskLevel.READ_ONLY
+
+    private fun uncertainOrFail(task: GlafiraTask, reason: String): GlafiraTaskExecutionResult =
+        if (isReplaySafe(task)) fail(task, reason) else quarantine(task, reason)
+
+    private fun quarantine(task: GlafiraTask, reason: String): GlafiraTaskExecutionResult {
+        val changed = queue.transition(task.taskId, setOf(GlafiraTaskState.RUNNING),
+            GlafiraTaskState.WAITING_FOR_OWNER, clock(),
+            lastError = "CORE_EXECUTION_OUTCOME_UNKNOWN")
+        return GlafiraTaskExecutionResult(task.taskId,
+            if (changed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER else GlafiraTaskExecutionStatus.FAILED,
+            "CORE_EXECUTION_OUTCOME_UNKNOWN:$reason")
     }
 
     private fun scheduleRetry(
