@@ -38,7 +38,7 @@ Required checks:
 - Latest Desktop JVM test suite, including the new non-cooperative shutdown and queue-lock retention tests.
 - Existing Android JVM, emulator, CI harness and APK build checks inherited through the PR stack.
 - Review the CLI owner/instance-lock lifecycle to confirm callers do not release the lock when `close()` throws.
-- Add a process-level test that holds the real CLI session lock and worker credential while a non-cooperative handler survives the shutdown timeout; current tests verify the runtime shutdown and session lock helper separately.
+- The CLI lock-retention test now launches a separate JVM to prove the OS `tasks.lock` cannot be acquired after worker close fails, and becomes available only after explicit safe session release. A full end-to-end test that combines a real non-cooperative handler with the OS lock remains a useful final acceptance case.
 
 ## Integration boundaries
 
