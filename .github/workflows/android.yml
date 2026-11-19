@@ -1,4 +1,4 @@
-name: GLAFIRA AI HUB Android Checks
+name: GLAFIRA AI HUB Android and Desktop Checks
 
 on:
   pull_request:
@@ -30,7 +30,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: Run Unit Tests
-        run: gradle testDebugUnitTest
+        run: gradle testDebugUnitTest :desktop-bridge:test
 
 
   instrumented-tests:

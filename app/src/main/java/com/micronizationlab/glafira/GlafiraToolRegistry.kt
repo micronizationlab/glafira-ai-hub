@@ -55,6 +55,18 @@ object GlafiraToolRegistry {
             ToolRiskLevel.DRAFT, setOf("approval.request")
         ),
         GlafiraToolDefinition(
+            "desktop.execute", "Выполнение задания на Desktop", "Передача задания на доверенный Desktop-узел с возвратом результата в Core.",
+            ToolRiskLevel.DRAFT, setOf("desktop.task.execute")
+        ),
+        GlafiraToolDefinition(
+            "desktop.task.claim", "Получение задания Desktop", "Получение одного разрешённого задания из общей очереди Core.",
+            ToolRiskLevel.READ_ONLY, setOf("desktop.task.claim")
+        ),
+        GlafiraToolDefinition(
+            "desktop.task.result", "Результат Desktop-задания", "Обновление статуса и возврат результата выполнения в Core.",
+            ToolRiskLevel.DRAFT, setOf("desktop.task.result")
+        ),
+        GlafiraToolDefinition(
             "content.draft", "Подготовка черновика", "Создание черновика текста без публикации.",
             ToolRiskLevel.DRAFT, setOf("content.draft")
         ),
