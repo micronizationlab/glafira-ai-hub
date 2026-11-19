@@ -102,6 +102,34 @@ data class HrContactFact(
     }
 }
 
+data class HrInteraction(
+    val interactionId: String,
+    val occurredAt: Instant,
+    val channel: String,
+    val summary: String,
+    val sources: List<HrSourceReference>
+) {
+    init {
+        require(interactionId.isNotBlank() && channel.isNotBlank() && summary.isNotBlank())
+        require(sources.isNotEmpty())
+    }
+}
+
+enum class HrCommitmentStatus { OPEN, COMPLETED, CANCELLED }
+
+data class HrCommitment(
+    val commitmentId: String,
+    val description: String,
+    val dueAt: Instant? = null,
+    val status: HrCommitmentStatus = HrCommitmentStatus.OPEN,
+    val sources: List<HrSourceReference>
+) {
+    init {
+        require(commitmentId.isNotBlank() && description.isNotBlank())
+        require(sources.isNotEmpty())
+    }
+}
+
 data class HrContactCard(
     val contactId: String,
     val displayName: String,
@@ -111,6 +139,8 @@ data class HrContactCard(
     val relationship: HrRelationshipType? = null,
     val identityStatus: HrIdentityStatus = HrIdentityStatus.UNRESOLVED,
     val facts: List<HrContactFact> = emptyList(),
+    val interactions: List<HrInteraction> = emptyList(),
+    val commitments: List<HrCommitment> = emptyList(),
     val lastVerifiedAt: Instant? = null
 ) {
     init {
