@@ -157,7 +157,10 @@ fun App() {
                     "GigaChat" -> "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке."
                     else -> "Ты — помощник."
                 }
-                val key = "${pm.projectId}_${pm.agentName}"
+                val historyAgentId = if (pm.agentName == HrIntelligenceAgent.DISPLAY_NAME) {
+                    HrIntelligenceAgent.ROLE_ID
+                } else pm.agentName
+                val key = "${pm.projectId}_${historyAgentId}"
                 val history = loadHistory(context, key)
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 val provider = if (pm.agentName == "ГЛАФИРА") {
@@ -528,8 +531,8 @@ fun ContactList(
 @Composable
 fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val context = LocalContext.current
-    var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.n)) }
-    val historyKey = "${project.id}_${agent.n}"
+    var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.agentId)) }
+    val historyKey = "${project.id}_${agent.agentId}"
     var messages by remember { mutableStateOf(loadHistory(context, historyKey)) }
     var isLoading by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
@@ -559,7 +562,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             val text = spoken?.firstOrNull().orEmpty()
             if (text.isNotBlank()) {
                 inputText = (inputText + " " + text).trim()
-                saveDraft(context, project.id, agent.n, inputText)
+                saveDraft(context, project.id, agent.agentId, inputText)
             }
         }
     }
@@ -606,7 +609,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         val updatedMessages = messages + Msg(text, true, timeNow, today)
         messages = updatedMessages
         saveHistory(context, historyKey, updatedMessages)
-        clearDraft(context, project.id, agent.n)
+        clearDraft(context, project.id, agent.agentId)
         isLoading = true
         SoundHelper.playSent()
         scope.launch {
@@ -799,7 +802,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         value = inputText,
                         onValueChange = {
                             inputText = it
-                            saveDraft(context, project.id, agent.n, it)
+                            saveDraft(context, project.id, agent.agentId, it)
                         },
                         placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f).padding(end = 6.dp),
