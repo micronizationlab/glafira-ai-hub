@@ -31,9 +31,24 @@ Change made:
 Reference implementation rationale: Android Open Source Project documents the workaround provider as the provider for JCA crypto operations on Android Keystore keys. See:
 https://android.googlesource.com/platform/frameworks/base/+/cb3bb3f/keystore/java/android/security/keystore/AndroidKeyStoreBCWorkaroundProvider.java
 
+## Added regression test
+
+File:
+`app/src/androidTest/java/com/micronizationlab/glafira/AndroidKeystoreBridgeServerIdentityInstrumentedTest.kt`
+
+The API 35 emulator instrumentation test now exercises the actual Android Keystore path:
+- creates the EC identity for a private IPv4 host;
+- asserts the private key remains non-exportable;
+- validates IP SAN, serverAuth EKU, key usage, and self-signature verification;
+- calls `getOrCreate()` a second time and verifies the certificate identity is reused;
+- checks connection details are available;
+- cleans up the test key alias and preferences before/after the test.
+
+This test was added after the first CI run had already started, so that first run does NOT include this new regression test. A subsequent PR workflow run must execute it.
+
 ## Validation status — NOT YET ACCEPTED
 
-The source change has been committed to this isolated branch, but no Android device/emulator validation is claimed yet. Do not tell the owner the Bridge is fixed until the following pass:
+The source change and focused instrumentation regression test are committed to this isolated branch, but no Android device/emulator validation is accepted yet. Do not tell the owner the Bridge is fixed until the following pass:
 
 1. Android Keystore EC P-256 key generation succeeds.
 2. `SHA256withECDSA` signer creation and certificate issuance succeed on API 35.
