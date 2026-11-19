@@ -89,6 +89,18 @@ Acceptance: graph schema validation, cycle detection, unreachable node detection
 
 Each step must be independently testable and may be paused without leaving the queue or policy in an inconsistent state. Do not mark a step complete based on documentation or compilation alone. Before enabling autonomous live execution, require passing P1 Core authorization and P2 backup/restore acceptance for all affected Core tables.
 
+## Step 2 implementation progress (partial)
+
+A first Core Dry Run slice is now present:
+- Core has explicit DRY_RUN/LIVE mode contracts; the application runtime owner selects DRY_RUN only.
+- The redacted planner binds a deterministic plan hash to task identity, project, tool, origin, payload and required scopes.
+- The planner reports tool risk, simulation availability, safe target-field names, expected changes, permissions, approval points and limitations.
+- The Core executor returns a preview and does not invoke the registered handler in DRY_RUN.
+- The preview is stored in the existing task status detail; tasks wait for owner review.
+- Desktop claims are blocked while the Core owner is in DRY_RUN, pending a Desktop preview protocol.
+
+This is not Step 2 acceptance yet. A typed durable preview store, owner-facing review UI, Desktop preview protocol, sandbox adapters and a separate action-bound LIVE run flow remain outstanding. See [DRY_RUN.md](DRY_RUN.md).
+
 ## Status checklist
 
 - [ ] Step 1 — Runtime budgets enforced by Core
