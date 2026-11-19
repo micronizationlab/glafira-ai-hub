@@ -37,16 +37,21 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) : GlafiraBridgeCred
         val keyAlreadyExisted = keyStore.containsAlias(alias)
         val key = getOrCreateKey(alias)
         val encrypted = encrypt(key, hmacSecret)
-        val encoded = listOf(
-            encrypted.first,
-            Base64.encodeToString(encrypted.second, Base64.NO_WRAP),
-            scopes.sorted().joinToString(",")
-        ).joinToString(":")
+        try {
+            val encoded = listOf(
+                encrypted.first,
+                Base64.encodeToString(encrypted.second, Base64.NO_WRAP),
+                scopes.sorted().joinToString(",")
+            ).joinToString(":")
 
-        val committed = preferences.edit().putString(storageKey(deviceId), encoded).commit()
-        if (!committed) {
-            if (!keyAlreadyExisted && keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
-            throw IllegalStateException("Unable to persist Bridge device credentials.")
+            val committed = preferences.edit().putString(storageKey(deviceId), encoded).commit()
+            if (!committed) {
+                if (!keyAlreadyExisted && keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
+                throw IllegalStateException("Unable to persist Bridge device credentials.")
+            }
+        } finally {
+            encrypted.first.toByteArray(Charsets.UTF_8).fill(0)
+            encrypted.second.fill(0)
         }
     }
 
@@ -63,9 +68,19 @@ class AndroidKeystoreBridgeCredentialStore(context: Context) : GlafiraBridgeCred
             val scopes = parts[2].split(",").filter(String::isNotBlank).toSet()
             require(iv.size == GCM_IV_BYTES)
             require(scopes.isNotEmpty() && scopes.all(::isValidScope))
-            val secret = decrypt(getExistingKey(keyAlias(deviceId)), iv, ciphertext)
-            require(secret.size >= MIN_SECRET_BYTES)
-            GlafiraBridgeDeviceCredential(deviceId, secret, scopes)
+            var secret: ByteArray? = null
+            try {
+                val decrypted = decrypt(getExistingKey(keyAlias(deviceId)), iv, ciphertext)
+                secret = decrypted
+                require(decrypted.size >= MIN_SECRET_BYTES)
+                GlafiraBridgeDeviceCredential(deviceId, decrypted, scopes)
+            } catch (failure: Exception) {
+                secret?.fill(0)
+                throw failure
+            } finally {
+                iv.fill(0)
+                ciphertext.fill(0)
+            }
         }.getOrNull()
     }
 
