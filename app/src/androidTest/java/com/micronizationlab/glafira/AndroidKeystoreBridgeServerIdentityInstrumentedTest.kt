@@ -41,6 +41,7 @@ class AndroidKeystoreBridgeServerIdentityInstrumentedTest {
         assertEquals("EC", privateKey.algorithm)
         assertNull("The Android Keystore private key must remain non-exportable.", privateKey.encoded)
         assertEquals("EC", first.certificate.publicKey.algorithm)
+        assertEquals("SHA256withECDSA", first.certificate.sigAlgName)
         assertEquals(-1, first.certificate.basicConstraints)
         assertTrue(first.certificate.keyUsage?.getOrNull(0) == true)
         assertTrue(first.certificate.extendedKeyUsage?.contains(SERVER_AUTH_OID) == true)
