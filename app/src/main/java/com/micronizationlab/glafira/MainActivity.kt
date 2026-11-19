@@ -408,8 +408,8 @@ fun ContactList(
                 Text("🏛", fontSize = 12.sp)
             }
             Spacer(Modifier.width(6.dp))
-            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onDryRunClick() }, contentAlignment = Alignment.Center) {
-                Text("✓", color = Gr, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Box(Modifier.width(42.dp).height(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onDryRunClick() }, contentAlignment = Alignment.Center) {
+                Text("DR", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.width(6.dp))
             Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { showAddDialog = true }, contentAlignment = Alignment.Center) {
