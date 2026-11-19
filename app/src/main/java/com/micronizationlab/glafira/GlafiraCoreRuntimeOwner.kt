@@ -130,8 +130,10 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     ): GlafiraTask? {
         val now = System.currentTimeMillis()
         for (candidate in taskStore.queuedDesktopTasks()) {
+            val configuredConcurrency = loadRuntimeBudget().maxConcurrentTasks
             val leased = taskStore.claimDesktopTask(
-                candidate.taskId, deviceId, capabilities, maxParallelTasks, now
+                candidate.taskId, deviceId, capabilities,
+                minOf(maxParallelTasks, configuredConcurrency), now
             ) ?: continue
             val budget = loadRuntimeBudget()
             val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
