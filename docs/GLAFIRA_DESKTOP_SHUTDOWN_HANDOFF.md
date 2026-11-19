@@ -28,10 +28,14 @@ In `DesktopTaskRuntime.close()`, the previous implementation:
 - The CLI also had an outer `finally` that unconditionally zeroed the worker HMAC secret. Guard this cleanup: when worker construction fails, release the session and clear the secret; when worker shutdown succeeds, clear the secret; when shutdown fails, retain both the session lock and the secret while the process/handler remains alive.
 - Add a deterministic regression test with a handler that deliberately ignores interruption until a latch is released. It proves close fails closed, the task remains visible as active, and the handler can finish and persist its result after the failed close attempt.
 
-## Validation required
+## Validation status
 
-This branch has not yet passed CI. Required checks:
-- Desktop JVM test suite, including the new non-cooperative shutdown test.
+- Run #988 passed both JVM suites after the lock-retention test was moved into its correct test class: Android 140 executed, 0 skipped; Desktop 52 executed, 0 skipped.
+- Runs #990–#992 exposed a Kotlin syntax error in the subsequent CLI cleanup restructuring. The block has been rewritten and the latest head is being checked by run #993. Do not treat the intermediate #988 result as validation of the latest CLI changes.
+- API 35 emulator and APK jobs remain outstanding.
+
+Required checks:
+- Latest Desktop JVM test suite, including the new non-cooperative shutdown and queue-lock retention tests.
 - Existing Android JVM, emulator, CI harness and APK build checks inherited through the PR stack.
 - Review the CLI owner/instance-lock lifecycle to confirm callers do not release the lock when `close()` throws.
 - Add a process-level test that holds the real CLI session lock and worker credential while a non-cooperative handler survives the shutdown timeout; current tests verify the runtime shutdown and session lock helper separately.
