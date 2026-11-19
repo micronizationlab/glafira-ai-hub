@@ -1,6 +1,14 @@
 package com.micronizationlab.glafira.desktop
 
 import java.nio.file.Path
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFilePermission
+import java.nio.channels.FileChannel
+import java.nio.channels.FileLock
+import java.nio.channels.OverlappingFileLockException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Terminal test client for owner-approved Android LAN pairing.
@@ -47,28 +55,31 @@ fun main(args: Array<String>) {
                 require(projectId.isNotBlank())
                 val model = console.readLine("Installed Ollama model name: ").trim()
                 require(model.isNotBlank())
-                println("Desktop worker uses Core SQLite as the only durable task queue.")
+                println("Desktop task state and unacknowledged results persist beside the credential vault.")
                 println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
                 println("Ollama must be running locally at 127.0.0.1:11434.")
-                DesktopBridgeTaskWorker(
-                    origin = entry.origin,
-                    credentials = credentials,
-                    projectId = projectId,
-                    handlers = DesktopLocalAgentRegistry.ollama(model),
-                    onDryRunPreview = { preview ->
-                        println()
-                        println("=== GLAFIRA DRY RUN — PREVIEW ONLY; NOT EXECUTED ===")
-                        println("Task: ${preview.taskId}")
-                        println("Project: ${preview.projectId}")
-                        println("Tool: ${preview.toolId}")
-                        println("Risk: ${preview.risk}")
-                        println("Simulation: ${preview.simulationStatus}")
-                        println("Plan SHA-256: ${preview.planHash}")
-                        println("Redacted plan: ${preview.safeJson}")
-                        println("No Desktop agent was started for this preview.")
+                desktopCliTaskSession(vaultPath).use { session ->
+                    DesktopBridgeTaskWorker(
+                        origin = entry.origin,
+                        credentials = credentials,
+                        projectId = projectId,
+                        queue = session.queue,
+                        handlers = DesktopLocalAgentRegistry.ollama(model),
+                        onDryRunPreview = { preview ->
+                            println()
+                            println("=== GLAFIRA DRY RUN — PREVIEW ONLY; NOT EXECUTED ===")
+                            println("Task: ${preview.taskId}")
+                            println("Project: ${preview.projectId}")
+                            println("Tool: ${preview.toolId}")
+                            println("Risk: ${preview.risk}")
+                            println("Simulation: ${preview.simulationStatus}")
+                            println("Plan SHA-256: ${preview.planHash}")
+                            println("Redacted plan: ${preview.safeJson}")
+                            println("No Desktop agent was started for this preview.")
+                        }
+                    ).use { worker ->
+                        worker.runPollingLoop(shouldContinue = { true })
                     }
-                ).use { worker ->
-                    worker.runPollingLoop(shouldContinue = { true })
                 }
             } finally {
                 credentials.hmacSecret.fill(0)
@@ -179,3 +190,56 @@ internal fun parseDesktopOperationId(args: Array<String>): String? {
     DesktopBridgeHttpsClient.validateLogicalOperationId(value)
     return value
 }
+
+/** The process lock is on a separate file because queue persistence replaces tasks.json. */
+internal class DesktopCliTaskSession(
+    val queue: DesktopTaskQueue,
+    private val channel: FileChannel,
+    private val lock: FileLock,
+    private val releaseReservation: () -> Unit
+) : AutoCloseable {
+    private val closed = AtomicBoolean(false)
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        try { if (lock.isValid) lock.release() }
+        finally { try { channel.close() } finally { releaseReservation() } }
+    }
+}
+
+// Closing a second descriptor for a locked inode can release process-wide POSIX locks.
+// Reject another local session before it opens that file, including canonical path aliases.
+private val desktopCliSessionPaths = ConcurrentHashMap.newKeySet<Path>()
+
+/** Startup failures release the lock and propagate; no empty in-memory queue is substituted. */
+internal fun desktopCliTaskSession(vaultPath: Path): DesktopCliTaskSession {
+    val queuePath = desktopCliTaskQueuePath(vaultPath)
+    Files.createDirectories(queuePath.parent)
+    val lockPath = queuePath.resolveSibling("tasks.lock")
+    val reservation = lockPath.toFile().canonicalFile.toPath()
+    check(desktopCliSessionPaths.add(reservation)) {
+        "A Desktop worker is already using this task queue. Close it before starting another."
+    }
+    var channel: FileChannel? = null
+    var lock: FileLock? = null
+    try {
+        channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+        try {
+            Files.setPosixFilePermissions(lockPath, setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE))
+        } catch (_: UnsupportedOperationException) {
+            // Non-POSIX platforms inherit the ACL of the user's private vault directory.
+        }
+        lock = try { channel.tryLock() } catch (_: OverlappingFileLockException) { null }
+        check(lock != null) { "A Desktop worker is already using this task queue. Close it before starting another." }
+        val queue = DesktopTaskQueue(queuePath)
+        queue.list() // Validate existing storage before any remote task can be claimed.
+        return DesktopCliTaskSession(queue, channel, lock) { desktopCliSessionPaths.remove(reservation) }
+    } catch (error: Throwable) {
+        try { if (lock?.isValid == true) lock.release() }
+        finally { try { channel?.close() } finally { desktopCliSessionPaths.remove(reservation) } }
+        throw error
+    }
+}
+
+internal fun desktopCliTaskQueuePath(vaultPath: Path): Path =
+    requireNotNull(vaultPath.toAbsolutePath().normalize().parent) { "Credential vault needs a parent directory." }
+        .resolve("tasks.json")

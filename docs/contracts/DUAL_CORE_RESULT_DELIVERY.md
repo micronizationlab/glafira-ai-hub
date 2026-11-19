@@ -79,9 +79,14 @@ is an unavoidable ambiguous window between an external service accepting an acti
 result persistence unless that service participates in idempotency/reconciliation. Storage failure
 at that boundary quarantines the task rather than automatically replaying its handler.
 
-Desktop pending output requires an explicitly supplied persistent queue; the in-memory
-constructor is intended for tests. Production CLI wiring must supply that queue and be
-covered by a restart regression: library persistence tests do not prove the launch path. History capacity applies backpressure when all records are
+Desktop CLI now explicitly supplies `~/.glafira-ai-hub/bridge/tasks.json` as its persistent
+queue and validates it before polling. A separate `tasks.lock` protects the working session,
+including cross-JVM exclusion; corrupt/null/directory storage fails startup without an
+in-memory fallback. Restart regressions use the actual CLI factory and preserve pending
+output and matching acknowledgements. The in-memory constructor remains intended for tests.
+The JSON has owner-only permissions but is not encrypted. The bounded runtime shutdown
+can return before a noninterruptible handler terminates; shutdown/fencing requires further
+work before LIVE, and the session lock is not a substitute for that protocol. History capacity applies backpressure when all records are
 unacknowledged. Large outputs beyond existing protocol limits need chunked upload/artifact
 transfer; they remain pending rather than being truncated. Full UI rendering, independent Core
 authority arbitration, ownership-generation enforcement, complete history pagination, cloud

@@ -296,7 +296,9 @@ internal class DesktopTaskQueue(
         val size = Files.size(target)
         require(size in 1..MAX_QUEUE_FILE_BYTES.toLong()) { "Desktop task queue file size is invalid." }
         val type = object : TypeToken<List<DesktopTaskRecord>>() {}.type
-        return gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type) ?: emptyList()
+        return requireNotNull(gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type)) {
+            "Desktop task queue must contain a JSON array, not null."
+        }
     }
 
     private fun writeAll(records: List<DesktopTaskRecord>) {
