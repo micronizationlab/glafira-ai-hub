@@ -197,4 +197,14 @@ class GlafiraRuntimeBudgetTest {
         assertTrue(result.allowed)
         assertEquals(9_000L, result.timeoutMillis)
     }
+
+    @Test
+    fun earlierTaskDeadlineWinsOverWallClockBudget() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task(deadline = 3_000L), nowMillis = 2_000L, budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxWallClockMillis = 10_000L), measuredCostMicros = null
+        )
+        assertTrue(result.allowed)
+        assertEquals(1_000L, result.timeoutMillis)
+    }
 }
