@@ -33,7 +33,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             "conversation.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) }
         ),
-        runtimeBudget = { loadRuntimeBudget() }
+        runtimeBudget = { loadRuntimeBudget() },
+        executionMode = { GlafiraExecutionMode.DRY_RUN }
     )
 
     private fun executeBridgeTask(task: GlafiraTask): GlafiraTaskExecutionOutcome {
@@ -128,6 +129,9 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         capabilities: Set<String>,
         maxParallelTasks: Int
     ): GlafiraTask? {
+        // Desktop workers cannot bypass the Core Dry Run gate. Until the Desktop
+        // preview protocol exists, claims are withheld rather than executed live.
+        if (GlafiraExecutionMode.DRY_RUN == GlafiraExecutionMode.DRY_RUN) return null
         val now = System.currentTimeMillis()
         for (candidate in taskStore.queuedDesktopTasks()) {
             val configuredConcurrency = loadRuntimeBudget().maxConcurrentTasks
