@@ -47,7 +47,8 @@ class GlafiraCoreTaskExecutor(
     private val maxRetryDelayMillis: Long = 15 * 60_000L,
     private val runtimeBudget: () -> GlafiraRuntimeBudget = { GlafiraRuntimeBudget() },
     private val costMeter: GlafiraTaskCostMeter? = null,
-    private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE }
+    private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE },
+    private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null
 ) {
     private val executionMutex = Mutex()
     private val handlerMap = handlers.toMap()
@@ -142,7 +143,9 @@ class GlafiraCoreTaskExecutor(
         if (mode == GlafiraExecutionMode.DRY_RUN) {
             val plan = GlafiraDryRunPlanner.build(task, authorization)
             val preview = "DRY_RUN_PREVIEW:" + plan.toSafeJson()
-            val changed = queue.transition(
+            val changed = dryRunPreviewPersistence?.persistDryRunPreview(
+                task.taskId, setOf(GlafiraTaskState.RUNNING), plan, clock()
+            ) ?: queue.transition(
                 task.taskId, setOf(GlafiraTaskState.RUNNING),
                 GlafiraTaskState.WAITING_FOR_OWNER, clock(),
                 lastError = preview
