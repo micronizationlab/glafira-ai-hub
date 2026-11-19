@@ -132,9 +132,9 @@ class GlafiraCoreTaskExecutor(
         } catch (timeout: TimeoutCancellationException) {
             return fail(task, "RUNTIME_TIME_LIMIT_EXCEEDED")
         } catch (cancelled: CancellationException) {
-            return scheduleRetry(task, "EXECUTION_CANCELLED", clock())
+            return scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
         } catch (failure: Exception) {
-            return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock())
+            return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock(), effectiveBudget.maxRetries)
         }
 
         return when (outcome) {
@@ -151,7 +151,7 @@ class GlafiraCoreTaskExecutor(
                 )
             }
             is GlafiraTaskExecutionOutcome.RetryableFailure ->
-                scheduleRetry(task, outcome.reason, clock())
+                scheduleRetry(task, outcome.reason, clock(), effectiveBudget.maxRetries)
             is GlafiraTaskExecutionOutcome.PermanentFailure -> fail(task, outcome.reason)
             GlafiraTaskExecutionOutcome.WaitingForNetwork -> {
                 val changed = queue.transition(
@@ -182,9 +182,10 @@ class GlafiraCoreTaskExecutor(
     private fun scheduleRetry(
         task: GlafiraTask,
         reason: String,
-        nowMillis: Long
+        nowMillis: Long,
+        configuredMaxRetries: Int
     ): GlafiraTaskExecutionResult {
-        val retryLimit = minOf(maxAttempts - 1, runtimeBudget().maxRetries)
+        val retryLimit = minOf(maxAttempts - 1, configuredMaxRetries)
         if (task.attemptCount >= retryLimit + 1) return fail(task, "RETRY_LIMIT_REACHED:$reason")
         val exponent = (task.attemptCount - 1).coerceIn(0, 20)
         val delay = (baseRetryDelayMillis * (1L shl exponent)).coerceAtMost(maxRetryDelayMillis)
