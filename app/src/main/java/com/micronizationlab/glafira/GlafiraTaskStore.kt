@@ -136,13 +136,14 @@ class GlafiraTaskStore(context: Context) :
         try {
             val taskId = db.rawQuery(
                 "SELECT task_id FROM $TABLE_TASKS " +
-                    "WHERE state IN (?, ?) " +
+                    "WHERE state IN (?, ?) AND task_type != ? " +
                     "AND (retry_at IS NULL OR retry_at <= ?) " +
                     "AND (deadline_at IS NULL OR deadline_at >= ?) " +
                     "ORDER BY priority DESC, created_at ASC LIMIT 1",
                 arrayOf(
                     GlafiraTaskState.QUEUED.databaseValue,
                     GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
+                    DESKTOP_TASK_TYPE,
                     nowMillis.toString(),
                     nowMillis.toString()
                 )
