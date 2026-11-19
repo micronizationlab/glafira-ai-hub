@@ -206,6 +206,15 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Cache Swift package dependencies and build products
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ios/GlafiraBridgeKit/.build
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('ios/GlafiraBridgeKit/Package.swift', 'ios/GlafiraBridgeKit/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-
       - run: |
           swift --version
           xcodebuild -version
@@ -219,6 +228,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('windows-agent/**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
