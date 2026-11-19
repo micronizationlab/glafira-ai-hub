@@ -13,6 +13,8 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 
 @RunWith(AndroidJUnit4::class)
 class GlafiraTaskQueueRecoveryInstrumentedTest {
@@ -255,6 +257,30 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         store = GlafiraTaskStore(context)
         assertEquals(GlafiraTaskState.SUCCEEDED, store.getTask("result-task")?.state)
         assertEquals("private handler result", store.coreTaskResult("result-task", "project")?.result)
+    }
+
+
+    @Test fun coreExecutorPersistsHandlerSummaryWithSucceededState() = runBlocking {
+        store.enqueue(task("executor-result"))
+        val executor = GlafiraCoreTaskExecutor(
+            queue = store,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                GlafiraTaskExecutionOutcome.Succeeded("persisted by Core executor")
+            }),
+            dispatcher = Dispatchers.IO,
+            clock = { 2_000L },
+            runtimeBudget = { GlafiraRuntimeBudget(maxConcurrentTasks = 1) },
+            executionMode = { GlafiraExecutionMode.LIVE }
+        )
+
+        val result = executor.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.SUCCEEDED, result.status)
+        assertEquals("persisted by Core executor", store.coreTaskResult("executor-result", "project")?.result)
+        assertEquals(GlafiraTaskState.SUCCEEDED, store.getTask("executor-result")?.state)
     }
 
 
