@@ -10,6 +10,15 @@ class GlafiraCoreContractsTest {
     private val now = Instant.parse("2026-11-18T12:00:00Z")
 
     @Test
+    fun bridgeContentLengthAcceptsOnlyBoundedAsciiDecimalSyntax() {
+        assertEquals(1L, GlafiraBridgeIngressPolicy.parseContentLength("1"))
+        assertEquals(65536L, GlafiraBridgeIngressPolicy.parseContentLength("65536"))
+        listOf(null, "", "+1", "-1", " 1", "1 ", "1.0", "١", "99999999999").forEach {
+            assertEquals(null, GlafiraBridgeIngressPolicy.parseContentLength(it))
+        }
+    }
+
+    @Test
     fun identifiersRejectBlankValues() {
         val error = runCatching { TaskIdentifier(" ") }.exceptionOrNull()
         assertTrue(error is IllegalArgumentException)
