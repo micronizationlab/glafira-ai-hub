@@ -22,6 +22,7 @@ class GlafiraCoreConcurrencyTest {
         private val results = mutableMapOf<String, String>()
         var recoveryCalls = 0
             private set
+        var failResultPersistence = false
 
         @Synchronized
         override fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
@@ -86,6 +87,7 @@ class GlafiraCoreConcurrencyTest {
             result: String,
             nowMillis: Long
         ): Boolean {
+            if (failResultPersistence) throw IllegalStateException("simulated result-store failure")
             val existing = results[taskId]
             if (existing != null) return existing == result &&
                 tasks[taskId]?.state == GlafiraTaskState.SUCCEEDED
@@ -239,6 +241,30 @@ class GlafiraCoreConcurrencyTest {
         assertEquals("independent task completed", queue.result("good"))
         assertNull(queue.result("bad"))
         assertEquals(0, active.get())
+    }
+
+    @Test
+    fun failedResultCommitQuarantinesPossibleWriteInsteadOfReplayingIt() = runBlocking {
+        val writeTask = task("write-task").copy(taskType = "conversation.append")
+        val queue = ConcurrentQueue(listOf(writeTask)).apply { failResultPersistence = true }
+        val executor = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("conversation.append" to GlafiraTaskHandler {
+                GlafiraTaskExecutionOutcome.Succeeded("write completed before result-store failure")
+            }),
+            dispatcher = Dispatchers.Default,
+            clock = { 10_000L },
+            runtimeBudget = { GlafiraRuntimeBudget(maxConcurrentTasks = 1) }
+        )
+
+        val result = executor.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.WAITING_FOR_OWNER, result.status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.getTask("write-task")?.state)
+        assertNull(queue.result("write-task"))
     }
 
 }
