@@ -157,7 +157,7 @@ class GlafiraCoreBackupInstrumentedTest {
     fun previewCannotBePersistedFromUnexpectedTaskState() {
         val task = previewTask()
         store.enqueue(task)
-        assertTrue(store.transition(task.taskId, setOf(GlafiraTaskState.QUEUED), GlafiraTaskState.FAILED, 2_000L))
+        assertTrue(store.transition(task.taskId, setOf(GlafiraTaskState.QUEUED), GlafiraTaskState.WAITING_FOR_OWNER, 2_000L))
         val plan = GlafiraDryRunPlanner.build(task)
         assertFalse(store.persistDryRunPreview(task.taskId, setOf(GlafiraTaskState.QUEUED), plan, 3_000L))
     }
