@@ -1,0 +1,35 @@
+name: GLAFIRA Windows Agent
+
+on:
+  pull_request:
+    paths:
+      - "windows-agent/**"
+      - ".github/workflows/windows-agent.yml"
+      - "contracts/**"
+  push:
+    branches: [main]
+    paths:
+      - "windows-agent/**"
+      - ".github/workflows/windows-agent.yml"
+      - "contracts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Windows Agent compile
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj
+      - name: Build
+        run: dotnet build windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj --configuration Release --no-restore
