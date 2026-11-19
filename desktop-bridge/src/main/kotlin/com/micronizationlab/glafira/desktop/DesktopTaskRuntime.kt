@@ -92,7 +92,15 @@ internal class DesktopTaskRuntime(
                             val output = handler.execute(task)
                             require(output.isNotBlank() && output.length <= MAX_RESULT_CHARS)
                             val complete = queue.complete(task.taskId, output)
-                            DesktopAgentResult(task.taskId, complete.state, result = output)
+                            if (complete.state == DesktopTaskState.SUCCEEDED) {
+                                DesktopAgentResult(task.taskId, complete.state, result = output)
+                            } else {
+                                DesktopAgentResult(
+                                    task.taskId,
+                                    complete.state,
+                                    errorCode = complete.errorCode ?: "TASK_EXPIRED"
+                                )
+                            }
                         } catch (interrupted: InterruptedException) {
                             Thread.currentThread().interrupt()
                             val failed = runCatching { queue.fail(task.taskId, "WORKER_INTERRUPTED") }.getOrNull()
