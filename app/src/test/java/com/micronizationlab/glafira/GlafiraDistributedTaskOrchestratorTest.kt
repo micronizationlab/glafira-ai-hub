@@ -9,6 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 
 class GlafiraDistributedTaskOrchestratorTest {
     private val safeCapabilities = setOf(
@@ -80,4 +81,34 @@ class GlafiraDistributedTaskOrchestratorTest {
         assertFalse(started.contains("d"))
         assertTrue(results.any { !it.succeeded })
     }
+    @Test
+    fun independentAndroidSubtasksRunConcurrentlyWithinConfiguredLimit() = runBlocking {
+        val active = AtomicInteger()
+        val maximumActive = AtomicInteger()
+        val bothStarted = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val orchestrator = GlafiraDistributedTaskOrchestrator(
+            desktop = GlafiraDesktopTaskPort { error("Desktop is not available in this test.") },
+            android = GlafiraLocalTaskPort { task ->
+                if (task.subtaskId == "a" || task.subtaskId == "b") {
+                    val current = active.incrementAndGet()
+                    maximumActive.updateAndGet { previous -> maxOf(previous, current) }
+                    if (current == 2) bothStarted.complete(Unit)
+                    try { release.await() } finally { active.decrementAndGet() }
+                }
+                GlafiraDistributedTaskResult(task.taskId, GlafiraExecutionNode.ANDROID, true)
+            },
+            desktopCapabilities = { null },
+            safeAndroidCapabilities = safeCapabilities,
+            localMaxParallelTasks = { 2 },
+            clock = { 10_000L }
+        )
+
+        val execution = async { orchestrator.execute("project-1", plan()) }
+        withTimeout(5_000L) { bothStarted.await() }
+        assertEquals(2, maximumActive.get())
+        release.complete(Unit)
+        assertEquals(4, withTimeout(5_000L) { execution.await() }.size)
+    }
+
 }
