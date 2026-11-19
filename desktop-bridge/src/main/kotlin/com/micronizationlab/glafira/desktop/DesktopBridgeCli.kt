@@ -58,28 +58,32 @@ fun main(args: Array<String>) {
                 println("Desktop task state and unacknowledged results persist beside the credential vault.")
                 println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
                 println("Ollama must be running locally at 127.0.0.1:11434.")
-                desktopCliTaskSession(vaultPath).use { session ->
-                    DesktopBridgeTaskWorker(
-                        origin = entry.origin,
-                        credentials = credentials,
-                        projectId = projectId,
-                        queue = session.queue,
-                        handlers = DesktopLocalAgentRegistry.ollama(model),
-                        onDryRunPreview = { preview ->
-                            println()
-                            println("=== GLAFIRA DRY RUN — PREVIEW ONLY; NOT EXECUTED ===")
-                            println("Task: ${preview.taskId}")
-                            println("Project: ${preview.projectId}")
-                            println("Tool: ${preview.toolId}")
-                            println("Risk: ${preview.risk}")
-                            println("Simulation: ${preview.simulationStatus}")
-                            println("Plan SHA-256: ${preview.planHash}")
-                            println("Redacted plan: ${preview.safeJson}")
-                            println("No Desktop agent was started for this preview.")
-                        }
-                    ).use { worker ->
-                        worker.runPollingLoop(shouldContinue = { true })
+                val session = desktopCliTaskSession(vaultPath)
+                val worker = DesktopBridgeTaskWorker(
+                    origin = entry.origin,
+                    credentials = credentials,
+                    projectId = projectId,
+                    queue = session.queue,
+                    handlers = DesktopLocalAgentRegistry.ollama(model),
+                    onDryRunPreview = { preview ->
+                        println()
+                        println("=== GLAFIRA DRY RUN — PREVIEW ONLY; NOT EXECUTED ===")
+                        println("Task: ${preview.taskId}")
+                        println("Project: ${preview.projectId}")
+                        println("Tool: ${preview.toolId}")
+                        println("Risk: ${preview.risk}")
+                        println("Simulation: ${preview.simulationStatus}")
+                        println("Plan SHA-256: ${preview.planHash}")
+                        println("Redacted plan: ${preview.safeJson}")
+                        println("No Desktop agent was started for this preview.")
                     }
+                )
+                try {
+                    worker.runPollingLoop(shouldContinue = { true })
+                } finally {
+                    // If a handler ignores interruption, worker.close() throws. In that case
+                    // deliberately retain the OS queue lock until the process and handler stop.
+                    closeDesktopWorkerAndSession(worker, session)
                 }
             } finally {
                 credentials.hmacSecret.fill(0)
@@ -243,3 +247,16 @@ internal fun desktopCliTaskSession(vaultPath: Path): DesktopCliTaskSession {
 internal fun desktopCliTaskQueuePath(vaultPath: Path): Path =
     requireNotNull(vaultPath.toAbsolutePath().normalize().parent) { "Credential vault needs a parent directory." }
         .resolve("tasks.json")
+
+
+/**
+ * Release the durable queue lock only after the worker confirms that every handler has stopped.
+ * If close fails, the session deliberately remains open and retains its OS lock.
+ */
+internal fun closeDesktopWorkerAndSession(
+    worker: AutoCloseable,
+    session: DesktopCliTaskSession
+) {
+    worker.close()
+    session.close()
+}
