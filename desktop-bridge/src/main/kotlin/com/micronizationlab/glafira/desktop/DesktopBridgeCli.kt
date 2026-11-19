@@ -50,6 +50,8 @@ fun main(args: Array<String>) {
             val entry = DesktopBridgeCredentialVault.load(vaultPath, passphrase)
             val credentials = entry.toCredentials()
             entry.hmacSecret.fill(0)
+            var worker: DesktopBridgeTaskWorker? = null
+            var shutdownConfirmed = false
             try {
                 val projectId = console.readLine("Project ID: ").trim()
                 require(projectId.isNotBlank())
@@ -58,12 +60,13 @@ fun main(args: Array<String>) {
                 println("Desktop task state and unacknowledged results persist beside the credential vault.")
                 println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
                 println("Ollama must be running locally at 127.0.0.1:11434.")
-                desktopCliTaskSession(vaultPath).use { session ->
-                    DesktopBridgeTaskWorker(
+                val activeSession = desktopCliTaskSession(vaultPath)
+                try {
+                    val createdWorker = DesktopBridgeTaskWorker(
                         origin = entry.origin,
                         credentials = credentials,
                         projectId = projectId,
-                        queue = session.queue,
+                        queue = activeSession.queue,
                         handlers = DesktopLocalAgentRegistry.ollama(model),
                         onDryRunPreview = { preview ->
                             println()
@@ -77,12 +80,21 @@ fun main(args: Array<String>) {
                             println("Redacted plan: ${preview.safeJson}")
                             println("No Desktop agent was started for this preview.")
                         }
-                    ).use { worker ->
-                        worker.runPollingLoop(shouldContinue = { true })
+                    )
+                    worker = createdWorker
+                    try {
+                        createdWorker.runPollingLoop(shouldContinue = { true })
+                    } finally {
+                        // If a handler ignores interruption, worker.close() throws. In that case
+                        // deliberately retain the OS queue lock and HMAC key until the handler stops.
+                        closeDesktopWorkerAndSession(createdWorker, activeSession)
+                        shutdownConfirmed = true
                     }
+                } finally {
+                    if (worker == null) activeSession.close()
                 }
             } finally {
-                credentials.hmacSecret.fill(0)
+                if (worker == null || shutdownConfirmed) credentials.hmacSecret.fill(0)
             }
             return
         }
@@ -243,3 +255,16 @@ internal fun desktopCliTaskSession(vaultPath: Path): DesktopCliTaskSession {
 internal fun desktopCliTaskQueuePath(vaultPath: Path): Path =
     requireNotNull(vaultPath.toAbsolutePath().normalize().parent) { "Credential vault needs a parent directory." }
         .resolve("tasks.json")
+
+
+/**
+ * Release the durable queue lock only after the worker confirms that every handler has stopped.
+ * If close fails, the session deliberately remains open and retains its OS lock.
+ */
+internal fun closeDesktopWorkerAndSession(
+    worker: AutoCloseable,
+    session: DesktopCliTaskSession
+) {
+    worker.close()
+    session.close()
+}

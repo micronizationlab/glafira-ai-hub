@@ -113,6 +113,25 @@ class DesktopCliQueuePersistenceTest {
         Files.delete(path.parent.resolve("tasks.json"))
         desktopCliTaskSession(path).use { assertTrue(it.queue.list().isEmpty()) }
     }
+    @Test
+    fun failedWorkerCloseRetainsProcessLockUntilExplicitSafeRelease() {
+        val path = vaultPath()
+        val session = desktopCliTaskSession(path)
+        val stuckWorker = AutoCloseable { throw IllegalStateException("worker still active") }
+
+        assertThrows(IllegalStateException::class.java) {
+            closeDesktopWorkerAndSession(stuckWorker, session)
+        }
+        assertThrows(IllegalStateException::class.java) { desktopCliTaskSession(path) }
+        val lockPath = path.parent.resolve("tasks.lock")
+        assertEquals("A separate JVM must not acquire the OS lock after worker close fails.", 23, childLockProbe(lockPath))
+
+        // The caller may release only after it has independently confirmed worker termination.
+        session.close()
+        assertEquals("The OS lock becomes available only after safe session release.", 0, childLockProbe(lockPath))
+        desktopCliTaskSession(path).use { assertTrue(it.queue.list().isEmpty()) }
+    }
+
 }
 
 /** A real second process avoids mistaking the JVM's own overlap registry for an OS lock. */
