@@ -15,7 +15,8 @@ internal class DesktopBridgeTaskWorker(
     handlers: Map<String, DesktopAgentExecutor>,
     private val client: DesktopBridgeHttpsClient = DesktopBridgeHttpsClient(),
     private val maxParallelTasks: Int = DesktopTaskRuntime.DEFAULT_PARALLELISM,
-    onResult: (DesktopAgentResult) -> Unit = {}
+    onResult: (DesktopAgentResult) -> Unit = {},
+    private val onDryRunPreview: (DesktopDryRunPreview) -> Unit = {}
 ) : AutoCloseable {
     init {
         require(credentials.grantedScopes.containsAll(setOf("desktop.task.claim", "desktop.task.result"))) {
@@ -58,6 +59,16 @@ internal class DesktopBridgeTaskWorker(
             response.status != DesktopBridgeStatus.SUCCEEDED
         ) {
             throw IllegalStateException(response.errorCode ?: "DESKTOP_TASK_CLAIM_FAILED")
+        }
+        if (response.result["dryRunPreview"] == "true") {
+            // Preview is delivered to the owner-facing callback only. It is never
+            // enqueued in the Desktop worker queue and cannot reach an agent handler.
+            val preview = DesktopDryRunPreviewCodec.decode(
+                response.result["previewJson"]
+                    ?: throw IllegalStateException("DESKTOP_DRY_RUN_PREVIEW_MISSING")
+            )
+            onDryRunPreview(preview)
+            return 0
         }
         if (response.result["available"] == "true") {
             val json = JSONObject().apply {
