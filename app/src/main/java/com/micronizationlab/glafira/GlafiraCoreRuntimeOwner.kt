@@ -132,8 +132,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         capabilities: Set<String>,
         maxParallelTasks: Int
     ): GlafiraTask? {
-        // Desktop workers cannot bypass the Core Dry Run gate. Until the Desktop
-        // preview protocol exists, claims are withheld rather than executed live.
+        // Desktop workers cannot bypass the Core Dry Run gate. Preview plans are delivered
+        // through previewDesktopTask; this claim API never issues a lease in DRY_RUN.
         if (executionMode == GlafiraExecutionMode.DRY_RUN) return null
         val now = System.currentTimeMillis()
         for (candidate in taskStore.queuedDesktopTasks()) {
