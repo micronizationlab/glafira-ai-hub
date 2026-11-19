@@ -19,6 +19,35 @@ class GlafiraCoreContractsTest {
     }
 
     @Test
+    fun bridgeRequestSignatureBindsPayloadAndRejectsTampering() {
+        val secret = ByteArray(32) { (it + 1).toByte() }
+        val request = GlafiraBridgeRequest(
+            protocolVersion = GlafiraBridgeProtocol.CURRENT_VERSION,
+            requestId = "request_123",
+            idempotencyKey = "idempotency_123",
+            deviceId = "device_123",
+            projectId = "default",
+            operation = GlafiraBridgeOperation.CONVERSATION_APPEND,
+            issuedAtEpochMs = 1_000L,
+            expiresAtEpochMs = 2_000L,
+            payload = mapOf("conversationId" to "conversation_1", "messageText" to "private text")
+        )
+        try {
+            val signed = GlafiraBridgeProtocol.sign(request, secret)
+            assertTrue(GlafiraBridgeProtocol.verifySignature(signed, secret))
+            assertFalse(
+                GlafiraBridgeProtocol.verifySignature(
+                    signed.copy(payload = signed.payload + ("messageText" to "tampered")),
+                    secret
+                )
+            )
+            assertFalse(GlafiraBridgeProtocol.verifySignature(signed, ByteArray(32) { 9 }))
+        } finally {
+            secret.fill(0)
+        }
+    }
+
+    @Test
     fun identifiersRejectBlankValues() {
         val error = runCatching { TaskIdentifier(" ") }.exceptionOrNull()
         assertTrue(error is IllegalArgumentException)
