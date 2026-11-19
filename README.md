@@ -40,6 +40,10 @@ Owner-prioritized delivery order, including Backup & Recovery, GLAFIRA Core, Voi
 
 The five-step P3 plan, implementation status and acceptance gates are tracked in [AUTONOMOUS_RUNTIME_P3_IMPLEMENTATION.md](docs/AUTONOMOUS_RUNTIME_P3_IMPLEMENTATION.md).
 
+## Dry Run review
+
+The encrypted Core preview store, owner review screen, Desktop preview-only channel and safety limits are described in [DRY_RUN.md](docs/DRY_RUN.md).
+
 ## Developer references
 
 - [Local testing guide](docs/LOCAL_TESTING.md)
