@@ -11,7 +11,7 @@ data class GlafiraRuntimeBudget(
     val maxWallClockMillis: Long = 60_000L,
     val maxSteps: Int = 1,
     val maxRetries: Int = 5,
-    val maxConcurrentTasks: Int = 1,
+    val maxConcurrentTasks: Int = 2,
     val maxCostMicros: Long? = null
 ) {
     init {
@@ -22,12 +22,16 @@ data class GlafiraRuntimeBudget(
             "This Core executor currently supports exactly one typed handler step per task."
         }
         require(maxRetries in 0..20) { "Runtime retry budget must be between 0 and 20." }
-        require(maxConcurrentTasks == 1) {
-            "Core execution is currently serialized; concurrent task budget must remain 1."
+        require(maxConcurrentTasks in 1..MAX_CONCURRENT_TASKS) {
+            "Core concurrency must be between 1 and $MAX_CONCURRENT_TASKS tasks."
         }
         require(maxCostMicros == null || maxCostMicros >= 0L) {
             "Runtime cost budget cannot be negative."
         }
+    }
+
+    companion object {
+        const val MAX_CONCURRENT_TASKS = 8
     }
 }
 
