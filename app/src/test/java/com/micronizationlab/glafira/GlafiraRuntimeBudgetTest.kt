@@ -177,4 +177,14 @@ class GlafiraRuntimeBudgetTest {
         assertFalse(result.allowed)
         assertEquals("RUNTIME_RETRY_LIMIT_EXCEEDED", result.reason)
     }
+
+    @Test
+    fun rejectsWallClockAtExactBudgetBoundary() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task(), nowMillis = 11_000L, budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxWallClockMillis = 10_000L), measuredCostMicros = null
+        )
+        assertFalse(result.allowed)
+        assertEquals("RUNTIME_TIME_LIMIT_EXCEEDED", result.reason)
+    }
 }
