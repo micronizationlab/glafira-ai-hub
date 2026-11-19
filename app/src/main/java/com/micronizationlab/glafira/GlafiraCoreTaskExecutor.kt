@@ -23,7 +23,7 @@ fun interface GlafiraTaskHandler {
 }
 
 enum class GlafiraTaskExecutionStatus {
-    IDLE, SUCCEEDED, RETRY_SCHEDULED, WAITING_FOR_NETWORK, WAITING_FOR_OWNER, FAILED
+    IDLE, SUCCEEDED, DRY_RUN_PREVIEWED, RETRY_SCHEDULED, WAITING_FOR_NETWORK, WAITING_FOR_OWNER, FAILED
 }
 
 data class GlafiraTaskExecutionResult(
@@ -46,7 +46,8 @@ class GlafiraCoreTaskExecutor(
     private val baseRetryDelayMillis: Long = 5_000L,
     private val maxRetryDelayMillis: Long = 15 * 60_000L,
     private val runtimeBudget: () -> GlafiraRuntimeBudget = { GlafiraRuntimeBudget() },
-    private val costMeter: GlafiraTaskCostMeter? = null
+    private val costMeter: GlafiraTaskCostMeter? = null,
+    private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE }
 ) {
     private val executionMutex = Mutex()
     private val handlerMap = handlers.toMap()
@@ -124,6 +125,25 @@ class GlafiraCoreTaskExecutor(
             measuredCostMicros = runCatching { costMeter?.measuredCostMicros(task.taskId) }.getOrNull()
         )
         if (!budgetDecision.allowed) return fail(task, budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED")
+
+        // Dry Run is a planning path, not a mock invocation of the live handler.
+        // It persists a redacted preview in the existing Core task state and never
+        // calls the registered handler or any Bridge/provider adapter.
+        if (executionMode() == GlafiraExecutionMode.DRY_RUN) {
+            val plan = GlafiraDryRunPlanner.build(task)
+            val preview = "DRY_RUN_PREVIEW:" + plan.toSafeJson()
+            val changed = queue.transition(
+                task.taskId, setOf(GlafiraTaskState.RUNNING),
+                GlafiraTaskState.WAITING_FOR_OWNER, clock(),
+                lastError = preview
+            )
+            return GlafiraTaskExecutionResult(
+                task.taskId,
+                if (changed) GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED
+                else GlafiraTaskExecutionStatus.FAILED,
+                if (changed) plan.toSafeJson() else "DRY_RUN_PREVIEW_PERSIST_FAILED"
+            )
+        }
 
         val outcome = try {
             // One registered Core handler is one typed execution step. The timeout also
