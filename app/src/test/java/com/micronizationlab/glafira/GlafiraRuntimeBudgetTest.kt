@@ -99,7 +99,7 @@ class GlafiraRuntimeBudgetTest {
             measuredCostMicros = 501L
         )
         assertFalse(result.allowed)
-        assertEquals("RUNTIME_COST_METER_INVALID", result.reason)
+        assertEquals("RUNTIME_COST_LIMIT_EXCEEDED", result.reason)
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -111,4 +111,42 @@ class GlafiraRuntimeBudgetTest {
     fun doesNotAllowUnboundedConcurrency() {
         GlafiraRuntimeBudget(maxConcurrentTasks = 2)
     }
+    @Test
+    fun allowsInitialAttemptAndConfiguredRetryBoundary() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task = task(attempts = 2),
+            nowMillis = 2_000L,
+            budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxRetries = 1),
+            measuredCostMicros = null
+        )
+        assertTrue(result.allowed)
+    }
+
+    @Test
+    fun deadlineShortensHandlerTimeout() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task = task(deadline = 4_000L),
+            nowMillis = 3_000L,
+            budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxWallClockMillis = 10_000L),
+            measuredCostMicros = null
+        )
+        assertTrue(result.allowed)
+        assertEquals(1_000L, result.timeoutMillis)
+    }
+
+    @Test
+    fun rejectsNegativeMeasuredCostWhenCostCeilingIsEnabled() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task = task(),
+            nowMillis = 2_000L,
+            budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxCostMicros = 500L),
+            measuredCostMicros = -1L
+        )
+        assertFalse(result.allowed)
+        assertEquals("RUNTIME_COST_METER_INVALID", result.reason)
+    }
+
 }
