@@ -61,7 +61,10 @@ jobs:
               .github/workflows/contracts.yml) contracts=true ;;
               .github/scripts/*) android=true ;;
             esac
-            case "$path" in app/src/androidTest/*|.github/scripts/run-android-instrumentation.sh) android_acceptance=true ;; esac
+            case "$path" in
+              app/src/androidTest/*|app/src/main/AndroidManifest.xml|app/src/main/java/com/micronizationlab/glafira/*Bridge*|app/src/main/java/com/micronizationlab/glafira/*Core*|desktop-bridge/*|.github/scripts/run-android-instrumentation.sh)
+                android_acceptance=true ;;
+            esac
           done
           if [[ "$EVENT_NAME" == schedule || "$EVENT_NAME" == workflow_dispatch ]]; then
             android=true; [[ -d ios ]] && ios=true; [[ -d windows-agent ]] && agent=true
@@ -96,8 +99,15 @@ jobs:
       - name: Host-side CI regressions when present
         run: |
           if [[ -d .github/scripts/tests ]]; then python3 -m unittest discover -s .github/scripts/tests -v; else echo "No host harness tests in this revision."; fi
-      - name: Run Android unit tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+      - name: Run Android and Desktop JVM suites when present
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if grep -Eq 'include\\(["'\'' ]*:desktop-bridge|include\\(.*desktop-bridge' settings.gradle.kts; then
+            ./gradlew :app:testDebugUnitTest :desktop-bridge:test --no-daemon --stacktrace
+          else
+            ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+          fi
       - name: Upload JVM reports
         if: always()
         uses: actions/upload-artifact@v4
