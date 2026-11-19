@@ -57,7 +57,7 @@ data class GlafiraBridgePendingCredentialDelivery(
  * Short-lived proof that the platform owner-authentication gate was passed.
  * Only the trusted platform authentication adapter should construct this token.
  */
-data class GlafiraBridgeOwnerSession internal constructor(
+class GlafiraBridgeOwnerSession internal constructor(
     val sessionId: String,
     val expiresAtEpochMs: Long
 ) {
