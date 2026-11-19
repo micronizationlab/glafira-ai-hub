@@ -372,7 +372,12 @@ object BackupArchive {
             val value = values.opt(key)
             when {
                 key == "glafira_primary_provider" && value is String -> editor.putString(key, value)
-                value is Boolean -> editor.putBoolean(key, value)
+                (key == "peer_consultation_providers" ||
+                    key.startsWith("peer_consultation_providers_")) && value is String ->
+                    editor.putString(key, value)
+                (key == "peer_consultation_enabled" ||
+                    key.startsWith("peer_consultation_enabled_")) && value is Boolean ->
+                    editor.putBoolean(key, value)
             }
         }
         check(editor.commit()) { "Не удалось восстановить настройки приложения." }
