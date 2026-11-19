@@ -99,7 +99,7 @@ class GlafiraRuntimeBudgetTest {
             measuredCostMicros = 501L
         )
         assertFalse(result.allowed)
-        assertEquals("RUNTIME_COST_LIMIT_EXCEEDED", result.reason)
+        assertEquals("RUNTIME_COST_METER_INVALID", result.reason)
     }
 
     @Test(expected = IllegalArgumentException::class)
