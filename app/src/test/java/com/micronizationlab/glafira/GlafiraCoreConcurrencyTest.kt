@@ -119,6 +119,7 @@ class GlafiraCoreConcurrencyTest {
                 }
             }),
             dispatcher = Dispatchers.Default,
+            clock = { 10_000L },
             runtimeBudget = { GlafiraRuntimeBudget(maxConcurrentTasks = 2) }
         )
 
