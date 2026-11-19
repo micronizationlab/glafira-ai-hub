@@ -113,8 +113,9 @@ class AndroidKeystoreBridgePairingApprovalStore(
                         put("status", candidate.status.name)
                     }
                     inserted = db.insertOrThrow(APPROVALS, null, values) >= 0L
-                    if (inserted) db.setTransactionSuccessful()
                 }
+                // Even when the queue is full, persist the expiry sweep performed above.
+                db.setTransactionSuccessful()
             } finally {
                 db.endTransaction()
             }
