@@ -77,7 +77,7 @@ class GlafiraBridgeHostService : Service() {
                     GlafiraBridgePairingProtocol(pairingTicketStore!!),
                     GlafiraBridgeOwnerApprovalService(approvalStore!!)
                 ),
-                operationDispatcher = GlafiraBridgeOperationDispatcher(this),
+                coreIngress = GlafiraCoreBridgeIngress(GlafiraCoreRuntimeOwner.get(this)),
                 addressRateLimiter = limiter,
                 deviceRateLimiter = deviceLimiter
             ).also { it.start(bindAddress, port) }
