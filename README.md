@@ -55,6 +55,3 @@ The encrypted Core preview store, owner review screen, Desktop preview-only chan
 
 ## Account identity and connected services
 See [Account Auth and Identity](docs/ACCOUNT_AUTH_AND_IDENTITY.md) for owner-issued onboarding, profiles, Google/Yandex linking, least-privilege Drive/Mail permissions and multi-user isolation.
-
-## Account identity and connected services
-See [Account Auth and Identity](docs/ACCOUNT_AUTH_AND_IDENTITY.md) for owner-issued onboarding, profiles, Google/Yandex linking, least-privilege Drive/Mail permissions and multi-user isolation.
