@@ -97,8 +97,9 @@ jobs:
         run: |
           swift --version
           xcodebuild -version
-      - name: Compile generated Swift models
-        run: swiftc -module-name GLAFIRAContracts contracts/v1/generated/swift/*.swift contracts/v1/verification/swift/main.swift -o "$RUNNER_TEMP/glafira-contract-swift-fixtures"
+      - name: Compile and run generated Swift fixture round-trips
+        run: |
+          swiftc -module-name GLAFIRAContracts contracts/v1/generated/swift/*.swift contracts/v1/verification/swift/main.swift -o "$RUNNER_TEMP/glafira-contract-swift-fixtures"
           "$RUNNER_TEMP/glafira-contract-swift-fixtures"
 
   compile-csharp-dtos:
