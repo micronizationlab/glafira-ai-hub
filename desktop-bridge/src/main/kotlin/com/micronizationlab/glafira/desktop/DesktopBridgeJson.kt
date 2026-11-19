@@ -5,6 +5,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
+import com.google.gson.Strictness
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import java.io.StringReader
@@ -21,7 +22,7 @@ internal object DesktopBridgeJson {
         // Reject oversized character input before allocating a UTF-8 copy of the whole string.
         require(source.length in 1..maxBytes)
         require(source.toByteArray(Charsets.UTF_8).size <= maxBytes)
-        val reader = JsonReader(StringReader(source)).apply { isLenient = false }
+        val reader = JsonReader(StringReader(source)).apply { setStrictness(Strictness.STRICT) }
         val root = readValue(reader, 0)
         require(reader.peek() == JsonToken.END_DOCUMENT)
         require(root.isJsonObject)
