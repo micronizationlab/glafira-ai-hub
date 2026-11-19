@@ -59,34 +59,45 @@ fun main(args: Array<String>) {
                 println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
                 println("Ollama must be running locally at 127.0.0.1:11434.")
                 val session = desktopCliTaskSession(vaultPath)
-                val worker = DesktopBridgeTaskWorker(
-                    origin = entry.origin,
-                    credentials = credentials,
-                    projectId = projectId,
-                    queue = session.queue,
-                    handlers = DesktopLocalAgentRegistry.ollama(model),
-                    onDryRunPreview = { preview ->
-                        println()
-                        println("=== GLAFIRA DRY RUN — PREVIEW ONLY; NOT EXECUTED ===")
-                        println("Task: ${preview.taskId}")
-                        println("Project: ${preview.projectId}")
-                        println("Tool: ${preview.toolId}")
-                        println("Risk: ${preview.risk}")
-                        println("Simulation: ${preview.simulationStatus}")
-                        println("Plan SHA-256: ${preview.planHash}")
-                        println("Redacted plan: ${preview.safeJson}")
-                        println("No Desktop agent was started for this preview.")
-                    }
-                )
+                var worker: DesktopBridgeTaskWorker? = null
+                var shutdownConfirmed = false
                 try {
-                    worker.runPollingLoop(shouldContinue = { true })
+                    worker = DesktopBridgeTaskWorker(
+                        origin = entry.origin,
+                        credentials = credentials,
+                        projectId = projectId,
+                        queue = session.queue,
+                        handlers = DesktopLocalAgentRegistry.ollama(model),
+                        onDryRunPreview = { preview ->
+                            println()
+                            println("=== GLAFIRA DRY RUN — PREVIEW ONLY; NOT EXECUTED ===")
+                            println("Task: ${preview.taskId}")
+                            println("Project: ${preview.projectId}")
+                            println("Tool: ${preview.toolId}")
+                            println("Risk: ${preview.risk}")
+                            println("Simulation: ${preview.simulationStatus}")
+                            println("Plan SHA-256: ${preview.planHash}")
+                            println("Redacted plan: ${preview.safeJson}")
+                            println("No Desktop agent was started for this preview.")
+                        }
+                    )
+                    try {
+                        worker.runPollingLoop(shouldContinue = { true })
+                    } finally {
+                        // If a handler ignores interruption, worker.close() throws. In that case
+                        // deliberately retain the OS queue lock and HMAC key until the handler stops.
+                        closeDesktopWorkerAndSession(worker, session)
+                        shutdownConfirmed = true
+                    }
                 } finally {
-                    // If a handler ignores interruption, worker.close() throws. In that case
-                    // deliberately retain the OS queue lock until the process and handler stop.
-                    closeDesktopWorkerAndSession(worker, session)
+                    if (worker == null) {
+                        // Construction failed before any task handler could be started.
+                        session.close()
+                        credentials.hmacSecret.fill(0)
+                    } else if (shutdownConfirmed) {
+                        credentials.hmacSecret.fill(0)
+                    }
                 }
-            } finally {
-                credentials.hmacSecret.fill(0)
             }
             return
         }
