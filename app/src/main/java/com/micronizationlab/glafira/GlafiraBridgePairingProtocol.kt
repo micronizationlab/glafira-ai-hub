@@ -126,16 +126,19 @@ class GlafiraBridgePairingProtocol(
 
             val suppliedProof = runCatching { proofHex.hexToBytes() }.getOrNull()
                 ?: return rejected(GlafiraBridgePairingError.INVALID_INPUT)
-            val canonical = canonicalProofMessage(ticketId, clientNonce)
-            val expectedProof = try {
-                hmacSha256(ticket.verifierKey, canonical)
-            } finally {
-                canonical.fill(0)
-            }
             val proofMatches = try {
-                MessageDigest.isEqual(expectedProof, suppliedProof)
+                val canonical = canonicalProofMessage(ticketId, clientNonce)
+                val expectedProof = try {
+                    hmacSha256(ticket.verifierKey, canonical)
+                } finally {
+                    canonical.fill(0)
+                }
+                try {
+                    MessageDigest.isEqual(expectedProof, suppliedProof)
+                } finally {
+                    expectedProof.fill(0)
+                }
             } finally {
-                expectedProof.fill(0)
                 suppliedProof.fill(0)
             }
             if (!proofMatches) return rejected(GlafiraBridgePairingError.INVALID_PROOF)
