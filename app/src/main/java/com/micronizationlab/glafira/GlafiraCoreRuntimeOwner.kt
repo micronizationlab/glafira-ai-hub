@@ -86,7 +86,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     /** Current owner-controlled, persisted Core execution limits. */
     fun runtimeBudget(): GlafiraRuntimeBudget = loadRuntimeBudget()
 
-    /** Persist a validated budget. Multi-step and parallel execution remain disabled until instrumented. */
+    /** Persist a validated budget. Parallel task execution is bounded; multi-step handlers remain disabled. */
     fun setRuntimeBudget(budget: GlafiraRuntimeBudget) {
         val editor = preferences.edit()
             .putLong(KEY_BUDGET_WALL_CLOCK_MS, budget.maxWallClockMillis)
