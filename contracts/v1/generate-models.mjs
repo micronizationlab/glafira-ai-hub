@@ -22,7 +22,7 @@ const definitions = [
 
 const targets = [
   { language: "kotlin", extension: "kt", extra: name => ["--framework", "jackson", "--package", `glafira.contracts.v1.generated.${name.toLowerCase()}`] },
-  { language: "swift", extension: "swift", extra: () => ["--just-types"] },
+  { language: "swift", extension: "swift", extra: () => ["--access-level", "public"] },
   { language: "csharp", extension: "cs", extra: name => ["--namespace", `Glafira.Contracts.V1.Generated.${name}`] }
 ];
 
