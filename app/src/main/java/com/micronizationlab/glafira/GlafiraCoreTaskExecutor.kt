@@ -206,7 +206,9 @@ class GlafiraCoreTaskExecutor(
             // Persist a bounded retry even while the parent coroutine is cancelling,
             // then preserve structured concurrency by propagating cancellation.
             withContext(NonCancellable) {
-                scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+                runCatching {
+                    scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+                }
             }
             throw cancelled
         } catch (failure: Exception) {
