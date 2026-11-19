@@ -39,7 +39,7 @@ class GlafiraBackupWorker(
                     created.copyTo(archive, overwrite = true)
                     created.delete()
                 }
-                BackupArchive.verify(archive, recoveryPassphrase)
+                BackupArchive.verify(applicationContext, archive, recoveryPassphrase)
 
                 val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                 val uploadName = "GLAFIRA-current-$stamp-${UUID.randomUUID()}.glb"
