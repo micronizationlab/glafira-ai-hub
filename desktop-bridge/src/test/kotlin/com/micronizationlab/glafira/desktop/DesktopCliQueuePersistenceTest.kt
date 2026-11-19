@@ -113,17 +113,6 @@ class DesktopCliQueuePersistenceTest {
         Files.delete(path.parent.resolve("tasks.json"))
         desktopCliTaskSession(path).use { assertTrue(it.queue.list().isEmpty()) }
     }
-}
-
-/** A real second process avoids mistaking the JVM's own overlap registry for an OS lock. */
-internal object DesktopCliLockProbe {
-    @JvmStatic fun main(args: Array<String>) {
-        val acquired = java.nio.channels.FileChannel.open(java.nio.file.Path.of(args.single()),
-            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE).use { channel ->
-            channel.tryLock()?.use { true } ?: false
-        }
-        kotlin.system.exitProcess(if (acquired) 0 else 23)
-    }
     @Test
     fun failedWorkerCloseRetainsProcessLockUntilExplicitSafeRelease() {
         val path = vaultPath()
@@ -138,5 +127,17 @@ internal object DesktopCliLockProbe {
         // The caller may release only after it has independently confirmed worker termination.
         session.close()
         desktopCliTaskSession(path).use { assertTrue(it.queue.list().isEmpty()) }
+    }
+
+}
+
+/** A real second process avoids mistaking the JVM's own overlap registry for an OS lock. */
+internal object DesktopCliLockProbe {
+    @JvmStatic fun main(args: Array<String>) {
+        val acquired = java.nio.channels.FileChannel.open(java.nio.file.Path.of(args.single()),
+            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE).use { channel ->
+            channel.tryLock()?.use { true } ?: false
+        }
+        kotlin.system.exitProcess(if (acquired) 0 else 23)
     }
 }
