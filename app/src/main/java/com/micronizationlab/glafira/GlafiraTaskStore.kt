@@ -14,7 +14,8 @@ import java.io.File
  * Payloads are encrypted before they enter SQLite; task metadata remains queryable.
  */
 class GlafiraTaskStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION), GlafiraTaskQueue, GlafiraDryRunPreviewPersistence {
+    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
+    GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery {
     private val appContext = context.applicationContext
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -311,6 +312,61 @@ class GlafiraTaskStore(context: Context) :
             check(changed == 1) { "Task claim lost its transactional state check." }
             db.setTransactionSuccessful()
             return queryTask(db, taskId)
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
+     * Requeues Core RUNNING tasks left behind by process death. The caller must hold the
+     * application-wide Core maintenance gate, so no live in-process handler is running.
+     * Desktop tasks are excluded because their independent leases have their own recovery.
+     */
+    @Synchronized
+    override fun recoverInterruptedCoreTasks(
+        nowMillis: Long,
+        maxRetries: Int
+    ): Int {
+        require(nowMillis > 0L)
+        require(maxRetries in 0..20)
+        val db = writableDatabase
+        val retryLimit = maxRetries + 1
+        db.beginTransaction()
+        try {
+            val failed = db.update(
+                TABLE_TASKS,
+                ContentValues().apply {
+                    put("state", GlafiraTaskState.FAILED.databaseValue)
+                    put("updated_at", nowMillis)
+                    putNull("retry_at")
+                    put("last_error", "CORE_INTERRUPTED_RETRY_LIMIT_REACHED")
+                },
+                "state = ? AND task_type != ? AND attempt_count >= ?",
+                arrayOf(
+                    GlafiraTaskState.RUNNING.databaseValue,
+                    DESKTOP_TASK_TYPE,
+                    retryLimit.toString()
+                )
+            )
+            val requeued = db.update(
+                TABLE_TASKS,
+                ContentValues().apply {
+                    put("state", GlafiraTaskState.RETRY_SCHEDULED.databaseValue)
+                    put("updated_at", nowMillis)
+                    // Retry immediately after process recovery. Idempotency is required
+                    // by every registered Core handler; repeated crashes consume attempts.
+                    put("retry_at", nowMillis)
+                    put("last_error", "CORE_EXECUTION_INTERRUPTED")
+                },
+                "state = ? AND task_type != ? AND attempt_count < ?",
+                arrayOf(
+                    GlafiraTaskState.RUNNING.databaseValue,
+                    DESKTOP_TASK_TYPE,
+                    retryLimit.toString()
+                )
+            )
+            db.setTransactionSuccessful()
+            return failed + requeued
         } finally {
             db.endTransaction()
         }
