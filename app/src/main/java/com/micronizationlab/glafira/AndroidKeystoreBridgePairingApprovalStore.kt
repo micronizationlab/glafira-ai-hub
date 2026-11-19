@@ -74,13 +74,50 @@ class AndroidKeystoreBridgePairingApprovalStore(
             )
             """.trimIndent()
         )
+        createRevocations(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion != newVersion) {
-            throw IllegalStateException("Unsupported Bridge approval database migration.")
-        }
+        check(oldVersion == 1 && newVersion == 2) { "Unsupported Bridge approval database migration." }
+        createRevocations(db)
     }
+
+    private fun createRevocations(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS device_revocations (device_id TEXT PRIMARY KEY NOT NULL, revoked_at INTEGER NOT NULL)")
+    }
+
+    /** Metadata only; never decrypts or exposes a device secret to settings. */
+    @Synchronized
+    fun listPairedDevices(): List<GlafiraPairedDeviceSummary> = readableDatabase.rawQuery(
+        "SELECT c.device_id,a.device_label,a.platform,c.granted_scopes,c.created_at FROM $CREDENTIALS c JOIN $APPROVALS a ON a.approval_id=c.approval_id ORDER BY c.created_at DESC", null
+    ).use { cursor -> buildList {
+        while (cursor.moveToNext()) add(GlafiraPairedDeviceSummary(cursor.getString(0), cursor.getString(1),
+            cursor.getString(2), decodeScopes(cursor.getString(3)), cursor.getLong(4)))
+    } }
+
+    /** Atomic revocation invalidates even an unclaimed credential delivery. No remote ACK is required. */
+    @Synchronized
+    fun revokeDevice(deviceId: String, session: GlafiraBridgeOwnerSession,
+        nowEpochMs: Long = System.currentTimeMillis()): Boolean {
+        if (!validId(deviceId) || nowEpochMs <= 0 || !session.isValid(nowEpochMs)) return false
+        return runCatching {
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                db.insertWithOnConflict("device_revocations", null, ContentValues().apply {
+                    put("device_id", deviceId); put("revoked_at", nowEpochMs)
+                }, SQLiteDatabase.CONFLICT_IGNORE)
+                db.delete(DELIVERIES, "device_id = ?", arrayOf(deviceId))
+                db.delete(CREDENTIALS, "device_id = ?", arrayOf(deviceId))
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun isRevoked(db: SQLiteDatabase, deviceId: String): Boolean = db.rawQuery(
+        "SELECT 1 FROM device_revocations WHERE device_id = ?", arrayOf(deviceId)
+    ).use { it.moveToFirst() }
 
     @Synchronized
     override fun enqueue(candidate: GlafiraBridgePendingApproval): Boolean {
@@ -201,7 +238,9 @@ class AndroidKeystoreBridgePairingApprovalStore(
                 ).use { cursor ->
                     if (cursor.moveToFirst()) cursor.getString(0) to cursor.getLong(1) else null
                 }
-                if (pendingRow == null) {
+                if (isRevoked(db, deviceId)) {
+                    result = GlafiraBridgeApprovalMutation.AlreadyDecided
+                } else if (pendingRow == null) {
                     result = GlafiraBridgeApprovalMutation.NotFound
                 } else if (pendingRow.first != GlafiraBridgeApprovalStatus.PENDING.name ||
                     approvedAtEpochMs < pendingRow.second ||
@@ -446,6 +485,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
     override fun load(deviceId: String): GlafiraBridgeDeviceCredential? {
         if (!validId(deviceId)) return null
         return runCatching {
+            if (isRevoked(readableDatabase, deviceId)) return@runCatching null
             readableDatabase.query(
                 CREDENTIALS,
                 arrayOf("iv", "ciphertext", "granted_scopes"),
@@ -579,7 +619,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
 
     companion object {
         private const val DATABASE_NAME = "glafira_bridge_approvals.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
         private const val APPROVALS = "pairing_approvals"
         private const val CREDENTIALS = "device_credentials"
         private const val DELIVERIES = "credential_deliveries"
@@ -596,3 +636,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
         )
     }
 }
+
+/** Safe display metadata for a locally approved device. */
+data class GlafiraPairedDeviceSummary(val deviceId: String, val label: String, val platform: String,
+    val scopes: Set<String>, val createdAtEpochMs: Long)
