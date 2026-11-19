@@ -62,7 +62,7 @@ fun main(args: Array<String>) {
                 var worker: DesktopBridgeTaskWorker? = null
                 var shutdownConfirmed = false
                 try {
-                    worker = DesktopBridgeTaskWorker(
+                    val createdWorker = DesktopBridgeTaskWorker(
                         origin = entry.origin,
                         credentials = credentials,
                         projectId = projectId,
@@ -81,12 +81,13 @@ fun main(args: Array<String>) {
                             println("No Desktop agent was started for this preview.")
                         }
                     )
+                    worker = createdWorker
                     try {
-                        worker.runPollingLoop(shouldContinue = { true })
+                        createdWorker.runPollingLoop(shouldContinue = { true })
                     } finally {
                         // If a handler ignores interruption, worker.close() throws. In that case
                         // deliberately retain the OS queue lock and HMAC key until the handler stops.
-                        closeDesktopWorkerAndSession(worker, session)
+                        closeDesktopWorkerAndSession(createdWorker, session)
                         shutdownConfirmed = true
                     }
                 } finally {
