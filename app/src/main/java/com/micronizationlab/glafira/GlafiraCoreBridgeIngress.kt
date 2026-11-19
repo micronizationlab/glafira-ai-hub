@@ -14,7 +14,7 @@ import java.util.UUID
  * into a durable Core task so the Core queue and RegistryBackedGlafiraTaskAuthorizer remain
  * the sole scheduling and authorization path.
  */
-internal class GlafiraCoreBridgeIngress(
+class GlafiraCoreBridgeIngress(
     private val runtime: GlafiraCoreRuntimeOwner,
     private val clock: () -> Long = System::currentTimeMillis
 ) {
