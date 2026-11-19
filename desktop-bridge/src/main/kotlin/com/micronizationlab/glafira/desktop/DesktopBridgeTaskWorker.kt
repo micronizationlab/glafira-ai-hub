@@ -173,6 +173,11 @@ internal class DesktopBridgeTaskWorker(
                     throw IllegalStateException(response.errorCode ?: "DESKTOP_TASK_RESULT_FAILED")
                 }
                 return
+            } catch (interrupted: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw interrupted
+            } catch (cancelled: java.util.concurrent.CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 lastError = error
                 if (attempt < 2) Thread.sleep(250L * (attempt + 1))
