@@ -30,9 +30,9 @@ In `DesktopTaskRuntime.close()`, the previous implementation:
 
 ## Validation status
 
-- Run #988 passed both JVM suites after the lock-retention test was moved into its correct test class: Android 140 executed, 0 skipped; Desktop 52 executed, 0 skipped.
-- Runs #990–#992 exposed a Kotlin syntax error in the subsequent CLI cleanup restructuring. The block has been rewritten and the latest head is being checked by run #993. Do not treat the intermediate #988 result as validation of the latest CLI changes.
-- API 35 emulator and APK jobs remain outstanding.
+- Run #988 passed both JVM suites after the lock-retention test was moved into its correct test class: Android 140 executed, 0 skipped; Desktop 52 executed, 0 skipped. Its API 35 emulator job passed; APK assembly was still running at last check.
+- Runs #990–#992 exposed a Kotlin syntax error in the subsequent CLI cleanup restructuring. The block was rewritten; run #993 then passed both JVM suites: Android 140 executed, 0 skipped; Desktop 52 executed, 0 skipped. Run #994 is validating the newest head after a small cleanup.
+- Run #993's API 35 emulator job is still in progress. APK assembly for the newest head remains outstanding.
 
 Required checks:
 - Latest Desktop JVM test suite, including the new non-cooperative shutdown and queue-lock retention tests.
