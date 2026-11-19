@@ -13,9 +13,10 @@ on:
       - ".github/workflows/ios.yml"
   workflow_dispatch:
 
-concurrency:
-  group: glafira-ios-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+# Do not add a concurrency group with cancel-in-progress for validation.
+# GitHub keeps only one pending run per concurrency group and may replace
+# an older pending run with a newer one. Each iOS validation is important:
+# let GitHub queue every run rather than silently cancelling earlier checks.
 
 permissions:
   contents: read
