@@ -46,7 +46,8 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
     var coreRuntimeEnabled by remember { mutableStateOf(GlafiraCoreRuntimeOwner.get(context).isEnabled) }
-    var ownerApprovals by remember { mutableStateOf(GlafiraCoreRuntimeOwner.get(context).pendingOwnerApprovals()) }
+    var ownerApprovals by remember { mutableStateOf(emptyList<GlafiraPendingActionApproval>()) }
+    var ownerApprovalsVisible by remember { mutableStateOf(false) }
     var ownerApprovalMessage by remember { mutableStateOf<String?>(null) }
     val ownerActivity = context as? androidx.fragment.app.FragmentActivity
     var peerConsultationEnabled by remember(peerConsultationKey) {
@@ -121,15 +122,33 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
                         modifier = Modifier.weight(1f))
                     TextButton(onClick = {
-                        ownerApprovals = GlafiraCoreRuntimeOwner.get(context).pendingOwnerApprovals()
-                    }) { Text("ОБНОВИТЬ") }
+                        if (ownerApprovalsVisible) {
+                            ownerApprovalsVisible = false
+                            ownerApprovals = emptyList()
+                        } else {
+                            val activity = ownerActivity
+                            if (activity == null) {
+                                ownerApprovalMessage = "Для просмотра требуется активное окно GLAFIRA."
+                            } else {
+                                authenticateCoreOwner(activity, onSuccess = { session ->
+                                    session.consume()
+                                    ownerApprovalsVisible = true
+                                    ownerApprovals = GlafiraCoreRuntimeOwner.get(context).pendingOwnerApprovals()
+                                    ownerApprovalMessage = null
+                                }, onError = { ownerApprovalMessage = it })
+                            }
+                        }
+                    }) { Text(if (ownerApprovalsVisible) "СКРЫТЬ" else "ОТКРЫТЬ") }
                 }
                 Text(
                     "Запросы сохраняются в Core SQLite до решения владельца. Биометрия или системный PIN подтверждают только это конкретное действие; разрешения привязаны к заданию, а допуск одноразовый.",
                     color = Tx, fontSize = 10.sp
                 )
                 Spacer(Modifier.height(8.dp))
-                if (ownerApprovals.isEmpty()) {
+                if (!ownerApprovalsVisible) {
+                    Text("Список запросов скрыт. Для просмотра требуется биометрия или системный PIN-код.",
+                        color = Tx, fontSize = 11.sp)
+                } else if (ownerApprovals.isEmpty()) {
                     Text("Ожидающих подтверждения действий нет.", color = Tx, fontSize = 11.sp)
                 } else {
                     ownerApprovals.forEach { approval ->
