@@ -182,7 +182,8 @@ class GlafiraCoreTaskExecutorTest {
             handlers = listOf("project.read" to GlafiraTaskHandler {
                 handlerStarted.complete(Unit)
                 awaitCancellation()
-            })
+            }),
+            clock = { 10_000L }
         )
 
         runBlocking {
