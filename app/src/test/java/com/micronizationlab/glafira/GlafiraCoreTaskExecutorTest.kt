@@ -233,6 +233,7 @@ class GlafiraCoreTaskExecutorTest {
                 handlerCalled = true
                 GlafiraTaskExecutionOutcome.Succeeded("must not run")
             }),
+            clock = { 10_000L },
             executionMode = { GlafiraExecutionMode.DRY_RUN }
         )
 
