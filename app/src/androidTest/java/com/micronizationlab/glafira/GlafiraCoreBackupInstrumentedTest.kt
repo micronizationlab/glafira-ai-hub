@@ -371,7 +371,7 @@ class GlafiraCoreBackupInstrumentedTest {
             store.writableDatabase.delete(
                 "core_task_results", "task_id = ?", arrayOf("backup-result-task")
             )
-            assertNull(store.coreTaskResult("backup-result-task", "project"))
+            assertNull(store.coreTaskResult("backup-result-task", "backup-project"))
             assertTrue(
                 store.transition(
                     "backup-task",
