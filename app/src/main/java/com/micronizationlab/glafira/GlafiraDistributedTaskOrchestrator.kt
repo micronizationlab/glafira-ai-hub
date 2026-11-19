@@ -118,13 +118,17 @@ internal class GlafiraDistributedTaskOrchestrator(
                         node.maxParallelTasks > 0 && node.capabilities.containsAll(required)
                     val targetNode = if (useDesktop) GlafiraExecutionNode.DESKTOP else GlafiraExecutionNode.ANDROID
                     val result = try {
-                        if (useDesktop) {
-                            desktopPermits.withPermit { desktop.submit(task) }
-                        } else {
-                            require(required.all { it in safeAndroidCapabilities }) {
-                                "DESKTOP_REQUIRED_UNAVAILABLE"
+                        globalExecutionLimiter.withPermit(
+                            localMaxParallelTasks().coerceIn(1, GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS)
+                        ) {
+                            if (useDesktop) {
+                                desktopPermits.withPermit { desktop.submit(task) }
+                            } else {
+                                require(required.all { it in safeAndroidCapabilities }) {
+                                    "DESKTOP_REQUIRED_UNAVAILABLE"
+                                }
+                                androidPermits.withPermit { android.execute(task) }
                             }
-                            androidPermits.withPermit { android.execute(task) }
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
