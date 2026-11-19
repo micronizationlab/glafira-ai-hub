@@ -1,5 +1,9 @@
 package com.micronizationlab.glafira
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+
 /** Shared persistence boundary for interactive, foreground and scheduled execution. */
 interface GlafiraTaskQueue {
     fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult
@@ -39,4 +43,20 @@ internal suspend fun drainGlafiraCoreBatch(
         if (executeNext().status == GlafiraTaskExecutionStatus.IDLE) return false
     }
     return true
+}
+
+/** Runs bounded drain lanes concurrently; every lane still claims through the same durable queue. */
+internal suspend fun drainGlafiraCoreParallelBatch(
+    maxParallelTasks: Int,
+    maxTasksPerWorker: Int,
+    isStopped: () -> Boolean,
+    executeNext: suspend () -> GlafiraTaskExecutionResult
+): Boolean = coroutineScope {
+    require(maxParallelTasks in 1..GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS)
+    require(maxTasksPerWorker > 0)
+    (0 until maxParallelTasks).map {
+        async {
+            drainGlafiraCoreBatch(maxTasksPerWorker, isStopped, executeNext)
+        }
+    }.awaitAll().any { it }
 }
