@@ -403,51 +403,50 @@ object BackupArchive {
         }
     }
 
-    private fun collectSafePreferences(context: Context): JSONObject {
-        val allowed = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE).all
-        return JSONObject().apply {
-            allowed.forEach { (key, value) ->
-                val safeKey = key == "glafira_primary_provider" ||
-                    key == "peer_consultation_enabled" ||
-                    key.startsWith("peer_consultation_enabled_") ||
-                    key == "peer_consultation_providers" ||
-                    key.startsWith("peer_consultation_providers_")
-                if (safeKey && (value is String || value is Boolean || value is Int || value is Long || value is Float)) {
-                    put(key, value)
-                }
-            }
+    private fun collectSafePreferences(context: Context): JSONObject = JSONObject().apply {
+        context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE).all.forEach { (key, value) ->
+            portablePreferenceValue(key, value)?.let { put(key, it) }
         }
     }
 
     private fun restoreSafePreferences(context: Context, values: JSONObject) {
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val editor = preferences.edit()
-        preferences.all.keys.filter {
-            it == "glafira_primary_provider" || it == "peer_consultation_enabled" ||
-                it.startsWith("peer_consultation_enabled_") ||
-                it == "peer_consultation_providers" || it.startsWith("peer_consultation_providers_")
-        }.forEach { editor.remove(it) }
+        preferences.all.keys.filter(::isSafePreferenceKey).forEach { editor.remove(it) }
         val keys = values.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            val safeKey = key == "glafira_primary_provider" ||
-                key == "peer_consultation_enabled" ||
-                key.startsWith("peer_consultation_enabled_") ||
-                key == "peer_consultation_providers" || key.startsWith("peer_consultation_providers_")
-            if (!safeKey) continue
-            val value = values.opt(key)
-            when {
-                key == "glafira_primary_provider" && value is String -> editor.putString(key, value)
-                (key == "peer_consultation_providers" ||
-                    key.startsWith("peer_consultation_providers_")) && value is String ->
-                    editor.putString(key, value)
-                (key == "peer_consultation_enabled" ||
-                    key.startsWith("peer_consultation_enabled_")) && value is Boolean ->
-                    editor.putBoolean(key, value)
+            when (val value = portablePreferenceValue(key, values.opt(key))) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
             }
         }
         check(editor.commit()) { "Не удалось восстановить настройки приложения." }
     }
+
+    /** One typed allowlist for both directions; a prefix must never include API-key slots. */
+    internal fun portablePreferenceValue(key: String, value: Any?): Any? = when {
+        key == "glafira_primary_provider" -> (value as? String)?.takeIf { candidate ->
+            ProviderId.values().any { it.name == candidate }
+        }
+        isPeerProvidersKey(key) -> value as? String
+        isPeerEnabledKey(key) -> value as? Boolean
+        modelProvider(key) != null -> (value as? String)?.takeIf(::validProviderModel)
+        else -> null
+    }
+
+    private fun isSafePreferenceKey(key: String): Boolean =
+        key == "glafira_primary_provider" || isPeerProvidersKey(key) ||
+            isPeerEnabledKey(key) || modelProvider(key) != null
+
+    private fun isPeerProvidersKey(key: String): Boolean =
+        key == "peer_consultation_providers" || key.startsWith("peer_consultation_providers_")
+
+    private fun isPeerEnabledKey(key: String): Boolean =
+        key == "peer_consultation_enabled" || key.startsWith("peer_consultation_enabled_")
+
+    private fun modelProvider(key: String): ProviderId? =
+        ProviderId.values().firstOrNull { key == "provider_model_${it.name}" }
 
     private fun collectFiles(root: File): List<File> {
         val result = mutableListOf<File>()
