@@ -1,46 +1,242 @@
-name: GLAFIRA AI HUB Android Build
+name: GLAFIRA CI — change-aware platform validation
 
 on:
   pull_request:
-    branches:
-      - main
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+# Supersede only stale runs belonging to the same PR; never cancel another PR.
+concurrency:
+  group: glafira-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build Android APK
+  changes:
+    name: Detect changed components
     runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.detect.outputs.android }}
+      android_acceptance: ${{ steps.detect.outputs.android_acceptance }}
+      ios: ${{ steps.detect.outputs.ios }}
+      agent: ${{ steps.detect.outputs.agent }}
+      contracts: ${{ steps.detect.outputs.contracts }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        name: Detect changed paths
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          android=false; android_acceptance=false; ios=false; agent=false; contracts=false
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            mapfile -t changed < <(git diff --name-only "$PR_BASE" "$PR_HEAD")
+          elif [[ "$EVENT_NAME" == push && "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]]; then
+            mapfile -t changed < <(git diff --name-only "$PUSH_BEFORE" "$CURRENT_SHA")
+          else
+            mapfile -t changed < <(git ls-tree -r --name-only "$CURRENT_SHA")
+          fi
+          for path in "${changed[@]}"; do
+            case "$path" in
+              app/*|desktop-bridge/*|gradle/*|gradlew|gradle.properties|build.gradle.kts|settings.gradle.kts) android=true ;;
+              ios/*) ios=true ;;
+              windows-agent/*) agent=true ;;
+              contracts/*) contracts=true ;;
+              .github/workflows/*|.github/scripts/*) android=true; ios=true; agent=true; contracts=true ;;
+            esac
+            case "$path" in app/src/androidTest/*|.github/scripts/run-android-instrumentation.sh) android_acceptance=true ;; esac
+          done
+          if [[ "$EVENT_NAME" == schedule || "$EVENT_NAME" == workflow_dispatch ]]; then
+            android=true; [[ -d ios ]] && ios=true; [[ -d windows-agent ]] && agent=true
+            [[ -d contracts ]] && contracts=true; android_acceptance=true
+          fi
+          # Never launch emulator acceptance without the bounded, diagnostic harness.
+          if [[ "$android_acceptance" == true && ! -f .github/scripts/run-android-instrumentation.sh ]]; then android_acceptance=false; fi
+          {
+            echo "android=$android"
+            echo "android_acceptance=$android_acceptance"
+            echo "ios=$ios"
+            echo "agent=$agent"
+            echo "contracts=$contracts"
+          } >> "$GITHUB_OUTPUT"
+          printf 'Selected: Android=%s Emulator=%s iOS=%s Agent=%s Contracts=%s\n' "$android" "$android_acceptance" "$ios" "$agent" "$contracts"
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
+  android-tests:
+    name: Android JVM tests
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-
-      - name: Setup Gradle 8.9 and cache
-        uses: gradle/actions/setup-gradle@v4
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
-
-      - name: Run Unit Tests
-        run: gradle testDebugUnitTest
-
-      - name: Build Debug APK
-        run: gradle assembleDebug
-
-      - name: Upload APK artifact
+          gradle-version: "8.9"
+      - name: Host-side CI regressions when present
+        run: |
+          if [[ -d .github/scripts/tests ]]; then python3 -m unittest discover -s .github/scripts/tests -v; else echo "No host harness tests in this revision."; fi
+      - name: Run Android unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+      - name: Upload JVM reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: glafira-debug-apk
+          name: android-jvm-reports-${{ github.run_id }}
+          path: |
+            app/build/test-results/
+            app/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 7
+
+  android-apk:
+    name: Android debug APK package
+    needs: [changes, android-tests]
+    if: needs.changes.outputs.android == 'true' && needs.android-tests.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glafira-debug-apk-${{ github.sha }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+  android-emulator:
+    name: Android emulator acceptance
+    needs: [changes, android-tests]
+    if: needs.changes.outputs.android_acceptance == 'true' && needs.android-tests.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Require hardware acceleration
+        run: |
+          set -Eeuo pipefail
+          test -c /dev/kvm || { echo "KVM required; software CPU emulation is not an accepted fallback." >&2; exit 1; }
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - run: bash .github/scripts/run-android-instrumentation.sh
+      - name: Upload emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-diagnostics-${{ github.run_id }}
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+            app/build/outputs/androidTest-*.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios-tests:
+    name: iOS Swift package tests
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          swift --version
+          xcodebuild -version
+      - run: swift test --package-path ios/GlafiraBridgeKit
+
+  windows-agent-tests:
+    name: Windows Agent tests and build
+    needs: changes
+    if: needs.changes.outputs.agent == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet test windows-agent/GLAFIRA.Agent.Worker.Tests/GLAFIRA.Agent.Worker.Tests.csproj --configuration Release
+      - run: dotnet build windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj --configuration Release --no-restore
+
+  contract-conformance:
+    name: Shared contract conformance
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-save --no-audit --no-fund ajv@8 ajv-formats@3
+      - run: node contracts/v1/verify-fixtures.mjs
+
+  ci-summary:
+    name: Exact-head CI summary
+    if: always()
+    needs: [changes, android-tests, android-apk, android-emulator, ios-tests, windows-agent-tests, contract-conformance]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish exact SHA and honest component status
+        env:
+          SHA: ${{ github.sha }}
+          CHANGES: ${{ needs.changes.result }}
+          ANDROID: ${{ needs.android-tests.result }}
+          APK: ${{ needs.android-apk.result }}
+          EMULATOR: ${{ needs.android-emulator.result }}
+          IOS: ${{ needs.ios-tests.result }}
+          AGENT: ${{ needs.windows-agent-tests.result }}
+          CONTRACTS: ${{ needs.contract-conformance.result }}
+        run: |
+          {
+            echo "## GLAFIRA CI — exact-head report"
+            echo
+            echo "Commit: `$SHA`"
+            echo
+            echo "| Validation | Result |"
+            echo "|---|---|"
+            echo "| Change detection | $CHANGES |"
+            echo "| Android JVM | $ANDROID |"
+            echo "| Android APK | $APK |"
+            echo "| Android emulator | $EMULATOR |"
+            echo "| iOS Swift | $IOS |"
+            echo "| Windows Agent | $AGENT |"
+            echo "| Contracts | $CONTRACTS |"
+            echo
+            echo "Skipped means not selected for this commit; it is not a passing test result."
+          } >> "$GITHUB_STEP_SUMMARY"
+          for result in "$CHANGES" "$ANDROID" "$APK" "$EMULATOR" "$IOS" "$AGENT" "$CONTRACTS"; do
+            if [[ "$result" == failure || "$result" == cancelled ]]; then exit 1; fi
+          done
