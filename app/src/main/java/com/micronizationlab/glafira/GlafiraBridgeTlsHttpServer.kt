@@ -188,7 +188,7 @@ class GlafiraBridgeTlsHttpServer(
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("UNSUPPORTED_FRAMING"))
                     return
                 }
-                val contentLength = headers["content-length"]?.toLongOrNull()
+                val contentLength = GlafiraBridgeIngressPolicy.parseContentLength(headers["content-length"])
                 if (contentLength == null || contentLength !in 1..GlafiraBridgeIngressPolicy.MAX_REQUEST_BODY_BYTES.toLong()) {
                     val status = if (contentLength != null && contentLength > GlafiraBridgeIngressPolicy.MAX_REQUEST_BODY_BYTES) HTTP_TOO_LARGE else HTTP_BAD_REQUEST
                     writeResponse(client, status, errorResponse("INVALID_BODY_LENGTH"))
@@ -432,7 +432,7 @@ class GlafiraBridgeTlsHttpServer(
             val key = name.lowercase(Locale.ROOT)
             if (headers.containsKey(key)) return null
             val value = line.substring(colon + 1).trim()
-            if (value.any { it.code < 0x20 && it != '\t' }) return null
+            if (value.any { (it.code < 0x20 && it != '\t') || it.code == 0x7f }) return null
             headers[key] = value
         }
         return null
@@ -448,7 +448,7 @@ class GlafiraBridgeTlsHttpServer(
                 if (lf != 10) throw IOException("Malformed HTTP line ending.")
                 return output.toString(Charsets.US_ASCII.name())
             }
-            if (next == 10 || next == 0) throw IOException("Malformed HTTP line.")
+            if (next == 10 || next == 0 || next !in 0x20..0x7e) throw IOException("Malformed HTTP line.")
             output.write(next)
         }
         throw IOException("HTTP line exceeds the configured limit.")
