@@ -260,7 +260,7 @@ jobs:
           {
             echo "## GLAFIRA CI — exact-head report"
             echo
-            echo "Commit: `$SHA`"
+            echo "Commit: $SHA"
             echo
             echo "| Validation | Result |"
             echo "|---|---|"
