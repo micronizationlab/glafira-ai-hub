@@ -28,6 +28,24 @@ class AiProviderResponseLimitTest {
     }
 
     @Test
+    fun makesProgressWhenStreamTemporarilyReturnsZero() {
+        val source = "ok".toByteArray(Charsets.UTF_8)
+        val stream = object : java.io.InputStream() {
+            private val delegate = ByteArrayInputStream(source)
+            private var first = true
+            override fun read(): Int = delegate.read()
+            override fun read(target: ByteArray, offset: Int, length: Int): Int {
+                if (first) {
+                    first = false
+                    return 0
+                }
+                return delegate.read(target, offset, length)
+            }
+        }
+        assertEquals("ok", readBoundedProviderResponse(stream, 8))
+    }
+
+    @Test
     fun rejectsNonPositiveLimit() {
         val error = runCatching {
             readBoundedProviderResponse(ByteArrayInputStream(byteArrayOf()), 0)
