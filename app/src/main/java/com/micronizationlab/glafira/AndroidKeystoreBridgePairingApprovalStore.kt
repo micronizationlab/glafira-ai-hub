@@ -118,11 +118,26 @@ class AndroidKeystoreBridgePairingApprovalStore(
     override fun listPending(limit: Int): List<GlafiraBridgePendingApproval> {
         if (limit !in 1..GlafiraBridgeOwnerApprovalService.MAX_PENDING_APPROVALS) return emptyList()
         return runCatching {
-            readableDatabase.query(
+            val now = System.currentTimeMillis()
+            val cutoff = (now - PENDING_APPROVAL_TTL_MS).coerceAtLeast(0L)
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                db.update(
+                    APPROVALS,
+                    ContentValues().apply { put("status", GlafiraBridgeApprovalStatus.EXPIRED.name) },
+                    "status = ? AND received_at <= ?",
+                    arrayOf(GlafiraBridgeApprovalStatus.PENDING.name, cutoff.toString())
+                )
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            db.query(
                 APPROVALS,
                 APPROVAL_COLUMNS,
-                "status = ?",
-                arrayOf(GlafiraBridgeApprovalStatus.PENDING.name),
+                "status = ? AND received_at > ?",
+                arrayOf(GlafiraBridgeApprovalStatus.PENDING.name, cutoff.toString()),
                 null, null, "received_at ASC",
                 limit.toString()
             ).use { cursor ->
@@ -154,15 +169,26 @@ class AndroidKeystoreBridgePairingApprovalStore(
             var result: GlafiraBridgeApprovalMutation = GlafiraBridgeApprovalMutation.StorageError
             db.beginTransaction()
             try {
-                val status = db.query(
-                    APPROVALS, arrayOf("status"), "approval_id = ?",
+                val pendingRow = db.query(
+                    APPROVALS, arrayOf("status", "received_at"), "approval_id = ?",
                     arrayOf(approvalId), null, null, null, "1"
                 ).use { cursor ->
-                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                    if (cursor.moveToFirst()) cursor.getString(0) to cursor.getLong(1) else null
                 }
-                if (status == null) {
+                if (pendingRow == null) {
                     result = GlafiraBridgeApprovalMutation.NotFound
-                } else if (status != GlafiraBridgeApprovalStatus.PENDING.name) {
+                } else if (pendingRow.first != GlafiraBridgeApprovalStatus.PENDING.name ||
+                    approvedAtEpochMs < pendingRow.second ||
+                    approvedAtEpochMs - pendingRow.second >= PENDING_APPROVAL_TTL_MS
+                ) {
+                    if (pendingRow.first == GlafiraBridgeApprovalStatus.PENDING.name) {
+                        db.update(
+                            APPROVALS,
+                            ContentValues().apply { put("status", GlafiraBridgeApprovalStatus.EXPIRED.name) },
+                            "approval_id = ? AND status = ?",
+                            arrayOf(approvalId, GlafiraBridgeApprovalStatus.PENDING.name)
+                        )
+                    }
                     result = GlafiraBridgeApprovalMutation.AlreadyDecided
                 } else {
                     val credentialValues = ContentValues().apply {
@@ -493,6 +519,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
         private const val DEVICE_SECRET_BYTES = 32
         private const val GCM_IV_BYTES = 12
         private const val GCM_TAG_BITS = 128
+        private const val PENDING_APPROVAL_TTL_MS = 24L * 60L * 60L * 1000L
         private val APPROVAL_COLUMNS = arrayOf(
             "approval_id", "ticket_id", "client_nonce", "device_label",
             "platform", "requested_scopes", "received_at", "status"
