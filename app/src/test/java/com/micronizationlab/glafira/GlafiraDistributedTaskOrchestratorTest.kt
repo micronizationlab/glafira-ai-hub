@@ -3,6 +3,7 @@ package com.micronizationlab.glafira
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -109,6 +110,40 @@ class GlafiraDistributedTaskOrchestratorTest {
         assertEquals(2, maximumActive.get())
         release.complete(Unit)
         assertEquals(4, withTimeout(5_000L) { execution.await() }.size)
+    }
+
+    @Test
+    fun desktopBridgeWorkNeverExceedsAdvertisedNodeParallelism() = runBlocking {
+        val active = AtomicInteger()
+        val maximumActive = AtomicInteger()
+        val desktopNode = GlafiraNodeCapabilities(
+            nodeId = "desktop-node-0001",
+            available = true,
+            maxParallelTasks = 1,
+            capabilities = safeCapabilities
+        )
+        val orchestrator = GlafiraDistributedTaskOrchestrator(
+            desktop = GlafiraDesktopTaskPort { task ->
+                val current = active.incrementAndGet()
+                maximumActive.updateAndGet { previous -> maxOf(previous, current) }
+                try {
+                    delay(25L)
+                    GlafiraDistributedTaskResult(task.taskId, GlafiraExecutionNode.DESKTOP, true)
+                } finally {
+                    active.decrementAndGet()
+                }
+            },
+            android = GlafiraLocalTaskPort { error("All tasks should be routed through Desktop.") },
+            desktopCapabilities = { desktopNode },
+            safeAndroidCapabilities = emptySet(),
+            localMaxParallelTasks = { 2 },
+            clock = { 10_000L }
+        )
+
+        val results = orchestrator.execute("project-1", plan())
+
+        assertEquals(4, results.size)
+        assertEquals(1, maximumActive.get())
     }
 
 }
