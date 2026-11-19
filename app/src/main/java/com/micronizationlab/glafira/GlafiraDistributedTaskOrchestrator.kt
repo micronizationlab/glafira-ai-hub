@@ -72,18 +72,19 @@ internal class GlafiraDistributedTaskOrchestrator(
         require(projectId.isNotBlank() && projectId.length <= 128)
         require(ttlMs in MIN_TASK_TTL_MS..MAX_TASK_TTL_MS)
         val parentId = UUID.randomUUID().toString()
-        val localLimit = localMaxParallelTasks().coerceIn(1, GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS)
+        // The Core budget is the global ceiling. A paired Desktop may impose a lower
+        // per-node ceiling, but its advertised capacity never increases the owner's global limit.
+        val globalLimit = localMaxParallelTasks().coerceIn(1, GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS)
         val initialDesktop = desktopCapabilities()
         val desktopLimit = initialDesktop?.takeIf { it.available && it.maxParallelTasks > 0 }
-            ?.maxParallelTasks?.coerceIn(1, GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS) ?: 1
-        val plannedParallelism = maxOf(localLimit, desktopLimit)
-        val batches = GlafiraTaskPlanner.readyBatches(plan, maxParallelTasks = plannedParallelism)
+            ?.maxParallelTasks?.coerceIn(1, globalLimit) ?: 1
+        val batches = GlafiraTaskPlanner.readyBatches(plan, maxParallelTasks = globalLimit)
         val results = mutableListOf<GlafiraDistributedTaskResult>()
         for (batch in batches) {
             // Independent subtasks in one ready batch may run together. Separate permits enforce
             // each node's own capacity even when a batch contains both Android and Desktop work.
             val desktopPermits = Semaphore(desktopLimit)
-            val androidPermits = Semaphore(localLimit)
+            val androidPermits = Semaphore(globalLimit)
             val batchResults = batch.map { subtask ->
                 async {
                     val required = requiredCapabilities(subtask.executor)
