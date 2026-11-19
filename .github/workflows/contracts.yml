@@ -54,3 +54,68 @@ jobs:
           path: contracts/v1/generated/
           if-no-files-found: error
           retention-days: 14
+
+  compile-kotlin-dtos:
+    name: Compile generated Kotlin DTOs
+    needs: generate-cross-platform-models
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download generated DTOs
+        uses: actions/download-artifact@v4
+        with:
+          name: glafira-contract-dtos-${{ github.sha }}
+          path: contracts/v1/generated
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Compile generated Kotlin models
+        run: gradle -p contracts/v1/verification/kotlin compileKotlin --no-daemon --stacktrace
+
+  compile-swift-dtos:
+    name: Compile generated Swift DTOs
+    needs: generate-cross-platform-models
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download generated DTOs
+        uses: actions/download-artifact@v4
+        with:
+          name: glafira-contract-dtos-${{ github.sha }}
+          path: contracts/v1/generated
+      - name: Show Apple toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+      - name: Compile generated Swift models
+        run: swiftc -parse-as-library -emit-module -module-name GLAFIRAContracts contracts/v1/generated/swift/*.swift -o "$RUNNER_TEMP/GLAFIRAContracts.swiftmodule"
+
+  compile-csharp-dtos:
+    name: Compile generated C# DTOs
+    needs: generate-cross-platform-models
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download generated DTOs
+        uses: actions/download-artifact@v4
+        with:
+          name: glafira-contract-dtos-${{ github.sha }}
+          path: contracts/v1/generated
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Compile generated C# models
+        run: dotnet build contracts/v1/verification/csharp/Glafira.GeneratedContracts.csproj --configuration Release
