@@ -50,7 +50,6 @@ fun main(args: Array<String>) {
             val entry = DesktopBridgeCredentialVault.load(vaultPath, passphrase)
             val credentials = entry.toCredentials()
             entry.hmacSecret.fill(0)
-            var session: DesktopCliTaskSession? = null
             var worker: DesktopBridgeTaskWorker? = null
             var shutdownConfirmed = false
             try {
@@ -62,7 +61,6 @@ fun main(args: Array<String>) {
                 println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
                 println("Ollama must be running locally at 127.0.0.1:11434.")
                 val activeSession = desktopCliTaskSession(vaultPath)
-                session = activeSession
                 try {
                     val createdWorker = DesktopBridgeTaskWorker(
                         origin = entry.origin,
