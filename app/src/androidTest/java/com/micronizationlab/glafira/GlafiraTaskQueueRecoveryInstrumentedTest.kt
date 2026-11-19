@@ -166,15 +166,18 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         repeat(taskCount) { index -> store.enqueue(task("parallel-$index")) }
         val start = CountDownLatch(1)
         val claimedIds = Collections.synchronizedList(mutableListOf<String>())
+        val secondStore = GlafiraTaskStore(context)
+        val stores = listOf(store, secondStore)
         val pool = Executors.newFixedThreadPool(8)
         try {
-            val workers = (0 until 8).map {
+            val workers = (0 until 8).map { workerIndex ->
+                val workerStore = stores[workerIndex % stores.size]
                 pool.submit {
                     start.await()
                     while (true) {
-                        val claimed = store.claimNext(2_000) ?: break
+                        val claimed = workerStore.claimNext(2_000) ?: break
                         claimedIds += claimed.taskId
-                        check(store.transition(
+                        check(workerStore.transition(
                             claimed.taskId,
                             setOf(GlafiraTaskState.RUNNING),
                             GlafiraTaskState.SUCCEEDED,
@@ -187,6 +190,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
             workers.forEach { it.get(15, TimeUnit.SECONDS) }
         } finally {
             pool.shutdownNow()
+            secondStore.close()
         }
 
         assertEquals(taskCount, claimedIds.size)
