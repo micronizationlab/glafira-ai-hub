@@ -354,27 +354,38 @@ class AndroidKeystoreBridgePairingApprovalStore(
                     }
                     if (delivery == null) {
                         result = GlafiraBridgeDeliveryResult.StorageError
-                    } else if (delivery.ownerSessionId != null &&
-                        delivery.ownerSessionId != ownerSessionId &&
-                        delivery.claimExpiresAt > nowEpochMs
-                    ) {
-                        result = GlafiraBridgeDeliveryResult.ClaimedByAnotherOwnerSession
                     } else {
-                        val changed = db.update(
-                            DELIVERIES,
-                            ContentValues().apply {
-                                put("owner_session_id", ownerSessionId)
-                                put("claim_expires_at", ownerSessionExpiresAtEpochMs)
-                            },
-                            "approval_id = ?",
-                            arrayOf(approvalId)
-                        )
-                        check(changed == 1)
-                        encrypted = EncryptedSecret(delivery.iv, delivery.ciphertext)
-                        deviceId = delivery.deviceId
-                        ticketId = delivery.ticketId
-                        scopes = delivery.scopes
-                        result = GlafiraBridgeDeliveryResult.StorageError
+                        var buffersTransferred = false
+                        try {
+                            if (delivery.ownerSessionId != null &&
+                                delivery.ownerSessionId != ownerSessionId &&
+                                delivery.claimExpiresAt > nowEpochMs
+                            ) {
+                                result = GlafiraBridgeDeliveryResult.ClaimedByAnotherOwnerSession
+                            } else {
+                                val changed = db.update(
+                                    DELIVERIES,
+                                    ContentValues().apply {
+                                        put("owner_session_id", ownerSessionId)
+                                        put("claim_expires_at", ownerSessionExpiresAtEpochMs)
+                                    },
+                                    "approval_id = ?",
+                                    arrayOf(approvalId)
+                                )
+                                check(changed == 1)
+                                encrypted = EncryptedSecret(delivery.iv, delivery.ciphertext)
+                                buffersTransferred = true
+                                deviceId = delivery.deviceId
+                                ticketId = delivery.ticketId
+                                scopes = delivery.scopes
+                                result = GlafiraBridgeDeliveryResult.StorageError
+                            }
+                        } finally {
+                            if (!buffersTransferred) {
+                                delivery.iv.fill(0)
+                                delivery.ciphertext.fill(0)
+                            }
+                        }
                     }
                 }
                 db.setTransactionSuccessful()
