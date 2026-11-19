@@ -63,7 +63,8 @@ internal class GlafiraDistributedTaskOrchestrator(
     private val safeAndroidCapabilities: Set<String>,
     private val localMaxParallelTasks: () -> Int = { GlafiraTaskPlanner.MAX_PARALLEL_TASKS },
     private val onTaskResult: (GlafiraDistributedTaskResult) -> Unit = {},
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val globalExecutionLimiter: GlafiraCoreExecutionLimiter = GlafiraCoreExecutionLimiter()
 ) {
     suspend fun execute(
         projectId: String,
