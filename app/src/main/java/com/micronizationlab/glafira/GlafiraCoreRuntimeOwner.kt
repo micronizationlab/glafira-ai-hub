@@ -18,11 +18,54 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     val taskStore = GlafiraTaskStore(appContext)
     private val ownerApprovalStore = GlafiraCoreOwnerApprovalStore(taskStore)
 
+    private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
+
     private val executor = GlafiraCoreTaskExecutor(
         queue = taskStore,
         authorizer = RegistryBackedGlafiraTaskAuthorizer(ownerApprovalStore),
-        handlers = emptyList()
+        handlers = listOf(
+            "project.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
+            "conversation.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
+            "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) }
+        )
     )
+
+    private fun executeBridgeTask(task: GlafiraTask): GlafiraTaskExecutionOutcome {
+        return try {
+            val json = org.json.JSONObject(task.payload)
+            val operation = GlafiraBridgeOperation.valueOf(json.getString("operation"))
+            val payload = buildMap {
+                val keys = json.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    if (key !in setOf("bridgeRequestId", "deviceId", "operation", "actionSummary")) {
+                        put(key, json.getString(key))
+                    }
+                }
+            }
+            val request = GlafiraBridgeRequest(
+                protocolVersion = GlafiraBridgeProtocol.CURRENT_VERSION,
+                requestId = json.getString("bridgeRequestId"),
+                idempotencyKey = task.idempotencyKey,
+                deviceId = json.getString("deviceId"),
+                projectId = task.projectId,
+                operation = operation,
+                issuedAtEpochMs = task.createdAtMillis,
+                expiresAtEpochMs = task.deadlineAtMillis ?: (task.createdAtMillis + 60_000L),
+                payload = payload
+            )
+            val response = bridgeDispatcher.dispatch(request)
+            if (response.status == GlafiraBridgeStatus.SUCCEEDED) {
+                GlafiraTaskExecutionOutcome.Succeeded("Bridge operation completed.")
+            } else {
+                GlafiraTaskExecutionOutcome.PermanentFailure(
+                    response.errorCode ?: "BRIDGE_OPERATION_FAILED"
+                )
+            }
+        } catch (_: Exception) {
+            GlafiraTaskExecutionOutcome.PermanentFailure("BRIDGE_TASK_INVALID")
+        }
+    }
 
     val isEnabled: Boolean
         get() = preferences.getBoolean(KEY_ENABLED, false)
