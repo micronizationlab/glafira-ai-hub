@@ -139,7 +139,7 @@ object BackupArchive {
         // Keep a verified snapshot of the current state so a partial restore can be rolled back.
         val safetySnapshot = create(context, passphrase)
         val extracted = try {
-            decryptToStaging(file, passphrase)
+            decryptToStaging(context, file, passphrase)
         } catch (error: Exception) {
             safetySnapshot.delete()
             throw error
