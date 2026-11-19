@@ -58,18 +58,14 @@ jobs:
             url="$(jq -r '.url' <<< "$pr")"
 
             runs="$(gh run list --repo "$GH_REPO" --branch "$branch" --limit 10 --json databaseId,status,conclusion,headSha,workflowName,url,createdAt)"
-            matching="$(jq --arg sha "$sha" '[.[] | select(.headSha == $sha)] | sort_by(.createdAt) | last // empty' <<< "$runs")"
-            if [[ -z "$matching" ]]; then
+            matching="$(jq --arg sha "$sha" '[.[] | select(.headSha == $sha)] | sort_by(.workflowName, .createdAt) | group_by(.workflowName) | map(sort_by(.createdAt) | last)' <<< "$runs")"
+            if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
               ci="NO RUN FOR CURRENT SHA"
             else
-              workflow="$(jq -r '.workflowName' <<< "$matching")"
-              status="$(jq -r '.status' <<< "$matching")"
-              conclusion="$(jq -r '.conclusion // "pending"' <<< "$matching")"
-              run_url="$(jq -r '.url' <<< "$matching")"
-              ci="$workflow: $status/$conclusion ([run]($run_url))"
+              ci="$(jq -r '[.[] | "\(.workflowName): \(.status)/\(.conclusion // "pending") ([run](\(.url)))"] | join("<br>")' <<< "$matching")"
             fi
             short_sha="${sha:0:12}"
-            echo "| [#$number]($url) $title | $branch | `$short_sha` | $ci | $draft |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| [#$number]($url) $title | $branch | <code>$short_sha</code> | $ci | $draft |" >> "$GITHUB_STEP_SUMMARY"
           done < <(jq -c '.[]' <<< "$prs")
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
