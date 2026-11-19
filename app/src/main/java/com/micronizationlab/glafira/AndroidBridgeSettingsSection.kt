@@ -55,6 +55,7 @@ fun AndroidBridgeSettingsSection() {
     var startupError by remember { mutableStateOf(prefs.getString(GlafiraBridgeHostService.HOST_ERROR_KEY, null)) }
     var lanAddress by remember { mutableStateOf(findPrivateIpv4Address()) }
     var invitation by remember { mutableStateOf<GlafiraBridgePairingInvitation?>(null) }
+    var devices by remember { mutableStateOf(emptyList<GlafiraPairedDeviceSummary>()) }
     var pending by remember { mutableStateOf(emptyList<GlafiraBridgePendingApproval>()) }
     var actionMessage by remember { mutableStateOf<String?>(null) }
     val port = GlafiraBridgeTlsHttpServer.DEFAULT_PORT
@@ -64,15 +65,16 @@ fun AndroidBridgeSettingsSection() {
         startupError = prefs.getString(GlafiraBridgeHostService.HOST_ERROR_KEY, null)
         lanAddress = findPrivateIpv4Address()
         val store = runCatching { AndroidKeystoreBridgePairingApprovalStore(context) }.getOrNull()
-        pending = if (store == null) {
-            emptyList()
-        } else {
-            try {
-                store.listPending(20)
-            } finally {
-                store.close()
-            }
+        val snapshot = runCatching {
+            checkNotNull(store) { "Bridge storage unavailable" }
+            store.listPairedDevices() to store.listPending(20)
         }
+        runCatching { store?.close() }
+        snapshot.onSuccess { (paired, approvals) -> devices = paired; pending = approvals }
+            .onFailure {
+                devices = emptyList(); pending = emptyList()
+                actionMessage = "Хранилище Bridge недоступно. Управление устройствами временно остановлено."
+            }
     }
 
     LaunchedEffect(Unit) {
@@ -296,6 +298,25 @@ fun AndroidBridgeSettingsSection() {
                 }
             }
         }
+        Spacer(Modifier.height(12.dp))
+        Text("ПОДКЛЮЧЁННЫЕ УСТРОЙСТВА", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        if (devices.isEmpty()) Text("Нет сопряжённых устройств.", color = Tx, fontSize = 10.sp)
+        devices.forEach { device ->
+            Spacer(Modifier.height(8.dp))
+            Text("${device.label} · ${device.platform}", color = Tx, fontSize = 11.sp)
+            Text(device.deviceId, color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+            Text(device.scopes.sorted().joinToString(", "), color = Tx, fontSize = 10.sp)
+            OutlinedButton(onClick = {
+                authenticateBridgeOwner(context) { session ->
+                    val revoked = runCatching {
+                        AndroidKeystoreBridgePairingApprovalStore(context).use { it.revokeDevice(device.deviceId, session) }
+                    }.getOrDefault(false)
+                    actionMessage = if (revoked) "Доступ устройства отозван. Новое подключение потребует сопряжения."
+                        else "Не удалось отозвать доступ устройства."
+                    refresh()
+                }
+            }) { Text("ОТОЗВАТЬ ДОСТУП") }
+        }
     }
 }
 
@@ -340,7 +361,7 @@ private fun authenticateBridgeOwner(
     )
     val info = BiometricPrompt.PromptInfo.Builder()
         .setTitle("Подтверждение владельца GLAFIRA")
-        .setSubtitle("Разрешение на сопряжение устройства")
+        .setSubtitle("Управление доступом устройства")
         .setAllowedAuthenticators(
             Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL
         )
