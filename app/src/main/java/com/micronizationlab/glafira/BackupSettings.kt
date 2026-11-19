@@ -135,7 +135,25 @@ fun BackupSettingsSection() {
                 Text("Сохрани пароль отдельно. Для автоматического задания он хранится на этом телефоне в зашифрованном виде, а для нового устройства потребуется ввести его снова.", color = Tx, fontSize = 11.sp)
 
                 OutlinedButton(
-                    onClick = { folderPicker.launch(null) },
+                    onClick = {
+                        folderError = null
+                        try {
+                            folderPicker.launch(null)
+                        } catch (error: Exception) {
+                            // Some devices have no available document-picker activity or a
+                            // cloud provider rejects the launch. Keep GLAFIRA alive and show
+                            // an actionable error instead of allowing an uncaught crash.
+                            folderError = when (error) {
+                                is android.content.ActivityNotFoundException ->
+                                    "На устройстве нет доступного системного окна выбора папки. Проверь приложение «Файлы» и установленные приложения Google Drive / Яндекс Диск."
+                                is SecurityException ->
+                                    "Android запретил открыть выбор папки: ${error.message ?: "нет разрешения"}"
+                                else ->
+                                    "Не удалось открыть выбор папки: ${error.message ?: error.javaClass.simpleName}"
+                            }
+                            status = folderError ?: "Не удалось открыть выбор папки."
+                        }
+                    },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(if (folderUri == null) "Выбрать папку Google Drive / Яндекс Диска" else "Изменить папку облачной копии") }
