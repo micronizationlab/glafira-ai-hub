@@ -7,7 +7,7 @@ import java.util.UUID
 
 internal enum class GlafiraExecutionNode { ANDROID, DESKTOP }
 
-internal data class GlafiraNodeCapabilities(
+data class GlafiraNodeCapabilities(
     val nodeId: String,
     val available: Boolean,
     val maxParallelTasks: Int,
