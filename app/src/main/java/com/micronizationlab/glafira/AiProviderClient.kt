@@ -36,7 +36,7 @@ internal fun readBoundedProviderResponse(
         output.write(buffer, 0, count)
         total += count
     }
-    return output.toString(Charsets.UTF_8.name())
+    return String(output.toByteArray(), Charsets.UTF_8)
 }
 
 suspend fun callAiProvider(
