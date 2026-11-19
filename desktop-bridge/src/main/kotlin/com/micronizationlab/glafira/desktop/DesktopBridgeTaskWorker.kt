@@ -25,6 +25,7 @@ internal class DesktopBridgeTaskWorker(
     }
 
     private val advertisedCapabilities = handlers.keys.map(::capabilityForTaskType).toSet()
+    private val deliveredDryRunPlanHashes = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val runtime = DesktopTaskRuntime(
         queue = queue,
         handlers = handlers,
@@ -67,7 +68,9 @@ internal class DesktopBridgeTaskWorker(
                 response.result["previewJson"]
                     ?: throw IllegalStateException("DESKTOP_DRY_RUN_PREVIEW_MISSING")
             )
-            onDryRunPreview(preview)
+            if (deliveredDryRunPlanHashes.add(preview.planHash)) {
+                onDryRunPreview(preview)
+            }
             return 0
         }
         if (response.result["available"] == "true") {
