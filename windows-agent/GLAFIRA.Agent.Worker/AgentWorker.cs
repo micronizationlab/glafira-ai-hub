@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
 namespace GLAFIRA.Agent.Worker;
 
 /// <summary>
