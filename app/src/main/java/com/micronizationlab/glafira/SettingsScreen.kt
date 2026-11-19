@@ -116,6 +116,9 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             fontSize = 10.sp
         )
 
+        Spacer(Modifier.height(12.dp))
+        AndroidBridgeSettingsSection()
+
         Card(
             colors = CardDefaults.cardColors(containerColor = GrD),
             modifier = Modifier.fillMaxWidth()
