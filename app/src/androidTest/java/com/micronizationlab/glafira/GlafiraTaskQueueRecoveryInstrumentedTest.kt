@@ -113,9 +113,17 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         try {
             db.update("core_tasks", ContentValues().apply { put("state", "succeeded"); put("updated_at", 3_000) },
                 "task_id = ? AND state = ?", arrayOf("rollback", "running"))
-            // Simulates an exception before the result insert commits.
+            db.insertOrThrow("core_task_results", null, ContentValues().apply {
+                put("task_id", "rollback")
+                put("result_ciphertext", GlafiraTaskPayloadCrypto.encrypt(
+                    "not committed", "rollback|core-result|project"
+                ))
+                put("completed_at", 3_000)
+            })
+            // Simulates an exception before the state and result transaction commits.
         } finally { db.endTransaction() }
         assertEquals(GlafiraTaskState.RUNNING, store.getTask("rollback")?.state)
+        assertNull(store.coreTaskResult("rollback", "project"))
         assertEquals(2, store.taskHistory("rollback", "project").size)
     }
     @Test fun expiredDesktopLeaseDoesNotReplayOperationAndAcceptsLateBoundResult() {
@@ -143,7 +151,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         db.version = 3
         store.close()
         store = GlafiraTaskStore(context)
-        assertEquals(4, store.writableDatabase.version)
+        assertEquals(5, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy")?.state)
         assertEquals("HISTORY_BASELINE", store.taskHistory("legacy", "project").single().reason)
         store.claimNext(2_000)
@@ -177,10 +185,10 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
                     while (true) {
                         val claimed = workerStore.claimNext(2_000) ?: break
                         claimedIds += claimed.taskId
-                        check(workerStore.transition(
+                        check(workerStore.persistCoreTaskResult(
                             claimed.taskId,
                             setOf(GlafiraTaskState.RUNNING),
-                            GlafiraTaskState.SUCCEEDED,
+                            "result-${claimed.taskId}",
                             3_000
                         ))
                     }
@@ -201,6 +209,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
                 listOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING, GlafiraTaskState.SUCCEEDED),
                 store.taskHistory("parallel-$index", "project").map { it.toState }.reversed()
             )
+            assertEquals("result-parallel-$index", store.coreTaskResult("parallel-$index", "project")?.result)
         }
     }
 
@@ -218,5 +227,35 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals("restart-read", store.claimNext(4_000)?.taskId)
         assertNull(store.claimNext(4_000))
     }
+
+    @Test fun successfulCoreResultIsEncryptedAndSurvivesDatabaseReopen() {
+        store.enqueue(task("result-task"))
+        assertNotNull(store.claimNext(2_000))
+        assertTrue(store.persistCoreTaskResult(
+            "result-task", setOf(GlafiraTaskState.RUNNING), "private handler result", 3_000
+        ))
+        assertTrue(store.persistCoreTaskResult(
+            "result-task", setOf(GlafiraTaskState.RUNNING), "private handler result", 4_000
+        ))
+        assertThrows(IllegalStateException::class.java) {
+            store.persistCoreTaskResult(
+                "result-task", setOf(GlafiraTaskState.RUNNING), "different result", 4_000
+            )
+        }
+
+        val ciphertext = store.readableDatabase.query(
+            "core_task_results", arrayOf("result_ciphertext"),
+            "task_id = ?", arrayOf("result-task"), null, null, null, "1"
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        assertFalse(ciphertext.contains("private handler result"))
+        assertEquals("private handler result", store.coreTaskResult("result-task", "project")?.result)
+        assertNull(store.coreTaskResult("result-task", "another-project"))
+
+        store.close()
+        store = GlafiraTaskStore(context)
+        assertEquals(GlafiraTaskState.SUCCEEDED, store.getTask("result-task")?.state)
+        assertEquals("private handler result", store.coreTaskResult("result-task", "project")?.result)
+    }
+
 
 }
