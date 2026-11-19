@@ -42,10 +42,21 @@ object BackupArchive {
     private const val IV_BYTES = 12
     private const val TAG_BITS = 128
 
-    fun create(context: Context, passphrase: CharArray): File {
+    fun create(context: Context, passphrase: CharArray): File = createWithEntries(context, passphrase, emptyMap())
+
+    /** Extra entries are app-private logical snapshots, never Keystore database/key files. */
+    internal fun createWithEntries(context: Context, passphrase: CharArray, extraEntries: Map<String, File>): File {
         require(passphrase.size >= 12) { "Пароль резервной копии должен содержать не менее 12 символов." }
-        val sourceFiles = collectFiles(context.filesDir)
-        val totalBytes = sourceFiles.sumOf { it.length() }
+        val sourceFiles = collectFiles(context.filesDir).associateBy {
+            it.relativeTo(context.filesDir).invariantSeparatorsPath
+        }.toMutableMap()
+        extraEntries.forEach { (relative, file) ->
+            validateRelativePath(relative)
+            require(!isProtectedCredential(relative) && file.isFile && relative !in sourceFiles)
+            sourceFiles[relative] = file
+        }
+        require(sourceFiles.size <= MAX_FILES) { "Слишком много файлов для резервной копии." }
+        val totalBytes = sourceFiles.values.sumOf { it.length() }
         require(totalBytes <= MAX_ARCHIVE_BYTES) { "Размер данных превышает допустимый размер резервной копии." }
 
         val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
@@ -54,7 +65,7 @@ object BackupArchive {
             init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(TAG_BITS, ByteArray(IV_BYTES).also(SecureRandom()::nextBytes)))
         }
         val iv = cipher.iv
-        val output = File(context.cacheDir, "glafira-backup-${System.currentTimeMillis()}.glb")
+        val output = File(context.cacheDir, "glafira-backup-${java.util.UUID.randomUUID()}.glb")
 
         val manifest = JSONObject().apply {
             put("format", "GLAFIRA_BACKUP")
@@ -63,12 +74,12 @@ object BackupArchive {
             put("appId", context.packageName)
             put("fileCount", sourceFiles.size)
             put("totalBytes", totalBytes)
-            put("excluded", JSONArray().put("API keys").put("OAuth tokens").put("device-bound Android Keystore keys"))
+            put("excluded", JSONArray().put("API keys").put("OAuth tokens").put("device-bound Android Keystore keys").put("password vault").put("device grants and approvals"))
             put("safePreferences", collectSafePreferences(context))
             put("files", JSONArray().apply {
-                sourceFiles.forEach { file ->
+                sourceFiles.forEach { (relative, file) ->
                     put(JSONObject().apply {
-                        put("path", file.relativeTo(context.filesDir).invariantSeparatorsPath)
+                        put("path", relative)
                         put("size", file.length())
                         put("sha256", sha256(file))
                     })
@@ -90,8 +101,7 @@ object BackupArchive {
                     zip.putNextEntry(ZipEntry("manifest.json"))
                     zip.write(manifest.toString().toByteArray(Charsets.UTF_8))
                     zip.closeEntry()
-                    sourceFiles.forEach { file ->
-                        val relative = file.relativeTo(context.filesDir).invariantSeparatorsPath
+                    sourceFiles.forEach { (relative, file) ->
                         zip.putNextEntry(ZipEntry("data/$relative"))
                         FileInputStream(file).use { it.copyTo(zip) }
                         zip.closeEntry()
@@ -117,10 +127,7 @@ object BackupArchive {
 
     /** Verifies the authenticated archive contains a required relative data path. */
     fun verifyContains(context: Context, file: File, passphrase: CharArray, relativePath: String): BackupVerification {
-        require(relativePath.isNotBlank() && !relativePath.startsWith("/") &&
-            relativePath.split("/").none { it == ".." || it.isBlank() }) {
-            "Недопустимый путь обязательного файла архива."
-        }
+        validateRelativePath(relativePath)
         val extracted = decryptToStaging(context, file, passphrase)
         try {
             require(extracted.appId == context.packageName) {
@@ -130,6 +137,23 @@ object BackupArchive {
                 "Архив не содержит обязательную базу GLAFIRA Core."
             }
             return extracted.verification
+        } finally {
+            extracted.directory.deleteRecursively()
+        }
+    }
+
+    /** The callback only receives authenticated, fully hash-checked private staging data. */
+    internal fun <T> withVerifiedEntry(
+        context: Context, file: File, passphrase: CharArray, relativePath: String,
+        block: (File, BackupVerification) -> T
+    ): T {
+        validateRelativePath(relativePath)
+        val extracted = decryptToStaging(context, file, passphrase)
+        try {
+            require(extracted.appId == context.packageName) { "Резервная копия создана для другого приложения." }
+            val entry = extracted.files.singleOrNull { it.relativePath == relativePath }
+                ?: error("Архив не содержит переносимый снимок Core. Создайте новую полную резервную копию на исходном устройстве.")
+            return block(entry.file, extracted.verification)
         } finally {
             extracted.directory.deleteRecursively()
         }
@@ -180,6 +204,9 @@ object BackupArchive {
 
     private fun applyStaged(context: Context, files: List<StagedFile>, safePreferences: JSONObject) {
         val targetRoot = context.filesDir.canonicalFile
+        require(files.none { isProtectedCredential(it.relativePath) }) {
+            "Архив содержит локальные учётные данные. Восстановление требует отдельной авторизации."
+        }
         val restoredPaths = files.map { it.relativePath }.toSet()
 
         // Restore an exact snapshot: files created after the selected backup must not survive it.
@@ -188,15 +215,13 @@ object BackupArchive {
             require(target.path.startsWith(targetRoot.path + File.separator)) { "Недопустимый путь в архиве." }
             target.parentFile?.mkdirs()
             val replacement = File(target.parentFile, target.name + ".restore-tmp")
-            staged.file.copyTo(replacement, overwrite = true)
-            if (target.exists() && !target.delete()) {
-                replacement.delete()
-                throw IllegalStateException("Не удалось заменить файл ${staged.relativePath}")
+            staged.file.inputStream().use { input ->
+                FileOutputStream(replacement).use { output -> input.copyTo(output); output.fd.sync() }
             }
-            if (!replacement.renameTo(target)) {
-                replacement.delete()
-                throw IllegalStateException("Не удалось восстановить файл ${staged.relativePath}")
-            }
+            // POSIX rename atomically replaces the previous generation; never unlink it
+            // before the replacement is durable (a crash must not leave a missing file).
+            android.system.Os.rename(replacement.absolutePath, target.absolutePath)
+            syncDirectories(target.parentFile, targetRoot)
         }
 
         context.filesDir.walkTopDown()
@@ -207,8 +232,9 @@ object BackupArchive {
                     "Обнаружен файл вне каталога данных приложения."
                 }
                 val relative = canonical.relativeTo(targetRoot).invariantSeparatorsPath
-                if (relative !in restoredPaths && !existing.delete()) {
-                    throw IllegalStateException("Не удалось удалить файл, отсутствующий в выбранной резервной копии: $relative")
+                if (relative !in restoredPaths && !isProtectedCredential(relative)) {
+                    check(existing.delete()) { "Не удалось удалить файл, отсутствующий в выбранной резервной копии: $relative" }
+                    syncDirectories(existing.parentFile, targetRoot)
                 }
             }
 
@@ -330,6 +356,9 @@ object BackupArchive {
                     bufferedCipherInput.close()
                 }
 
+                require(stagedFiles.none { isProtectedCredential(it.relativePath) }) {
+                    "Архив содержит локальные учётные данные. Они не подлежат автоматическому переносу."
+                }
                 val parsed = requireNotNull(manifest) { "В архиве отсутствует manifest." }
                 require(parsed.optString("format") == "GLAFIRA_BACKUP") { "Неверный формат manifest." }
                 require(parsed.optInt("version") == FORMAT_VERSION) { "Версия manifest не поддерживается." }
@@ -403,7 +432,8 @@ object BackupArchive {
             val key = keys.next()
             val safeKey = key == "glafira_primary_provider" ||
                 key == "peer_consultation_enabled" ||
-                key.startsWith("peer_consultation_enabled_")
+                key.startsWith("peer_consultation_enabled_") ||
+                key == "peer_consultation_providers" || key.startsWith("peer_consultation_providers_")
             if (!safeKey) continue
             val value = values.opt(key)
             when {
@@ -423,13 +453,53 @@ object BackupArchive {
         val result = mutableListOf<File>()
         root.walkTopDown().forEach { file ->
             if (file.isFile && !file.name.startsWith("glafira-backup-") &&
-                !file.name.endsWith(".restore-tmp") && !file.name.endsWith(".tmp")) {
+                !file.name.endsWith(".restore-tmp") && !file.name.endsWith(".tmp") && !file.name.contains(".corrupt-") &&
+                !isProtectedCredential(file.relativeTo(root).invariantSeparatorsPath) &&
+                !file.relativeTo(root).invariantSeparatorsPath.startsWith(".glafira-core-snapshot/")) {
+                val canonicalRoot = root.canonicalFile
+                require(file.canonicalPath.startsWith(canonicalRoot.path + File.separator)) {
+                    "Резервная копия содержит ссылку за пределы данных приложения."
+                }
                 result.add(file)
             }
         }
         require(result.size <= MAX_FILES) { "Слишком много файлов для резервной копии." }
         return result.sortedBy { it.relativeTo(root).invariantSeparatorsPath }
     }
+
+    internal fun copyBounded(input: InputStream, output: OutputStream) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        try {
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= MAX_ARCHIVE_BYTES) { "Файл резервной копии слишком большой." }
+                output.write(buffer, 0, count)
+            }
+        } finally { buffer.fill(0) }
+    }
+
+    private fun syncDirectories(start: File?, root: File) {
+        var directory = start
+        while (directory != null && (directory == root || directory.path.startsWith(root.path + File.separator))) {
+            val descriptor = android.system.Os.open(directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
+            try { android.system.Os.fsync(descriptor) } finally { android.system.Os.close(descriptor) }
+            if (directory == root) break
+            directory = directory.parentFile
+        }
+    }
+
+    private fun validateRelativePath(path: String) {
+        require(path.isNotBlank() && !path.startsWith("/") && !path.contains("\\") &&
+            path.split("/").none { it == ".." || it == "." || it.isBlank() }) {
+            "Недопустимый путь файла архива."
+        }
+    }
+
+    private fun isProtectedCredential(path: String): Boolean =
+        path == "password_vault.enc" || path.startsWith("password_vault.enc.")
 
     private fun deriveKey(passphrase: CharArray, salt: ByteArray, iterations: Int): SecretKeySpec {
         val spec = PBEKeySpec(passphrase, salt, iterations, 256)
