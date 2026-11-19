@@ -84,7 +84,7 @@ jobs:
           fi
 
           "$SDKMANAGER" --licenses < <(yes) >/dev/null
-          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
+          timeout 15m "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "system-images;android-35;google_apis;x86_64" 2>&1 | tee app/build/outputs/androidTest-sdkmanager.txt
           # sdkmanager installs adb into platform-tools; expose SDK tools to every later step.
           export PATH="$SDK_ROOT/platform-tools:$SDK_ROOT/emulator:$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           if [[ ! -x "$SDK_ROOT/platform-tools/adb" ]]; then
@@ -124,7 +124,7 @@ jobs:
             sleep 5
           done
           if [[ "$booted" != true ]]; then
-            echo "Android emulator did not finish booting within 20 minutes" >&2
+            echo "Android emulator did not finish booting within the bounded boot window" >&2
             exit 1
           fi
 
