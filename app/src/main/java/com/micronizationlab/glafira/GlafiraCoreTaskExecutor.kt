@@ -49,9 +49,9 @@ class GlafiraCoreTaskExecutor(
     private val runtimeBudget: () -> GlafiraRuntimeBudget = { GlafiraRuntimeBudget() },
     private val costMeter: GlafiraTaskCostMeter? = null,
     private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE },
-    private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null
+    private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null,
+    private val executionLimiter: GlafiraCoreExecutionLimiter = GlafiraCoreExecutionLimiter()
 ) {
-    private val executionLimiter = GlafiraCoreExecutionLimiter()
     private val recoveryMutex = Mutex()
     @Volatile private var recoveredMaintenanceEpoch = -1L
     private val handlerMap = handlers.toMap()
