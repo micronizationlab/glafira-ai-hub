@@ -405,7 +405,7 @@ class GlafiraCoreBackupInstrumentedTest {
             assertEquals(0, recovered.attemptCount)
             assertEquals(
                 "result-preserved-by-backup",
-                store.coreTaskResult("backup-result-task", "project")?.result
+                store.coreTaskResult("backup-result-task", "backup-project")?.result
             )
         } finally {
             archive.delete()
