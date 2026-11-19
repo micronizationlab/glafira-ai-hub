@@ -208,10 +208,12 @@ class GlafiraBridgeTlsHttpServer(
                 )
                 val accepted = bounded as? GlafiraBridgeIngressBodyResult.Accepted
                 if (accepted == null) {
+                    body.fill(0)
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_BODY"))
                     return
                 }
 
+                try {
                 if (target == GlafiraBridgeIngressPolicy.PAIRING_PATH) {
                     val pairing = try {
                         GlafiraBridgePairingJsonCodec.decode(accepted.bytes)
@@ -403,6 +405,10 @@ class GlafiraBridgeTlsHttpServer(
                     response.status == GlafiraBridgeStatus.PENDING_APPROVAL
                 ) HTTP_ACCEPTED else HTTP_OK
                 writeResponse(client, status, responseJson(response))
+                } finally {
+                    body.fill(0)
+                    accepted.bytes.fill(0)
+                }
             } catch (_: java.net.SocketTimeoutException) {
                 runCatching { writeResponse(client, HTTP_REQUEST_TIMEOUT, errorResponse("REQUEST_TIMEOUT")) }
             } catch (_: Exception) {
