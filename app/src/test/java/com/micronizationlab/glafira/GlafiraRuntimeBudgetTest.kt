@@ -231,4 +231,9 @@ class GlafiraRuntimeBudgetTest {
     fun rejectsWallClockBudgetBelowMinimum() {
         GlafiraRuntimeBudget(maxWallClockMillis = 999L)
     }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsRetryBudgetAboveMaximum() {
+        GlafiraRuntimeBudget(maxRetries = 21)
+    }
 }
