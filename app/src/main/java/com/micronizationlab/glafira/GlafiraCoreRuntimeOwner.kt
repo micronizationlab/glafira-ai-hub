@@ -140,6 +140,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         taskId, deviceId, state, progressPercent, progressMessage, result, errorCode
     )
 
+    fun desktopTaskLeaseExpiry(taskId: String): Long? = taskStore.desktopTaskLeaseExpiry(taskId)
+
     fun pendingOwnerApprovals(): List<GlafiraPendingActionApproval> =
         ownerApprovalStore.pendingApprovals()
 
