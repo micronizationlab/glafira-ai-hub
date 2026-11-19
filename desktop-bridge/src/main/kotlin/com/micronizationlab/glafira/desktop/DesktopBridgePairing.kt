@@ -110,6 +110,7 @@ fun DesktopBridgePairing.fromInvitationBundle(
     require(uri.scheme.equals("https", true) && !uri.host.isNullOrBlank())
     require(uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")
     require(uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null)
+    require(uri.port == -1 || uri.port in 1..65_535)
     val pin = DesktopBridgeJson.stringField(json, "serverCertificateSha256")
     require(pin.matches(Regex("[0-9a-fA-F]{64}")))
     val ticketId = DesktopBridgeJson.stringField(json, "ticketId")
