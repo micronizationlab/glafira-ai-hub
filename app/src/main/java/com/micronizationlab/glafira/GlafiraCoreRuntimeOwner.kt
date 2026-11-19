@@ -228,6 +228,10 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     fun desktopTaskLeaseExpiry(taskId: String): Long? = taskStore.desktopTaskLeaseExpiry(taskId)
 
+    /** Project-scoped lookup for a successfully persisted Core handler result. */
+    fun coreTaskResult(taskId: String, projectId: String): GlafiraCoreTaskResultRecord? =
+        taskStore.coreTaskResult(taskId, projectId)
+
     /** Tasks with typed, durable Dry Run previews awaiting owner review. */
     fun dryRunPreviews(limit: Int = 100): List<GlafiraTask> =
         taskStore.dryRunPreviews(limit).mapNotNull { taskStore.getTask(it.taskId) }
