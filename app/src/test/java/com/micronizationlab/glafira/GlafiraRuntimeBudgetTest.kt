@@ -217,4 +217,13 @@ class GlafiraRuntimeBudgetTest {
         assertTrue(result.allowed)
         assertEquals(4_000L, result.timeoutMillis)
     }
+
+    @Test
+    fun allowsZeroMeasuredCostAtZeroCostCeiling() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task(), nowMillis = 2_000L, budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxCostMicros = 0L), measuredCostMicros = 0L
+        )
+        assertTrue(result.allowed)
+    }
 }
