@@ -164,6 +164,21 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(2, store.taskHistory("legacy", "project").size)
     }
 
+    @Test fun versionFourUpgradeCreatesEncryptedCoreResultTable() {
+        store.enqueue(task("legacy-v4"))
+        store.writableDatabase.execSQL("DROP TABLE core_task_results")
+        store.writableDatabase.version = 4
+        store.close()
+        store = GlafiraTaskStore(context)
+
+        assertEquals(5, store.writableDatabase.version)
+        assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy-v4")?.state)
+        assertTrue(store.readableDatabase.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'core_task_results'",
+            null
+        ).use { it.moveToFirst() })
+    }
+
     @Test fun desktopProjectFilterRunsBeforeLimitAndCannotStarvePermittedProject() {
         repeat(101) { index ->
             store.enqueue(task("other-$index", "desktop.execute", "other-project").copy(priority = 100))
