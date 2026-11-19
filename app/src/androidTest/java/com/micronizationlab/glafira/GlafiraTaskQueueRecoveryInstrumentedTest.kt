@@ -9,6 +9,10 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class GlafiraTaskQueueRecoveryInstrumentedTest {
@@ -155,6 +159,54 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(listOf("permitted"),
             store.queuedDesktopTasks(limit = 1, projectId = "permitted-project").map { it.taskId })
         assertTrue(store.queuedDesktopTasks(projectId = "missing-project").isEmpty())
+    }
+
+    @Test fun concurrentSqliteClaimsNeverReturnTheSameTaskToTwoWorkers() {
+        val taskCount = 80
+        repeat(taskCount) { index -> store.enqueue(task("parallel-$index")) }
+        val start = CountDownLatch(1)
+        val claimedIds = Collections.synchronizedList(mutableListOf<String>())
+        val pool = Executors.newFixedThreadPool(8)
+        try {
+            val workers = (0 until 8).map {
+                pool.submit {
+                    start.await()
+                    while (true) {
+                        val claimed = store.claimNext(2_000) ?: break
+                        claimedIds += claimed.taskId
+                        check(store.transition(
+                            claimed.taskId,
+                            setOf(GlafiraTaskState.RUNNING),
+                            GlafiraTaskState.SUCCEEDED,
+                            3_000
+                        ))
+                    }
+                }
+            }
+            start.countDown()
+            workers.forEach { it.get(15, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+
+        assertEquals(taskCount, claimedIds.size)
+        assertEquals(taskCount, claimedIds.toSet().size)
+        assertEquals(taskCount, store.listTasks(setOf(GlafiraTaskState.SUCCEEDED)).size)
+    }
+
+    @Test fun processRestartRecoveryRequeuesSafeReadsButQuarantinesUnknownWrites() {
+        store.enqueue(task("restart-read", "project.read"))
+        store.enqueue(task("restart-write", "message.send"))
+        repeat(2) { assertNotNull(store.claimNext(2_000)) }
+
+        store.close()
+        store = GlafiraTaskStore(context)
+        assertEquals(2, store.recoverInterruptedCoreTasks(3_000, 5))
+
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, store.getTask("restart-read")?.state)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("restart-write")?.state)
+        assertEquals("restart-read", store.claimNext(4_000)?.taskId)
+        assertNull(store.claimNext(4_000))
     }
 
 }
