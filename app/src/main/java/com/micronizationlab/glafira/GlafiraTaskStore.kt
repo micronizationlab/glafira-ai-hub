@@ -589,7 +589,7 @@ class GlafiraTaskStore(context: Context) :
                 }
             }
             database.rawQuery("PRAGMA user_version", null).use { cursor ->
-                check(cursor.moveToFirst() && cursor.getInt(0) == DATABASE_VERSION) {
+                check(cursor.moveToFirst() && cursor.getInt(0) in 1..DATABASE_VERSION) {
                     "Core database snapshot schema version is incompatible."
                 }
             }
