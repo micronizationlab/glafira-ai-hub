@@ -149,4 +149,13 @@ class GlafiraRuntimeBudgetTest {
         assertEquals("RUNTIME_COST_METER_INVALID", result.reason)
     }
 
+
+    @Test
+    fun allowsMeasuredCostExactlyAtCeiling() {
+        val result = GlafiraRuntimeBudgetPolicy.evaluate(
+            task = task(), nowMillis = 2_000L, budgetStartedAtMillis = 1_000L,
+            budget = GlafiraRuntimeBudget(maxCostMicros = 500L), measuredCostMicros = 500L
+        )
+        assertTrue(result.allowed)
+    }
 }
