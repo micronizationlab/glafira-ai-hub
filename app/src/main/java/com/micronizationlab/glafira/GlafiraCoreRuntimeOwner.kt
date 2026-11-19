@@ -102,7 +102,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         maxWallClockMillis = preferences.getLong(KEY_BUDGET_WALL_CLOCK_MS, 60_000L),
         maxSteps = preferences.getInt(KEY_BUDGET_MAX_STEPS, 1),
         maxRetries = preferences.getInt(KEY_BUDGET_MAX_RETRIES, 5),
-        maxConcurrentTasks = preferences.getInt(KEY_BUDGET_MAX_CONCURRENT, 1),
+        maxConcurrentTasks = preferences.getInt(KEY_BUDGET_MAX_CONCURRENT, GlafiraRuntimeBudget().maxConcurrentTasks),
         maxCostMicros = if (preferences.contains(KEY_BUDGET_MAX_COST_MICROS))
             preferences.getLong(KEY_BUDGET_MAX_COST_MICROS, 0L) else null
     )
