@@ -1,9 +1,11 @@
 package com.micronizationlab.glafira
 
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -164,6 +166,26 @@ class GlafiraCoreTaskExecutorTest {
         assertEquals(GlafiraTaskState.RETRY_SCHEDULED, queue.task?.state)
         assertEquals(21_000L, queue.lastRetryAt)
         assertEquals("HANDLER_ERROR:IllegalStateException", queue.task?.lastError)
+    }
+
+    @Test
+    fun coroutineCancellationPropagatesInsteadOfBeingConvertedToRetry() {
+        val queue = FakeQueue(task())
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                throw CancellationException("test cancellation")
+            })
+        )
+
+        assertThrows(CancellationException::class.java) {
+            runBlocking { worker.executeNext() }
+        }
+        assertEquals(GlafiraTaskState.RUNNING, queue.task?.state)
+        assertNull(queue.lastRetryAt)
     }
 
     @Test
