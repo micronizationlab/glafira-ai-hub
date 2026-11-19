@@ -18,7 +18,7 @@ permissions:
 jobs:
   unit-tests:
     name: Android Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -35,8 +35,17 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Check CI failure and cleanup regressions
+        run: python3 -m unittest discover -s .github/scripts/tests -v
+
       - name: Run Unit Tests
-        run: gradle testDebugUnitTest :desktop-bridge:test
+        run: gradle :app:testDebugUnitTest :desktop-bridge:test --stacktrace
+
+      - name: Verify both JVM test suites executed
+        run: >-
+          python3 .github/scripts/verify-junit.py
+          app/build/test-results/testDebugUnitTest
+          desktop-bridge/build/test-results/test
 
       - name: Upload JVM test reports
         if: always()
@@ -45,14 +54,16 @@ jobs:
           name: glafira-jvm-test-reports
           path: |
             app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
             desktop-bridge/build/reports/tests/test/
+            desktop-bridge/build/test-results/test/
           if-no-files-found: warn
           retention-days: 7
 
   instrumented-tests:
     name: Android Emulator Integration Tests
     needs: unit-tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout repository
@@ -69,73 +80,21 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Run Core persistence and backup tests
+      - name: Enable Android KVM acceleration
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -p app/build/outputs
-          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
-          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          AVDMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/avdmanager"
-
-          if [[ ! -x "$SDKMANAGER" || ! -x "$AVDMANAGER" ]]; then
-            echo "Android command-line tools were not found under $SDK_ROOT" >&2
+          if [[ ! -c /dev/kvm ]]; then
+            echo "This runner has no /dev/kvm; hardware-accelerated Android tests cannot run" >&2
             exit 1
           fi
+          # This permission change is confined to the disposable hosted runner.
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
 
-          "$SDKMANAGER" --licenses < <(yes) >/dev/null
-          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
-          # sdkmanager installs adb into platform-tools; expose SDK tools to every later step.
-          export PATH="$SDK_ROOT/platform-tools:$SDK_ROOT/emulator:$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-          if [[ ! -x "$SDK_ROOT/platform-tools/adb" ]]; then
-            echo "adb was not installed at $SDK_ROOT/platform-tools/adb" >&2
-            exit 1
-          fi
-          printf 'no\n' | "$AVDMANAGER" create avd --force --name glafira-ci --package "system-images;android-35;google_apis;x86_64" --device pixel_2
-
-          adb start-server
-          adb devices -l > app/build/outputs/androidTest-adb-devices.txt 2>&1
-          "$SDK_ROOT/emulator/emulator" -port 5554 -avd glafira-ci -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -accel off > app/build/outputs/androidTest-emulator-console.txt 2>&1 &
-          EMULATOR_PID=$!
-
-          collect_diagnostics() {
-            status=$?
-            adb logcat -b crash -d -v threadtime > app/build/outputs/androidTest-crash-logcat.txt 2>&1 || true
-            adb shell dumpsys activity instrumentation > app/build/outputs/androidTest-instrumentation.txt 2>&1 || true
-            adb logcat -d -v threadtime > app/build/outputs/androidTest-logcat.txt 2>&1 || true
-            adb -s emulator-5554 emu kill >/dev/null 2>&1 || kill "$EMULATOR_PID" 2>/dev/null || true
-            wait "$EMULATOR_PID" 2>/dev/null || true
-            exit "$status"
-          }
-          trap collect_diagnostics EXIT
-
-          booted=false
-          for attempt in $(seq 1 240); do
-            if boot_state=$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null) && [[ "$boot_state" == "1" ]]; then
-              booted=true
-              break
-            fi
-            sleep 5
-          done
-          if [[ "$booted" != true ]]; then
-            echo "Android emulator did not finish booting within 20 minutes" >&2
-            exit 1
-          fi
-
-          # The upstream emulator-runner unconditionally sends keyevent 82 after
-          # boot. On this hosted image that input-service call breaks the ADB
-          # connection, so boot readiness is checked without injecting key events.
-          adb wait-for-device
-          for attempt in $(seq 1 60); do
-            if adb -s emulator-5554 shell pm path android >/dev/null 2>&1; then
-              break
-            fi
-            sleep 2
-          done
-          adb logcat -c
-          adb logcat -b all -v threadtime > app/build/outputs/androidTest-logcat-live.txt 2>&1 &
-          LOGCAT_PID=$!
-          gradle connectedDebugAndroidTest --stacktrace
+      - name: Run Core persistence and backup tests
+        shell: bash
+        run: bash .github/scripts/run-android-instrumentation.sh
 
       - name: Upload emulator test diagnostics
         if: always()
@@ -144,6 +103,7 @@ jobs:
           name: glafira-emulator-test-diagnostics
           path: |
             app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
             app/build/outputs/androidTest-*.txt
           if-no-files-found: warn
           retention-days: 7
@@ -151,7 +111,7 @@ jobs:
   debug-apk:
     name: Build installable debug APK
     needs: [unit-tests, instrumented-tests]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout repository
@@ -179,5 +139,5 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-# This is an unsigned debug/test APK for owner-controlled device acceptance only.
+# This is a debug-key-signed test APK for owner-controlled device acceptance only.
 # It is not a production release and does not enable LIVE autonomous execution.
