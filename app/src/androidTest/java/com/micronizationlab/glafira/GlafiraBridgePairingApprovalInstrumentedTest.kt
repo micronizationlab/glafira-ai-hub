@@ -107,7 +107,7 @@ class GlafiraBridgePairingApprovalInstrumentedTest {
             ?: error("Issued device credential could not be decrypted from Android Keystore storage.")
         assertArrayEquals(delivery.hmacSecret, storedCredential.hmacSecret)
         assertEquals(setOf("project.read"), delivery.grantedScopes)
-        assertEquals(delivery.grantedScopes, storedCredential.grantedScopes)
+        assertEquals(delivery.grantedScopes, storedCredential.scopes)
 
         // Core uses a separate SQLite helper instance, but it must read the same
         // owner-approved credential record that HTTPS admission just issued.
