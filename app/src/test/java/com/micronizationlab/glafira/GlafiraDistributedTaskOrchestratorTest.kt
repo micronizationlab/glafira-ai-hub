@@ -207,4 +207,37 @@ class GlafiraDistributedTaskOrchestratorTest {
         assertFalse(started.contains("d"))
     }
 
+    @Test
+    fun globalBudgetIsSharedAcrossIndependentProjectDispatchers() = runBlocking {
+        val limiter = GlafiraCoreExecutionLimiter()
+        val active = AtomicInteger()
+        val maximumActive = AtomicInteger()
+        fun orchestrator() = GlafiraDistributedTaskOrchestrator(
+            desktop = GlafiraDesktopTaskPort { error("Desktop is not available in this test.") },
+            android = GlafiraLocalTaskPort { task ->
+                val current = active.incrementAndGet()
+                maximumActive.updateAndGet { previous -> maxOf(previous, current) }
+                try {
+                    delay(25L)
+                    GlafiraDistributedTaskResult(task.taskId, GlafiraExecutionNode.ANDROID, true)
+                } finally {
+                    active.decrementAndGet()
+                }
+            },
+            desktopCapabilities = { null },
+            safeAndroidCapabilities = safeCapabilities,
+            localMaxParallelTasks = { 2 },
+            clock = { 10_000L },
+            globalExecutionLimiter = limiter
+        )
+
+        val results = listOf(
+            async { orchestrator().execute("project-a", plan()) },
+            async { orchestrator().execute("project-b", plan()) }
+        ).awaitAll()
+
+        assertEquals(8, results.sumOf { it.size })
+        assertEquals(2, maximumActive.get())
+    }
+
 }
