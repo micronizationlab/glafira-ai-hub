@@ -18,7 +18,14 @@ class GlafiraCoreDrainWorker(
         if (!runtime.isEnabled) return Result.success()
 
         return try {
-            if (drainGlafiraCoreBatch(MAX_TASKS_PER_RUN, { isStopped }, { runtime.executeNext() })) {
+            val concurrency = runtime.runtimeBudget().maxConcurrentTasks
+            if (drainGlafiraCoreParallelBatch(
+                    maxParallelTasks = concurrency,
+                    maxTasksPerWorker = MAX_TASKS_PER_RUN,
+                    isStopped = { isStopped },
+                    executeNext = { runtime.executeNext() }
+                )
+            ) {
                 GlafiraCoreWorkScheduler.scheduleImmediate(applicationContext)
             }
             Result.success()
