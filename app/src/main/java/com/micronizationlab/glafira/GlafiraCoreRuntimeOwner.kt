@@ -32,7 +32,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             "project.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) }
-        )
+        ),
+        runtimeBudget = { loadRuntimeBudget() }
     )
 
     private fun executeBridgeTask(task: GlafiraTask): GlafiraTaskExecutionOutcome {
@@ -75,6 +76,30 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     val isEnabled: Boolean
         get() = preferences.getBoolean(KEY_ENABLED, false)
 
+    /** Current owner-controlled, persisted Core execution limits. */
+    fun runtimeBudget(): GlafiraRuntimeBudget = loadRuntimeBudget()
+
+    /** Persist a validated budget. Multi-step and parallel execution remain disabled until instrumented. */
+    fun setRuntimeBudget(budget: GlafiraRuntimeBudget) {
+        val editor = preferences.edit()
+            .putLong(KEY_BUDGET_WALL_CLOCK_MS, budget.maxWallClockMillis)
+            .putInt(KEY_BUDGET_MAX_STEPS, budget.maxSteps)
+            .putInt(KEY_BUDGET_MAX_RETRIES, budget.maxRetries)
+            .putInt(KEY_BUDGET_MAX_CONCURRENT, budget.maxConcurrentTasks)
+        if (budget.maxCostMicros == null) editor.remove(KEY_BUDGET_MAX_COST_MICROS)
+        else editor.putLong(KEY_BUDGET_MAX_COST_MICROS, budget.maxCostMicros)
+        check(editor.commit()) { "Could not persist GLAFIRA runtime budget." }
+    }
+
+    private fun loadRuntimeBudget(): GlafiraRuntimeBudget = GlafiraRuntimeBudget(
+        maxWallClockMillis = preferences.getLong(KEY_BUDGET_WALL_CLOCK_MS, 60_000L),
+        maxSteps = preferences.getInt(KEY_BUDGET_MAX_STEPS, 1),
+        maxRetries = preferences.getInt(KEY_BUDGET_MAX_RETRIES, 5),
+        maxConcurrentTasks = preferences.getInt(KEY_BUDGET_MAX_CONCURRENT, 1),
+        maxCostMicros = if (preferences.contains(KEY_BUDGET_MAX_COST_MICROS))
+            preferences.getLong(KEY_BUDGET_MAX_COST_MICROS, 0L) else null
+    )
+
     fun setEnabled(enabled: Boolean) {
         check(preferences.edit().putBoolean(KEY_ENABLED, enabled).commit()) {
             "Could not persist GLAFIRA runtime owner setting."
@@ -108,6 +133,23 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             val leased = taskStore.claimDesktopTask(
                 candidate.taskId, deviceId, capabilities, maxParallelTasks, now
             ) ?: continue
+            val budget = loadRuntimeBudget()
+            val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
+                task = leased,
+                nowMillis = now,
+                budgetStartedAtMillis = leased.createdAtMillis,
+                budget = budget.copy(maxRetries = minOf(budget.maxRetries, 2)),
+                measuredCostMicros = null
+            )
+            if (!budgetDecision.allowed) {
+                taskStore.transition(
+                    leased.taskId, setOf(GlafiraTaskState.RUNNING),
+                    GlafiraTaskState.FAILED, now,
+                    lastError = budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED"
+                )
+                taskStore.releaseDesktopLease(leased.taskId, deviceId)
+                continue
+            }
             val decision = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource)
                 .authorize(leased, now)
             when (decision.status) {
@@ -171,6 +213,11 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     companion object {
         private const val PREFERENCES = "glafira_core_runtime"
         private const val KEY_ENABLED = "runtime_enabled"
+        private const val KEY_BUDGET_WALL_CLOCK_MS = "runtime_budget_wall_clock_ms"
+        private const val KEY_BUDGET_MAX_STEPS = "runtime_budget_max_steps"
+        private const val KEY_BUDGET_MAX_RETRIES = "runtime_budget_max_retries"
+        private const val KEY_BUDGET_MAX_CONCURRENT = "runtime_budget_max_concurrent"
+        private const val KEY_BUDGET_MAX_COST_MICROS = "runtime_budget_max_cost_micros"
 
         @Volatile
         private var instance: GlafiraCoreRuntimeOwner? = null
