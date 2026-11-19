@@ -42,7 +42,7 @@ internal class GlafiraCoreBridgeIngress(
 
     fun submit(request: VerifiedRequest): Submission {
         require(request.requestId.matches(Regex("[A-Za-z0-9_-]{8,128}")))
-        require(request.idempotencyKey.matches(Regex("[A-Za-z0-9_-]{16,128}")))
+        require(request.idempotencyKey.matches(Regex("[A-Za-z0-9_-]{8,128}")))
         require(request.authenticatedDeviceId.matches(Regex("[A-Za-z0-9_-]{1,128}")))
         require(request.projectId.isNotBlank() && request.projectId.length <= 128)
         val now = clock()
