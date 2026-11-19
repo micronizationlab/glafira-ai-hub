@@ -262,6 +262,11 @@ class GlafiraTaskStore(context: Context) :
     }
 
     @Synchronized
+    fun releaseDesktopLease(taskId: String, deviceId: String): Boolean =
+        writableDatabase.delete("core_desktop_leases", "task_id = ? AND device_id = ?",
+            arrayOf(taskId, deviceId)) == 1
+
+    @Synchronized
     fun updateDesktopTask(taskId: String, deviceId: String, state: String, progressPercent: Int,
                           progressMessage: String?, result: String?, errorCode: String?,
                           nowMillis: Long = System.currentTimeMillis()): Boolean {
