@@ -1,0 +1,73 @@
+name: GLAFIRA Project Dispatcher
+
+on:
+  workflow_run:
+    workflows:
+      - GLAFIRA AI HUB Android and Desktop Checks
+    types: [completed]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: glafira-project-dispatcher
+  cancel-in-progress: true
+
+jobs:
+  project-status:
+    name: Reconcile all active GLAFIRA workstreams
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build cross-workstream status report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "# GLAFIRA Project Dispatcher" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PR | Workstream | Branch | Head SHA | Latest matching CI | Draft |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---:|---|---|---|---|:---:|" >> "$GITHUB_STEP_SUMMARY"
+
+          prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url)"
+          count="$(jq 'length' <<< "$prs")"
+          if [[ "$count" -eq 0 ]]; then
+            echo "No open pull requests." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          while IFS= read -r pr; do
+            number="$(jq -r '.number' <<< "$pr")"
+            title="$(jq -r '.title' <<< "$pr" | tr '|' '/')"
+            branch="$(jq -r '.headRefName' <<< "$pr")"
+            sha="$(jq -r '.headRefOid' <<< "$pr")"
+            draft="$(jq -r '.isDraft' <<< "$pr")"
+            url="$(jq -r '.url' <<< "$pr")"
+
+            runs="$(gh run list --repo "$GH_REPO" --branch "$branch" --limit 10 --json databaseId,status,conclusion,headSha,workflowName,url,createdAt)"
+            matching="$(jq --arg sha "$sha" '[.[] | select(.headSha == $sha)] | sort_by(.createdAt) | last // empty' <<< "$runs")"
+            if [[ -z "$matching" ]]; then
+              ci="NO RUN FOR CURRENT SHA"
+            else
+              workflow="$(jq -r '.workflowName' <<< "$matching")"
+              status="$(jq -r '.status' <<< "$matching")"
+              conclusion="$(jq -r '.conclusion // "pending"' <<< "$matching")"
+              run_url="$(jq -r '.url' <<< "$matching")"
+              ci="$workflow: $status/$conclusion ([run]($run_url))"
+            fi
+            short_sha="${sha:0:12}"
+            echo "| [#$number]($url) $title | $branch | `$short_sha` | $ci | $draft |" >> "$GITHUB_STEP_SUMMARY"
+          done < <(jq -c '.[]' <<< "$prs")
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Policy: evaluate every open PR on its exact current head SHA; a successful run for an older SHA is not acceptance for the current branch." >> "$GITHUB_STEP_SUMMARY"
