@@ -355,11 +355,23 @@ class GlafiraCoreBackupInstrumentedTest {
                 nowMillis = 2_000L
             )
         )
+        store.enqueue(task("backup-result-task"))
+        assertEquals("backup-result-task", store.claimNext(2_500L)?.taskId)
+        assertTrue(store.persistCoreTaskResult(
+            "backup-result-task",
+            setOf(GlafiraTaskState.RUNNING),
+            "result-preserved-by-backup",
+            3_000L
+        ))
 
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
+            store.writableDatabase.delete(
+                "core_task_results", "task_id = ?", arrayOf("backup-result-task")
+            )
+            assertNull(store.coreTaskResult("backup-result-task", "project"))
             assertTrue(
                 store.transition(
                     "backup-task",
@@ -391,6 +403,10 @@ class GlafiraCoreBackupInstrumentedTest {
             assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, recovered.state)
             assertEquals("{\"record\":\"persist-me\"}", recovered.payload)
             assertEquals(0, recovered.attemptCount)
+            assertEquals(
+                "result-preserved-by-backup",
+                store.coreTaskResult("backup-result-task", "project")?.result
+            )
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
