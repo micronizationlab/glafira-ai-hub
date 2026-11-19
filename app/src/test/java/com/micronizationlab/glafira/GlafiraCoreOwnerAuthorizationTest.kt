@@ -93,7 +93,14 @@ class GlafiraCoreOwnerAuthorizationTest {
             GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
             RegistryBackedGlafiraTaskAuthorizer(grants).authorize(current, 2_000L).status
         )
-        grants.grant = grants.grant!!.copy(taskId = "different-task", expiresAt = 5_000L)
+        grants.grant = ToolApprovalGrant(
+            projectId = current.projectId,
+            toolId = current.taskType,
+            actionHash = hash,
+            approvedAt = 1_500L,
+            expiresAt = 5_000L,
+            taskId = "different-task"
+        )
         assertEquals(
             GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
             RegistryBackedGlafiraTaskAuthorizer(grants).authorize(current, 2_000L).status
