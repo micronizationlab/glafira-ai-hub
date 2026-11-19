@@ -140,6 +140,11 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         taskId, deviceId, state, progressPercent, progressMessage, result, errorCode
     )
 
+    fun recordDesktopNode(deviceId: String, capabilities: Set<String>, maxParallelTasks: Int) =
+        taskStore.recordDesktopNode(deviceId, capabilities, maxParallelTasks)
+
+    fun desktopNodeCapabilities(): GlafiraNodeCapabilities? = taskStore.desktopNodeCapabilities()
+
     fun desktopTaskLeaseExpiry(taskId: String): Long? = taskStore.desktopTaskLeaseExpiry(taskId)
 
     fun pendingOwnerApprovals(): List<GlafiraPendingActionApproval> =
