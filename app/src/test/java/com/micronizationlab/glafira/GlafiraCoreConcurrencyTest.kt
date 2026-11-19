@@ -94,7 +94,7 @@ class GlafiraCoreConcurrencyTest {
 
     @Test
     fun independentTasksRunConcurrentlyAndAreClaimedOnlyOnce() = runBlocking {
-        val queue = ConcurrentQueue((1..4).map { task("task-$it") })
+        val queue = ConcurrentQueue((1..5).map { task("task-$it") })
         val active = AtomicInteger()
         val maximumActive = AtomicInteger()
         val claimedIds = ConcurrentHashMap.newKeySet<String>()
@@ -126,12 +126,15 @@ class GlafiraCoreConcurrencyTest {
         val executions = (1..4).map { async { executor.executeNext() } }
         withTimeout(5_000L) { twoHandlersStarted.await() }
         assertEquals(2, maximumActive.get())
+        // A new caller arriving while handlers are live must reuse the completed recovery epoch.
+        val fifthExecution = async { executor.executeNext() }
+        yield()
         releaseHandlers.complete(Unit)
-        val results = withTimeout(5_000L) { executions.awaitAll() }
+        val results = withTimeout(5_000L) { (executions + fifthExecution).awaitAll() }
 
-        assertEquals(4, results.count { it.status == GlafiraTaskExecutionStatus.SUCCEEDED })
-        assertEquals(4, claimedIds.size)
-        assertEquals(4, queue.completedCount())
+        assertEquals(5, results.count { it.status == GlafiraTaskExecutionStatus.SUCCEEDED })
+        assertEquals(5, claimedIds.size)
+        assertEquals(5, queue.completedCount())
         assertEquals(1, queue.recoveryCalls)
         assertEquals(0, active.get())
     }
