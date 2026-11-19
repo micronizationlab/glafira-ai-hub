@@ -1,7 +1,7 @@
 package com.micronizationlab.glafira
 
 /**
- * Conservative per-task execution limits enforced by the Core executor.
+ * Conservative runtime limits enforced by the Core executor, including a global task concurrency cap.
  *
  * Current Core handlers are single typed operations, so one handler invocation is one
  * execution step. Multi-step agents must use a future step-aware execution context rather
