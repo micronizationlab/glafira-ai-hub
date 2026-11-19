@@ -66,12 +66,32 @@ args = sys.argv[1:]
 scenario = os.environ['CI_TEST_SCENARIO']
 with open(os.environ['CI_TEST_COMMANDS'], 'a') as log:
     log.write(tool + ' ' + ' '.join(args) + '\n')
-if tool in ('sdkmanager', 'avdmanager'):
+if tool in ('avdmanager', 'emulator'):
+    avd_home = Path(os.environ['ANDROID_AVD_HOME'])
+    assert avd_home.is_dir(), avd_home
+    assert avd_home.parent == Path(os.environ['RUNNER_TEMP']), avd_home
+    assert avd_home.name.startswith('glafira-ci-avd.'), avd_home
+    assert os.environ['HOME'] == os.environ['CI_TEST_ORIGINAL_HOME']
+    with open(os.environ['CI_TEST_COMMANDS'], 'a') as log:
+        log.write('AVD_HOME[' + tool + ']=' + str(avd_home) + '\n')
+if tool == 'sdkmanager':
+    sys.exit(0)
+if tool == 'avdmanager':
+    expected_path = avd_home / 'glafira-ci.avd'
+    assert args[args.index('--path') + 1] == str(expected_path)
+    expected_path.mkdir()
+    if scenario != 'missing-avd-config':
+        (avd_home / 'glafira-ci.ini').write_text('path=' + str(expected_path) + '\n')
     sys.exit(0)
 if tool == 'emulator':
     if '-accel-check' in args:
         print('KVM acceleration test')
         sys.exit(9 if scenario == 'no-acceleration' else 0)
+    if '-list-avds' in args:
+        if scenario != 'unlisted-avd' and (avd_home / 'glafira-ci.ini').is_file():
+            print('glafira-ci')
+        sys.exit(0)
+    assert (avd_home / 'glafira-ci.ini').is_file()
     if scenario == 'emulator-exits':
         sys.exit(42)
     Path(os.environ['CI_TEST_EMULATOR_PID']).write_text(str(os.getpid()))
@@ -125,7 +145,12 @@ class EmulatorHarnessTest(unittest.TestCase):
             binary = root / 'bin'
             binary.mkdir()
             (binary / 'gradle').symlink_to(tool)
+            runner_temp = root / 'runner temp'
+            runner_temp.mkdir()
             env = dict(os.environ, ANDROID_SDK_ROOT=str(sdk),
+                       RUNNER_TEMP=str(runner_temp),
+                       ANDROID_AVD_HOME=str(root / 'inherited-wrong-avd-home'),
+                       CI_TEST_ORIGINAL_HOME=os.environ['HOME'],
                        PATH=str(binary) + os.pathsep + os.environ['PATH'],
                        BOOT_TIMEOUT_SECONDS='1', PACKAGE_TIMEOUT_SECONDS='1',
                        ADB_TIMEOUT_SECONDS='1', CLEANUP_TIMEOUT_SECONDS='1',
@@ -143,7 +168,11 @@ class EmulatorHarnessTest(unittest.TestCase):
             if pid_file.exists():
                 with self.assertRaises(ProcessLookupError):
                     os.kill(int(pid_file.read_text()), 0)
-            return (root / 'commands.txt').read_text()
+            commands = (root / 'commands.txt').read_text()
+            avd_homes = {line.split('=', 1)[1] for line in commands.splitlines()
+                         if line.startswith('AVD_HOME[')}
+            self.assertEqual(1, len(avd_homes), commands)
+            return commands
 
     def test_success_requires_hardware_acceleration_and_tests(self):
         commands = self.run_scenario('success', 0)
@@ -152,6 +181,18 @@ class EmulatorHarnessTest(unittest.TestCase):
 
     def test_failed_acceleration_does_not_run_tests(self):
         self.assertNotIn('gradle ', self.run_scenario('no-acceleration', 9))
+
+    def test_avd_manager_and_emulator_share_explicit_registry(self):
+        commands = self.run_scenario('success', 0)
+        self.assertIn('AVD_HOME[avdmanager]=', commands)
+        self.assertIn('AVD_HOME[emulator]=', commands)
+        self.assertIn('emulator -list-avds', commands)
+
+    def test_unregistered_avd_fails_before_boot(self):
+        self.assertNotIn('gradle ', self.run_scenario('missing-avd-config', 1))
+
+    def test_avd_missing_from_emulator_listing_fails_before_boot(self):
+        self.assertNotIn('gradle ', self.run_scenario('unlisted-avd', 1))
 
     def test_stalled_boot_and_shutdown_are_bounded(self):
         self.assertNotIn('gradle ', self.run_scenario('stalled-device', 1))

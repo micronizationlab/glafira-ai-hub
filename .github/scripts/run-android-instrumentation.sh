@@ -16,6 +16,11 @@ ADB="$SDK_ROOT/platform-tools/adb"
 SERIAL=emulator-5554
 export ANDROID_SERIAL="$SERIAL"
 export PATH="$SDK_ROOT/platform-tools:$SDK_ROOT/emulator:$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+# avdmanager and emulator must resolve the same AVD registry, irrespective of
+# inherited Android user-home settings on the hosted image. Never repurpose HOME.
+ANDROID_AVD_HOME=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/glafira-ci-avd.XXXXXX")
+export ANDROID_AVD_HOME
+mkdir -p "$ANDROID_AVD_HOME"
 
 # Overrides allow the host regression tests to exercise deadlines in seconds.
 BOOT_TIMEOUT_SECONDS=${BOOT_TIMEOUT_SECONDS:-480}
@@ -85,7 +90,17 @@ if [[ ! -x "$ADB" || ! -x "$EMULATOR" ]]; then
 fi
 timeout --kill-after=2s 30s "$EMULATOR" -accel-check > "$OUTPUT/androidTest-acceleration.txt" 2>&1
 cat "$OUTPUT/androidTest-acceleration.txt"
-printf 'no\n' | timeout --kill-after=2s 60s "$AVDMANAGER" create avd --force --name glafira-ci --package "system-images;android-35;google_apis;x86_64" --device pixel_2
+printf 'no\n' | timeout --kill-after=2s 60s "$AVDMANAGER" create avd --force --name glafira-ci --path "$ANDROID_AVD_HOME/glafira-ci.avd" --package "system-images;android-35;google_apis;x86_64" --device pixel_2
+if [[ ! -s "$ANDROID_AVD_HOME/glafira-ci.ini" ]]; then
+  echo "avdmanager did not register glafira-ci in $ANDROID_AVD_HOME" >&2
+  exit 1
+fi
+timeout --kill-after=2s 30s "$EMULATOR" -list-avds > "$OUTPUT/androidTest-avd-list.txt" 2>&1
+cat "$OUTPUT/androidTest-avd-list.txt"
+if ! grep -Fxq 'glafira-ci' "$OUTPUT/androidTest-avd-list.txt"; then
+  echo "emulator cannot find glafira-ci in shared ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >&2
+  exit 1
+fi
 adb_bounded start-server
 adb_bounded devices -l > "$OUTPUT/androidTest-adb-devices.txt" 2>&1
 setsid "$EMULATOR" -port 5554 -avd glafira-ci -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -accel on > "$OUTPUT/androidTest-emulator-console.txt" 2>&1 &

@@ -17,6 +17,13 @@ availability/access checks, `emulator -accel-check`, and `-accel on`. SwiftShade
 handles graphics; CPU virtualization remains accelerated. There is no software
 CPU fallback. A missing hypervisor fails the job with an actionable reason.
 
+PR #52 run `44580678539` then reached hardware acceleration but emulator
+37.2.13 could not locate `glafira-ci.ini`. The follow-up explicitly exports one
+unique `ANDROID_AVD_HOME` below `RUNNER_TEMP` to both avdmanager and emulator,
+sets the AVD data path, and checks the registry file and emulator AVD listing
+before boot. It does not change `HOME`. The AVD listing is included in the
+diagnostic artifacts.
+
 Every finite ADB operation is bounded. Boot readiness and package-manager
 readiness have separate deadlines; either failure prevents instrumentation.
 Streaming logcat has an owned PID and teardown stops it. Diagnostics, guest
