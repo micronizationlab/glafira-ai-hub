@@ -269,7 +269,7 @@ class GlafiraCoreOwnerApprovalStore(
                         val approved = db.update("core_action_approvals", ContentValues().apply {
                             put("status", APPROVED)
                             put("approved_at", nowMillis)
-                            put("grant_expires_at", nowMillis + GRANT_TTL_MILLIS)
+                            put("grant_expires_at", safeAdd(nowMillis, GRANT_TTL_MILLIS))
                             put("decided_by", ownerSession.sessionId)
                         }, "task_id = ? AND status = ? AND action_hash = ?",
                             arrayOf(taskId, PENDING, hash))
@@ -332,6 +332,9 @@ class GlafiraCoreOwnerApprovalStore(
         return result
     }
 
+
+    private fun safeAdd(value: Long, delta: Long): Long =
+        if (value > Long.MAX_VALUE - delta) Long.MAX_VALUE else value + delta
 
     private fun approvalExpiry(nowMillis: Long, taskDeadlineMillis: Long?): Long {
         val ttlExpiry = if (Long.MAX_VALUE - nowMillis < PENDING_APPROVAL_TTL_MILLIS) {
