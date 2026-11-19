@@ -109,6 +109,32 @@ class GlafiraBridgePairingApprovalInstrumentedTest {
         assertEquals(setOf("project.read"), delivery.grantedScopes)
         assertEquals(delivery.grantedScopes, storedCredential.grantedScopes)
 
+        // Core uses a separate SQLite helper instance, but it must read the same
+        // owner-approved credential record that HTTPS admission just issued.
+        val coreCredentialReader = AndroidKeystoreBridgePairingApprovalStore(context)
+        val coreTaskStore = GlafiraTaskStore(context)
+        try {
+            val grantSource = GlafiraCompositeTaskGrantSource(
+                GlafiraCoreOwnerApprovalStore(coreTaskStore),
+                coreCredentialReader
+            )
+            val bridgeTask = GlafiraTask(
+                taskId = "bridge-task-authorization-001",
+                projectId = "default",
+                taskType = "project.read",
+                payload = """{"actionSummary":"Read project default"}""",
+                origin = "android-desktop-bridge:$deviceId",
+                createdAtMillis = now + 5L,
+                updatedAtMillis = now + 5L,
+                idempotencyKey = "bridge-idempotency-001",
+                requiredScopes = setOf("project.read")
+            )
+            assertTrue(grantSource.grantedScopes(bridgeTask).contains("project.read"))
+        } finally {
+            coreTaskStore.close()
+            coreCredentialReader.close()
+        }
+
         assertTrue(service.acknowledgeCredentialDelivery(
             pendingApproval.approvalId, ownerSession, now + 7L
         ))
