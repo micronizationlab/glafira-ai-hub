@@ -5,7 +5,7 @@ import org.json.JSONObject
 import java.security.MessageDigest
 
 enum class GlafiraExecutionMode { DRY_RUN, LIVE }
-enum class GlafiraDryRunSimulationStatus { SIMULATABLE, NOT_SIMULATABLE }
+enum class GlafiraDryRunSimulationStatus { PREVIEW_ONLY, NOT_PREVIEW_ONLY }
 
 /**
  * A redacted, deterministic preview. It deliberately contains field names, never payload
@@ -64,7 +64,7 @@ object GlafiraDryRunPlanner {
             .orEmpty()
         val risk = definition?.risk ?: ToolRiskLevel.DESTRUCTIVE
         val summaryPresent = parsed?.optString("actionSummary")?.isNotBlank() == true
-        val simulatable = definition != null && parsed != null && summaryPresent &&
+        val previewable = definition != null && parsed != null && summaryPresent &&
             risk in setOf(ToolRiskLevel.READ_ONLY, ToolRiskLevel.DRAFT)
         val expected = when (risk) {
             ToolRiskLevel.READ_ONLY -> listOf("Проверить доступность данных без их изменения.")
@@ -84,7 +84,7 @@ object GlafiraDryRunPlanner {
         }
         val limitations = buildList {
             if (parsed == null) add("Payload не является корректным JSON; симуляция недоступна.")
-            if (!simulatable) add("Для этого инструмента нет проверенного безопасного симулятора.")
+            if (!previewable) add("Для этого инструмента нет проверенного безопасного симулятора.")
             if (!summaryPresent) add("В задании отсутствует actionSummary; точное действие нельзя считать полностью описанным.")
             if (authorization.status != GlafiraTaskAuthorizationStatus.AUTHORIZED) {
                 add("Live execution is not authorized: ${authorization.reason ?: authorization.status.name}.")
@@ -95,7 +95,7 @@ object GlafiraDryRunPlanner {
         val canonical = listOf(
             task.taskId, task.projectId, task.taskType, task.origin,
             task.payload, task.requiredScopes.sorted().joinToString("\u0000"),
-            risk.name, if (simulatable) "SIMULATABLE" else "NOT_SIMULATABLE"
+            risk.name, if (previewable) "PREVIEW_ONLY" else "NOT_PREVIEW_ONLY"
         ).joinToString("") { "${it.length}:$it" }
         val hash = MessageDigest.getInstance("SHA-256")
             .digest(canonical.toByteArray(Charsets.UTF_8))
@@ -106,8 +106,8 @@ object GlafiraDryRunPlanner {
             projectId = task.projectId,
             toolId = task.taskType,
             risk = risk,
-            simulationStatus = if (simulatable) GlafiraDryRunSimulationStatus.SIMULATABLE
-                else GlafiraDryRunSimulationStatus.NOT_SIMULATABLE,
+            simulationStatus = if (previewable) GlafiraDryRunSimulationStatus.PREVIEW_ONLY
+                else GlafiraDryRunSimulationStatus.NOT_PREVIEW_ONLY,
             targetFields = targetFields,
             expectedChanges = expected,
             requiredPermissions = ((definition?.requiredScopes ?: emptySet()) + task.requiredScopes).sorted(),
