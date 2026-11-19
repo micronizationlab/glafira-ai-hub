@@ -139,6 +139,8 @@ jobs:
           path: |
             app/build/test-results/
             app/build/reports/tests/
+            desktop-bridge/build/test-results/
+            desktop-bridge/build/reports/tests/
           if-no-files-found: warn
           retention-days: 7
 
