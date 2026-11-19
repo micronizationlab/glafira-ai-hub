@@ -50,7 +50,9 @@ def classify_paths(
         elif path.startswith(".github/workflows/"):
             selected["workflow_lint"] = True
         elif path.startswith(".github/scripts/"):
-            selected["android"] = True
+            selected["workflow_lint"] = True
+            if path == ".github/scripts/run-android-instrumentation.sh":
+                selected["android"] = True
 
         if (
             path.startswith("app/src/androidTest/")
@@ -114,7 +116,7 @@ def main() -> None:
     output_path = os.environ["GITHUB_OUTPUT"]
     with open(output_path, "a", encoding="utf-8") as output:
         for name, value in selected.items():
-            output.write(f"{name}={str(value).lower()}\\n")
+            output.write(f"{name}={str(value).lower()}\n")
     print("Changed paths:")
     for path in changed:
         print(f"  {path}")
