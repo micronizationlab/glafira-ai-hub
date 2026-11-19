@@ -196,6 +196,12 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(taskCount, claimedIds.size)
         assertEquals(taskCount, claimedIds.toSet().size)
         assertEquals(taskCount, store.listTasks(setOf(GlafiraTaskState.SUCCEEDED)).size)
+        repeat(taskCount) { index ->
+            assertEquals(
+                listOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING, GlafiraTaskState.SUCCEEDED),
+                store.taskHistory("parallel-$index", "project").map { it.toState }.reversed()
+            )
+        }
     }
 
     @Test fun processRestartRecoveryRequeuesSafeReadsButQuarantinesUnknownWrites() {
