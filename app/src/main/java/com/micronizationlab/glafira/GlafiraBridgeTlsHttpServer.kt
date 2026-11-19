@@ -498,10 +498,14 @@ class GlafiraBridgeTlsHttpServer(
             "Content-Length: " + body.size + "\r\n" +
             "Connection: close\r\n" +
             "Cache-Control: no-store\r\n\r\n"
-        socket.getOutputStream().apply {
-            write(headers.toByteArray(Charsets.US_ASCII))
-            write(body)
-            flush()
+        try {
+            socket.getOutputStream().apply {
+                write(headers.toByteArray(Charsets.US_ASCII))
+                write(body)
+                flush()
+            }
+        } finally {
+            body.fill(0)
         }
     }
     companion object {
