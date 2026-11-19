@@ -1,6 +1,9 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.content.ComponentName
+import android.content.pm.ServiceInfo
+import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
@@ -41,6 +44,21 @@ class GlafiraCoreBackupInstrumentedTest {
         updatedAtMillis = 1_000L,
         idempotencyKey = "backup-project:$id"
     )
+
+    @Test
+    fun bridgeHostServiceIsRegisteredAsPrivateConnectedDeviceForegroundService() {
+        val service = context.packageManager.getServiceInfo(
+            ComponentName(context, GlafiraBridgeHostService::class.java),
+            0
+        )
+        assertFalse(service.exported)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            assertEquals(
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+                service.foregroundServiceType
+            )
+        }
+    }
 
     @Test
     fun queueStateAndEncryptedPayloadSurviveStoreReopen() {
