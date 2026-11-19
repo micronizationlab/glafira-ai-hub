@@ -81,7 +81,7 @@ jobs:
 
   debug-apk:
     name: Build installable debug APK
-    needs: instrumented-tests
+    needs: unit-tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
