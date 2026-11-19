@@ -3,6 +3,9 @@ package com.micronizationlab.glafira
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -288,6 +291,32 @@ class GlafiraCoreConcurrencyTest {
         assertEquals(GlafiraTaskExecutionStatus.WAITING_FOR_OWNER, result.status)
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.getTask("external-write")?.state)
         assertNull(queue.result("external-write"))
+    }
+
+    @Test
+    fun cancellationDuringExternalWriteQuarantinesTaskForOwner() = runBlocking {
+        val queue = ConcurrentQueue(listOf(task("cancelled-write").copy(taskType = "message.send")))
+        val handlerStarted = CompletableDeferred<Unit>()
+        val executor = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("message.send" to GlafiraTaskHandler {
+                handlerStarted.complete(Unit)
+                awaitCancellation()
+            }),
+            dispatcher = Dispatchers.Default,
+            clock = { 10_000L },
+            runtimeBudget = { GlafiraRuntimeBudget(maxConcurrentTasks = 1) }
+        )
+
+        val worker = launch { executor.executeNext() }
+        withTimeout(5_000L) { handlerStarted.await() }
+        worker.cancelAndJoin()
+
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.getTask("cancelled-write")?.state)
+        assertNull(queue.result("cancelled-write"))
     }
 
 }
