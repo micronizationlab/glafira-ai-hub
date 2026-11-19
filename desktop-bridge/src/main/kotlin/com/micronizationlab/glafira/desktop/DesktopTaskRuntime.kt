@@ -68,8 +68,16 @@ internal class DesktopTaskRuntime(
             try {
                 // Cancellation may win between claim and dispatch. Never execute a task
                 // unless both durable state transitions succeeded.
-                queue.transition(task.taskId, DesktopTaskState.ACCEPTED)
-                queue.transition(task.taskId, DesktopTaskState.RUNNING)
+                val accepted = queue.transition(task.taskId, DesktopTaskState.ACCEPTED)
+                if (accepted.state != DesktopTaskState.ACCEPTED) {
+                    slots.release()
+                    continue
+                }
+                val running = queue.transition(task.taskId, DesktopTaskState.RUNNING)
+                if (running.state != DesktopTaskState.RUNNING) {
+                    slots.release()
+                    continue
+                }
             } catch (_: Exception) {
                 slots.release()
                 continue
