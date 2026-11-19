@@ -239,8 +239,15 @@ class GlafiraBridgeTlsHttpServer(
                 } else when (request.operation) {
                     GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> {
                         try {
-                            val capabilities = request.payload.getValue("capabilities")
-                                .split(',').filter { it.isNotBlank() }.toSet()
+                            val capabilityJson = org.json.JSONArray(request.payload.getValue("capabilities"))
+                            require(capabilityJson.length() <= 16)
+                            val capabilities = buildSet {
+                                for (index in 0 until capabilityJson.length()) {
+                                    val value = capabilityJson.getString(index)
+                                    require(value.matches(Regex("[a-z][a-z0-9_.-]{1,63}")))
+                                    add(value)
+                                }
+                            }
                             val parallel = request.payload.getValue("maxParallelTasks").toInt()
                             val task = coreIngress.claimDesktopTask(request.deviceId, capabilities, parallel)
                             if (task == null) {
@@ -257,6 +264,8 @@ class GlafiraBridgeTlsHttpServer(
                                         "available" to "true",
                                         "taskId" to task.taskId,
                                         "projectId" to task.projectId,
+                                        "createdAtEpochMs" to task.createdAtMillis.toString(),
+                                        "priority" to task.priority.toString(),
                                         "parentTaskId" to payload.optString("parentTaskId"),
                                         "subtaskId" to payload.optString("subtaskId"),
                                         "title" to payload.optString("title"),
