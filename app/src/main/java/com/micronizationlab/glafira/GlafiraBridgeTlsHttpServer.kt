@@ -315,7 +315,7 @@ class GlafiraBridgeTlsHttpServer(
                                         "title" to payload.optString("title"),
                                         "instruction" to payload.optString("instruction"),
                                         "executor" to payload.optString("executor"),
-                                        "requiredCapabilities" to payload.optJSONArray("requiredCapabilities").toString(),
+                                        "requiredCapabilities" to (payload.optJSONArray("requiredCapabilities")?.toString() ?: "[]"),
                                         "expiresAtEpochMs" to (task.deadlineAtMillis ?: 0L).toString(),
                                         "leaseExpiresAtEpochMs" to (coreIngress.desktopTaskLeaseExpiry(task.taskId) ?: 0L).toString()
                                     )
