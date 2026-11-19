@@ -10,10 +10,11 @@ on:
 permissions:
   contents: read
 
-# Keep only the newest validation run for a PR/branch; stale runs waste emulator capacity.
+# Serialize validation per PR/branch without interrupting an active test run.
+# GitHub may replace an older pending run, but the running emulator job is allowed to finish.
 concurrency:
   group: glafira-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   unit-tests:
