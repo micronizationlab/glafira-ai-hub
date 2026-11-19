@@ -124,6 +124,60 @@ class GlafiraBridgePairingApprovalInstrumentedTest {
     }
 
     @Test
+    fun expirySweepCommitsWhenPendingApprovalQueueIsFull() {
+        val now = System.currentTimeMillis()
+        repeat(GlafiraBridgeOwnerApprovalService.MAX_PENDING_APPROVALS) { index ->
+            val suffix = index.toString().padStart(4, '0')
+            assertTrue(
+                store.enqueue(
+                    GlafiraBridgePendingApproval(
+                        approvalId = "active_approval_$suffix",
+                        ticketId = "active_ticket_$suffix",
+                        clientNonce = "n".repeat(43),
+                        deviceLabel = "GLAFIRA Desktop",
+                        platform = GlafiraBridgeClientPlatform.DESKTOP,
+                        requestedScopes = setOf("project.read"),
+                        receivedAtEpochMs = now,
+                        status = GlafiraBridgeApprovalStatus.PENDING
+                    )
+                )
+            )
+        }
+
+        val staleId = "stale_approval_identifier"
+        val staleTicket = "stale_ticket_identifier"
+        val staleValues = android.content.ContentValues().apply {
+            put("approval_id", staleId)
+            put("ticket_id", staleTicket)
+            put("client_nonce", "s".repeat(43))
+            put("device_label", "Old Desktop")
+            put("platform", GlafiraBridgeClientPlatform.DESKTOP.name)
+            put("requested_scopes", "project.read")
+            put("received_at", now - 24L * 60L * 60L * 1000L - 1L)
+            put("status", GlafiraBridgeApprovalStatus.PENDING.name)
+        }
+        assertTrue(store.writableDatabase.insertOrThrow("pairing_approvals", null, staleValues) >= 0L)
+
+        val rejected = store.enqueue(
+            GlafiraBridgePendingApproval(
+                approvalId = "new_approval_identifier",
+                ticketId = "new_ticket_identifier",
+                clientNonce = "x".repeat(43),
+                deviceLabel = "New Desktop",
+                platform = GlafiraBridgeClientPlatform.DESKTOP,
+                requestedScopes = setOf("project.read"),
+                receivedAtEpochMs = now,
+                status = GlafiraBridgeApprovalStatus.PENDING
+            )
+        )
+        assertFalse(rejected)
+        assertEquals(
+            GlafiraBridgeApprovalStatus.EXPIRED,
+            store.find(staleId)?.status
+        )
+    }
+
+    @Test
     fun stalePendingPairingApprovalExpiresAndCannotBeListed() {
         val now = System.currentTimeMillis()
         val approval = GlafiraBridgePendingApproval(
