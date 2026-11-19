@@ -126,10 +126,12 @@ class GlafiraBridgePairingProtocol(
 
             val suppliedProof = runCatching { proofHex.hexToBytes() }.getOrNull()
                 ?: return rejected(GlafiraBridgePairingError.INVALID_INPUT)
-            val expectedProof = hmacSha256(
-                ticket.verifierKey,
-                canonicalProofMessage(ticketId, clientNonce)
-            )
+            val canonical = canonicalProofMessage(ticketId, clientNonce)
+            val expectedProof = try {
+                hmacSha256(ticket.verifierKey, canonical)
+            } finally {
+                canonical.fill(0)
+            }
             val proofMatches = try {
                 MessageDigest.isEqual(expectedProof, suppliedProof)
             } finally {
@@ -168,12 +170,24 @@ class GlafiraBridgePairingProtocol(
         ): String {
             require(isIdentifier(ticketId) && isNonce(clientNonce))
             val capability = decodeUrl(pairingCapability)
-            require(capability.size == CAPABILITY_BYTES)
-            val verifierKey = sha256(capability)
-            capability.fill(0)
-            val proof = hmacSha256(verifierKey, canonicalProofMessage(ticketId, clientNonce))
-            verifierKey.fill(0)
-            return proof.toHex()
+            var verifierKey: ByteArray? = null
+            var message: ByteArray? = null
+            var proof: ByteArray? = null
+            try {
+                require(capability.size == CAPABILITY_BYTES)
+                val verifier = sha256(capability)
+                verifierKey = verifier
+                val canonical = canonicalProofMessage(ticketId, clientNonce)
+                message = canonical
+                val proofBytes = hmacSha256(verifier, canonical)
+                proof = proofBytes
+                return proofBytes.toHex()
+            } finally {
+                capability.fill(0)
+                verifierKey?.fill(0)
+                message?.fill(0)
+                proof?.fill(0)
+            }
         }
 
         private fun canonicalProofMessage(ticketId: String, clientNonce: String): ByteArray =
