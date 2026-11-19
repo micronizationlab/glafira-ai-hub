@@ -1,20 +1,13 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
-import java.io.File
 
+@Suppress("UNUSED_PARAMETER")
 fun deleteProject(context: Context, project: Project, allProjects: List<Project>): List<Project> {
-    // Удаляем файлы истории, связанные с этим проектом
-    val files = context.filesDir.listFiles()
-    files?.forEach { file ->
-        if (file.name.startsWith("chat_${project.id}_")) {
-            file.delete()
-        }
+    val remaining = updateProjects(context) { projects -> projects.filter { it.id != project.id } }
+    deleteProjectHistory(context, project.id)
+    PendingMessageStore(context.filesDir).all().filter { it.projectId == project.id }.forEach {
+        PendingMessageStore(context.filesDir).cancel(it.id)
     }
-    
-    // Возвращаем обновленный список проектов
-    val updatedProjects = allProjects.filter { it.id != project.id }
-    saveProjects(context, updatedProjects)
-    
-    return updatedProjects
+    return remaining
 }
