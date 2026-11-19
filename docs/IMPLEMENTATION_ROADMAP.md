@@ -37,7 +37,7 @@ Goal: protect user data before expanding the product.
 
 No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
 
-## Priority 3 — Autonomous Runtime, Bridge, Roles and Voice
+## Priority 3 — Autonomous Runtime, Secure Bridge Transport, Roles and Voice
 
 The current five-step P3 implementation and acceptance gates are tracked in [AUTONOMOUS_RUNTIME_P3_IMPLEMENTATION.md](AUTONOMOUS_RUNTIME_P3_IMPLEMENTATION.md). The current implementation remains bounded and DRY_RUN-only until all security and acceptance gates pass.
 
@@ -66,13 +66,14 @@ Unified operational memory is a Priority 1 GLAFIRA Core responsibility and is sp
 4. Show task ownership, dependencies, handoffs, status and shared project context.
 5. Enforce project boundaries, least privilege and per-agent tool scopes.
 
-## Priority 6 — Secure Device and Computer Bridge
+## Priority 6 — Advanced Computer Use and Browser Automation
 
-1. Add an authenticated, paired Bridge for desktop and Android device actions.
-2. Provide browser automation and controlled UI automation in isolated environments with minimal privileges.
-3. Use domain/app allowlists, credential isolation, prompt-injection defenses and action logs.
-4. Require owner approval for public, financial, destructive, privacy-sensitive or irreversible actions.
-5. Add dry-run/preview mode and recovery checkpoints before consequential actions.
+This priority builds on the authenticated Android/Desktop Bridge transport and owner-controlled pairing delivered under Priority 3. It covers the higher-level computer-use capabilities, not a second pairing protocol.
+
+1. Add browser automation and controlled UI automation in isolated environments with minimal privileges.
+2. Use domain/app allowlists, credential isolation, prompt-injection defenses and action logs.
+3. Require owner approval for public, financial, destructive, privacy-sensitive or irreversible actions.
+4. Add dry-run/preview mode and recovery checkpoints before consequential actions.
 
 ## Priority 7 — Skill Engine and Governed Plugin Marketplace
 
@@ -158,12 +159,14 @@ These are roadmap capabilities, not a claim that they are already implemented. E
 - The cloud worker uploads a new timestamped archive, reads it back and verifies it before deleting older current copies; steady state is one current archive. If the provider refuses deletion, it keeps the verified new copy and records a cleanup warning. The selected folder can be a Google Drive or Yandex Disk document provider when exposed by an installed app. This is not a direct Drive/Yandex REST OAuth adapter.
 - Still required for Backup & Recovery: real-device/provider acceptance testing, permission-expiry and quota failure tests, clean-device restore test, status notifications, and optional email fallback. WorkManager timing is best-effort.
 - GLAFIRA Core hardening has started: cross-provider consultation is owner opt-in and disabled by default; common tokens/passwords/contact details are pattern-redacted; the primary model can return a direct answer from the planning call to avoid duplicate requests; Council synthesis now follows the configured primary model.
-- Still required for GLAFIRA Core: field-level data-sharing classifications, broader coordinator tests, timeout/cancellation/fallback policy, context-boundary tests, typed tool registry, approval engine, unified operational memory, independent Reviewer and structured Trace/Audit. Their contracts are specified but not yet implemented by the new specification PR.
+- Still required for GLAFIRA Core: field-level data-sharing classifications, broader coordinator and context-boundary tests, and end-to-end validation of timeout/cancellation/fallback behavior. A typed tool registry and durable owner-approval store now exist in the P3 implementation branch, but still need full acceptance coverage. Unified operational memory, independent Reviewer and structured Trace/Audit remain specifications/follow-up implementation work.
 - Voice runtime and SMM/social connectors remain specifications until implemented and tested.
 
 - Restore semantics hardened: selected backup now replaces the app-private file snapshot, including removing files created after that backup; safety snapshot rollback remains in place. Requires device acceptance tests.
-- Latest observed PR #35 validation: Android Unit Tests passed, but Android Emulator Integration Tests failed because the emulator did not finish booting before timeout. This is an infrastructure/test-run failure, not a passing restore acceptance; rerun and investigate before merge.
-- PR #37 WorkManager integration remains draft and unmerged; its latest observed CI runs were still in progress at the time of this roadmap update.
+### Historical validation notes (not current acceptance status)
+
+- An earlier PR #35 run had Android Unit Tests pass, but Android Emulator Integration Tests failed because the emulator did not finish booting before timeout. This was an infrastructure/test-run failure, not a passing restore acceptance.
+- PR #37 WorkManager integration was previously draft and unmerged; this historical note does not describe its current repository state.
 
 ## P3 implementation status
 
