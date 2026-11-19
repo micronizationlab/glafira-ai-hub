@@ -16,8 +16,9 @@ import org.junit.Test
 
 class GlafiraCoreConcurrencyTest {
     private class ConcurrentQueue(initial: List<GlafiraTask>) :
-        GlafiraTaskQueue, GlafiraInterruptedTaskRecovery {
+        GlafiraTaskQueue, GlafiraInterruptedTaskRecovery, GlafiraCoreTaskResultPersistence {
         private val tasks = initial.associateBy { it.taskId }.toMutableMap()
+        private val results = mutableMapOf<String, String>()
         var recoveryCalls = 0
             private set
 
@@ -78,6 +79,24 @@ class GlafiraCoreConcurrencyTest {
         }
 
         @Synchronized
+        override fun persistCoreTaskResult(
+            taskId: String,
+            expectedStates: Set<GlafiraTaskState>,
+            result: String,
+            nowMillis: Long
+        ): Boolean {
+            val existing = results[taskId]
+            if (existing != null) return existing == result &&
+                tasks[taskId]?.state == GlafiraTaskState.SUCCEEDED
+            if (!transition(taskId, expectedStates, GlafiraTaskState.SUCCEEDED, nowMillis)) return false
+            results[taskId] = result
+            return true
+        }
+
+        @Synchronized
+        fun result(taskId: String): String? = results[taskId]
+
+        @Synchronized
         fun completedCount(): Int = tasks.values.count { it.state == GlafiraTaskState.SUCCEEDED }
     }
 
@@ -135,6 +154,7 @@ class GlafiraCoreConcurrencyTest {
         assertEquals(5, results.count { it.status == GlafiraTaskExecutionStatus.SUCCEEDED })
         assertEquals(5, claimedIds.size)
         assertEquals(5, queue.completedCount())
+        repeat(1..5) { index -> assertEquals("task-$index", queue.result("task-$index")) }
         assertEquals(1, queue.recoveryCalls)
         assertEquals(0, active.get())
     }
@@ -215,6 +235,8 @@ class GlafiraCoreConcurrencyTest {
         assertEquals(1, results.count { it.status == GlafiraTaskExecutionStatus.SUCCEEDED })
         assertEquals(GlafiraTaskState.RETRY_SCHEDULED, queue.getTask("bad")?.state)
         assertEquals(GlafiraTaskState.SUCCEEDED, queue.getTask("good")?.state)
+        assertEquals("independent task completed", queue.result("good"))
+        assertNull(queue.result("bad"))
         assertEquals(0, active.get())
     }
 
