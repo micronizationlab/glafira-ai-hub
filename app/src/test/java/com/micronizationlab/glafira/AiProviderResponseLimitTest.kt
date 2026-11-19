@@ -46,6 +46,15 @@ class AiProviderResponseLimitTest {
     }
 
     @Test
+    fun rejectsMalformedUtf8Response() {
+        val bytes = byteArrayOf(0xC3.toByte(), 0x28)
+        val error = runCatching {
+            readBoundedProviderResponse(ByteArrayInputStream(bytes), 8)
+        }.exceptionOrNull()
+        assertTrue(error is java.nio.charset.CharacterCodingException)
+    }
+
+    @Test
     fun rejectsNonPositiveLimit() {
         val error = runCatching {
             readBoundedProviderResponse(ByteArrayInputStream(byteArrayOf()), 0)
