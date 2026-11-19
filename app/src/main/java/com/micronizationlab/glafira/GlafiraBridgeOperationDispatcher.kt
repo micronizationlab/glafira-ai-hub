@@ -18,7 +18,6 @@ import java.util.Locale
 class GlafiraBridgeOperationDispatcher(context: Context) {
     private val appContext = context.applicationContext
     private val filesRoot = appContext.filesDir.canonicalFile
-    private val desktopTasks = GlafiraDesktopTaskStore(appContext)
 
     fun dispatch(request: GlafiraBridgeRequest): GlafiraBridgeResponse {
         return try {
@@ -70,35 +69,9 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                 }
                 GlafiraBridgeOperation.APPROVAL_REQUEST ->
                     failed(request, "APPROVAL_QUEUE_NOT_CONNECTED")
-                GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> {
-                    val capabilityJson = JSONArray(request.payload.getValue("capabilities"))
-                    require(capabilityJson.length() <= 16)
-                    val capabilities = buildSet {
-                        for (index in 0 until capabilityJson.length()) {
-                            val value = capabilityJson.getString(index)
-                            require(value.matches(Regex("[a-z][a-z0-9_.-]{1,63}")))
-                            add(value)
-                        }
-                    }
-                    val maxParallel = request.payload.getValue("maxParallelTasks").toInt()
-                    val task = desktopTasks.claimNext(capabilities, maxParallel, request.deviceId)
-                    if (task == null) succeeded(request, mapOf("taskJson" to "none"))
-                    else succeeded(request, mapOf("taskJson" to task.toString()))
-                }
-                GlafiraBridgeOperation.DESKTOP_TASK_RESULT -> {
-                    val payload = request.payload
-                    val updated = desktopTasks.update(
-                        taskId = payload.getValue("taskId"),
-                        deviceId = request.deviceId,
-                        state = payload.getValue("state"),
-                        progressPercent = payload.getValue("progressPercent").toInt(),
-                        progressMessage = payload.getValue("progressMessage").takeUnless { it == "none" },
-                        result = payload.getValue("result").takeUnless { it == "none" },
-                        errorCode = payload.getValue("errorCode").takeUnless { it == "none" }
-                    )
-                    if (updated) succeeded(request, mapOf("taskId" to payload.getValue("taskId"), "updated" to "true"))
-                    else failed(request, "TASK_NOT_FOUND")
-                }
+                GlafiraBridgeOperation.DESKTOP_TASK_CLAIM,
+                GlafiraBridgeOperation.DESKTOP_TASK_RESULT ->
+                    failed(request, "DESKTOP_OPERATIONS_REQUIRE_CORE_QUEUE")
             }
         } catch (_: Exception) {
             failed(request, "OPERATION_FAILED")
