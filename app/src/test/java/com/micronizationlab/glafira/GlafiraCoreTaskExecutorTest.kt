@@ -1,8 +1,10 @@
 package com.micronizationlab.glafira
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.util.concurrent.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -171,19 +173,22 @@ class GlafiraCoreTaskExecutorTest {
     @Test
     fun coroutineCancellationPropagatesInsteadOfBeingConvertedToRetry() {
         val queue = FakeQueue(task())
+        val handlerStarted = CompletableDeferred<Unit>()
         val worker = GlafiraCoreTaskExecutor(
             queue = queue,
             authorizer = GlafiraTaskAuthorizer { _, _ ->
                 GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
             },
             handlers = listOf("project.read" to GlafiraTaskHandler {
-                throw CancellationException("test cancellation")
+                handlerStarted.complete(Unit)
+                awaitCancellation()
             })
         )
 
         runBlocking {
             val job = launch { worker.executeNext() }
-            job.join()
+            handlerStarted.await()
+            job.cancelAndJoin()
             assertTrue(job.isCancelled)
         }
         assertEquals(GlafiraTaskState.RETRY_SCHEDULED, queue.task?.state)
