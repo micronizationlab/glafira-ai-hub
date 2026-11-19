@@ -40,21 +40,13 @@ fun main() {
                 require(projectId.isNotBlank())
                 val model = console.readLine("Installed Ollama model name: ").trim()
                 require(model.isNotBlank())
-                val queuePath = Path.of(
-                    System.getProperty("user.home"),
-                    ".glafira-ai-hub",
-                    "tasks",
-                    "desktop-tasks.json"
-                )
-                val queue = DesktopTaskQueue(queuePath)
-                println("Desktop task worker started. Press Ctrl+C to stop.")
+                println("Desktop worker uses Core SQLite as the only durable task queue.")
                 println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
                 println("Ollama must be running locally at 127.0.0.1:11434.")
                 DesktopBridgeTaskWorker(
                     origin = entry.origin,
                     credentials = credentials,
                     projectId = projectId,
-                    queue = queue,
                     handlers = DesktopLocalAgentRegistry.ollama(model)
                 ).use { worker ->
                     worker.runPollingLoop(shouldContinue = { true })
