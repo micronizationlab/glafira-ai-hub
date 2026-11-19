@@ -126,6 +126,10 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         } finally { db.endTransaction() }
         assertEquals(GlafiraTaskState.RUNNING, store.getTask("rollback")?.state)
         assertNull(store.coreTaskResult("rollback", "project"))
+        assertFalse(db.query(
+            "core_task_results", arrayOf("task_id"), "task_id = ?",
+            arrayOf("rollback"), null, null, null, "1"
+        ).use { it.moveToFirst() })
         assertEquals(2, store.taskHistory("rollback", "project").size)
     }
     @Test fun expiredDesktopLeaseDoesNotReplayOperationAndAcceptsLateBoundResult() {
