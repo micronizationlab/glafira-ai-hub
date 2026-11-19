@@ -94,7 +94,7 @@ fun BackupSettingsSection() {
                             val destination = context.contentResolver.openOutputStream(uri)
                                 ?: error("Не удалось открыть файл назначения.")
                             destination.use { output -> archive.inputStream().use { input -> input.copyTo(output) } }
-                            val verification = BackupArchive.verify(archive, recoveryPassphrase)
+                            val verification = BackupArchive.verify(context, archive, recoveryPassphrase)
                             "Архив проверен: ${verification.fileCount} файлов, ${formatBackupSize(verification.totalBytes)}."
                         } finally {
                             archive.delete()

@@ -23,6 +23,9 @@ interface GlafiraBridgePairingTicketStore {
     fun create(ticket: GlafiraBridgePairingTicket): Boolean
     fun find(ticketId: String): GlafiraBridgePairingTicket?
 
+    /** Best-effort bounded cleanup of expired invitation records. */
+    fun pruneExpired(nowEpochMs: Long): Int = 0
+
     /** Atomically remove the matching, unexpired ticket. Must fail if already consumed. */
     fun consume(
         ticketId: String,
@@ -36,7 +39,10 @@ data class GlafiraBridgePairingInvitation(
     /** Display once to the owner; never log or persist this value in plaintext. */
     val pairingCapability: String,
     val expiresAtEpochMs: Long
-)
+) {
+    override fun toString(): String =
+        "GlafiraBridgePairingInvitation(ticketId=$ticketId, pairingCapability=[REDACTED], expiresAtEpochMs=$expiresAtEpochMs)"
+}
 
 data class GlafiraBridgeVerifiedEnrollment(
     val ticketId: String,
@@ -74,29 +80,31 @@ class GlafiraBridgePairingProtocol(
 
         val ticketIdBytes = ByteArray(TICKET_ID_BYTES).also(secureRandom::nextBytes)
         val capabilityBytes = ByteArray(CAPABILITY_BYTES).also(secureRandom::nextBytes)
-        val ticketId = ticketIdBytes.encodeUrl()
-        val capability = capabilityBytes.encodeUrl()
-        val expiresAt = Math.addExact(nowEpochMs, lifetimeMs)
-        val verifierKey = sha256(capabilityBytes)
+        var verifierKey: ByteArray? = null
+        try {
+            val ticketId = ticketIdBytes.encodeUrl()
+            val capability = capabilityBytes.encodeUrl()
+            val expiresAt = Math.addExact(nowEpochMs, lifetimeMs)
+            val verifier = sha256(capabilityBytes)
+            verifierKey = verifier
 
-        val stored = runCatching {
-            ticketStore.create(
-                GlafiraBridgePairingTicket(
-                    ticketId = ticketId,
-                    verifierKey = verifierKey,
-                    expiresAtEpochMs = expiresAt
+            val stored = runCatching {
+                ticketStore.pruneExpired(nowEpochMs)
+                ticketStore.create(
+                    GlafiraBridgePairingTicket(
+                        ticketId = ticketId,
+                        verifierKey = verifier,
+                        expiresAtEpochMs = expiresAt
+                    )
                 )
-            )
-        }.getOrDefault(false)
-
-        capabilityBytes.fill(0)
-        if (!stored) {
-            verifierKey.fill(0)
-            throw IllegalStateException("Unable to persist one-time pairing ticket.")
+            }.getOrDefault(false)
+            check(stored) { "Unable to persist one-time pairing ticket." }
+            return GlafiraBridgePairingInvitation(ticketId, capability, expiresAt)
+        } finally {
+            ticketIdBytes.fill(0)
+            capabilityBytes.fill(0)
+            verifierKey?.fill(0)
         }
-        verifierKey.fill(0)
-
-        return GlafiraBridgePairingInvitation(ticketId, capability, expiresAt)
     }
 
     fun verifyAndConsume(
@@ -112,24 +120,29 @@ class GlafiraBridgePairingProtocol(
         val ticket = runCatching { ticketStore.find(ticketId) }.getOrNull()
             ?: return rejected(GlafiraBridgePairingError.TICKET_NOT_FOUND)
 
-        if (ticket.expiresAtEpochMs <= nowEpochMs) {
-            return rejected(GlafiraBridgePairingError.TICKET_EXPIRED)
-        }
-        if (ticket.verifierKey.size != SHA256_BYTES) {
-            return rejected(GlafiraBridgePairingError.STORAGE_ERROR)
-        }
-
         try {
+            if (ticket.expiresAtEpochMs <= nowEpochMs) {
+                return rejected(GlafiraBridgePairingError.TICKET_EXPIRED)
+            }
+            if (ticket.verifierKey.size != SHA256_BYTES) {
+                return rejected(GlafiraBridgePairingError.STORAGE_ERROR)
+            }
+
             val suppliedProof = runCatching { proofHex.hexToBytes() }.getOrNull()
                 ?: return rejected(GlafiraBridgePairingError.INVALID_INPUT)
-            val expectedProof = hmacSha256(
-                ticket.verifierKey,
-                canonicalProofMessage(ticketId, clientNonce)
-            )
             val proofMatches = try {
-                MessageDigest.isEqual(expectedProof, suppliedProof)
+                val canonical = canonicalProofMessage(ticketId, clientNonce)
+                val expectedProof = try {
+                    hmacSha256(ticket.verifierKey, canonical)
+                } finally {
+                    canonical.fill(0)
+                }
+                try {
+                    MessageDigest.isEqual(expectedProof, suppliedProof)
+                } finally {
+                    expectedProof.fill(0)
+                }
             } finally {
-                expectedProof.fill(0)
                 suppliedProof.fill(0)
             }
             if (!proofMatches) return rejected(GlafiraBridgePairingError.INVALID_PROOF)
@@ -164,12 +177,24 @@ class GlafiraBridgePairingProtocol(
         ): String {
             require(isIdentifier(ticketId) && isNonce(clientNonce))
             val capability = decodeUrl(pairingCapability)
-            require(capability.size == CAPABILITY_BYTES)
-            val verifierKey = sha256(capability)
-            capability.fill(0)
-            val proof = hmacSha256(verifierKey, canonicalProofMessage(ticketId, clientNonce))
-            verifierKey.fill(0)
-            return proof.toHex()
+            var verifierKey: ByteArray? = null
+            var message: ByteArray? = null
+            var proof: ByteArray? = null
+            try {
+                require(capability.size == CAPABILITY_BYTES)
+                val verifier = sha256(capability)
+                verifierKey = verifier
+                val canonical = canonicalProofMessage(ticketId, clientNonce)
+                message = canonical
+                val proofBytes = hmacSha256(verifier, canonical)
+                proof = proofBytes
+                return proofBytes.toHex()
+            } finally {
+                capability.fill(0)
+                verifierKey?.fill(0)
+                message?.fill(0)
+                proof?.fill(0)
+            }
         }
 
         private fun canonicalProofMessage(ticketId: String, clientNonce: String): ByteArray =

@@ -33,9 +33,11 @@ class GlafiraBridgeTlsHttpServer(
     private val deviceRateLimiter: GlafiraBridgeRateLimiter
 ) : AutoCloseable {
     @Volatile private var running = false
+    @Volatile private var closed = false
     @Volatile private var boundPort: Int = DEFAULT_PORT
     private var serverSocket: SSLServerSocket? = null
     private var acceptThread: Thread? = null
+    private val activeSockets = java.util.concurrent.ConcurrentHashMap.newKeySet<SSLSocket>()
     private val workers = ThreadPoolExecutor(
         WORKER_COUNT,
         WORKER_COUNT,
@@ -48,6 +50,7 @@ class GlafiraBridgeTlsHttpServer(
 
     @Synchronized
     fun start(bindAddress: InetAddress, port: Int = DEFAULT_PORT) {
+        check(!closed) { "Bridge HTTPS server has been closed and cannot be restarted." }
         check(!running) { "Bridge HTTPS listener is already running." }
         require(bindAddress is java.net.Inet4Address && bindAddress.isSiteLocalAddress) {
             "Bridge host must bind to an explicitly selected private IPv4 LAN address."
@@ -87,12 +90,22 @@ class GlafiraBridgeTlsHttpServer(
 
     @Synchronized
     override fun close() {
+        if (closed) return
+        closed = true
         running = false
         runCatching { serverSocket?.close() }
         serverSocket = null
         acceptThread?.interrupt()
         acceptThread = null
+        // Close active sockets first so blocked reads/handshakes cannot outlive the stores
+        // owned by the foreground service.
+        activeSockets.toList().forEach { socket -> runCatching { socket.close() } }
         workers.shutdownNow()
+        try {
+            workers.awaitTermination(WORKER_SHUTDOWN_WAIT_MS, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 
     private fun acceptLoop(listener: SSLServerSocket) {
@@ -105,19 +118,33 @@ class GlafiraBridgeTlsHttpServer(
                 if (running) running = false
                 break
             }
+            if (!running) {
+                runCatching { socket.close() }
+                break
+            }
+            activeSockets.add(socket)
             val remote = socket.inetAddress.hostAddress
             if (remote == null) {
+                activeSockets.remove(socket)
                 socket.close()
                 continue
             }
             if (!addressRateLimiter.tryAcquire(remote)) {
                 runCatching { writeResponse(socket, HTTP_TOO_MANY_REQUESTS, errorResponse("RATE_LIMITED")) }
+                activeSockets.remove(socket)
                 runCatching { socket.close() }
                 continue
             }
             try {
-                workers.execute { handle(socket) }
+                workers.execute {
+                    try {
+                        handle(socket)
+                    } finally {
+                        activeSockets.remove(socket)
+                    }
+                }
             } catch (_: java.util.concurrent.RejectedExecutionException) {
+                activeSockets.remove(socket)
                 runCatching { socket.close() }
             }
         }
@@ -161,7 +188,7 @@ class GlafiraBridgeTlsHttpServer(
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("UNSUPPORTED_FRAMING"))
                     return
                 }
-                val contentLength = headers["content-length"]?.toLongOrNull()
+                val contentLength = GlafiraBridgeIngressPolicy.parseContentLength(headers["content-length"])
                 if (contentLength == null || contentLength !in 1..GlafiraBridgeIngressPolicy.MAX_REQUEST_BODY_BYTES.toLong()) {
                     val status = if (contentLength != null && contentLength > GlafiraBridgeIngressPolicy.MAX_REQUEST_BODY_BYTES) HTTP_TOO_LARGE else HTTP_BAD_REQUEST
                     writeResponse(client, status, errorResponse("INVALID_BODY_LENGTH"))
@@ -181,10 +208,12 @@ class GlafiraBridgeTlsHttpServer(
                 )
                 val accepted = bounded as? GlafiraBridgeIngressBodyResult.Accepted
                 if (accepted == null) {
+                    body.fill(0)
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_BODY"))
                     return
                 }
 
+                try {
                 if (target == GlafiraBridgeIngressPolicy.PAIRING_PATH) {
                     val pairing = try {
                         GlafiraBridgePairingJsonCodec.decode(accepted.bytes)
@@ -251,10 +280,25 @@ class GlafiraBridgeTlsHttpServer(
                             val parallel = request.payload.getValue("maxParallelTasks").toInt()
                             val task = coreIngress.claimDesktopTask(request.deviceId, capabilities, parallel)
                             if (task == null) {
-                                GlafiraBridgeResponse(
-                                    GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
-                                    GlafiraBridgeStatus.ACCEPTED, result = mapOf("available" to "false")
-                                )
+                                // In Dry Run the claim path intentionally returns no executable
+                                // task. A separate read-only query may return a redacted plan.
+                                val preview = coreIngress.previewDesktopTask(capabilities)
+                                if (preview == null) {
+                                    GlafiraBridgeResponse(
+                                        GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                        GlafiraBridgeStatus.ACCEPTED, result = mapOf("available" to "false")
+                                    )
+                                } else {
+                                    GlafiraBridgeResponse(
+                                        GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                        GlafiraBridgeStatus.ACCEPTED,
+                                        result = mapOf(
+                                            "available" to "false",
+                                            "dryRunPreview" to "true",
+                                            "previewJson" to preview.toSafeJson()
+                                        )
+                                    )
+                                }
                             } else {
                                 val payload = JSONObject(task.payload)
                                 GlafiraBridgeResponse(
@@ -271,7 +315,7 @@ class GlafiraBridgeTlsHttpServer(
                                         "title" to payload.optString("title"),
                                         "instruction" to payload.optString("instruction"),
                                         "executor" to payload.optString("executor"),
-                                        "requiredCapabilities" to payload.optJSONArray("requiredCapabilities").toString(),
+                                        "requiredCapabilities" to (payload.optJSONArray("requiredCapabilities")?.toString() ?: "[]"),
                                         "expiresAtEpochMs" to (task.deadlineAtMillis ?: 0L).toString(),
                                         "leaseExpiresAtEpochMs" to (coreIngress.desktopTaskLeaseExpiry(task.taskId) ?: 0L).toString()
                                     )
@@ -361,6 +405,10 @@ class GlafiraBridgeTlsHttpServer(
                     response.status == GlafiraBridgeStatus.PENDING_APPROVAL
                 ) HTTP_ACCEPTED else HTTP_OK
                 writeResponse(client, status, responseJson(response))
+                } finally {
+                    body.fill(0)
+                    accepted.bytes.fill(0)
+                }
             } catch (_: java.net.SocketTimeoutException) {
                 runCatching { writeResponse(client, HTTP_REQUEST_TIMEOUT, errorResponse("REQUEST_TIMEOUT")) }
             } catch (_: Exception) {
@@ -384,7 +432,7 @@ class GlafiraBridgeTlsHttpServer(
             val key = name.lowercase(Locale.ROOT)
             if (headers.containsKey(key)) return null
             val value = line.substring(colon + 1).trim()
-            if (value.any { it.code < 0x20 && it != '\t' }) return null
+            if (value.any { (it.code < 0x20 && it != '\t') || it.code == 0x7f }) return null
             headers[key] = value
         }
         return null
@@ -400,7 +448,7 @@ class GlafiraBridgeTlsHttpServer(
                 if (lf != 10) throw IOException("Malformed HTTP line ending.")
                 return output.toString(Charsets.US_ASCII.name())
             }
-            if (next == 10 || next == 0) throw IOException("Malformed HTTP line.")
+            if (next == 10 || next == 0 || next !in 0x20..0x7e) throw IOException("Malformed HTTP line.")
             output.write(next)
         }
         throw IOException("HTTP line exceeds the configured limit.")
@@ -408,14 +456,26 @@ class GlafiraBridgeTlsHttpServer(
 
     private fun readExactly(socket: Socket, expectedBytes: Int): ByteArray {
         val result = ByteArray(expectedBytes)
+        val input = socket.getInputStream()
         var offset = 0
-        while (offset < expectedBytes) {
-            val read = socket.getInputStream().read(result, offset, expectedBytes - offset)
-            if (read < 0) throw IOException("Truncated HTTP request body.")
-            if (read == 0) continue
-            offset += read
+        try {
+            while (offset < expectedBytes) {
+                val read = input.read(result, offset, expectedBytes - offset)
+                if (read < 0) throw IOException("Truncated HTTP request body.")
+                if (read == 0) {
+                    // Avoid a hot spin on streams that temporarily report no bulk progress.
+                    val single = input.read()
+                    if (single < 0) throw IOException("Truncated HTTP request body.")
+                    result[offset++] = single.toByte()
+                } else {
+                    offset += read
+                }
+            }
+            return result
+        } catch (failure: Exception) {
+            result.fill(0)
+            throw failure
         }
-        return result
     }
 
     private fun responseJson(response: GlafiraBridgeResponse): ByteArray =
@@ -450,16 +510,21 @@ class GlafiraBridgeTlsHttpServer(
             "Content-Length: " + body.size + "\r\n" +
             "Connection: close\r\n" +
             "Cache-Control: no-store\r\n\r\n"
-        socket.getOutputStream().apply {
-            write(headers.toByteArray(Charsets.US_ASCII))
-            write(body)
-            flush()
+        try {
+            socket.getOutputStream().apply {
+                write(headers.toByteArray(Charsets.US_ASCII))
+                write(body)
+                flush()
+            }
+        } finally {
+            body.fill(0)
         }
     }
     companion object {
         const val DEFAULT_PORT = 47_321
         private const val WORKER_COUNT = 4
         private const val WORK_QUEUE_CAPACITY = 8
+        private const val WORKER_SHUTDOWN_WAIT_MS = 2_000L
         private const val ACCEPT_TIMEOUT_MS = 1_000
         private const val HANDSHAKE_TIMEOUT_MS = 5_000
         private const val HEADER_IDLE_TIMEOUT_MS = 5_000

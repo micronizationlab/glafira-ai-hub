@@ -27,7 +27,7 @@ enum class ToolAuthorizationDecision {
  * A grant is issued by the app's owner-approval flow, never by an LLM response.
  * It is bound to one project, one tool and one exact action summary.
  */
-data class ToolApprovalGrant internal constructor(
+class ToolApprovalGrant internal constructor(
     val projectId: String,
     val toolId: String,
     val actionHash: String,
@@ -96,6 +96,10 @@ object GlafiraToolRegistry {
 
     fun find(toolId: String): GlafiraToolDefinition? =
         definitions.firstOrNull { it.id == toolId }
+
+    /** Only scopes attached to a registered tool may ever be granted to a paired device. */
+    fun isKnownScope(scope: String): Boolean =
+        definitions.any { scope in it.requiredScopes }
 
     fun requiresOwnerApproval(risk: ToolRiskLevel): Boolean =
         risk == ToolRiskLevel.EXTERNAL_WRITE ||

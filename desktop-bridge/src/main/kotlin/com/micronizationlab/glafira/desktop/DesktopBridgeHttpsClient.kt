@@ -120,19 +120,22 @@ class DesktopBridgeHttpsClient(
         val body = encode(signed).toByteArray(Charsets.UTF_8)
         require(body.size <= MAX_REQUEST_BYTES) { "Bridge request exceeds the size limit." }
 
-        val httpRequest = HttpRequest.newBuilder(endpoint.resolve(REQUEST_PATH))
-            .timeout(requestTimeout)
-            .header("Content-Type", "application/json; charset=utf-8")
-            .header("Accept", "application/json")
-            .header("Cache-Control", "no-store")
-            .POST(HttpRequest.BodyPublishers.ofByteArray(body))
-            .build()
-
         val response = try {
-            client.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream())
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IOException("Bridge request was interrupted.", error)
+            val httpRequest = HttpRequest.newBuilder(endpoint.resolve(REQUEST_PATH))
+                .timeout(requestTimeout)
+                .header("Content-Type", "application/json; charset=utf-8")
+                .header("Accept", "application/json")
+                .header("Cache-Control", "no-store")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build()
+            try {
+                client.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream())
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw IOException("Bridge request was interrupted.", error)
+            }
+        } finally {
+            body.fill(0)
         }
         if (response.statusCode() !in setOf(200, 202)) {
             response.body().close()
@@ -141,7 +144,11 @@ class DesktopBridgeHttpsClient(
         val responseBytes = response.body().use {
             DesktopBridgeHttpBody.readBounded(it, MAX_RESPONSE_BYTES)
         }
-        return decodeResponse(responseBytes, requestId)
+        return try {
+            decodeResponse(responseBytes, requestId)
+        } finally {
+            responseBytes.fill(0)
+        }
     }
 
     private fun pinnedSslContext(expectedPin: ByteArray): SSLContext {
@@ -240,7 +247,16 @@ class DesktopBridgeHttpsClient(
             .toByteArray(Charsets.UTF_8)
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(secret, "HmacSHA256"))
-        return mac.doFinal(canonical).joinToString("") { "%02x".format(it) }
+        val signature = try {
+            mac.doFinal(canonical)
+        } finally {
+            canonical.fill(0)
+        }
+        return try {
+            signature.joinToString("") { "%02x".format(it) }
+        } finally {
+            signature.fill(0)
+        }
     }
 
     private fun parseOrigin(value: String): URI {

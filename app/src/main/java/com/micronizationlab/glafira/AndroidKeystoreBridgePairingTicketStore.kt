@@ -60,13 +60,18 @@ class AndroidKeystoreBridgePairingTicketStore(
 
         return runCatching {
             val encrypted = encrypt(getOrCreateKey(), ticket.verifierKey)
-            val values = ContentValues().apply {
-                put("ticket_id", ticket.ticketId)
-                put("iv", encrypted.first)
-                put("verifier_ciphertext", encrypted.second)
-                put("expires_at", ticket.expiresAtEpochMs)
+            try {
+                val values = ContentValues().apply {
+                    put("ticket_id", ticket.ticketId)
+                    put("iv", encrypted.first)
+                    put("verifier_ciphertext", encrypted.second)
+                    put("expires_at", ticket.expiresAtEpochMs)
+                }
+                writableDatabase.insertOrThrow(TABLE_NAME, null, values) >= 0L
+            } finally {
+                encrypted.first.fill(0)
+                encrypted.second.fill(0)
             }
-            writableDatabase.insertOrThrow(TABLE_NAME, null, values) >= 0L
         }.getOrDefault(false)
     }
 
@@ -88,9 +93,18 @@ class AndroidKeystoreBridgePairingTicketStore(
                 val iv = cursor.getBlob(0)
                 val ciphertext = cursor.getBlob(1)
                 val expiresAt = cursor.getLong(2)
-                val verifier = decrypt(getExistingKey(), iv, ciphertext)
-                if (verifier.size != VERIFIER_KEY_BYTES) null
-                else GlafiraBridgePairingTicket(ticketId, verifier, expiresAt)
+                try {
+                    val verifier = decrypt(getExistingKey(), iv, ciphertext)
+                    if (verifier.size != VERIFIER_KEY_BYTES) {
+                        verifier.fill(0)
+                        null
+                    } else {
+                        GlafiraBridgePairingTicket(ticketId, verifier, expiresAt)
+                    }
+                } finally {
+                    iv.fill(0)
+                    ciphertext.fill(0)
+                }
             }
         }.getOrNull()
     }
@@ -125,18 +139,25 @@ class AndroidKeystoreBridgePairingTicketStore(
                     else Triple(cursor.getBlob(0), cursor.getBlob(1), cursor.getLong(2))
                 }
 
-                if (stored != null && stored.third > nowEpochMs) {
-                    val verifier = decrypt(getExistingKey(), stored.first, stored.second)
+                if (stored != null) {
                     try {
-                        if (MessageDigest.isEqual(verifier, expectedVerifierKey)) {
-                            consumed = db.delete(
-                                TABLE_NAME,
-                                "ticket_id = ?",
-                                arrayOf(ticketId)
-                            ) == 1
+                        if (stored.third > nowEpochMs) {
+                            val verifier = decrypt(getExistingKey(), stored.first, stored.second)
+                            try {
+                                if (MessageDigest.isEqual(verifier, expectedVerifierKey)) {
+                                    consumed = db.delete(
+                                        TABLE_NAME,
+                                        "ticket_id = ?",
+                                        arrayOf(ticketId)
+                                    ) == 1
+                                }
+                            } finally {
+                                verifier.fill(0)
+                            }
                         }
                     } finally {
-                        verifier.fill(0)
+                        stored.first.fill(0)
+                        stored.second.fill(0)
                     }
                 }
                 db.setTransactionSuccessful()
@@ -148,14 +169,16 @@ class AndroidKeystoreBridgePairingTicketStore(
     }
 
     @Synchronized
-    fun pruneExpired(nowEpochMs: Long = System.currentTimeMillis()): Int =
-        runCatching {
+    override fun pruneExpired(nowEpochMs: Long): Int {
+        if (nowEpochMs <= 0L) return 0
+        return runCatching {
             writableDatabase.delete(
                 TABLE_NAME,
                 "expires_at <= ?",
                 arrayOf(nowEpochMs.toString())
             )
         }.getOrDefault(0)
+    }
 
     private fun getOrCreateKey(): SecretKey {
         (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }

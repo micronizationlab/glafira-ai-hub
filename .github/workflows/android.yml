@@ -10,10 +10,16 @@ on:
 permissions:
   contents: read
 
+# Intentionally no concurrency group: GitHub retains only one pending run
+# per group and replaces an older pending run when a newer run arrives.
+# These validation runs must all execute; allow GitHub's normal runner queue
+# to queue each run without cancelling or superseding earlier checks.
+
 jobs:
   unit-tests:
     name: Android Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,11 +38,22 @@ jobs:
       - name: Run Unit Tests
         run: gradle testDebugUnitTest :desktop-bridge:test
 
+      - name: Upload JVM test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-jvm-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            desktop-bridge/build/reports/tests/test/
+          if-no-files-found: warn
+          retention-days: 7
 
   instrumented-tests:
     name: Android Emulator Integration Tests
     needs: unit-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -59,7 +76,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-boot-timeout: 900
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
             set +e
             mkdir -p app/build/outputs
@@ -79,6 +98,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-# Emulator tests cover SQLite persistence, idempotency, retry metadata and Core backup restore.
-# APK assembly is intentionally disabled until the owner-approved Bridge
-# implementation has passed its end-to-end security and pairing acceptance checks.
+  debug-apk:
+    name: Build installable debug APK
+    needs: [unit-tests, instrumented-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.9 and cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Assemble debug APK
+        run: gradle assembleDebug
+
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+# This is an unsigned debug/test APK for owner-controlled device acceptance only.
+# It is not a production release and does not enable LIVE autonomous execution.

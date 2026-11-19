@@ -53,14 +53,37 @@ object GlafiraBridgeProtocol {
 
     fun sign(request: GlafiraBridgeRequest, deviceSecret: ByteArray): GlafiraBridgeRequest {
         require(deviceSecret.size >= 32) { "Device secret must contain at least 256 bits." }
-        return request.copy(signatureHex = hmacSha256(canonicalBytes(request), deviceSecret).toHex())
+        val canonical = canonicalBytes(request)
+        val signature = try {
+            hmacSha256(canonical, deviceSecret)
+        } finally {
+            canonical.fill(0)
+        }
+        return try {
+            request.copy(signatureHex = signature.toHex())
+        } finally {
+            signature.fill(0)
+        }
     }
 
     fun verifySignature(request: GlafiraBridgeRequest, deviceSecret: ByteArray): Boolean {
         if (deviceSecret.size < 32 || request.signatureHex.length != 64) return false
         val supplied = runCatching { request.signatureHex.hexToBytes() }.getOrNull() ?: return false
-        val expected = hmacSha256(canonicalBytes(request.copy(signatureHex = "")), deviceSecret)
-        return MessageDigest.isEqual(expected, supplied)
+        try {
+            val canonical = canonicalBytes(request.copy(signatureHex = ""))
+            val expected = try {
+                hmacSha256(canonical, deviceSecret)
+            } finally {
+                canonical.fill(0)
+            }
+            return try {
+                MessageDigest.isEqual(expected, supplied)
+            } finally {
+                expected.fill(0)
+            }
+        } finally {
+            supplied.fill(0)
+        }
     }
 
     private fun canonicalBytes(request: GlafiraBridgeRequest): ByteArray {
@@ -101,7 +124,7 @@ object GlafiraBridgeProtocol {
         if (request.issuedAtEpochMs > nowEpochMs + MAX_FUTURE_SKEW_MS)
             return GlafiraBridgeValidationError.REQUEST_TOO_FAR_IN_FUTURE
         if (request.expiresAtEpochMs <= nowEpochMs) return GlafiraBridgeValidationError.EXPIRED_REQUEST
-        if (request.payload.entries.sumOf { it.key.length + it.value.length } > MAX_PAYLOAD_CHARS)
+        if (request.payload.entries.sumOf { it.key.length.toLong() + it.value.length.toLong() } > MAX_PAYLOAD_CHARS.toLong())
             return GlafiraBridgeValidationError.PAYLOAD_TOO_LARGE
         val allowed = allowedFields.getValue(request.operation)
         if (request.payload.keys.any { it !in allowed }) return GlafiraBridgeValidationError.UNKNOWN_PAYLOAD_FIELD

@@ -7,6 +7,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.nio.file.Files
 
 class DesktopTaskQueueTest {
     @get:Rule
@@ -81,6 +82,57 @@ class DesktopTaskQueueTest {
         now += 11
         assertNull(q.claimNext())
         assertEquals(DesktopTaskState.EXPIRED, q.get("task_1")?.state)
+    }
+
+    @Test
+    fun taskExpiredDuringExecutionCannotBeMarkedSuccessful() {
+        val q = queue()
+        q.enqueue(task(expiresAt = now + 10))
+        q.claimNext()
+        q.transition("task_1", DesktopTaskState.ACCEPTED)
+        q.transition("task_1", DesktopTaskState.RUNNING)
+        now += 11
+
+        val completed = q.complete("task_1", "late result")
+        assertEquals(DesktopTaskState.FAILED, completed.state)
+        assertEquals("TASK_EXPIRED", completed.errorCode)
+        assertNull(completed.result)
+    }
+
+    @Test
+    fun taskExpiredBeforeRunningIsNotDispatched() {
+        val q = queue()
+        q.enqueue(task(expiresAt = now + 10))
+        q.claimNext()
+        now += 11
+
+        val accepted = q.transition("task_1", DesktopTaskState.ACCEPTED)
+        assertEquals(DesktopTaskState.EXPIRED, accepted.state)
+    }
+
+    @Test
+    fun retainedTaskHistoryIsBoundedWithoutDroppingActiveWork() {
+        val q = DesktopTaskQueue(null, 10) { now }
+        repeat(DesktopTaskQueue.MAX_RETAINED_RECORDS + 2) { index ->
+            val id = "task_$index"
+            q.enqueue(task(id = id))
+            q.claimNext()
+            q.transition(id, DesktopTaskState.ACCEPTED)
+            q.transition(id, DesktopTaskState.RUNNING)
+            q.complete(id, "result-$index")
+        }
+
+        assertEquals(DesktopTaskQueue.MAX_RETAINED_RECORDS, q.list().size)
+        assertNull(q.get("task_0"))
+        assertNotNull(q.get("task_${DesktopTaskQueue.MAX_RETAINED_RECORDS + 1}"))
+    }
+
+    @Test
+    fun rejectsOversizedQueueFileBeforeReadingItIntoMemory() {
+        val path = temp.root.toPath().resolve("oversized-tasks.json")
+        Files.writeString(path, " ".repeat(16 * 1024 * 1024 + 1))
+        val q = DesktopTaskQueue(path, 10) { now }
+        assertThrows(IllegalArgumentException::class.java) { q.list() }
     }
 
     @Test

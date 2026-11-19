@@ -14,3 +14,14 @@ interface GlafiraTaskQueue {
         lastError: String? = null
     ): Boolean
 }
+
+/**
+ * Optional durable recovery seam for Core tasks left RUNNING by process death.
+ * Desktop tasks use independent expiring leases and must not be recovered here.
+ */
+interface GlafiraInterruptedTaskRecovery {
+    fun recoverInterruptedCoreTasks(
+        nowMillis: Long,
+        maxRetries: Int
+    ): Int
+}

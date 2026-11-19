@@ -7,6 +7,10 @@ The target authority model and secure tool-execution roadmap are documented in
 [GLAFIRA Core: autonomy, tools and credential security](docs/GLAFIRA_CORE_SECURITY_AND_TOOLS.md).
 
 
+## GLAFIRA Core Foundation Specification
+
+The Core memory model, agent contracts, independent Reviewer, Trace/Audit format, policy invariants and acceptance gates are specified in [GLAFIRA_CORE_FOUNDATION_SPEC.md](docs/GLAFIRA_CORE_FOUNDATION_SPEC.md).
+
 ## Optional Voice Assistant Plugin
 
 The separately enabled speech input/output module, voice and delivery profiles, consent safeguards, and implementation phases are described in [VOICE_ASSISTANT_PLUGIN.md](docs/VOICE_ASSISTANT_PLUGIN.md).
@@ -35,6 +39,19 @@ Mandatory encrypted backup, free cloud destinations and cross-device recovery ar
 
 Owner-prioritized delivery order, including Backup & Recovery, GLAFIRA Core, Voice Assistant and all specialist roles: [IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md).
 
+
+## Autonomous Runtime
+
+The five-step P3 plan, implementation status and acceptance gates are tracked in [AUTONOMOUS_RUNTIME_P3_IMPLEMENTATION.md](docs/AUTONOMOUS_RUNTIME_P3_IMPLEMENTATION.md).
+
+## Dry Run review
+
+The encrypted Core preview store, owner review screen, Desktop preview-only channel and safety limits are described in [DRY_RUN.md](docs/DRY_RUN.md).
+
+## Developer references
+
+- [Local testing guide](docs/LOCAL_TESTING.md)
+- [Core terminology](docs/CORE_TERMINOLOGY.md)
 
 ## Account identity and connected services
 See [Account Auth and Identity](docs/ACCOUNT_AUTH_AND_IDENTITY.md) for owner-issued onboarding, profiles, Google/Yandex linking, least-privilege Drive/Mail permissions and multi-user isolation.

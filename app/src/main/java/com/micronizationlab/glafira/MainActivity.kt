@@ -93,6 +93,7 @@ fun App() {
     var currentAgent by remember { mutableStateOf<A?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var showCouncil by remember { mutableStateOf(false) }
+    var showDryRunReview by remember { mutableStateOf(false) }
     var statusRefresh by remember { mutableStateOf(0) }
     val context = LocalContext.current
     var projects by remember { mutableStateOf(loadProjects(context)) }
@@ -183,6 +184,7 @@ fun App() {
 
     Surface(Modifier.fillMaxSize(), color = Bg) {
         when {
+            showDryRunReview -> DryRunReviewScreen(onBack = { showDryRunReview = false })
             showSettings -> SettingsScreen(
                 onBack = {
                     showSettings = false
@@ -210,7 +212,8 @@ fun App() {
                 },
                 onAgentClick = { currentAgent = it },
                 onSettingsClick = { showSettings = true },
-                onCouncilClick = { showCouncil = true }
+                onCouncilClick = { showCouncil = true },
+                onDryRunClick = { showDryRunReview = true }
             )
             else -> ChatScreen(
                 agent = currentAgent!!,
@@ -294,7 +297,8 @@ fun ContactList(
     onProjectDelete: (Project) -> Unit,
     onAgentClick: (A) -> Unit,
     onSettingsClick: () -> Unit,
-    onCouncilClick: () -> Unit
+    onCouncilClick: () -> Unit,
+    onDryRunClick: () -> Unit
 ) {
     val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
@@ -402,6 +406,10 @@ fun ContactList(
             Spacer(Modifier.weight(1f))
             Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onCouncilClick() }, contentAlignment = Alignment.Center) {
                 Text("🏛", fontSize = 12.sp)
+            }
+            Spacer(Modifier.width(6.dp))
+            Box(Modifier.width(42.dp).height(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onDryRunClick() }, contentAlignment = Alignment.Center) {
+                Text("DR", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.width(6.dp))
             Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { showAddDialog = true }, contentAlignment = Alignment.Center) {

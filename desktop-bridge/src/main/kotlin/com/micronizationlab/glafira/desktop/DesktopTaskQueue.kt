@@ -63,6 +63,7 @@ internal class DesktopTaskQueue(
         validate(envelope)
         val records = readAll().toMutableList()
         expireQueued(records, clock())
+        pruneTerminalHistory(records)
         require(records.none { it.envelope.taskId == envelope.taskId }) { "Duplicate taskId." }
         require(records.none { it.envelope.idempotencyKey == envelope.idempotencyKey }) {
             "Duplicate idempotency key."
@@ -100,13 +101,51 @@ internal class DesktopTaskQueue(
         claimed
     }
 
+    /**
+     * Marks work left in a non-terminal execution state by a previous Desktop process as
+     * failed closed. Replaying it automatically could duplicate an operation whose result
+     * was lost after the handler had already run.
+     */
+    fun recoverInterruptedTasks(): Int = synchronized(lock) {
+        val records = readAll().toMutableList()
+        var recovered = 0
+        for (index in records.indices) {
+            val current = records[index]
+            if (current.state !in setOf(
+                    DesktopTaskState.DISPATCHED,
+                    DesktopTaskState.ACCEPTED,
+                    DesktopTaskState.RUNNING
+                )
+            ) continue
+            val expired = current.envelope.expiresAt <= clock()
+            records[index] = current.copy(
+                state = if (expired) DesktopTaskState.EXPIRED else DesktopTaskState.FAILED,
+                sequence = current.sequence + 1,
+                errorCode = if (expired) null else "WORKER_INTERRUPTED"
+            )
+            recovered++
+        }
+        if (recovered > 0) writeAll(records)
+        recovered
+    }
+
     fun transition(taskId: String, next: DesktopTaskState): DesktopTaskRecord = synchronized(lock) {
         val records = readAll().toMutableList()
         val index = records.indexOfFirst { it.envelope.taskId == taskId }
         require(index >= 0) { "Unknown task." }
         val current = records[index]
         require(isAllowed(current.state, next)) { "Invalid task state transition." }
-        val updated = current.copy(state = next, sequence = current.sequence + 1)
+        val updated = if (
+            next in setOf(DesktopTaskState.ACCEPTED, DesktopTaskState.RUNNING) &&
+            current.envelope.expiresAt <= clock()
+        ) {
+            current.copy(
+                state = DesktopTaskState.EXPIRED,
+                sequence = current.sequence + 1
+            )
+        } else {
+            current.copy(state = next, sequence = current.sequence + 1)
+        }
         records[index] = updated
         writeAll(records)
         updated
@@ -137,11 +176,13 @@ internal class DesktopTaskQueue(
         require(index >= 0) { "Unknown task." }
         val current = records[index]
         require(current.state == DesktopTaskState.RUNNING) { "Task is not running." }
+        val expired = current.envelope.expiresAt <= clock()
         val updated = current.copy(
-            state = DesktopTaskState.SUCCEEDED,
+            state = if (expired) DesktopTaskState.FAILED else DesktopTaskState.SUCCEEDED,
             sequence = current.sequence + 1,
-            progressPercent = 100,
-            result = result
+            progressPercent = if (expired) current.progressPercent else 100,
+            result = if (expired) null else result,
+            errorCode = if (expired) "TASK_EXPIRED" else null
         )
         records[index] = updated
         writeAll(records)
@@ -202,6 +243,24 @@ internal class DesktopTaskQueue(
         require(task.idempotencyKey.matches(Regex("[A-Za-z0-9_-]{16,128}")))
     }
 
+    /** Keep durable history bounded without ever evicting work that is not terminal. */
+    private fun pruneTerminalHistory(records: MutableList<DesktopTaskRecord>) {
+        while (records.size >= MAX_RETAINED_RECORDS) {
+            val oldestTerminal = records.indices
+                .filter { index ->
+                    records[index].state !in setOf(
+                        DesktopTaskState.QUEUED,
+                        DesktopTaskState.DISPATCHED,
+                        DesktopTaskState.ACCEPTED,
+                        DesktopTaskState.RUNNING
+                    )
+                }
+                .minByOrNull { records[it].envelope.createdAt }
+                ?: throw IllegalStateException("Desktop task history is full of active work.")
+            records.removeAt(oldestTerminal)
+        }
+    }
+
     private fun expireQueued(records: MutableList<DesktopTaskRecord>, now: Long) {
         for (index in records.indices) {
             val current = records[index]
@@ -217,6 +276,8 @@ internal class DesktopTaskQueue(
     private fun readAll(): List<DesktopTaskRecord> {
         val target = file ?: return memoryRecords.toList()
         if (!Files.exists(target)) return emptyList()
+        val size = Files.size(target)
+        require(size in 1..MAX_QUEUE_FILE_BYTES.toLong()) { "Desktop task queue file size is invalid." }
         val type = object : TypeToken<List<DesktopTaskRecord>>() {}.type
         return gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type) ?: emptyList()
     }
@@ -226,23 +287,37 @@ internal class DesktopTaskQueue(
             memoryRecords = records.toMutableList()
             return
         }
-        val temp = target.resolveSibling(target.fileName.toString() + ".tmp")
-        Files.writeString(temp, gson.toJson(records))
-        setOwnerOnly(temp)
-        try {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
+        val serialized = gson.toJson(records)
+        require(serialized.toByteArray(Charsets.UTF_8).size <= MAX_QUEUE_FILE_BYTES) {
+            "Desktop task queue exceeds its storage limit."
         }
-        setOwnerOnly(target)
+        val parent = target.toAbsolutePath().parent
+            ?: throw IllegalStateException("Desktop task queue has no parent directory.")
+        Files.createDirectories(parent)
+        val temp = Files.createTempFile(parent, ".glafira-task-queue-", ".tmp")
+        try {
+            setOwnerOnly(temp)
+            Files.writeString(temp, serialized, Charsets.UTF_8)
+            try {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
+            }
+            setOwnerOnly(target)
+        } finally {
+            Files.deleteIfExists(temp)
+        }
     }
 
     private fun setOwnerOnly(path: Path) {
-        runCatching {
+        try {
             Files.setPosixFilePermissions(
                 path,
                 setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
             )
+        } catch (_: UnsupportedOperationException) {
+            // On non-POSIX systems the queue inherits the ACL of its parent directory.
+            // The configured queue path must remain inside the current user's private data area.
         }
     }
 
@@ -257,11 +332,13 @@ internal class DesktopTaskQueue(
 
         const val DEFAULT_MAX_QUEUED = 100
         const val MAX_QUEUE_LIMIT = 1_000
+        const val MAX_RETAINED_RECORDS = 400
         private const val MAX_INSTRUCTION_CHARS = 8_000
         private const val MAX_CONTEXT_REFS = 50
         private const val MAX_SCOPES = 32
         private const val MAX_PROGRESS_CHARS = 500
         private const val MAX_RESULT_CHARS = 24_000
+        private const val MAX_QUEUE_FILE_BYTES = 16 * 1024 * 1024
         private const val MAX_CLOCK_SKEW_MS = 60_000L
     }
 }

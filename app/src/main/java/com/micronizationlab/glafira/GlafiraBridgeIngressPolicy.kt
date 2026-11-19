@@ -39,6 +39,14 @@ object GlafiraBridgeIngressPolicy {
     fun validateHostHeader(hostHeader: String?, expectedHost: String): Boolean =
         !hostHeader.isNullOrBlank() && hostHeader.equals(expectedHost, ignoreCase = true)
 
+    /** HTTP Content-Length is digits-only; signs, whitespace and overflow are rejected. */
+    fun parseContentLength(rawValue: String?): Long? {
+        if (rawValue == null || rawValue.length !in 1..10 ||
+            rawValue.any { it !in '0'..'9' }
+        ) return null
+        return rawValue.toLongOrNull()
+    }
+
     fun validateContentType(contentType: String?): Boolean {
         if (contentType == null) return false
         val parts = contentType.split(';').map(String::trim)

@@ -86,17 +86,40 @@ class AndroidKeystoreBridgePairingApprovalStore(
     override fun enqueue(candidate: GlafiraBridgePendingApproval): Boolean {
         if (!validApproval(candidate)) return false
         return runCatching {
-            val values = ContentValues().apply {
-                put("approval_id", candidate.approvalId)
-                put("ticket_id", candidate.ticketId)
-                put("client_nonce", candidate.clientNonce)
-                put("device_label", candidate.deviceLabel)
-                put("platform", candidate.platform.name)
-                put("requested_scopes", encodeScopes(candidate.requestedScopes))
-                put("received_at", candidate.receivedAtEpochMs)
-                put("status", candidate.status.name)
+            val db = writableDatabase
+            var inserted = false
+            db.beginTransaction()
+            try {
+                val cutoff = (System.currentTimeMillis() - PENDING_APPROVAL_TTL_MS).coerceAtLeast(0L)
+                db.update(
+                    APPROVALS,
+                    ContentValues().apply { put("status", GlafiraBridgeApprovalStatus.EXPIRED.name) },
+                    "status = ? AND received_at <= ?",
+                    arrayOf(GlafiraBridgeApprovalStatus.PENDING.name, cutoff.toString())
+                )
+                val pendingCount = db.rawQuery(
+                    "SELECT COUNT(*) FROM $APPROVALS WHERE status = ?",
+                    arrayOf(GlafiraBridgeApprovalStatus.PENDING.name)
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else GlafiraBridgeOwnerApprovalService.MAX_PENDING_APPROVALS }
+                if (pendingCount < GlafiraBridgeOwnerApprovalService.MAX_PENDING_APPROVALS) {
+                    val values = ContentValues().apply {
+                        put("approval_id", candidate.approvalId)
+                        put("ticket_id", candidate.ticketId)
+                        put("client_nonce", candidate.clientNonce)
+                        put("device_label", candidate.deviceLabel)
+                        put("platform", candidate.platform.name)
+                        put("requested_scopes", encodeScopes(candidate.requestedScopes))
+                        put("received_at", candidate.receivedAtEpochMs)
+                        put("status", candidate.status.name)
+                    }
+                    inserted = db.insertOrThrow(APPROVALS, null, values) >= 0L
+                }
+                // Even when the queue is full, persist the expiry sweep performed above.
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
             }
-            writableDatabase.insertOrThrow(APPROVALS, null, values) >= 0L
+            inserted
         }.getOrDefault(false)
     }
 
@@ -118,11 +141,26 @@ class AndroidKeystoreBridgePairingApprovalStore(
     override fun listPending(limit: Int): List<GlafiraBridgePendingApproval> {
         if (limit !in 1..GlafiraBridgeOwnerApprovalService.MAX_PENDING_APPROVALS) return emptyList()
         return runCatching {
-            readableDatabase.query(
+            val now = System.currentTimeMillis()
+            val cutoff = (now - PENDING_APPROVAL_TTL_MS).coerceAtLeast(0L)
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                db.update(
+                    APPROVALS,
+                    ContentValues().apply { put("status", GlafiraBridgeApprovalStatus.EXPIRED.name) },
+                    "status = ? AND received_at <= ?",
+                    arrayOf(GlafiraBridgeApprovalStatus.PENDING.name, cutoff.toString())
+                )
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            db.query(
                 APPROVALS,
                 APPROVAL_COLUMNS,
-                "status = ?",
-                arrayOf(GlafiraBridgeApprovalStatus.PENDING.name),
+                "status = ? AND received_at > ?",
+                arrayOf(GlafiraBridgeApprovalStatus.PENDING.name, cutoff.toString()),
                 null, null, "received_at ASC",
                 limit.toString()
             ).use { cursor ->
@@ -148,21 +186,35 @@ class AndroidKeystoreBridgePairingApprovalStore(
 
         return runCatching {
             val credentialCipher = encrypt(hmacSecret, "credential:$deviceId")
-            val deliveryCipher = encrypt(hmacSecret, "delivery:$approvalId")
+            var deliveryCipher: EncryptedSecret? = null
+            try {
+            val delivery = encrypt(hmacSecret, "delivery:$approvalId")
+            deliveryCipher = delivery
             val scopes = encodeScopes(ownerSelectedScopes)
             val db = writableDatabase
             var result: GlafiraBridgeApprovalMutation = GlafiraBridgeApprovalMutation.StorageError
             db.beginTransaction()
             try {
-                val status = db.query(
-                    APPROVALS, arrayOf("status"), "approval_id = ?",
+                val pendingRow = db.query(
+                    APPROVALS, arrayOf("status", "received_at"), "approval_id = ?",
                     arrayOf(approvalId), null, null, null, "1"
                 ).use { cursor ->
-                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                    if (cursor.moveToFirst()) cursor.getString(0) to cursor.getLong(1) else null
                 }
-                if (status == null) {
+                if (pendingRow == null) {
                     result = GlafiraBridgeApprovalMutation.NotFound
-                } else if (status != GlafiraBridgeApprovalStatus.PENDING.name) {
+                } else if (pendingRow.first != GlafiraBridgeApprovalStatus.PENDING.name ||
+                    approvedAtEpochMs < pendingRow.second ||
+                    approvedAtEpochMs - pendingRow.second >= PENDING_APPROVAL_TTL_MS
+                ) {
+                    if (pendingRow.first == GlafiraBridgeApprovalStatus.PENDING.name) {
+                        db.update(
+                            APPROVALS,
+                            ContentValues().apply { put("status", GlafiraBridgeApprovalStatus.EXPIRED.name) },
+                            "approval_id = ? AND status = ?",
+                            arrayOf(approvalId, GlafiraBridgeApprovalStatus.PENDING.name)
+                        )
+                    }
                     result = GlafiraBridgeApprovalMutation.AlreadyDecided
                 } else {
                     val credentialValues = ContentValues().apply {
@@ -178,8 +230,8 @@ class AndroidKeystoreBridgePairingApprovalStore(
                     val deliveryValues = ContentValues().apply {
                         put("approval_id", approvalId)
                         put("device_id", deviceId)
-                        put("iv", deliveryCipher.iv)
-                        put("ciphertext", deliveryCipher.ciphertext)
+                        put("iv", delivery.iv)
+                        put("ciphertext", delivery.ciphertext)
                         put("granted_scopes", scopes)
                         put("claim_expires_at", 0L)
                     }
@@ -199,6 +251,10 @@ class AndroidKeystoreBridgePairingApprovalStore(
                 db.endTransaction()
             }
             result
+            } finally {
+                credentialCipher.wipe()
+                deliveryCipher?.wipe()
+            }
         }.getOrDefault(GlafiraBridgeApprovalMutation.StorageError)
     }
 
@@ -298,27 +354,38 @@ class AndroidKeystoreBridgePairingApprovalStore(
                     }
                     if (delivery == null) {
                         result = GlafiraBridgeDeliveryResult.StorageError
-                    } else if (delivery.ownerSessionId != null &&
-                        delivery.ownerSessionId != ownerSessionId &&
-                        delivery.claimExpiresAt > nowEpochMs
-                    ) {
-                        result = GlafiraBridgeDeliveryResult.ClaimedByAnotherOwnerSession
                     } else {
-                        val changed = db.update(
-                            DELIVERIES,
-                            ContentValues().apply {
-                                put("owner_session_id", ownerSessionId)
-                                put("claim_expires_at", ownerSessionExpiresAtEpochMs)
-                            },
-                            "approval_id = ?",
-                            arrayOf(approvalId)
-                        )
-                        check(changed == 1)
-                        encrypted = EncryptedSecret(delivery.iv, delivery.ciphertext)
-                        deviceId = delivery.deviceId
-                        ticketId = delivery.ticketId
-                        scopes = delivery.scopes
-                        result = GlafiraBridgeDeliveryResult.StorageError
+                        var buffersTransferred = false
+                        try {
+                            if (delivery.ownerSessionId != null &&
+                                delivery.ownerSessionId != ownerSessionId &&
+                                delivery.claimExpiresAt > nowEpochMs
+                            ) {
+                                result = GlafiraBridgeDeliveryResult.ClaimedByAnotherOwnerSession
+                            } else {
+                                val changed = db.update(
+                                    DELIVERIES,
+                                    ContentValues().apply {
+                                        put("owner_session_id", ownerSessionId)
+                                        put("claim_expires_at", ownerSessionExpiresAtEpochMs)
+                                    },
+                                    "approval_id = ?",
+                                    arrayOf(approvalId)
+                                )
+                                check(changed == 1)
+                                encrypted = EncryptedSecret(delivery.iv, delivery.ciphertext)
+                                buffersTransferred = true
+                                deviceId = delivery.deviceId
+                                ticketId = delivery.ticketId
+                                scopes = delivery.scopes
+                                result = GlafiraBridgeDeliveryResult.StorageError
+                            }
+                        } finally {
+                            if (!buffersTransferred) {
+                                delivery.iv.fill(0)
+                                delivery.ciphertext.fill(0)
+                            }
+                        }
                     }
                 }
                 db.setTransactionSuccessful()
@@ -327,11 +394,18 @@ class AndroidKeystoreBridgePairingApprovalStore(
             }
 
             if (encrypted != null && deviceId != null && ticketId != null) {
-                val secret = decrypt(encrypted!!, "delivery:$approvalId")
-                GlafiraBridgeDeliveryResult.Available(
-                    GlafiraBridgeCredentialDelivery(approvalId, ticketId!!, deviceId!!, secret, scopes)
-                )
-            } else result
+                try {
+                    val secret = decrypt(encrypted!!, "delivery:$approvalId")
+                    GlafiraBridgeDeliveryResult.Available(
+                        GlafiraBridgeCredentialDelivery(approvalId, ticketId!!, deviceId!!, secret, scopes)
+                    )
+                } finally {
+                    encrypted?.wipe()
+                }
+            } else {
+                encrypted?.wipe()
+                result
+            }
         }.getOrDefault(GlafiraBridgeDeliveryResult.StorageError)
     }
 
@@ -380,15 +454,22 @@ class AndroidKeystoreBridgePairingApprovalStore(
                 null, null, null, "1"
             ).use { cursor ->
                 if (!cursor.moveToFirst()) return@use null
-                val secret = decrypt(
-                    EncryptedSecret(cursor.getBlob(0), cursor.getBlob(1)),
-                    "credential:$deviceId"
-                )
-                val scopes = decodeScopes(cursor.getString(2))
-                if (secret.size != DEVICE_SECRET_BYTES || !validScopes(scopes)) {
+                val encrypted = EncryptedSecret(cursor.getBlob(0), cursor.getBlob(1))
+                val secret = try {
+                    decrypt(encrypted, "credential:$deviceId")
+                } finally {
+                    encrypted.wipe()
+                }
+                try {
+                    val scopes = decodeScopes(cursor.getString(2))
+                    if (secret.size != DEVICE_SECRET_BYTES || !validScopes(scopes)) {
+                        secret.fill(0)
+                        null
+                    } else GlafiraBridgeDeviceCredential(deviceId, secret, scopes)
+                } catch (failure: Exception) {
                     secret.fill(0)
-                    null
-                } else GlafiraBridgeDeviceCredential(deviceId, secret, scopes)
+                    throw failure
+                }
             }
         }.getOrNull()
     }
@@ -396,16 +477,26 @@ class AndroidKeystoreBridgePairingApprovalStore(
     private fun encrypt(plaintext: ByteArray, aad: String): EncryptedSecret {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-        cipher.updateAAD(aad.toByteArray(Charsets.UTF_8))
-        return EncryptedSecret(cipher.iv, cipher.doFinal(plaintext))
+        val associatedData = aad.toByteArray(Charsets.UTF_8)
+        return try {
+            cipher.updateAAD(associatedData)
+            EncryptedSecret(cipher.iv, cipher.doFinal(plaintext))
+        } finally {
+            associatedData.fill(0)
+        }
     }
 
     private fun decrypt(encrypted: EncryptedSecret, aad: String): ByteArray {
         require(encrypted.iv.size == GCM_IV_BYTES)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, getExistingKey(), GCMParameterSpec(GCM_TAG_BITS, encrypted.iv))
-        cipher.updateAAD(aad.toByteArray(Charsets.UTF_8))
-        return cipher.doFinal(encrypted.ciphertext)
+        val associatedData = aad.toByteArray(Charsets.UTF_8)
+        return try {
+            cipher.updateAAD(associatedData)
+            cipher.doFinal(encrypted.ciphertext)
+        } finally {
+            associatedData.fill(0)
+        }
     }
 
     private fun getOrCreateKey(): SecretKey {
@@ -462,14 +553,19 @@ class AndroidKeystoreBridgePairingApprovalStore(
     private fun validScopes(value: Set<String>) =
         value.isNotEmpty() &&
             value.size <= GlafiraBridgeOwnerApprovalService.MAX_REQUESTED_SCOPES &&
-            value.all(::validScope)
+            value.all { validScope(it) && GlafiraToolRegistry.isKnownScope(it) }
 
     private fun encodeScopes(value: Set<String>) = value.sorted().joinToString(",")
 
     private fun decodeScopes(value: String) =
         value.split(",").filter(String::isNotBlank).toSet()
 
-    private data class EncryptedSecret(val iv: ByteArray, val ciphertext: ByteArray)
+    private data class EncryptedSecret(val iv: ByteArray, val ciphertext: ByteArray) {
+        fun wipe() {
+            iv.fill(0)
+            ciphertext.fill(0)
+        }
+    }
 
     private data class DeliveryRow(
         val deviceId: String,
@@ -493,6 +589,7 @@ class AndroidKeystoreBridgePairingApprovalStore(
         private const val DEVICE_SECRET_BYTES = 32
         private const val GCM_IV_BYTES = 12
         private const val GCM_TAG_BITS = 128
+        private const val PENDING_APPROVAL_TTL_MS = 24L * 60L * 60L * 1000L
         private val APPROVAL_COLUMNS = arrayOf(
             "approval_id", "ticket_id", "client_nonce", "device_label",
             "platform", "requested_scopes", "received_at", "status"

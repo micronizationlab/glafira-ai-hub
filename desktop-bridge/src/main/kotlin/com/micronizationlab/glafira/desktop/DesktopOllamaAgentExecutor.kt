@@ -54,16 +54,28 @@ internal class DesktopOllamaAgentExecutor(
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
         val response = try {
-            client.send(request, HttpResponse.BodyHandlers.ofString(Charsets.UTF_8))
+            client.send(request, HttpResponse.BodyHandlers.ofInputStream())
         } catch (error: InterruptedException) {
             Thread.currentThread().interrupt()
             throw IOException("Local model inference was interrupted.", error)
         }
         if (response.statusCode() != 200) {
+            response.body().close()
             throw IOException("Local model server returned HTTP ${response.statusCode()}.")
         }
-        require(response.body().length <= MAX_RESPONSE_CHARS)
-        val output = JSONObject(response.body()).optString("response").trim()
+        val responseBytes = response.body().use {
+            DesktopBridgeHttpBody.readBounded(it, MAX_RESPONSE_BYTES)
+        }
+        val responseText = try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(responseBytes))
+                .toString()
+        } finally {
+            responseBytes.fill(0)
+        }
+        val output = JSONObject(responseText).optString("response").trim()
         require(output.isNotBlank() && output.length <= MAX_OUTPUT_CHARS) {
             "Local model returned an empty or oversized result."
         }
@@ -71,7 +83,7 @@ internal class DesktopOllamaAgentExecutor(
     }
 
     companion object {
-        private const val MAX_RESPONSE_CHARS = 256_000
+        private const val MAX_RESPONSE_BYTES = 256 * 1024
         private const val MAX_OUTPUT_CHARS = 12_000
     }
 }

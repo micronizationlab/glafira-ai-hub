@@ -47,7 +47,19 @@ fun main() {
                     origin = entry.origin,
                     credentials = credentials,
                     projectId = projectId,
-                    handlers = DesktopLocalAgentRegistry.ollama(model)
+                    handlers = DesktopLocalAgentRegistry.ollama(model),
+                    onDryRunPreview = { preview ->
+                        println()
+                        println("=== GLAFIRA DRY RUN — PREVIEW ONLY; NOT EXECUTED ===")
+                        println("Task: ${preview.taskId}")
+                        println("Project: ${preview.projectId}")
+                        println("Tool: ${preview.toolId}")
+                        println("Risk: ${preview.risk}")
+                        println("Simulation: ${preview.simulationStatus}")
+                        println("Plan SHA-256: ${preview.planHash}")
+                        println("Redacted plan: ${preview.safeJson}")
+                        println("No Desktop agent was started for this preview.")
+                    }
                 ).use { worker ->
                     worker.runPollingLoop(shouldContinue = { true })
                 }

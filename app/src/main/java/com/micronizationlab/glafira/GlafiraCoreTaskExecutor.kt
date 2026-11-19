@@ -3,9 +3,12 @@ package com.micronizationlab.glafira
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 sealed class GlafiraTaskExecutionOutcome {
     data class Succeeded(val summary: String? = null) : GlafiraTaskExecutionOutcome()
@@ -21,7 +24,7 @@ fun interface GlafiraTaskHandler {
 }
 
 enum class GlafiraTaskExecutionStatus {
-    IDLE, SUCCEEDED, RETRY_SCHEDULED, WAITING_FOR_NETWORK, WAITING_FOR_OWNER, FAILED
+    IDLE, SUCCEEDED, DRY_RUN_PREVIEWED, RETRY_SCHEDULED, WAITING_FOR_NETWORK, WAITING_FOR_OWNER, FAILED
 }
 
 data class GlafiraTaskExecutionResult(
@@ -42,7 +45,11 @@ class GlafiraCoreTaskExecutor(
     private val clock: () -> Long = System::currentTimeMillis,
     private val maxAttempts: Int = 6,
     private val baseRetryDelayMillis: Long = 5_000L,
-    private val maxRetryDelayMillis: Long = 15 * 60_000L
+    private val maxRetryDelayMillis: Long = 15 * 60_000L,
+    private val runtimeBudget: () -> GlafiraRuntimeBudget = { GlafiraRuntimeBudget() },
+    private val costMeter: GlafiraTaskCostMeter? = null,
+    private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE },
+    private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null
 ) {
     private val executionMutex = Mutex()
     private val handlerMap = handlers.toMap()
@@ -62,19 +69,32 @@ class GlafiraCoreTaskExecutor(
             withContext(dispatcher) {
                 executionMutex.withLock {
                     val now = clock()
+                    // One budget snapshot governs both orphan recovery and this attempt.
+                    val configuredBudget = runtimeBudget()
+                    val effectiveBudget = configuredBudget.copy(
+                        maxRetries = minOf(configuredBudget.maxRetries, maxAttempts - 1)
+                    )
+                    (queue as? GlafiraInterruptedTaskRecovery)
+                        ?.recoverInterruptedCoreTasks(now, effectiveBudget.maxRetries)
                     val task = queue.claimNext(now)
                         ?: return@withLock GlafiraTaskExecutionResult(null, GlafiraTaskExecutionStatus.IDLE)
-                    executeClaimed(task, now)
+                    executeClaimed(task, now, effectiveBudget)
                 }
             }
         }
 
     private suspend fun executeClaimed(
         task: GlafiraTask,
-        nowMillis: Long
+        nowMillis: Long,
+        effectiveBudget: GlafiraRuntimeBudget
     ): GlafiraTaskExecutionResult {
+        val mode = executionMode()
         val authorization = try {
-            authorizer.authorize(task, nowMillis)
+            if (mode == GlafiraExecutionMode.DRY_RUN) {
+                authorizer.inspectForDryRun(task, nowMillis)
+            } else {
+                authorizer.authorize(task, nowMillis)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -82,36 +102,80 @@ class GlafiraCoreTaskExecutor(
         }
 
         when (authorization.status) {
-            GlafiraTaskAuthorizationStatus.DENIED ->
-                return fail(task, authorization.reason ?: "AUTHORIZATION_DENIED")
-            GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER -> {
-                val currentState = queue.getTask(task.taskId)?.state
-                val changed = when (currentState) {
-                    GlafiraTaskState.WAITING_FOR_OWNER -> true
-                    GlafiraTaskState.RUNNING -> queue.transition(
-                        task.taskId, setOf(GlafiraTaskState.RUNNING),
-                        GlafiraTaskState.WAITING_FOR_OWNER, nowMillis,
-                        lastError = authorization.reason
-                    )
-                    else -> false
+            GlafiraTaskAuthorizationStatus.DENIED -> {
+                if (mode == GlafiraExecutionMode.LIVE) {
+                    return fail(task, authorization.reason ?: "AUTHORIZATION_DENIED")
                 }
-                return GlafiraTaskExecutionResult(
-                    task.taskId,
-                    if (changed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
-                    else GlafiraTaskExecutionStatus.FAILED,
-                    authorization.reason
-                )
+            }
+            GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER -> {
+                if (mode == GlafiraExecutionMode.LIVE) {
+                    val currentState = queue.getTask(task.taskId)?.state
+                    val changed = when (currentState) {
+                        GlafiraTaskState.WAITING_FOR_OWNER -> true
+                        GlafiraTaskState.RUNNING -> queue.transition(
+                            task.taskId, setOf(GlafiraTaskState.RUNNING),
+                            GlafiraTaskState.WAITING_FOR_OWNER, nowMillis,
+                            lastError = authorization.reason
+                        )
+                        else -> false
+                    }
+                    return GlafiraTaskExecutionResult(
+                        task.taskId,
+                        if (changed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
+                        else GlafiraTaskExecutionStatus.FAILED,
+                        authorization.reason
+                    )
+                }
             }
             GlafiraTaskAuthorizationStatus.AUTHORIZED -> Unit
         }
 
         val handler = handlerMap[task.taskType] ?: return fail(task, "NO_HANDLER_REGISTERED")
+        val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
+            task = task,
+            nowMillis = clock(),
+            budgetStartedAtMillis = task.createdAtMillis,
+            budget = effectiveBudget,
+            measuredCostMicros = runCatching { costMeter?.measuredCostMicros(task.taskId) }.getOrNull()
+        )
+        if (!budgetDecision.allowed) return fail(task, budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED")
+
+        // Dry Run is a planning path, not a mock invocation of the live handler.
+        // When Core supplies the typed persistence port, the encrypted preview row and
+        // WAITING_FOR_OWNER transition are committed atomically. The handler is never called.
+        if (mode == GlafiraExecutionMode.DRY_RUN) {
+            val plan = GlafiraDryRunPlanner.build(task, authorization)
+            val preview = "DRY_RUN_PREVIEW:" + plan.toSafeJson()
+            val changed = dryRunPreviewPersistence?.persistDryRunPreview(
+                task.taskId, setOf(GlafiraTaskState.RUNNING), plan, clock()
+            ) ?: queue.transition(
+                task.taskId, setOf(GlafiraTaskState.RUNNING),
+                GlafiraTaskState.WAITING_FOR_OWNER, clock(),
+                lastError = preview
+            )
+            return GlafiraTaskExecutionResult(
+                task.taskId,
+                if (changed) GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED
+                else GlafiraTaskExecutionStatus.FAILED,
+                if (changed) plan.toSafeJson() else "DRY_RUN_PREVIEW_PERSIST_FAILED"
+            )
+        }
+
         val outcome = try {
-            handler.execute(task)
+            // One registered Core handler is one typed execution step. The timeout also
+            // bounds cooperative suspend handlers and cancels them when their allowance ends.
+            withTimeout(budgetDecision.timeoutMillis) { handler.execute(task) }
+        } catch (timeout: TimeoutCancellationException) {
+            return fail(task, "RUNTIME_TIME_LIMIT_EXCEEDED")
         } catch (cancelled: CancellationException) {
-            return scheduleRetry(task, "EXECUTION_CANCELLED", nowMillis)
+            // Persist a bounded retry even while the parent coroutine is cancelling,
+            // then preserve structured concurrency by propagating cancellation.
+            withContext(NonCancellable) {
+                scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+            }
+            throw cancelled
         } catch (failure: Exception) {
-            return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", nowMillis)
+            return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock(), effectiveBudget.maxRetries)
         }
 
         return when (outcome) {
@@ -128,7 +192,7 @@ class GlafiraCoreTaskExecutor(
                 )
             }
             is GlafiraTaskExecutionOutcome.RetryableFailure ->
-                scheduleRetry(task, outcome.reason, clock())
+                scheduleRetry(task, outcome.reason, clock(), effectiveBudget.maxRetries)
             is GlafiraTaskExecutionOutcome.PermanentFailure -> fail(task, outcome.reason)
             GlafiraTaskExecutionOutcome.WaitingForNetwork -> {
                 val changed = queue.transition(
@@ -159,9 +223,11 @@ class GlafiraCoreTaskExecutor(
     private fun scheduleRetry(
         task: GlafiraTask,
         reason: String,
-        nowMillis: Long
+        nowMillis: Long,
+        configuredMaxRetries: Int
     ): GlafiraTaskExecutionResult {
-        if (task.attemptCount >= maxAttempts) return fail(task, "RETRY_LIMIT_REACHED:$reason")
+        val retryLimit = minOf(maxAttempts - 1, configuredMaxRetries)
+        if (task.attemptCount >= retryLimit + 1) return fail(task, "RETRY_LIMIT_REACHED:$reason")
         val exponent = (task.attemptCount - 1).coerceIn(0, 20)
         val delay = (baseRetryDelayMillis * (1L shl exponent)).coerceAtMost(maxRetryDelayMillis)
         val retryAt = if (Long.MAX_VALUE - nowMillis < delay) Long.MAX_VALUE else nowMillis + delay

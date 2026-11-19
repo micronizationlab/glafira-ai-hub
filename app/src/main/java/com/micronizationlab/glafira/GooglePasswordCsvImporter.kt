@@ -2,7 +2,10 @@ package com.micronizationlab.glafira
 
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -12,6 +15,8 @@ import java.util.UUID
 object GooglePasswordCsvImporter {
     private const val MAX_BYTES = 10 * 1024 * 1024
     private const val MAX_ROWS = 10_000
+    private const val MAX_COLUMNS = 64
+    private const val MAX_FIELD_CHARS = 1_048_576
 
     data class Result(
         val entries: List<VaultEntry>,
@@ -21,23 +26,36 @@ object GooglePasswordCsvImporter {
     fun parse(input: InputStream, now: Long = System.currentTimeMillis()): Result {
         val bytes = readBounded(input)
         try {
-            val text = String(bytes, StandardCharsets.UTF_8).removePrefix("\uFEFF")
+            val text = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+                .removePrefix("\uFEFF")
+            require('\u0000' !in text) { "CSV содержит недопустимый нулевой символ." }
+
             val rows = parseCsv(text)
             require(rows.isNotEmpty()) { "CSV-файл пуст." }
 
-            val headers = rows.first().mapIndexed { index, name ->
-                name.trim().removePrefix("\uFEFF").lowercase() to index
-            }.toMap()
+            val normalizedHeaders = rows.first().map { it.trim().removePrefix("\uFEFF").lowercase(Locale.ROOT) }
+            require(normalizedHeaders.none { it.isBlank() }) { "CSV содержит пустое имя столбца." }
+            require(normalizedHeaders.distinct().size == normalizedHeaders.size) {
+                "CSV содержит повторяющиеся имена столбцов."
+            }
+            val headers = normalizedHeaders.withIndex().associate { it.value to it.index }
             val nameIndex = headers["name"] ?: error("В CSV не найден столбец name.")
             val urlIndex = headers["url"] ?: error("В CSV не найден столбец url.")
             val usernameIndex = headers["username"] ?: error("В CSV не найден столбец username.")
             val passwordIndex = headers["password"] ?: error("В CSV не найден столбец password.")
             val noteIndex = headers["note"]
 
-            require(rows.size - 1 <= MAX_ROWS) { "В CSV больше $MAX_ROWS записей. Разделите файл на части." }
+            require(rows.size - 1 <= MAX_ROWS) { "В CSV больше 10 000 записей. Разделите файл на части." }
 
             var skipped = 0
             val entries = rows.drop(1).mapNotNull { row ->
+                require(row.size <= normalizedHeaders.size) {
+                    "В одной из записей больше столбцов, чем в заголовке."
+                }
                 val title = row.getOrNull(nameIndex).orEmpty().trim()
                 val website = row.getOrNull(urlIndex).orEmpty().trim()
                 val username = row.getOrNull(usernameIndex).orEmpty()
@@ -83,9 +101,17 @@ object GooglePasswordCsvImporter {
             while (true) {
                 val count = input.read(buffer)
                 if (count < 0) break
-                total += count
-                require(total <= MAX_BYTES) { "CSV-файл больше 10 МБ. Разделите его на части." }
-                output.write(buffer, 0, count)
+                if (count == 0) {
+                    val single = input.read()
+                    if (single < 0) break
+                    total++
+                    require(total <= MAX_BYTES) { "CSV-файл больше 10 МБ. Разделите его на части." }
+                    output.write(single)
+                } else {
+                    total += count
+                    require(total <= MAX_BYTES) { "CSV-файл больше 10 МБ. Разделите его на части." }
+                    output.write(buffer, 0, count)
+                }
             }
             return output.toByteArray()
         } finally {
@@ -99,35 +125,64 @@ object GooglePasswordCsvImporter {
         var row = mutableListOf<String>()
         val field = StringBuilder()
         var quoted = false
+        var afterQuote = false
         var index = 0
+
+        fun append(char: Char) {
+            require(field.length < MAX_FIELD_CHARS) { "В CSV найдено слишком длинное поле." }
+            field.append(char)
+        }
+
+        fun finishField() {
+            row.add(field.toString())
+            field.setLength(0)
+            require(row.size <= MAX_COLUMNS) { "В CSV слишком много столбцов." }
+        }
+
+        fun finishRow() {
+            finishField()
+            require(rows.size < MAX_ROWS + 1) {
+                "В CSV больше 10 000 записей. Разделите файл на части."
+            }
+            // Preserve empty CSV records so the importer can report them as skipped.
+            rows.add(row)
+            row = mutableListOf()
+        }
 
         while (index < source.length) {
             val char = source[index]
             when {
                 quoted && char == '"' && index + 1 < source.length && source[index + 1] == '"' -> {
-                    field.append('"')
+                    append('"')
                     index++
                 }
-                char == '"' && !quoted && field.isEmpty() -> quoted = true
-                char == '"' && quoted -> quoted = false
-                char == ',' && !quoted -> {
-                    row.add(field.toString())
-                    field.setLength(0)
+                quoted && char == '"' -> {
+                    quoted = false
+                    afterQuote = true
                 }
-                (char == '\n' || char == '\r') && !quoted -> {
-                    row.add(field.toString())
-                    field.setLength(0)
-                    if (row.isNotEmpty()) rows.add(row)
-                    row = mutableListOf()
+                afterQuote && char == ',' -> {
+                    finishField()
+                    afterQuote = false
+                }
+                afterQuote && (char == '\n' || char == '\r') -> {
+                    finishRow()
+                    afterQuote = false
                     if (char == '\r' && index + 1 < source.length && source[index + 1] == '\n') index++
                 }
-                else -> field.append(char)
+                afterQuote -> error("После закрывающей кавычки обнаружены лишние символы.")
+                char == '"' && !quoted && field.isEmpty() -> quoted = true
+                char == '"' && !quoted -> error("Кавычка встретилась внутри незаключённого в кавычки поля.")
+                char == ',' && !quoted -> finishField()
+                (char == '\n' || char == '\r') && !quoted -> {
+                    finishRow()
+                    if (char == '\r' && index + 1 < source.length && source[index + 1] == '\n') index++
+                }
+                else -> append(char)
             }
             index++
         }
         require(!quoted) { "CSV содержит незакрытую кавычку." }
-        row.add(field.toString())
-        if (row.any { it.isNotEmpty() }) rows.add(row)
+        if (afterQuote || field.isNotEmpty() || row.isNotEmpty()) finishRow()
         return rows
     }
 }

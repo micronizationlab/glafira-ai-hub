@@ -46,24 +46,38 @@ object DesktopBridgePairing {
         require(deviceLabel.trim().length in 1..MAX_LABEL_LENGTH && deviceLabel.none(Char::isISOControl))
         require(requestedScopes.size <= 32 && requestedScopes.all(DesktopBridgeScopePolicy::isValidScope))
         val capability = Base64.getUrlDecoder().decode(pairingCapability)
-        require(capability.size == CAPABILITY_BYTES)
-        val nonceBytes = ByteArray(NONCE_BYTES).also(random::nextBytes)
-        val nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes)
-        val verifier = MessageDigest.getInstance("SHA-256").digest(capability)
-        capability.fill(0)
-        val message = "GLAFIRA-BRIDGE-PAIRING-V1\u0000$ticketId\u0000$nonce".toByteArray(Charsets.UTF_8)
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(verifier, "HmacSHA256"))
-        val proof = mac.doFinal(message).joinToString("") { "%02x".format(it) }
-        verifier.fill(0)
-        nonceBytes.fill(0)
-        return DesktopBridgeEnrollmentRequest(
-            ticketId = ticketId,
-            clientNonce = nonce,
-            proofHex = proof,
-            deviceLabel = deviceLabel.trim(),
-            requestedScopes = requestedScopes.toSet()
-        )
+        var verifier: ByteArray? = null
+        var nonceBytes: ByteArray? = null
+        var message: ByteArray? = null
+        var proofBytes: ByteArray? = null
+        try {
+            require(capability.size == CAPABILITY_BYTES)
+            val nonceMaterial = ByteArray(NONCE_BYTES).also(random::nextBytes)
+            nonceBytes = nonceMaterial
+            val nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceMaterial)
+            val verifierMaterial = MessageDigest.getInstance("SHA-256").digest(capability)
+            verifier = verifierMaterial
+            val messageMaterial = "GLAFIRA-BRIDGE-PAIRING-V1\u0000$ticketId\u0000$nonce".toByteArray(Charsets.UTF_8)
+            message = messageMaterial
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(verifierMaterial, "HmacSHA256"))
+            val proofMaterial = mac.doFinal(messageMaterial)
+            proofBytes = proofMaterial
+            val proof = proofMaterial.joinToString("") { "%02x".format(it) }
+            return DesktopBridgeEnrollmentRequest(
+                ticketId = ticketId,
+                clientNonce = nonce,
+                proofHex = proof,
+                deviceLabel = deviceLabel.trim(),
+                requestedScopes = requestedScopes.toSet()
+            )
+        } finally {
+            capability.fill(0)
+            verifier?.fill(0)
+            nonceBytes?.fill(0)
+            message?.fill(0)
+            proofBytes?.fill(0)
+        }
     }
 }
 
@@ -96,6 +110,7 @@ fun DesktopBridgePairing.fromInvitationBundle(
     require(uri.scheme.equals("https", true) && !uri.host.isNullOrBlank())
     require(uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")
     require(uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null)
+    require(uri.port == -1 || uri.port in 1..65_535)
     val pin = DesktopBridgeJson.stringField(json, "serverCertificateSha256")
     require(pin.matches(Regex("[0-9a-fA-F]{64}")))
     val ticketId = DesktopBridgeJson.stringField(json, "ticketId")

@@ -9,7 +9,6 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermission
 import java.security.SecureRandom
-import java.security.spec.KeySpec
 import java.util.Base64
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
@@ -58,62 +57,66 @@ object DesktopBridgeCredentialVault {
     ) {
         require(passphrase.size >= 12) { "Vault passphrase must contain at least 12 characters." }
         val secret = Base64.getUrlDecoder().decode(hmacSecretBase64Url)
-        require(secret.size == 32) { "Device HMAC secret must be exactly 256 bits." }
-        val entry = DesktopBridgeVaultEntry(
-            origin = origin,
-            deviceId = deviceId,
-            hmacSecret = secret,
-            grantedScopes = grantedScopes.toSet(),
-            serverCertificateSha256 = serverCertificateSha256.lowercase()
-        )
-        validate(entry)
-        val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
-        val iv = ByteArray(IV_BYTES).also(SecureRandom()::nextBytes)
-        val plaintext = serialize(entry)
-        val key = deriveKey(passphrase, salt)
-        val ciphertext = try {
-            Cipher.getInstance("AES/GCM/NoPadding").run {
-                init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
-                updateAAD(aad())
-                doFinal(plaintext)
-            }
-        } finally {
-            plaintext.fill(0)
-            key.encoded?.fill(0)
-            secret.fill(0)
-        }
-        val output = ByteArrayOutputStream().use { buffer ->
-            DataOutputStream(buffer).use { data ->
-                data.writeInt(MAGIC)
-                data.writeInt(VERSION)
-                data.writeInt(PBKDF2_ITERATIONS)
-                data.writeInt(salt.size)
-                data.write(salt)
-                data.writeInt(iv.size)
-                data.write(iv)
-                data.writeInt(ciphertext.size)
-                data.write(ciphertext)
-            }
-            buffer.toByteArray()
-        }
-        require(output.size <= MAX_FILE_BYTES)
-        path.toAbsolutePath().parent?.let(Files::createDirectories)
-        val temp = Files.createTempFile(path.toAbsolutePath().parent, ".glafira-vault-", ".tmp")
         try {
-            Files.write(temp, output)
-            setOwnerOnly(temp)
-            try {
-                Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-                Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING)
+                require(secret.size == 32) { "Device HMAC secret must be exactly 256 bits." }
+            val entry = DesktopBridgeVaultEntry(
+                origin = origin,
+                deviceId = deviceId,
+                hmacSecret = secret,
+                grantedScopes = grantedScopes.toSet(),
+                serverCertificateSha256 = serverCertificateSha256.lowercase()
+            )
+            validate(entry)
+            val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
+            val iv = ByteArray(IV_BYTES).also(SecureRandom()::nextBytes)
+            val plaintext = serialize(entry)
+            val key = deriveKey(passphrase, salt)
+            val ciphertext = try {
+                Cipher.getInstance("AES/GCM/NoPadding").run {
+                    init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
+                    updateAAD(aad())
+                    doFinal(plaintext)
+                }
+            } finally {
+                plaintext.fill(0)
+                key.encoded?.fill(0)
             }
-            setOwnerOnly(path)
+            val output = ByteArrayOutputStream().use { buffer ->
+                DataOutputStream(buffer).use { data ->
+                    data.writeInt(MAGIC)
+                    data.writeInt(VERSION)
+                    data.writeInt(PBKDF2_ITERATIONS)
+                    data.writeInt(salt.size)
+                    data.write(salt)
+                    data.writeInt(iv.size)
+                    data.write(iv)
+                    data.writeInt(ciphertext.size)
+                    data.write(ciphertext)
+                }
+                buffer.toByteArray()
+            }
+            require(output.size <= MAX_FILE_BYTES)
+            path.toAbsolutePath().parent?.let(Files::createDirectories)
+            val temp = Files.createTempFile(path.toAbsolutePath().parent, ".glafira-vault-", ".tmp")
+            try {
+                setOwnerOnly(temp)
+                Files.write(temp, output)
+                try {
+                    Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                    Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING)
+                }
+                setOwnerOnly(path)
+            } finally {
+                Files.deleteIfExists(temp)
+                output.fill(0)
+                ciphertext.fill(0)
+                salt.fill(0)
+                iv.fill(0)
+            }
         } finally {
-            Files.deleteIfExists(temp)
-            output.fill(0)
-            ciphertext.fill(0)
-            salt.fill(0)
-            iv.fill(0)
+            // Cover validation, serialization and filesystem failures as well as encryption.
+            secret.fill(0)
         }
     }
 
@@ -155,40 +158,58 @@ object DesktopBridgeCredentialVault {
         val fileSize = Files.size(path)
         require(fileSize in 1..MAX_FILE_BYTES) { "Credential vault file size is invalid." }
         val bytes = Files.readAllBytes(path)
-        require(bytes.size.toLong() == fileSize && bytes.size in 1..MAX_FILE_BYTES)
-        val input = DataInputStream(ByteArrayInputStream(bytes))
-        require(input.readInt() == MAGIC && input.readInt() == VERSION) { "Unsupported credential vault." }
-        val iterations = input.readInt()
-        require(iterations == PBKDF2_ITERATIONS) { "Vault KDF parameters are unsupported." }
-        val saltSize = input.readInt()
-        require(saltSize == SALT_BYTES)
-        val salt = ByteArray(saltSize).also(input::readFully)
-        val ivSize = input.readInt()
-        require(ivSize == IV_BYTES)
-        val iv = ByteArray(ivSize).also(input::readFully)
-        val cipherSize = input.readInt()
-        require(cipherSize in 16..MAX_FILE_BYTES && cipherSize == input.available())
-        val ciphertext = ByteArray(cipherSize).also(input::readFully)
-        val key = deriveKey(passphrase, salt)
-        val plaintext = try {
-            Cipher.getInstance("AES/GCM/NoPadding").run {
-                init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
-                updateAAD(aad())
-                doFinal(ciphertext)
+        var salt: ByteArray? = null
+        var iv: ByteArray? = null
+        var ciphertext: ByteArray? = null
+        var plaintext: ByteArray? = null
+        var key: SecretKeySpec? = null
+        try {
+            require(bytes.size.toLong() == fileSize && bytes.size in 1..MAX_FILE_BYTES)
+            val input = DataInputStream(ByteArrayInputStream(bytes))
+            require(input.readInt() == MAGIC && input.readInt() == VERSION) {
+                "Unsupported credential vault."
             }
-        } catch (_: AEADBadTagException) {
-            throw SecurityException("Vault passphrase is incorrect or the file was modified.")
+            val iterations = input.readInt()
+            require(iterations == PBKDF2_ITERATIONS) { "Vault KDF parameters are unsupported." }
+            val saltSize = input.readInt()
+            require(saltSize == SALT_BYTES)
+            val saltBytes = ByteArray(saltSize).also(input::readFully)
+            salt = saltBytes
+            val ivSize = input.readInt()
+            require(ivSize == IV_BYTES)
+            val ivBytes = ByteArray(ivSize).also(input::readFully)
+            iv = ivBytes
+            val cipherSize = input.readInt()
+            require(cipherSize in 16..MAX_FILE_BYTES && cipherSize == input.available())
+            val ciphertextBytes = ByteArray(cipherSize).also(input::readFully)
+            ciphertext = ciphertextBytes
+            val derivedKey = deriveKey(passphrase, saltBytes)
+            key = derivedKey
+            val plaintextBytes = try {
+                Cipher.getInstance("AES/GCM/NoPadding").run {
+                    init(Cipher.DECRYPT_MODE, derivedKey, GCMParameterSpec(128, ivBytes))
+                    updateAAD(aad())
+                    doFinal(ciphertextBytes)
+                }
+            } catch (_: AEADBadTagException) {
+                throw SecurityException("Vault passphrase is incorrect or the file was modified.")
+            }
+            plaintext = plaintextBytes
+            val entry = deserialize(plaintextBytes)
+            try {
+                validate(entry)
+                return entry
+            } catch (failure: Exception) {
+                entry.hmacSecret.fill(0)
+                throw failure
+            }
         } finally {
-            key.encoded?.fill(0)
-            salt.fill(0)
-            iv.fill(0)
-            ciphertext.fill(0)
+            plaintext?.fill(0)
+            key?.encoded?.fill(0)
+            salt?.fill(0)
+            iv?.fill(0)
+            ciphertext?.fill(0)
             bytes.fill(0)
-        }
-        return try {
-            deserialize(plaintext).also(::validate)
-        } finally {
-            plaintext.fill(0)
         }
     }
 
@@ -221,34 +242,51 @@ object DesktopBridgeCredentialVault {
         }
 
     private fun deserialize(bytes: ByteArray): DesktopBridgeVaultEntry {
-        val data = DataInputStream(ByteArrayInputStream(bytes))
-        val origin = data.readUTF()
-        val deviceId = data.readUTF()
-        val secretSize = data.readInt()
-        require(secretSize == 32)
-        val secret = ByteArray(secretSize).also(data::readFully)
-        val count = data.readInt()
-        require(count in 1..32)
-        val scopes = buildSet { repeat(count) { require(add(data.readUTF())) } }
-        val pin = data.readUTF()
-        require(data.available() == 0)
-        return DesktopBridgeVaultEntry(origin, deviceId, secret, scopes, pin)
+        var secret: ByteArray? = null
+        try {
+            val data = DataInputStream(ByteArrayInputStream(bytes))
+            val origin = data.readUTF()
+            val deviceId = data.readUTF()
+            val secretSize = data.readInt()
+            require(secretSize == 32)
+            secret = ByteArray(secretSize).also(data::readFully)
+            val count = data.readInt()
+            require(count in 1..32)
+            val scopes = buildSet { repeat(count) { require(add(data.readUTF())) } }
+            val pin = data.readUTF()
+            require(data.available() == 0)
+            return DesktopBridgeVaultEntry(origin, deviceId, secret, scopes, pin)
+        } catch (failure: Exception) {
+            secret?.fill(0)
+            throw failure
+        }
     }
 
     private fun deriveKey(passphrase: CharArray, salt: ByteArray): SecretKeySpec {
-        val spec: KeySpec = PBEKeySpec(passphrase, salt, PBKDF2_ITERATIONS, KEY_BITS)
-        val encoded = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
-        (spec as PBEKeySpec).clearPassword()
-        return SecretKeySpec(encoded, "AES").also { encoded.fill(0) }
+        val spec = PBEKeySpec(passphrase, salt, PBKDF2_ITERATIONS, KEY_BITS)
+        try {
+            val encoded = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+            return try {
+                SecretKeySpec(encoded, "AES")
+            } finally {
+                encoded.fill(0)
+            }
+        } finally {
+            spec.clearPassword()
+        }
     }
 
     private fun aad() = "GLAFIRA-DESKTOP-CREDENTIAL-VAULT-V1".toByteArray(Charsets.UTF_8)
 
     private fun setOwnerOnly(path: Path) {
-        runCatching {
-            Files.setPosixFilePermissions(path, setOf(
-                PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE
-            ))
+        try {
+            Files.setPosixFilePermissions(
+                path,
+                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+            )
+        } catch (_: UnsupportedOperationException) {
+            // On non-POSIX systems the file inherits the ACL of its parent directory;
+            // callers keep this vault under the current user's private home directory.
         }
     }
 }

@@ -1,7 +1,12 @@
 package com.micronizationlab.glafira
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -69,7 +74,8 @@ class GlafiraCoreTaskExecutorTest {
         queue: FakeQueue,
         authorization: GlafiraTaskAuthorizationStatus = GlafiraTaskAuthorizationStatus.AUTHORIZED,
         outcome: GlafiraTaskExecutionOutcome = GlafiraTaskExecutionOutcome.Succeeded(),
-        clock: () -> Long = { 10_000L }
+        clock: () -> Long = { 10_000L },
+        mode: GlafiraExecutionMode = GlafiraExecutionMode.LIVE
     ) = GlafiraCoreTaskExecutor(
         queue = queue,
         authorizer = GlafiraTaskAuthorizer { _, _ ->
@@ -78,7 +84,8 @@ class GlafiraCoreTaskExecutorTest {
         handlers = listOf("project.read" to GlafiraTaskHandler { outcome }),
         clock = clock,
         baseRetryDelayMillis = 1_000L,
-        maxRetryDelayMillis = 8_000L
+        maxRetryDelayMillis = 8_000L,
+        executionMode = { mode }
     )
 
     @Test
@@ -164,6 +171,33 @@ class GlafiraCoreTaskExecutorTest {
     }
 
     @Test
+    fun coroutineCancellationPropagatesInsteadOfBeingConvertedToRetry() {
+        val queue = FakeQueue(task())
+        val handlerStarted = CompletableDeferred<Unit>()
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                handlerStarted.complete(Unit)
+                awaitCancellation()
+            }),
+            clock = { 10_000L }
+        )
+
+        runBlocking {
+            val job = launch { worker.executeNext() }
+            handlerStarted.await()
+            job.cancelAndJoin()
+            assertTrue(job.isCancelled)
+        }
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, queue.task?.state)
+        assertEquals(15_000L, queue.lastRetryAt)
+        assertEquals("EXECUTION_CANCELLED", queue.task?.lastError)
+    }
+
+    @Test
     fun waitingForNetworkIsPersistedWithoutRetryTimestamp() = runBlocking {
         val queue = FakeQueue(task())
         val result = executor(queue, outcome = GlafiraTaskExecutionOutcome.WaitingForNetwork).executeNext()
@@ -213,4 +247,82 @@ class GlafiraCoreTaskExecutorTest {
         }.exceptionOrNull()
         assertNotNull(error)
     }
+
+    @Test
+    fun dryRunNeverInvokesHandlerAndPersistsRedactedPreview() = runBlocking {
+        val queued = task().copy(
+            payload = """{"actionSummary":"Review draft only","recipient":"private@example.com","token":"never-store-this"}"""
+        )
+        val queue = FakeQueue(queued)
+        var handlerCalled = false
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                handlerCalled = true
+                GlafiraTaskExecutionOutcome.Succeeded("must not run")
+            }),
+            clock = { 10_000L },
+            executionMode = { GlafiraExecutionMode.DRY_RUN }
+        )
+
+        val result = worker.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED, result.status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.task?.state)
+        assertFalse(handlerCalled)
+        assertTrue(queue.task?.lastError?.contains("DRY_RUN_PREVIEW:") == true)
+        assertTrue(queue.task?.lastError?.contains("recipient") == true)
+        assertFalse(queue.task?.lastError?.contains("private@example.com") == true)
+        assertFalse(queue.task?.lastError?.contains("never-store-this") == true)
+    }
+
+
+    @Test
+    fun dryRunInspectsRiskyTaskWithoutEnqueuingApprovalOrCallingHandler() = runBlocking {
+        val queued = task().copy(
+            taskType = "message.send",
+            payload = """{"actionSummary":"Send customer message","recipient":"private@example.com"}"""
+        )
+        val queue = FakeQueue(queued)
+        var approvalRequestCreated = false
+        var handlerCalled = false
+        val grants = object : GlafiraTaskGrantSource {
+            override fun grantedScopes(task: GlafiraTask): Set<String> = emptySet()
+            override fun approvalGrant(
+                task: GlafiraTask,
+                actionSummary: String,
+                nowMillis: Long
+            ): ToolApprovalGrant? = null
+            override fun requestApproval(
+                task: GlafiraTask,
+                actionSummary: String,
+                nowMillis: Long
+            ): Boolean {
+                approvalRequestCreated = true
+                return true
+            }
+        }
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = RegistryBackedGlafiraTaskAuthorizer(grants),
+            handlers = listOf("message.send" to GlafiraTaskHandler {
+                handlerCalled = true
+                GlafiraTaskExecutionOutcome.Succeeded()
+            }),
+            clock = { 10_000L },
+            executionMode = { GlafiraExecutionMode.DRY_RUN }
+        )
+
+        val result = worker.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED, result.status)
+        assertFalse(approvalRequestCreated)
+        assertFalse(handlerCalled)
+        assertTrue(result.detail?.contains("NOT_SIMULATABLE") == true)
+        assertTrue(result.detail?.contains("WAITING_FOR_OWNER") == true)
+    }
+
 }

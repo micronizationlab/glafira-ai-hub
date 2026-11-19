@@ -24,7 +24,9 @@ class GlafiraCoreBridgeIngress(
         CONVERSATION_APPEND("conversation.append", "conversation.append")
     }
 
-    data class VerifiedRequest(
+    // Internal construction keeps this trust-boundary DTO out of public callers.
+    // Only the authenticated Bridge ingress in this application module may create it.
+    data class VerifiedRequest internal constructor(
         val requestId: String,
         val idempotencyKey: String,
         val authenticatedDeviceId: String,
@@ -93,6 +95,10 @@ class GlafiraCoreBridgeIngress(
         runtime.recordDesktopNode(authenticatedDeviceId, capabilities, maxParallelTasks)
         return runtime.claimDesktopTask(authenticatedDeviceId, capabilities, maxParallelTasks)
     }
+
+    /** Core-owned Dry Run path: persists a redacted preview, but never claims a lease or exposes executable payload. */
+    fun previewDesktopTask(capabilities: Set<String>): GlafiraDryRunPlan? =
+        runtime.previewDesktopTask(capabilities)
 
     fun desktopTaskLeaseExpiry(taskId: String): Long? = runtime.desktopTaskLeaseExpiry(taskId)
 

@@ -14,9 +14,14 @@ import java.io.File
  * Payloads are encrypted before they enter SQLite; task metadata remains queryable.
  */
 class GlafiraTaskStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION), GlafiraTaskQueue {
+    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
+    GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery {
     private val appContext = context.applicationContext
 
+    override fun onConfigure(db: SQLiteDatabase) {
+        super.onConfigure(db)
+        db.setForeignKeyConstraintsEnabled(true)
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -50,11 +55,13 @@ class GlafiraTaskStore(context: Context) :
                 "ON $TABLE_TASKS(state, priority DESC, created_at ASC)"
         )
         createDesktopTables(db)
+        GlafiraDryRunPreviewSchema.create(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) createDesktopTables(db)
-        if (newVersion > 2) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 3) GlafiraDryRunPreviewSchema.create(db)
+        if (newVersion > 3) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
     }
 
     private fun createDesktopTables(db: SQLiteDatabase) {
@@ -66,6 +73,139 @@ class GlafiraTaskStore(context: Context) :
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         throw IllegalStateException("Downgrading the GLAFIRA task database is not supported.")
+    }
+
+    @Synchronized
+    override fun persistDryRunPreview(
+        taskId: String,
+        expectedStates: Set<GlafiraTaskState>,
+        plan: GlafiraDryRunPlan,
+        nowMillis: Long
+    ): Boolean {
+        require(taskId == plan.taskId && taskId.isNotBlank())
+        require(plan.planHash.matches(Regex("[0-9a-f]{64}")))
+        require(expectedStates.isNotEmpty())
+        require(expectedStates.all { it in setOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING) })
+        val json = plan.toSafeJson()
+        require(json.toByteArray(Charsets.UTF_8).size <= 16_384)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val existingHash = db.query(
+                GlafiraDryRunPreviewSchema.TABLE, arrayOf("plan_hash"),
+                "task_id = ?", arrayOf(taskId), null, null, null, "1"
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            if (existingHash != null) {
+                check(existingHash == plan.planHash) { "DRY_RUN_PLAN_HASH_CONFLICT" }
+                db.setTransactionSuccessful()
+                return true
+            }
+            val task = queryTask(db, taskId) ?: return false
+            if (task.projectId != plan.projectId || task.taskType != plan.toolId ||
+                task.state !in expectedStates
+            ) return false
+            val placeholders = expectedStates.joinToString(",") { "?" }
+            val changed = db.update(
+                TABLE_TASKS,
+                ContentValues().apply {
+                    put("state", GlafiraTaskState.WAITING_FOR_OWNER.databaseValue)
+                    put("updated_at", nowMillis)
+                    put("last_error", "DRY_RUN_PREVIEW_STORED")
+                },
+                "task_id = ? AND state IN ($placeholders)",
+                arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray()
+            )
+            if (changed != 1) return false
+            val inserted = db.insertOrThrow(
+                GlafiraDryRunPreviewSchema.TABLE,
+                null,
+                ContentValues().apply {
+                    put("task_id", taskId)
+                    put("project_id", plan.projectId)
+                    put("tool_id", plan.toolId)
+                    put("risk", plan.risk.name)
+                    put("simulation_status", plan.simulationStatus.name)
+                    put("plan_hash", plan.planHash)
+                    put("plan_ciphertext", GlafiraTaskPayloadCrypto.encrypt(
+                        json, taskId + "|dry-run-preview|" + plan.projectId
+                    ))
+                    put("created_at", nowMillis)
+                    put("review_status", GlafiraDryRunReviewStatus.PENDING.name)
+                    putNull("reviewed_at")
+                }
+            )
+            check(inserted != -1L)
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    @Synchronized
+    fun dryRunPreview(taskId: String): GlafiraDryRunPreviewRecord? =
+        readableDatabase.query(
+            GlafiraDryRunPreviewSchema.TABLE, null, "task_id = ?",
+            arrayOf(taskId), null, null, null, "1"
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.toDryRunPreviewRecord() else null }
+
+    @Synchronized
+    fun dryRunPreviews(
+        limit: Int = 100,
+        includeReviewed: Boolean = true
+    ): List<GlafiraDryRunPreviewRecord> {
+        require(limit in 1..500)
+        val selection = if (includeReviewed) null else "review_status = ?"
+        val args = if (includeReviewed) null else arrayOf(GlafiraDryRunReviewStatus.PENDING.name)
+        return readableDatabase.query(
+            GlafiraDryRunPreviewSchema.TABLE, null, selection, args, null, null,
+            "created_at DESC", limit.toString()
+        ).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.toDryRunPreviewRecord()) }
+        }
+    }
+
+    @Synchronized
+    fun reviewDryRunPreview(
+        taskId: String,
+        expectedPlanHash: String,
+        decision: GlafiraDryRunReviewStatus,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean {
+        require(decision != GlafiraDryRunReviewStatus.PENDING)
+        require(expectedPlanHash.matches(Regex("[0-9a-f]{64}")))
+        return writableDatabase.update(
+            GlafiraDryRunPreviewSchema.TABLE,
+            ContentValues().apply {
+                put("review_status", decision.name)
+                put("reviewed_at", nowMillis)
+            },
+            "task_id = ? AND plan_hash = ? AND review_status = ?",
+            arrayOf(taskId, expectedPlanHash, GlafiraDryRunReviewStatus.PENDING.name)
+        ) == 1
+    }
+
+    private fun Cursor.toDryRunPreviewRecord(): GlafiraDryRunPreviewRecord {
+        val taskId = getString(getColumnIndexOrThrow("task_id"))
+        val projectId = getString(getColumnIndexOrThrow("project_id"))
+        val reviewedIndex = getColumnIndexOrThrow("reviewed_at")
+        return GlafiraDryRunPreviewRecord(
+            taskId = taskId,
+            projectId = projectId,
+            toolId = getString(getColumnIndexOrThrow("tool_id")),
+            risk = getString(getColumnIndexOrThrow("risk")),
+            simulationStatus = getString(getColumnIndexOrThrow("simulation_status")),
+            planHash = getString(getColumnIndexOrThrow("plan_hash")),
+            createdAtMillis = getLong(getColumnIndexOrThrow("created_at")),
+            reviewStatus = GlafiraDryRunReviewStatus.valueOf(
+                getString(getColumnIndexOrThrow("review_status"))
+            ),
+            reviewedAtMillis = if (isNull(reviewedIndex)) null else getLong(reviewedIndex),
+            planJson = GlafiraTaskPayloadCrypto.decrypt(
+                getString(getColumnIndexOrThrow("plan_ciphertext")),
+                taskId + "|dry-run-preview|" + projectId
+            )
+        )
     }
 
     @Synchronized
@@ -172,6 +312,61 @@ class GlafiraTaskStore(context: Context) :
             check(changed == 1) { "Task claim lost its transactional state check." }
             db.setTransactionSuccessful()
             return queryTask(db, taskId)
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
+     * Requeues Core RUNNING tasks left behind by process death. The caller must hold the
+     * application-wide Core maintenance gate, so no live in-process handler is running.
+     * Desktop tasks are excluded because their independent leases have their own recovery.
+     */
+    @Synchronized
+    override fun recoverInterruptedCoreTasks(
+        nowMillis: Long,
+        maxRetries: Int
+    ): Int {
+        require(nowMillis > 0L)
+        require(maxRetries in 0..20)
+        val db = writableDatabase
+        val retryLimit = maxRetries + 1
+        db.beginTransaction()
+        try {
+            val failed = db.update(
+                TABLE_TASKS,
+                ContentValues().apply {
+                    put("state", GlafiraTaskState.FAILED.databaseValue)
+                    put("updated_at", nowMillis)
+                    putNull("retry_at")
+                    put("last_error", "CORE_INTERRUPTED_RETRY_LIMIT_REACHED")
+                },
+                "state = ? AND task_type != ? AND attempt_count >= ?",
+                arrayOf(
+                    GlafiraTaskState.RUNNING.databaseValue,
+                    DESKTOP_TASK_TYPE,
+                    retryLimit.toString()
+                )
+            )
+            val requeued = db.update(
+                TABLE_TASKS,
+                ContentValues().apply {
+                    put("state", GlafiraTaskState.RETRY_SCHEDULED.databaseValue)
+                    put("updated_at", nowMillis)
+                    // Retry immediately after process recovery. Idempotency is required
+                    // by every registered Core handler; repeated crashes consume attempts.
+                    put("retry_at", nowMillis)
+                    put("last_error", "CORE_EXECUTION_INTERRUPTED")
+                },
+                "state = ? AND task_type != ? AND attempt_count < ?",
+                arrayOf(
+                    GlafiraTaskState.RUNNING.databaseValue,
+                    DESKTOP_TASK_TYPE,
+                    retryLimit.toString()
+                )
+            )
+            db.setTransactionSuccessful()
+            return failed + requeued
         } finally {
             db.endTransaction()
         }
@@ -600,7 +795,7 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 2
+        private const val DATABASE_VERSION = 3
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"

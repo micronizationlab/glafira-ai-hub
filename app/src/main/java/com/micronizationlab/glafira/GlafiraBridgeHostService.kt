@@ -208,7 +208,9 @@ class GlafiraBridgeHostService : Service() {
         }
 
         fun stopFromOwnerAction(context: Context) {
-            context.startService(Intent(context, GlafiraBridgeHostService::class.java).setAction(ACTION_STOP))
+            // Stop the already-running foreground service directly; do not start a
+            // background service merely to deliver a stop command on Android 8+.
+            context.stopService(Intent(context, GlafiraBridgeHostService::class.java))
         }
     }
 }
