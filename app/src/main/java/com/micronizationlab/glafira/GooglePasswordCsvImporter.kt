@@ -39,7 +39,7 @@ object GooglePasswordCsvImporter {
 
             val normalizedHeaders = rows.first().map { it.trim().removePrefix("\uFEFF").lowercase(Locale.ROOT) }
             require(normalizedHeaders.none { it.isBlank() }) { "CSV содержит пустое имя столбца." }
-            require(normalizedHeaders.distinct().size == normalizedizedSize(normalizedHeaders)) {
+            require(normalizedHeaders.distinct().size == normalizedHeaders.size) {
                 "CSV содержит повторяющиеся имена столбцов."
             }
             val headers = normalizedHeaders.withIndex().associate { it.value to it.index }
@@ -85,8 +85,6 @@ object GooglePasswordCsvImporter {
             bytes.fill(0)
         }
     }
-
-    private fun normalizedizedSize(values: List<String>): Int = values.toSet().size
 
     private class WipingByteArrayOutputStream : ByteArrayOutputStream() {
         fun wipe() {
