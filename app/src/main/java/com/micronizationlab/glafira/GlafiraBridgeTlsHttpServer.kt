@@ -234,57 +234,123 @@ class GlafiraBridgeTlsHttpServer(
                 }
                 // Every supported Bridge operation becomes a durable Core task.
                 // No operation is dispatched directly from the HTTPS worker thread.
-                val response = if (admitted.status == GlafiraBridgeStatus.ACCEPTED) {
-                    val coreOperation = runCatching {
-                        GlafiraCoreBridgeIngress.Operation.valueOf(request.operation.name)
-                    }.getOrNull()
-                    if (coreOperation == null) {
-                        GlafiraBridgeResponse(
-                            GlafiraBridgeProtocol.CURRENT_VERSION,
-                            request.requestId,
-                            GlafiraBridgeStatus.FAILED,
-                            errorCode = "CORE_OPERATION_NOT_SUPPORTED"
-                        )
-                    } else {
+                val response = if (admitted.status != GlafiraBridgeStatus.ACCEPTED) {
+                    admitted
+                } else when (request.operation) {
+                    GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> {
                         try {
-                            val submission = coreIngress.submit(
-                                GlafiraCoreBridgeIngress.VerifiedRequest(
-                                    requestId = request.requestId,
-                                    idempotencyKey = request.idempotencyKey,
-                                    authenticatedDeviceId = request.deviceId,
-                                    projectId = request.projectId,
-                                    operation = coreOperation,
-                                    payload = request.payload,
-                                    expiresAtEpochMs = request.expiresAtEpochMs
+                            val capabilities = request.payload.getValue("capabilities")
+                                .split(',').filter { it.isNotBlank() }.toSet()
+                            val parallel = request.payload.getValue("maxParallelTasks").toInt()
+                            val task = coreIngress.claimDesktopTask(request.deviceId, capabilities, parallel)
+                            if (task == null) {
+                                GlafiraBridgeResponse(
+                                    GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                    GlafiraBridgeStatus.ACCEPTED, result = mapOf("available" to "false")
                                 )
-                            )
-                            GlafiraBridgeResponse(
-                                GlafiraBridgeProtocol.CURRENT_VERSION,
-                                request.requestId,
-                                GlafiraBridgeStatus.ACCEPTED,
-                                result = mapOf(
-                                    "taskId" to submission.taskId,
-                                    "state" to submission.state.databaseValue,
-                                    "inserted" to submission.inserted.toString()
+                            } else {
+                                val payload = JSONObject(task.payload)
+                                GlafiraBridgeResponse(
+                                    GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                    GlafiraBridgeStatus.ACCEPTED,
+                                    result = mapOf(
+                                        "available" to "true",
+                                        "taskId" to task.taskId,
+                                        "projectId" to task.projectId,
+                                        "parentTaskId" to payload.optString("parentTaskId"),
+                                        "subtaskId" to payload.optString("subtaskId"),
+                                        "title" to payload.optString("title"),
+                                        "instruction" to payload.optString("instruction"),
+                                        "executor" to payload.optString("executor"),
+                                        "requiredCapabilities" to payload.optJSONArray("requiredCapabilities").toString(),
+                                        "expiresAtEpochMs" to (task.deadlineAtMillis ?: 0L).toString(),
+                                        "leaseExpiresAtEpochMs" to (coreIngress.status(task.taskId)?.let {
+                                            // Lease expiry is intentionally not sourced from the request.
+                                            System.currentTimeMillis() + 10 * 60_000L
+                                        } ?: 0L).toString()
+                                    )
                                 )
-                            )
-                        } catch (failure: IllegalArgumentException) {
-                            GlafiraBridgeResponse(
-                                GlafiraBridgeProtocol.CURRENT_VERSION,
-                                request.requestId,
-                                GlafiraBridgeStatus.FAILED,
-                                errorCode = failure.message?.take(80) ?: "INVALID_CORE_TASK"
-                            )
+                            }
                         } catch (_: Exception) {
                             GlafiraBridgeResponse(
-                                GlafiraBridgeProtocol.CURRENT_VERSION,
-                                request.requestId,
-                                GlafiraBridgeStatus.FAILED,
-                                errorCode = "CORE_QUEUE_UNAVAILABLE"
+                                GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                GlafiraBridgeStatus.FAILED, errorCode = "DESKTOP_CLAIM_REJECTED"
                             )
                         }
                     }
-                } else admitted
+                    GlafiraBridgeOperation.DESKTOP_TASK_RESULT -> {
+                        try {
+                            val taskId = request.payload.getValue("taskId")
+                            val resultValue = request.payload.getValue("result").takeUnless { it == "none" }
+                            val messageValue = request.payload.getValue("progressMessage").takeUnless { it == "none" }
+                            val errorValue = request.payload.getValue("errorCode").takeUnless { it == "none" }
+                            val updated = coreIngress.updateDesktopTask(
+                                taskId = taskId,
+                                authenticatedDeviceId = request.deviceId,
+                                state = request.payload.getValue("state"),
+                                progressPercent = request.payload.getValue("progressPercent").toInt(),
+                                progressMessage = messageValue,
+                                result = resultValue,
+                                errorCode = errorValue
+                            )
+                            GlafiraBridgeResponse(
+                                GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                if (updated) GlafiraBridgeStatus.SUCCEEDED else GlafiraBridgeStatus.FAILED,
+                                errorCode = if (updated) null else "DESKTOP_LEASE_INVALID"
+                            )
+                        } catch (_: Exception) {
+                            GlafiraBridgeResponse(
+                                GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                GlafiraBridgeStatus.FAILED, errorCode = "DESKTOP_RESULT_REJECTED"
+                            )
+                        }
+                    }
+                    else -> {
+                        val coreOperation = runCatching {
+                            GlafiraCoreBridgeIngress.Operation.valueOf(request.operation.name)
+                        }.getOrNull()
+                        if (coreOperation == null) {
+                            GlafiraBridgeResponse(
+                                GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                GlafiraBridgeStatus.FAILED, errorCode = "CORE_OPERATION_NOT_SUPPORTED"
+                            )
+                        } else {
+                            try {
+                                val submission = coreIngress.submit(
+                                    GlafiraCoreBridgeIngress.VerifiedRequest(
+                                        requestId = request.requestId,
+                                        idempotencyKey = request.idempotencyKey,
+                                        authenticatedDeviceId = request.deviceId,
+                                        projectId = request.projectId,
+                                        operation = coreOperation,
+                                        payload = request.payload,
+                                        expiresAtEpochMs = request.expiresAtEpochMs
+                                    )
+                                )
+                                GlafiraBridgeResponse(
+                                    GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                    GlafiraBridgeStatus.ACCEPTED,
+                                    result = mapOf(
+                                        "taskId" to submission.taskId,
+                                        "state" to submission.state.databaseValue,
+                                        "inserted" to submission.inserted.toString()
+                                    )
+                                )
+                            } catch (failure: IllegalArgumentException) {
+                                GlafiraBridgeResponse(
+                                    GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                    GlafiraBridgeStatus.FAILED,
+                                    errorCode = failure.message?.take(80) ?: "INVALID_CORE_TASK"
+                                )
+                            } catch (_: Exception) {
+                                GlafiraBridgeResponse(
+                                    GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                    GlafiraBridgeStatus.FAILED, errorCode = "CORE_QUEUE_UNAVAILABLE"
+                                )
+                            }
+                        }
+                    }
+                }
                 val status = if (response.status == GlafiraBridgeStatus.ACCEPTED ||
                     response.status == GlafiraBridgeStatus.PENDING_APPROVAL
                 ) HTTP_ACCEPTED else HTTP_OK
