@@ -51,9 +51,9 @@ internal fun interface GlafiraLocalTaskPort {
 }
 
 /**
- * Dependency-aware Core dispatcher. Independent tasks are submitted concurrently to Desktop
- * when it is available and advertises the required capabilities; otherwise only explicitly
- * safe Android fallbacks are used.
+ * Dependency-aware Core dispatcher. Independent tasks run within a global owner budget and
+ * per-node limits. Desktop is selected only when available with the required capabilities;
+ * otherwise only explicitly safe Android fallbacks are used.
  */
 internal class GlafiraDistributedTaskOrchestrator(
     private val desktop: GlafiraDesktopTaskPort,
