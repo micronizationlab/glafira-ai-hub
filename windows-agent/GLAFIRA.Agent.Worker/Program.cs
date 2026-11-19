@@ -1,4 +1,5 @@
 using GLAFIRA.Agent.Worker;
+using Microsoft.Extensions.Hosting;
 
 var builder = Host.CreateApplicationBuilder(args);
 
