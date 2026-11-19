@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - glafira/bridge-keystore-signer-fix
+  pull_request:
+    branches:
+      - glafira/bridge-keystore-signer-fix
   workflow_dispatch:
 
 permissions:
