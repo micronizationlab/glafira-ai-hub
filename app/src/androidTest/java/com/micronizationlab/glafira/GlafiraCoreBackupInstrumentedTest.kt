@@ -287,15 +287,15 @@ class GlafiraCoreBackupInstrumentedTest {
     fun backupRestorePreservesProviderSelectionPreferences() {
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val passphrase = "GLAFIRA-provider-backup-test".toCharArray()
+        assertTrue(
+            preferences.edit()
+                .putString("peer_consultation_providers_acceptance", "openai,local")
+                .putBoolean("peer_consultation_enabled_acceptance", true)
+                .commit()
+        )
         val archive = BackupArchive.create(context, passphrase)
         try {
-            assertTrue(
-                preferences.edit()
-                    .putString("peer_consultation_providers_acceptance", "openai,local")
-                    .putBoolean("peer_consultation_enabled_acceptance", true)
-                    .commit()
-            )
-            // The archive was created before these changes, so restore must return to its snapshot.
+            // Mutate preferences after backup; restore must return to the archived values.
             assertTrue(
                 preferences.edit()
                     .putString("peer_consultation_providers_acceptance", "changed")
