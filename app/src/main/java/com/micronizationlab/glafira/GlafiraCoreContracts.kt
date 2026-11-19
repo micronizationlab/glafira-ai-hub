@@ -99,12 +99,13 @@ data class CoreMemoryRecord(
     }
 }
 
-data class MemoryAccessContext(
+data class MemoryAccessContext internal constructor(
     val actorId: String,
     val projectId: ProjectIdentifier?,
     val agentRoleId: AgentRoleIdentifier?,
     val allowedScopes: Set<MemoryScopeType>,
-    val maximumClassification: CoreDataClassification
+    val maximumClassification: CoreDataClassification,
+    val actorType: CoreActorType
 ) {
     init { require(actorId.isNotBlank()) }
 }
@@ -119,6 +120,7 @@ data class MemoryQuery(
 ) {
     init {
         require(limit in 1..100) { "Memory query limit must be between 1 and 100" }
+        require(text.length <= 512) { "Memory search text is too long" }
     }
 }
 
@@ -374,7 +376,11 @@ data class TraceQuery(
     }
 }
 
-data class TraceAccessContext(val actor: CoreActor, val allowedProjects: Set<ProjectIdentifier>)
+data class TraceAccessContext internal constructor(
+    val actor: CoreActor,
+    val allowedProjects: Set<ProjectIdentifier>,
+    val maximumClassification: CoreDataClassification
+)
 
 data class TracePage(
     val events: List<CoreTraceEvent>,
@@ -392,7 +398,7 @@ interface TraceService {
 }
 
 enum class CoreAction {
-    READ_MEMORY, WRITE_MEMORY, DELETE_MEMORY, DELEGATE_AGENT,
+    READ_MEMORY, WRITE_MEMORY, DELETE_MEMORY, READ_TRACE, WRITE_TRACE, DELEGATE_AGENT,
     EXECUTE_TOOL, EXTERNAL_SIDE_EFFECT, EXPORT_DATA
 }
 
