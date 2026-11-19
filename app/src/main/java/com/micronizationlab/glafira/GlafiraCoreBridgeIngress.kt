@@ -7,8 +7,9 @@ import java.util.UUID
  * The only supported Bridge-to-Core ingress seam.
  *
  * Call this only after TLS device authentication, pairing lookup, request signature,
- * replay/idempotency and Bridge protocol validation have succeeded. The caller must pass
- * the device identity obtained from the trusted pairing store, never from an untrusted body.
+ * rate limits and Bridge protocol validation have succeeded. Durable Core submissions
+ * use admitDurableTask: their receipt is the unique task row, not a separate replay claim.
+ * The caller must pass the device identity obtained from the trusted pairing store, never from an untrusted body.
  *
  * This adapter deliberately does not execute an operation. It translates the typed request
  * into a durable Core task so the Core queue and RegistryBackedGlafiraTaskAuthorizer remain
@@ -84,6 +85,11 @@ class GlafiraCoreBridgeIngress(
             requiredScopes = setOf(request.operation.requiredScope)
         )
         val result = runtime.enqueue(task)
+        // The unique (project, idempotencyKey) row is the durable acceptance receipt.
+        // A duplicate must never disclose or reuse another device/action's task.
+        require(GlafiraBridgeDurableTaskIdentity.equivalent(result.task, task)) {
+            "BRIDGE_IDEMPOTENCY_CONFLICT"
+        }
         return Submission(result.task.taskId, result.inserted, result.task.state)
     }
 

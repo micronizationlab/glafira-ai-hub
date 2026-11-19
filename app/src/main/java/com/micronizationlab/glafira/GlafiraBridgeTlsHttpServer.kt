@@ -254,8 +254,13 @@ class GlafiraBridgeTlsHttpServer(
                     writeResponse(client, HTTP_BAD_REQUEST, errorResponse("INVALID_ENVELOPE"))
                     return
                 }
-                val admitted = admission.admit(request) { authenticatedDeviceId ->
+                val rateLimit: (String) -> Boolean = { authenticatedDeviceId ->
                     deviceRateLimiter.tryAcquire(authenticatedDeviceId)
+                }
+                val admitted = if (GlafiraBridgeDurableTaskIdentity.supports(request.operation)) {
+                    admission.admitDurableTask(request, authenticatedDeviceRateLimit = rateLimit)
+                } else {
+                    admission.admit(request, authenticatedDeviceRateLimit = rateLimit)
                 }
                 if (admitted.errorCode == "DEVICE_RATE_LIMITED") {
                     writeResponse(client, HTTP_TOO_MANY_REQUESTS, responseJson(admitted))
