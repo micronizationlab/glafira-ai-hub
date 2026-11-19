@@ -8,7 +8,7 @@ Dry Run creates a redacted, deterministic preview of a Core task without invokin
 
 - `GlafiraExecutionMode.DRY_RUN` and `LIVE` are explicit domain modes.
 - The Core runtime owner currently selects `DRY_RUN` only. No owner-facing LIVE switch is exposed.
-- Core authorization and runtime-budget checks run before a preview is produced.
+- Core authorization policy is inspected through a read-only path, and runtime-budget checks run before a preview is produced. Missing scopes and approval requirements are represented in the plan; Dry Run does not create approval requests.
 - `GlafiraDryRunPlanner` reads the registered tool definition and creates a plan with risk, simulation availability, safe target-field names, expected changes, required scopes, approval points, limitations and a deterministic SHA-256 plan hash.
 - Payload values, message bodies, credentials and provider responses are never copied into the preview.
 - The executor does not call the task handler in Dry Run. It stores a compact `DRY_RUN_PREVIEW` record in the existing task status detail and moves the task to `WAITING_FOR_OWNER`.
