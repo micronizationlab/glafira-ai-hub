@@ -55,7 +55,11 @@ jobs:
               ios/*) ios=true ;;
               windows-agent/*) agent=true ;;
               contracts/*) contracts=true ;;
-              .github/workflows/*|.github/scripts/*) android=true; ios=true; agent=true; contracts=true ;;
+              .github/workflows/android.yml) android=true ;;
+              .github/workflows/ios.yml) ios=true ;;
+              .github/workflows/windows-agent.yml) agent=true ;;
+              .github/workflows/contracts.yml) contracts=true ;;
+              .github/scripts/*) android=true ;;
             esac
             case "$path" in app/src/androidTest/*|.github/scripts/run-android-instrumentation.sh) android_acceptance=true ;; esac
           done
