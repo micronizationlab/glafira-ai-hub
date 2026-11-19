@@ -197,6 +197,20 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     fun desktopTaskLeaseExpiry(taskId: String): Long? = taskStore.desktopTaskLeaseExpiry(taskId)
 
+    /** Redacted Dry Run previews awaiting owner review, newest tasks first. */
+    fun dryRunPreviews(limit: Int = 100): List<GlafiraTask> {
+        require(limit in 1..500)
+        return taskStore.listTasks(setOf(GlafiraTaskState.WAITING_FOR_OWNER), limit)
+            .filter { it.lastError?.startsWith(DRY_RUN_PREVIEW_PREFIX) == true }
+    }
+
+    /** Returns a preview only when the task is still marked as a Dry Run result. */
+    fun dryRunPreview(taskId: String): GlafiraTask? =
+        taskStore.getTask(taskId)?.takeIf {
+            it.state == GlafiraTaskState.WAITING_FOR_OWNER &&
+                it.lastError?.startsWith(DRY_RUN_PREVIEW_PREFIX) == true
+        }
+
     fun pendingOwnerApprovals(): List<GlafiraPendingActionApproval> =
         ownerApprovalStore.pendingApprovals()
 
@@ -219,6 +233,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         ownerApprovalStore.reject(taskId, ownerSession)
 
     companion object {
+        private const val DRY_RUN_PREVIEW_PREFIX = "DRY_RUN_PREVIEW:"
         private const val PREFERENCES = "glafira_core_runtime"
         private const val KEY_ENABLED = "runtime_enabled"
         private const val KEY_BUDGET_WALL_CLOCK_MS = "runtime_budget_wall_clock_ms"
