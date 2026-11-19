@@ -23,6 +23,9 @@ interface GlafiraBridgePairingTicketStore {
     fun create(ticket: GlafiraBridgePairingTicket): Boolean
     fun find(ticketId: String): GlafiraBridgePairingTicket?
 
+    /** Best-effort bounded cleanup of expired invitation records. */
+    fun pruneExpired(nowEpochMs: Long): Int = 0
+
     /** Atomically remove the matching, unexpired ticket. Must fail if already consumed. */
     fun consume(
         ticketId: String,
@@ -80,6 +83,7 @@ class GlafiraBridgePairingProtocol(
         val verifierKey = sha256(capabilityBytes)
 
         val stored = runCatching {
+            ticketStore.pruneExpired(nowEpochMs)
             ticketStore.create(
                 GlafiraBridgePairingTicket(
                     ticketId = ticketId,
