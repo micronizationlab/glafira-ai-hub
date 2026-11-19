@@ -36,7 +36,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) }
         ),
         runtimeBudget = { loadRuntimeBudget() },
-        executionMode = { executionMode }
+        executionMode = { executionMode },
+        dryRunPreviewPersistence = taskStore
     )
 
     private fun executeBridgeTask(task: GlafiraTask): GlafiraTaskExecutionOutcome {
@@ -197,12 +198,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             if (!capabilities.containsAll(required)) continue
             val authorization = authorizer.inspectForDryRun(candidate, now)
             val plan = GlafiraDryRunPlanner.build(candidate, authorization)
-            val persisted = taskStore.transition(
-                candidate.taskId,
-                setOf(GlafiraTaskState.QUEUED),
-                GlafiraTaskState.WAITING_FOR_OWNER,
-                now,
-                lastError = DRY_RUN_PREVIEW_PREFIX + plan.toSafeJson()
+            val persisted = taskStore.persistDryRunPreview(
+                candidate.taskId, setOf(GlafiraTaskState.QUEUED), plan, now
             )
             if (persisted) return plan
         }
@@ -241,6 +238,24 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             it.state == GlafiraTaskState.WAITING_FOR_OWNER &&
                 it.lastError?.startsWith(DRY_RUN_PREVIEW_PREFIX) == true
         }
+
+    /** Typed, encrypted Dry Run previews for the owner review screen. */
+    fun dryRunPreviewRecords(limit: Int = 100): List<GlafiraDryRunPreviewRecord> =
+        taskStore.dryRunPreviews(limit)
+
+    fun dryRunPreviewJson(taskId: String): String? =
+        taskStore.dryRunPreview(taskId)?.planJson
+
+    /** Acknowledge/reject a preview after fresh owner authentication; never starts LIVE execution. */
+    fun reviewDryRunPreview(
+        taskId: String,
+        expectedPlanHash: String,
+        decision: GlafiraDryRunReviewStatus,
+        ownerSession: GlafiraCoreOwnerSession
+    ): Boolean {
+        if (!ownerSession.consume()) return false
+        return taskStore.reviewDryRunPreview(taskId, expectedPlanHash, decision)
+    }
 
     fun pendingOwnerApprovals(): List<GlafiraPendingActionApproval> =
         ownerApprovalStore.pendingApprovals()
