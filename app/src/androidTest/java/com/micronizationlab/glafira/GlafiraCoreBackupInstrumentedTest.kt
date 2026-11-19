@@ -109,6 +109,39 @@ class GlafiraCoreBackupInstrumentedTest {
         assertTrue(!store.enqueue(task()).inserted)
     }
 
+    @Test
+    fun ownerApprovalExpiresAndCannotRemainInPendingQueueForever() {
+        val approvalTask = task("approval-expiry-task").copy(
+            payload = """{"actionSummary":"Read project details"}"""
+        )
+        store.enqueue(approvalTask)
+        assertTrue(
+            store.transition(
+                approvalTask.taskId,
+                setOf(GlafiraTaskState.QUEUED),
+                GlafiraTaskState.RUNNING,
+                nowMillis = 2_000L
+            )
+        )
+        val approvals = GlafiraCoreOwnerApprovalStore(store)
+        assertTrue(approvals.requestApproval(approvalTask, "Read project details", 3_000L))
+        assertEquals(1, approvals.pendingApprovals(nowMillis = 4_000L).size)
+
+        val expired = approvals.pendingApprovals(nowMillis = 86_404_000L)
+        assertTrue(expired.isEmpty())
+        assertEquals(GlafiraTaskState.FAILED, store.getTask(approvalTask.taskId)?.state)
+        store.writableDatabase.query(
+            "core_action_approvals",
+            arrayOf("status"),
+            "task_id = ?",
+            arrayOf(approvalTask.taskId),
+            null, null, null
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("EXPIRED", cursor.getString(0))
+        }
+    }
+
     private fun previewTask(id: String = "preview-task") = GlafiraTask(
         taskId = id,
         projectId = "preview-project",
