@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -48,13 +49,18 @@ class GlafiraTaskStore(context: Context) :
             "CREATE INDEX index_glafira_tasks_state_priority " +
                 "ON $TABLE_TASKS(state, priority DESC, created_at ASC)"
         )
+        createDesktopTables(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        throw IllegalStateException(
-            "A reviewed GLAFIRA task-queue migration is required from version " +
-                oldVersion + " to " + newVersion + "."
-        )
+        if (oldVersion < 2) createDesktopTables(db)
+        if (newVersion > 2) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+    }
+
+    private fun createDesktopTables(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_leases (task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE, device_id TEXT NOT NULL, lease_expires_at INTEGER NOT NULL, attempt_count INTEGER NOT NULL, progress_percent INTEGER NOT NULL DEFAULT 0, progress_message TEXT, updated_at INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_results (task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE, result_ciphertext TEXT, error_code TEXT, completed_at INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_core_desktop_lease_device ON core_desktop_leases(device_id, lease_expires_at)")
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -394,7 +400,7 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
         private const val TABLE_TASKS = "core_tasks"
     }
 }
