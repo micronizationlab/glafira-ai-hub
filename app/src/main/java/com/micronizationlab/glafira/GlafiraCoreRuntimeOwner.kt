@@ -179,9 +179,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     /**
-     * Returns a redacted Desktop Dry Run plan without claiming or leasing the task.
-     * This is a read-only view over Core's durable queue; Desktop never receives the
-     * executable instruction or payload values through this preview path.
+     * Builds and persists one redacted Desktop Dry Run preview without claiming or leasing
+     * the task. Only the plan is returned over Bridge; executable payload values stay in Core.
      */
     fun previewDesktopTask(capabilities: Set<String>): GlafiraDryRunPlan? {
         if (executionMode != GlafiraExecutionMode.DRY_RUN) return null
@@ -197,7 +196,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             }.getOrNull() ?: continue
             if (!capabilities.containsAll(required)) continue
             val authorization = authorizer.inspectForDryRun(candidate, now)
-            return GlafiraDryRunPlanner.build(candidate, authorization)
+            val plan = GlafiraDryRunPlanner.build(candidate, authorization)
+            val persisted = taskStore.transition(
+                candidate.taskId,
+                setOf(GlafiraTaskState.QUEUED),
+                GlafiraTaskState.WAITING_FOR_OWNER,
+                now,
+                lastError = DRY_RUN_PREVIEW_PREFIX + plan.toSafeJson()
+            )
+            if (persisted) return plan
         }
         return null
     }
