@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 fun saveApiKey(context: Context, key: String): Boolean =
     EncryptedApiKeyStore.save(context, "gigachat_api_key", key)
@@ -35,6 +36,9 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var yandexKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.YANDEX)) }
     var geminiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GEMINI)) }
     var openRouterKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENROUTER)) }
+    var openAiTestStatus by remember { mutableStateOf<String?>(null) }
+    var openAiTesting by remember { mutableStateOf(false) }
+    val settingsScope = rememberCoroutineScope()
     var isSaved by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf(false) }
     var workingExpanded by remember { mutableStateOf(true) }
@@ -247,6 +251,35 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 onValueChange = { openaiKey = it; isSaved = false; saveError = false },
                 configured = openaiKey.isNotBlank()
             )
+            Text(
+                "Используется OpenAI API, а не вход в ChatGPT по паролю. API-запросы оплачиваются отдельно от подписки ChatGPT. Ключ хранится в Android Keystore.",
+                color = Tx, fontSize = 10.sp
+            )
+            Button(
+                enabled = openaiKey.isNotBlank() && !openAiTesting,
+                onClick = {
+                    openAiTesting = true
+                    openAiTestStatus = "Проверка соединения…"
+                    settingsScope.launch {
+                        val saved = saveProviderKey(context, ProviderId.OPENAI, openaiKey)
+                        openAiTestStatus = if (!saved) {
+                            "Не удалось безопасно сохранить API-ключ."
+                        } else {
+                            val answer = callAiProvider(
+                                context, ProviderId.OPENAI, emptyList(),
+                                "Проверка соединения GLAFIRA. Ответь только словом OK."
+                            )
+                            if (answer.startsWith("Ошибка")) answer
+                            else "Соединение с OpenAI API работает: ${answer.take(80)}"
+                        }
+                        openAiTesting = false
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White)
+            ) {
+                Text(if (openAiTesting) "ПРОВЕРКА…" else "ПРОВЕРИТЬ CHATGPT API")
+            }
+            openAiTestStatus?.let { Text(it, color = Tx, fontSize = 10.sp) }
             ProviderKeyField(
                 label = "DeepSeek API Key",
                 value = deepseekKey,
