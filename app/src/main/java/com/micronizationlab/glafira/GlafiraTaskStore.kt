@@ -212,6 +212,118 @@ class GlafiraTaskStore(context: Context) :
         ) == 1
     }
 
+
+    @Synchronized
+    fun queuedDesktopTasks(limit: Int = 100): List<GlafiraTask> {
+        require(limit in 1..500)
+        return readableDatabase.query(TABLE_TASKS, null, "task_type = ? AND state = ?",
+            arrayOf(DESKTOP_TASK_TYPE, GlafiraTaskState.QUEUED.databaseValue),
+            null, null, "priority DESC, created_at ASC", limit.toString()).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.toTask()) }
+        }
+    }
+
+    @Synchronized
+    fun claimDesktopTask(taskId: String, deviceId: String, supportedCapabilities: Set<String>,
+                         maxParallelTasks: Int, nowMillis: Long = System.currentTimeMillis()): GlafiraTask? {
+        require(deviceId.matches(Regex("[A-Za-z0-9_.-]{8,128}")))
+        require(supportedCapabilities.size <= 16 && supportedCapabilities.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
+        require(maxParallelTasks in 1..8)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val active = db.rawQuery("SELECT COUNT(*) FROM core_desktop_leases WHERE device_id = ? AND lease_expires_at > ?",
+                arrayOf(deviceId, nowMillis.toString())).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+            if (active >= maxParallelTasks) { db.setTransactionSuccessful(); return null }
+            val task = queryTask(db, taskId) ?: run { db.setTransactionSuccessful(); return null }
+            if (task.taskType != DESKTOP_TASK_TYPE || task.state != GlafiraTaskState.QUEUED) {
+                db.setTransactionSuccessful(); return null
+            }
+            val required = runCatching {
+                val a = JSONObject(task.payload).getJSONArray("requiredCapabilities")
+                (0 until a.length()).map { a.getString(it) }.toSet()
+            }.getOrDefault(emptySet())
+            if (!supportedCapabilities.containsAll(required)) { db.setTransactionSuccessful(); return null }
+            val changed = db.update(TABLE_TASKS, ContentValues().apply {
+                put("state", GlafiraTaskState.RUNNING.databaseValue)
+                put("updated_at", nowMillis)
+                put("attempt_count", task.attemptCount + 1)
+            }, "task_id = ? AND state = ?", arrayOf(taskId, GlafiraTaskState.QUEUED.databaseValue))
+            if (changed != 1) { db.setTransactionSuccessful(); return null }
+            db.insertWithOnConflict("core_desktop_leases", null, ContentValues().apply {
+                put("task_id", taskId); put("device_id", deviceId)
+                put("lease_expires_at", nowMillis + DESKTOP_LEASE_MS)
+                put("attempt_count", task.attemptCount + 1); put("progress_percent", 0); put("updated_at", nowMillis)
+            }, SQLiteDatabase.CONFLICT_REPLACE)
+            db.setTransactionSuccessful()
+            return queryTask(db, taskId)
+        } finally { db.endTransaction() }
+    }
+
+    @Synchronized
+    fun updateDesktopTask(taskId: String, deviceId: String, state: String, progressPercent: Int,
+                          progressMessage: String?, result: String?, errorCode: String?,
+                          nowMillis: Long = System.currentTimeMillis()): Boolean {
+        require(progressPercent in 0..100)
+        require(progressMessage == null || progressMessage.length <= 500)
+        require(result == null || result.length <= 24_000)
+        require(errorCode == null || errorCode.matches(Regex("[A-Z0-9_]{1,64}")))
+        require(state in setOf("ACCEPTED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"))
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val lease = db.query("core_desktop_leases", arrayOf("device_id", "lease_expires_at"),
+                "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) to cursor.getLong(1) else null
+            } ?: return false
+            if (lease.first != deviceId || lease.second <= nowMillis) return false
+            if (state in setOf("SUCCEEDED", "FAILED", "CANCELLED")) {
+                val terminal = when (state) {
+                    "SUCCEEDED" -> GlafiraTaskState.SUCCEEDED
+                    "FAILED" -> GlafiraTaskState.FAILED
+                    else -> GlafiraTaskState.CANCELLED
+                }
+                val changed = db.update(TABLE_TASKS, ContentValues().apply {
+                    put("state", terminal.databaseValue); put("updated_at", nowMillis)
+                    if (errorCode == null) putNull("last_error") else put("last_error", errorCode)
+                }, "task_id = ? AND state = ?", arrayOf(taskId, GlafiraTaskState.RUNNING.databaseValue))
+                if (changed != 1) return false
+                db.insertWithOnConflict("core_desktop_results", null, ContentValues().apply {
+                    put("task_id", taskId)
+                    if (result == null) putNull("result_ciphertext")
+                    else put("result_ciphertext", GlafiraTaskPayloadCrypto.encrypt(result, taskId + "|desktop-result"))
+                    if (errorCode == null) putNull("error_code") else put("error_code", errorCode)
+                    put("completed_at", nowMillis)
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+                db.delete("core_desktop_leases", "task_id = ?", arrayOf(taskId))
+            } else {
+                db.update("core_desktop_leases", ContentValues().apply {
+                    put("lease_expires_at", nowMillis + DESKTOP_LEASE_MS)
+                    put("progress_percent", progressPercent)
+                    if (progressMessage != null) put("progress_message", progressMessage)
+                    put("updated_at", nowMillis)
+                }, "task_id = ? AND device_id = ?", arrayOf(taskId, deviceId))
+            }
+            db.setTransactionSuccessful()
+            return true
+        } finally { db.endTransaction() }
+    }
+
+    @Synchronized
+    fun desktopTaskResult(taskId: String): String? =
+        readableDatabase.query("core_desktop_results", arrayOf("result_ciphertext"),
+            "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
+            if (!cursor.moveToFirst() || cursor.isNull(0)) null
+            else GlafiraTaskPayloadCrypto.decrypt(cursor.getString(0), taskId + "|desktop-result")
+        }
+
+    @Synchronized
+    fun desktopTaskLeaseExpiry(taskId: String): Long? =
+        readableDatabase.query("core_desktop_leases", arrayOf("lease_expires_at"),
+            "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+
     private fun findByIdempotency(projectId: String, idempotencyKey: String): GlafiraTask? =
         readableDatabase.query(
             TABLE_TASKS,
@@ -401,6 +513,8 @@ class GlafiraTaskStore(context: Context) :
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
         private const val DATABASE_VERSION = 2
+        private const val DESKTOP_LEASE_MS = 10 * 60_000L
+        const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
     }
 }
