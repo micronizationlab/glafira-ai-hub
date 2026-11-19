@@ -50,6 +50,9 @@ fun main(args: Array<String>) {
             val entry = DesktopBridgeCredentialVault.load(vaultPath, passphrase)
             val credentials = entry.toCredentials()
             entry.hmacSecret.fill(0)
+            var session: DesktopCliTaskSession? = null
+            var worker: DesktopBridgeTaskWorker? = null
+            var shutdownConfirmed = false
             try {
                 val projectId = console.readLine("Project ID: ").trim()
                 require(projectId.isNotBlank())
@@ -58,15 +61,14 @@ fun main(args: Array<String>) {
                 println("Desktop task state and unacknowledged results persist beside the credential vault.")
                 println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
                 println("Ollama must be running locally at 127.0.0.1:11434.")
-                val session = desktopCliTaskSession(vaultPath)
-                var worker: DesktopBridgeTaskWorker? = null
-                var shutdownConfirmed = false
+                val activeSession = desktopCliTaskSession(vaultPath)
+                session = activeSession
                 try {
                     val createdWorker = DesktopBridgeTaskWorker(
                         origin = entry.origin,
                         credentials = credentials,
                         projectId = projectId,
-                        queue = session.queue,
+                        queue = activeSession.queue,
                         handlers = DesktopLocalAgentRegistry.ollama(model),
                         onDryRunPreview = { preview ->
                             println()
@@ -87,18 +89,14 @@ fun main(args: Array<String>) {
                     } finally {
                         // If a handler ignores interruption, worker.close() throws. In that case
                         // deliberately retain the OS queue lock and HMAC key until the handler stops.
-                        closeDesktopWorkerAndSession(createdWorker, session)
+                        closeDesktopWorkerAndSession(createdWorker, activeSession)
                         shutdownConfirmed = true
                     }
                 } finally {
-                    if (worker == null) {
-                        // Construction failed before any task handler could be started.
-                        session.close()
-                        credentials.hmacSecret.fill(0)
-                    } else if (shutdownConfirmed) {
-                        credentials.hmacSecret.fill(0)
-                    }
+                    if (worker == null) activeSession.close()
                 }
+            } finally {
+                if (worker == null || shutdownConfirmed) credentials.hmacSecret.fill(0)
             }
             return
         }
