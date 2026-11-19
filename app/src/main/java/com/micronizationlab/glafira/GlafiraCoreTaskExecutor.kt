@@ -201,7 +201,7 @@ class GlafiraCoreTaskExecutor(
             // bounds cooperative suspend handlers and cancels them when their allowance ends.
             withTimeout(budgetDecision.timeoutMillis) { handler.execute(task) }
         } catch (timeout: TimeoutCancellationException) {
-            return fail(task, "RUNTIME_TIME_LIMIT_EXCEEDED")
+            return scheduleRetry(task, "RUNTIME_TIME_LIMIT_EXCEEDED", clock(), effectiveBudget.maxRetries)
         } catch (cancelled: CancellationException) {
             // Persist a bounded retry even while the parent coroutine is cancelling,
             // then preserve structured concurrency by propagating cancellation.
@@ -308,6 +308,23 @@ class GlafiraCoreTaskExecutor(
         nowMillis: Long,
         configuredMaxRetries: Int
     ): GlafiraTaskExecutionResult {
+        // An exception, timeout or cancellation may happen after an external side effect.
+        // Only registry-classified read-only operations are safe for automatic replay.
+        if (GlafiraToolRegistry.find(task.taskType)?.risk != ToolRiskLevel.READ_ONLY) {
+            val changed = queue.transition(
+                task.taskId,
+                setOf(GlafiraTaskState.RUNNING),
+                GlafiraTaskState.WAITING_FOR_OWNER,
+                nowMillis,
+                lastError = "EXECUTION_OUTCOME_UNCERTAIN:${reason.take(256)}"
+            )
+            return GlafiraTaskExecutionResult(
+                task.taskId,
+                if (changed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
+                else GlafiraTaskExecutionStatus.FAILED,
+                "EXECUTION_OUTCOME_UNCERTAIN"
+            )
+        }
         val retryLimit = minOf(maxAttempts - 1, configuredMaxRetries)
         if (task.attemptCount >= retryLimit + 1) return fail(task, "RETRY_LIMIT_REACHED:$reason")
         val exponent = (task.attemptCount - 1).coerceIn(0, 20)
