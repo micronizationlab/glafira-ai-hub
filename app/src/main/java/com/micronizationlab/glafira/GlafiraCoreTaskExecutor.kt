@@ -3,6 +3,7 @@ package com.micronizationlab.glafira
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -165,8 +166,11 @@ class GlafiraCoreTaskExecutor(
         } catch (timeout: TimeoutCancellationException) {
             return fail(task, "RUNTIME_TIME_LIMIT_EXCEEDED")
         } catch (cancelled: CancellationException) {
-            // Preserve structured concurrency: shutdown, user cancellation and parent-job
-            // cancellation must propagate to the caller. Lease recovery handles the task.
+            // Persist a bounded retry even while the parent coroutine is cancelling,
+            // then preserve structured concurrency by propagating cancellation.
+            withContext(NonCancellable) {
+                scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+            }
             throw cancelled
         } catch (failure: Exception) {
             return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock(), effectiveBudget.maxRetries)
