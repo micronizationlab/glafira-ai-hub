@@ -15,7 +15,7 @@ import java.io.File
  */
 class GlafiraTaskStore(context: Context) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
-    GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery {
+    GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraCoreTaskResultPersistence {
     private val appContext = context.applicationContext
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -57,13 +57,15 @@ class GlafiraTaskStore(context: Context) :
         createDesktopTables(db)
         GlafiraDryRunPreviewSchema.create(db)
         createHistorySchema(db)
+        createCoreTaskResultsSchema(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) createDesktopTables(db)
         if (oldVersion < 3) GlafiraDryRunPreviewSchema.create(db)
         if (oldVersion < 4) createHistorySchema(db)
-        if (newVersion > 4) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 5) createCoreTaskResultsSchema(db)
+        if (newVersion > 5) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
     }
 
     /** Triggers also cover state writes by same-database approval/result adapters. */
@@ -93,6 +95,16 @@ class GlafiraTaskStore(context: Context) :
             WHEN OLD.state IN ('succeeded','failed','cancelled') AND OLD.state != NEW.state BEGIN
             SELECT RAISE(ABORT,'TERMINAL_TASK_IMMUTABLE');
         END""")
+    }
+
+    private fun createCoreTaskResultsSchema(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS $TABLE_CORE_RESULTS (
+                task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE,
+                result_ciphertext TEXT NOT NULL,
+                completed_at INTEGER NOT NULL
+            )""".trimIndent()
+        )
     }
 
     private fun createDesktopTables(db: SQLiteDatabase) {
@@ -490,6 +502,95 @@ class GlafiraTaskStore(context: Context) :
     }
 
 
+    /**
+     * Atomically stores an encrypted handler result and marks the Core task succeeded.
+     * State history and the result row commit or roll back together.
+     */
+    @Synchronized
+    override fun persistCoreTaskResult(
+        taskId: String,
+        expectedStates: Set<GlafiraTaskState>,
+        result: String,
+        nowMillis: Long
+    ): Boolean {
+        require(taskId.isNotBlank() && nowMillis > 0L)
+        require(expectedStates == setOf(GlafiraTaskState.RUNNING))
+        require(result.length <= MAX_CORE_RESULT_CHARS) { "CORE_TASK_RESULT_TOO_LARGE" }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val task = queryTask(db, taskId) ?: return false
+            val existingResult = db.query(
+                TABLE_CORE_RESULTS, arrayOf("result_ciphertext"),
+                "task_id = ?", arrayOf(taskId), null, null, null, "1"
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null else GlafiraTaskPayloadCrypto.decrypt(
+                    cursor.getString(0), taskId + "|core-result|" + task.projectId
+                )
+            }
+            if (existingResult != null) {
+                check(existingResult == result) { "CORE_TASK_RESULT_CONFLICT" }
+                if (task.state == GlafiraTaskState.SUCCEEDED) {
+                    db.setTransactionSuccessful()
+                    return true
+                }
+                throw IllegalStateException("CORE_TASK_RESULT_STATE_MISMATCH")
+            }
+            if (task.state !in expectedStates) return false
+
+            val ciphertext = GlafiraTaskPayloadCrypto.encrypt(
+                result, taskId + "|core-result|" + task.projectId
+            )
+            val changed = db.update(
+                TABLE_TASKS,
+                ContentValues().apply {
+                    put("state", GlafiraTaskState.SUCCEEDED.databaseValue)
+                    put("updated_at", nowMillis)
+                    putNull("retry_at")
+                    putNull("last_error")
+                },
+                "task_id = ? AND state = ?",
+                arrayOf(taskId, GlafiraTaskState.RUNNING.databaseValue)
+            )
+            if (changed != 1) return false
+            db.insertOrThrow(
+                TABLE_CORE_RESULTS,
+                null,
+                ContentValues().apply {
+                    put("task_id", taskId)
+                    put("result_ciphertext", ciphertext)
+                    put("completed_at", nowMillis)
+                }
+            )
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Returns a decrypted result only when the task belongs to the requested project. */
+    @Synchronized
+    fun coreTaskResult(taskId: String, projectId: String): GlafiraCoreTaskResultRecord? {
+        require(taskId.isNotBlank() && projectId.isNotBlank())
+        val task = getTask(taskId, projectId) ?: return null
+        if (task.state != GlafiraTaskState.SUCCEEDED) return null
+        return readableDatabase.query(
+            TABLE_CORE_RESULTS, arrayOf("result_ciphertext", "completed_at"),
+            "task_id = ?", arrayOf(taskId), null, null, null, "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            GlafiraCoreTaskResultRecord(
+                taskId = taskId,
+                projectId = projectId,
+                result = GlafiraTaskPayloadCrypto.decrypt(
+                    cursor.getString(0), taskId + "|core-result|" + projectId
+                ),
+                completedAtMillis = cursor.getLong(1)
+            )
+        }
+    }
+
     @Synchronized
     fun recordDesktopNode(deviceId: String, capabilities: Set<String>, maxParallelTasks: Int,
                           nowMillis: Long = System.currentTimeMillis()) {
@@ -865,9 +966,11 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 4
+        private const val DATABASE_VERSION = 5
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
+        private const val TABLE_CORE_RESULTS = "core_task_results"
+        private const val MAX_CORE_RESULT_CHARS = 24_000
     }
 }
