@@ -46,9 +46,8 @@ fun DryRunReviewScreen(onBack: () -> Unit) {
             Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 9.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("← НАЗАД", color = Color.White, modifier = Modifier.padding(end = 12.dp))
+            TextButton(onClick = onBack) { Text("← НАЗАД", color = Color.White) }
             Text("ПЛАНЫ DRY RUN", color = Color.White, fontWeight = FontWeight.Bold)
-            TextButton(onClick = onBack) { Text("ЗАКРЫТЬ", color = Color.White) }
         }
         Spacer(Modifier.height(8.dp))
         Text(
