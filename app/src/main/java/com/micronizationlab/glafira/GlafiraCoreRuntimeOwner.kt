@@ -17,12 +17,17 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     val taskStore = GlafiraTaskStore(appContext)
     private val ownerApprovalStore = GlafiraCoreOwnerApprovalStore(taskStore)
+    private val bridgeCredentialStore = AndroidKeystoreBridgeCredentialStore(appContext)
+    private val taskGrantSource = GlafiraCompositeTaskGrantSource(
+        ownerApprovalStore,
+        bridgeCredentialStore
+    )
 
     private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
 
     private val executor = GlafiraCoreTaskExecutor(
         queue = taskStore,
-        authorizer = RegistryBackedGlafiraTaskAuthorizer(ownerApprovalStore),
+        authorizer = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource),
         handlers = listOf(
             "project.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
