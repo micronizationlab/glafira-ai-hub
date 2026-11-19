@@ -456,14 +456,26 @@ class GlafiraBridgeTlsHttpServer(
 
     private fun readExactly(socket: Socket, expectedBytes: Int): ByteArray {
         val result = ByteArray(expectedBytes)
+        val input = socket.getInputStream()
         var offset = 0
-        while (offset < expectedBytes) {
-            val read = socket.getInputStream().read(result, offset, expectedBytes - offset)
-            if (read < 0) throw IOException("Truncated HTTP request body.")
-            if (read == 0) continue
-            offset += read
+        try {
+            while (offset < expectedBytes) {
+                val read = input.read(result, offset, expectedBytes - offset)
+                if (read < 0) throw IOException("Truncated HTTP request body.")
+                if (read == 0) {
+                    // Avoid a hot spin on streams that temporarily report no bulk progress.
+                    val single = input.read()
+                    if (single < 0) throw IOException("Truncated HTTP request body.")
+                    result[offset++] = single.toByte()
+                } else {
+                    offset += read
+                }
+            }
+            return result
+        } catch (failure: Exception) {
+            result.fill(0)
+            throw failure
         }
-        return result
     }
 
     private fun responseJson(response: GlafiraBridgeResponse): ByteArray =
