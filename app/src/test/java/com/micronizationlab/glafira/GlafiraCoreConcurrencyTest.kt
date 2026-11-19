@@ -245,14 +245,14 @@ class GlafiraCoreConcurrencyTest {
 
     @Test
     fun failedResultCommitQuarantinesPossibleWriteInsteadOfReplayingIt() = runBlocking {
-        val writeTask = task("write-task").copy(taskType = "conversation.append")
+        val writeTask = task("write-task").copy(taskType = "message.send")
         val queue = ConcurrentQueue(listOf(writeTask)).apply { failResultPersistence = true }
         val executor = GlafiraCoreTaskExecutor(
             queue = queue,
             authorizer = GlafiraTaskAuthorizer { _, _ ->
                 GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
             },
-            handlers = listOf("conversation.append" to GlafiraTaskHandler {
+            handlers = listOf("message.send" to GlafiraTaskHandler {
                 GlafiraTaskExecutionOutcome.Succeeded("write completed before result-store failure")
             }),
             dispatcher = Dispatchers.Default,
