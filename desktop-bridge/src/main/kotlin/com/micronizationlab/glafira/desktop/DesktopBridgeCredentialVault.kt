@@ -58,7 +58,8 @@ object DesktopBridgeCredentialVault {
     ) {
         require(passphrase.size >= 12) { "Vault passphrase must contain at least 12 characters." }
         val secret = Base64.getUrlDecoder().decode(hmacSecretBase64Url)
-        require(secret.size == 32) { "Device HMAC secret must be exactly 256 bits." }
+        try {
+            require(secret.size == 32) { "Device HMAC secret must be exactly 256 bits." }
         val entry = DesktopBridgeVaultEntry(
             origin = origin,
             deviceId = deviceId,
@@ -80,7 +81,6 @@ object DesktopBridgeCredentialVault {
         } finally {
             plaintext.fill(0)
             key.encoded?.fill(0)
-            secret.fill(0)
         }
         val output = ByteArrayOutputStream().use { buffer ->
             DataOutputStream(buffer).use { data ->
@@ -100,8 +100,8 @@ object DesktopBridgeCredentialVault {
         path.toAbsolutePath().parent?.let(Files::createDirectories)
         val temp = Files.createTempFile(path.toAbsolutePath().parent, ".glafira-vault-", ".tmp")
         try {
-            Files.write(temp, output)
             setOwnerOnly(temp)
+            Files.write(temp, output)
             try {
                 Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
@@ -114,6 +114,10 @@ object DesktopBridgeCredentialVault {
             ciphertext.fill(0)
             salt.fill(0)
             iv.fill(0)
+        }
+        } finally {
+            // Cover validation, serialization and filesystem failures as well as encryption.
+            secret.fill(0)
         }
     }
 
@@ -236,10 +240,17 @@ object DesktopBridgeCredentialVault {
     }
 
     private fun deriveKey(passphrase: CharArray, salt: ByteArray): SecretKeySpec {
-        val spec: KeySpec = PBEKeySpec(passphrase, salt, PBKDF2_ITERATIONS, KEY_BITS)
-        val encoded = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
-        (spec as PBEKeySpec).clearPassword()
-        return SecretKeySpec(encoded, "AES").also { encoded.fill(0) }
+        val spec = PBEKeySpec(passphrase, salt, PBKDF2_ITERATIONS, KEY_BITS)
+        try {
+            val encoded = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+            return try {
+                SecretKeySpec(encoded, "AES")
+            } finally {
+                encoded.fill(0)
+            }
+        } finally {
+            spec.clearPassword()
+        }
     }
 
     private fun aad() = "GLAFIRA-DESKTOP-CREDENTIAL-VAULT-V1".toByteArray(Charsets.UTF_8)
