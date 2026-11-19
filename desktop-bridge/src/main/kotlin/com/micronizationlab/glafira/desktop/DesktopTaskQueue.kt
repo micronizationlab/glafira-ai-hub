@@ -46,16 +46,17 @@ internal data class DesktopTaskRecord(
 
 /** Small durable queue; execution workers and Bridge transport are deliberately separate. */
 internal class DesktopTaskQueue(
-    private val file: Path,
+    private val file: Path?,
     private val maxQueued: Int = DEFAULT_MAX_QUEUED,
     private val clock: () -> Long = System::currentTimeMillis
 ) {
     private val gson = Gson()
     private val lock = Any()
+    private var memoryRecords = mutableListOf<DesktopTaskRecord>()
 
     init {
         require(maxQueued in 1..MAX_QUEUE_LIMIT)
-        file.parent?.let { Files.createDirectories(it) }
+        file?.parent?.let { Files.createDirectories(it) }
     }
 
     fun enqueue(envelope: DesktopTaskEnvelope): DesktopTaskRecord = synchronized(lock) {
@@ -214,21 +215,26 @@ internal class DesktopTaskQueue(
     }
 
     private fun readAll(): List<DesktopTaskRecord> {
-        if (!Files.exists(file)) return emptyList()
+        val target = file ?: return memoryRecords.toList()
+        if (!Files.exists(target)) return emptyList()
         val type = object : TypeToken<List<DesktopTaskRecord>>() {}.type
-        return gson.fromJson<List<DesktopTaskRecord>>(Files.readString(file), type) ?: emptyList()
+        return gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type) ?: emptyList()
     }
 
     private fun writeAll(records: List<DesktopTaskRecord>) {
-        val temp = file.resolveSibling(file.fileName.toString() + ".tmp")
+        val target = file ?: run {
+            memoryRecords = records.toMutableList()
+            return
+        }
+        val temp = target.resolveSibling(target.fileName.toString() + ".tmp")
         Files.writeString(temp, gson.toJson(records))
         setOwnerOnly(temp)
         try {
-            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING)
+            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
         }
-        setOwnerOnly(file)
+        setOwnerOnly(target)
     }
 
     private fun setOwnerOnly(path: Path) {
@@ -247,6 +253,8 @@ internal class DesktopTaskQueue(
     }
 
     companion object {
+        fun inMemory(): DesktopTaskQueue = DesktopTaskQueue(null)
+
         const val DEFAULT_MAX_QUEUED = 100
         const val MAX_QUEUE_LIMIT = 1_000
         private const val MAX_INSTRUCTION_CHARS = 8_000
