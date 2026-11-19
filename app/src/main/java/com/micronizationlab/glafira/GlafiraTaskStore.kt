@@ -282,6 +282,15 @@ class GlafiraTaskStore(context: Context) :
             if (task.taskType != DESKTOP_TASK_TYPE || task.state != GlafiraTaskState.QUEUED) {
                 db.setTransactionSuccessful(); return null
             }
+            if (task.deadlineAtMillis != null && task.deadlineAtMillis <= nowMillis) {
+                db.update(TABLE_TASKS, ContentValues().apply {
+                    put("state", GlafiraTaskState.FAILED.databaseValue)
+                    put("updated_at", nowMillis)
+                    put("last_error", "DESKTOP_TASK_EXPIRED")
+                }, "task_id = ? AND state = ?", arrayOf(taskId, GlafiraTaskState.QUEUED.databaseValue))
+                db.setTransactionSuccessful()
+                return null
+            }
             val required = runCatching {
                 val a = JSONObject(task.payload).getJSONArray("requiredCapabilities")
                 (0 until a.length()).map { a.getString(it) }.toSet()
