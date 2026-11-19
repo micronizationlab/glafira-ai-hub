@@ -28,6 +28,7 @@ Dry Run creates a redacted, deterministic preview of a Core task without invokin
 - Core returns only the redacted `GlafiraDryRunPlan` JSON, including task ID, project ID, tool ID, risk, simulation status, required permissions, approval points, limitations and plan hash.
 - The raw task instruction, task payload values, secrets and executable handler arguments are not sent to Desktop in this path.
 - The Desktop worker validates a strict preview schema and invokes its `onDryRunPreview` callback. It does not enqueue the preview in the Desktop task queue, invoke an agent executor, or send a task-result update.
+- The current Desktop CLI renders the callback as a clearly labelled `PREVIEW ONLY; NOT EXECUTED` report, including the plan hash and redacted JSON.
 - If no compatible queued task exists, the normal `available=false` response is returned. Malformed preview envelopes fail closed.
 
 ## Ten Desktop preview hardening checks
