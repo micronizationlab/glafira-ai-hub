@@ -36,6 +36,7 @@ class GlafiraCoreOwnerApprovalStore(
             )""".trimIndent()
         )
         database.execSQL("CREATE INDEX IF NOT EXISTS core_action_approval_status_idx ON core_action_approvals(status, requested_at)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS core_action_approval_expiry_idx ON core_action_approvals(status, expires_at)")
     }
 
     @Synchronized
@@ -70,8 +71,9 @@ class GlafiraCoreOwnerApprovalStore(
         database.beginTransaction()
         try {
             val currentTask = taskStore.getTask(task.taskId) ?: return false
-            if (currentTask.state != GlafiraTaskState.RUNNING &&
-                currentTask.state != GlafiraTaskState.WAITING_FOR_OWNER
+            if ((currentTask.state != GlafiraTaskState.RUNNING &&
+                currentTask.state != GlafiraTaskState.WAITING_FOR_OWNER) ||
+                (currentTask.deadlineAtMillis != null && currentTask.deadlineAtMillis <= nowMillis)
             ) return false
 
             val existing = database.query(
@@ -91,7 +93,7 @@ class GlafiraCoreOwnerApprovalStore(
                 put("action_hash", hash)
                 put("requested_scopes", JSONArray(requestedScopes).toString())
                 put("requested_at", nowMillis)
-                put("expires_at", Long.MAX_VALUE)
+                put("expires_at", approvalExpiry(nowMillis, currentTask.deadlineAtMillis))
                 put("status", PENDING)
                 putNull("approved_at")
                 putNull("grant_expires_at")
@@ -175,10 +177,33 @@ class GlafiraCoreOwnerApprovalStore(
     @Synchronized
     fun pendingApprovals(nowMillis: Long = System.currentTimeMillis(), limit: Int = 100): List<GlafiraPendingActionApproval> {
         require(limit in 1..100)
-        val rows = db.query(
+        val database = db
+        database.beginTransaction()
+        try {
+            database.update(
+                "core_action_approvals",
+                ContentValues().apply { put("status", EXPIRED) },
+                "status = ? AND expires_at <= ?",
+                arrayOf(PENDING, nowMillis.toString())
+            )
+            database.execSQL(
+                "UPDATE core_tasks SET state = ?, updated_at = ?, last_error = ? " +
+                    "WHERE state = ? AND task_id IN " +
+                    "(SELECT task_id FROM core_action_approvals WHERE status = ? AND expires_at <= ?)",
+                arrayOf(
+                    GlafiraTaskState.FAILED.databaseValue, nowMillis, "OWNER_APPROVAL_EXPIRED",
+                    GlafiraTaskState.WAITING_FOR_OWNER.databaseValue, EXPIRED, nowMillis
+                )
+            )
+            database.setTransactionSuccessful()
+        } finally {
+            database.endTransaction()
+        }
+        val rows = database.query(
             "core_action_approvals",
             arrayOf("task_id", "action_hash", "requested_scopes", "requested_at", "expires_at"),
-            "status = ?", arrayOf(PENDING), null, null, "requested_at ASC", limit.toString()
+            "status = ? AND expires_at > ?", arrayOf(PENDING, nowMillis.toString()),
+            null, null, "requested_at ASC", limit.toString()
         ).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) add(PendingRow(
@@ -308,6 +333,15 @@ class GlafiraCoreOwnerApprovalStore(
     }
 
 
+    private fun approvalExpiry(nowMillis: Long, taskDeadlineMillis: Long?): Long {
+        val ttlExpiry = if (Long.MAX_VALUE - nowMillis < PENDING_APPROVAL_TTL_MILLIS) {
+            Long.MAX_VALUE
+        } else {
+            nowMillis + PENDING_APPROVAL_TTL_MILLIS
+        }
+        return minOf(taskDeadlineMillis ?: ttlExpiry, ttlExpiry)
+    }
+
     private data class ApprovalRow(
         val projectId: String, val toolId: String, val actionHash: String,
         val status: String, val approvedAt: Long, val grantExpiresAt: Long
@@ -328,5 +362,6 @@ class GlafiraCoreOwnerApprovalStore(
         private const val EXPIRED = "EXPIRED"
         private const val CONSUMED = "CONSUMED"
         private const val GRANT_TTL_MILLIS = 10L * 60L * 1000L
+        private const val PENDING_APPROVAL_TTL_MILLIS = 24L * 60L * 60L * 1000L
     }
 }
