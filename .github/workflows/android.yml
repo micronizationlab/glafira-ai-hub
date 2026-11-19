@@ -31,61 +31,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Test change-aware suite selector
+        run: python3 -m unittest discover -s .github/scripts/tests -v
       - id: detect
         name: Detect changed paths
-        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           CURRENT_SHA: ${{ github.sha }}
-        run: |
-          set -Eeuo pipefail
-          android=false; android_acceptance=false; ios=false; agent=false; contracts=false; workflow_lint=false
-          if [[ "$EVENT_NAME" == pull_request ]]; then
-            mapfile -t changed < <(git diff --name-only "$PR_BASE" "$PR_HEAD")
-          elif [[ "$EVENT_NAME" == push && "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]]; then
-            mapfile -t changed < <(git diff --name-only "$PUSH_BEFORE" "$CURRENT_SHA")
-          else
-            mapfile -t changed < <(git ls-tree -r --name-only "$CURRENT_SHA")
-          fi
-          for path in "${changed[@]}"; do
-            case "$path" in
-              app/*|desktop-bridge/*|gradle/*|gradlew|gradle.properties|build.gradle.kts|settings.gradle.kts)
-                android=true; [[ -d contracts ]] && contracts=true ;;
-              ios/*)
-                ios=true; [[ -d contracts ]] && contracts=true ;;
-              windows-agent/*)
-                agent=true; [[ -d contracts ]] && contracts=true ;;
-              contracts/*)
-                contracts=true
-                [[ -f settings.gradle.kts ]] && android=true
-                [[ -f ios/GlafiraBridgeKit/Package.swift ]] && ios=true
-                [[ -f windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj ]] && agent=true ;;
-              .github/workflows/*) workflow_lint=true ;;
-              .github/scripts/*) android=true ;;
-            esac
-            case "$path" in
-              app/src/androidTest/*|app/src/main/AndroidManifest.xml|app/src/main/java/com/micronizationlab/glafira/*Bridge*|app/src/main/java/com/micronizationlab/glafira/*Core*|desktop-bridge/*|.github/scripts/run-android-instrumentation.sh)
-                android_acceptance=true ;;
-            esac
-          done
-          if [[ "$EVENT_NAME" == schedule || "$EVENT_NAME" == workflow_dispatch ]]; then
-            android=true; [[ -d ios ]] && ios=true; [[ -d windows-agent ]] && agent=true
-            [[ -d contracts ]] && contracts=true; android_acceptance=true
-          fi
-          # Never launch emulator acceptance without the bounded, diagnostic harness.
-          if [[ "$android_acceptance" == true && ! -f .github/scripts/run-android-instrumentation.sh ]]; then android_acceptance=false; fi
-          {
-            echo "android=$android"
-            echo "android_acceptance=$android_acceptance"
-            echo "ios=$ios"
-            echo "agent=$agent"
-            echo "contracts=$contracts"
-            echo "workflow_lint=$workflow_lint"
-          } >> "$GITHUB_OUTPUT"
-          printf 'Selected: Android=%s Emulator=%s iOS=%s Agent=%s Contracts=%s\n' "$android" "$android_acceptance" "$ios" "$agent" "$contracts"
+        run: python3 .github/scripts/detect_changes.py
 
   workflow-lint:
     name: GitHub Actions workflow lint
