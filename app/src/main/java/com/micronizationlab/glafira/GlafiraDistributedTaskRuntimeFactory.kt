@@ -11,12 +11,12 @@ internal object GlafiraDistributedTaskRuntimeFactory {
         safeAndroidCapabilities: Set<String>
     ): GlafiraDistributedTaskOrchestrator {
         val appContext = context.applicationContext
-        val store = GlafiraDesktopTaskStore(appContext)
+        val coreRuntime = GlafiraCoreRuntimeOwner.get(appContext)
         val notifications = GlafiraTaskNotificationPublisher(appContext)
         return GlafiraDistributedTaskOrchestrator(
-            desktop = GlafiraAndroidDesktopTaskPort(store),
+            desktop = GlafiraCoreDesktopTaskPort(coreRuntime),
             android = localTaskPort,
-            desktopCapabilities = { desktopCapabilities() ?: store.nodeCapabilities() },
+            desktopCapabilities = desktopCapabilities,
             safeAndroidCapabilities = safeAndroidCapabilities,
             onTaskResult = notifications::publish
         )
