@@ -77,30 +77,31 @@ class GlafiraBridgePairingProtocol(
 
         val ticketIdBytes = ByteArray(TICKET_ID_BYTES).also(secureRandom::nextBytes)
         val capabilityBytes = ByteArray(CAPABILITY_BYTES).also(secureRandom::nextBytes)
-        val ticketId = ticketIdBytes.encodeUrl()
-        val capability = capabilityBytes.encodeUrl()
-        val expiresAt = Math.addExact(nowEpochMs, lifetimeMs)
-        val verifierKey = sha256(capabilityBytes)
+        var verifierKey: ByteArray? = null
+        try {
+            val ticketId = ticketIdBytes.encodeUrl()
+            val capability = capabilityBytes.encodeUrl()
+            val expiresAt = Math.addExact(nowEpochMs, lifetimeMs)
+            val verifier = sha256(capabilityBytes)
+            verifierKey = verifier
 
-        val stored = runCatching {
-            ticketStore.pruneExpired(nowEpochMs)
-            ticketStore.create(
-                GlafiraBridgePairingTicket(
-                    ticketId = ticketId,
-                    verifierKey = verifierKey,
-                    expiresAtEpochMs = expiresAt
+            val stored = runCatching {
+                ticketStore.pruneExpired(nowEpochMs)
+                ticketStore.create(
+                    GlafiraBridgePairingTicket(
+                        ticketId = ticketId,
+                        verifierKey = verifier,
+                        expiresAtEpochMs = expiresAt
+                    )
                 )
-            )
-        }.getOrDefault(false)
-
-        capabilityBytes.fill(0)
-        if (!stored) {
-            verifierKey.fill(0)
-            throw IllegalStateException("Unable to persist one-time pairing ticket.")
+            }.getOrDefault(false)
+            check(stored) { "Unable to persist one-time pairing ticket." }
+            return GlafiraBridgePairingInvitation(ticketId, capability, expiresAt)
+        } finally {
+            ticketIdBytes.fill(0)
+            capabilityBytes.fill(0)
+            verifierKey?.fill(0)
         }
-        verifierKey.fill(0)
-
-        return GlafiraBridgePairingInvitation(ticketId, capability, expiresAt)
     }
 
     fun verifyAndConsume(
