@@ -86,3 +86,16 @@ Read the corresponding documents before touching each branch:
 - Dual-Core: [ownership contract on branch `glafira/dual-core-ownership-contract`](https://github.com/micronizationlab/glafira-ai-hub/blob/glafira/dual-core-ownership-contract/docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md).
 
 Do not merge these branches into one another or into `main` blindly. PR #64 depends on PR #62's Desktop queue branch; PR #65 depends on PR #58's result-delivery branch. PR #63 remains stacked on the Android Bridge settings branch. Preserve those dependencies when planning integration.
+
+
+## Owner test APK packaging safety
+
+The owner already has an installed GLAFIRA package. A CI-generated debug keystore is not stable across hosted runners, so a normal `assembleDebug` APK must not be presented as a safe in-place update.
+
+A dedicated `ownerTest` build type was added:
+- application ID suffix: `.ownertest`;
+- separate Android app data and Keystore namespace;
+- inherits the debug build type and remains debuggable;
+- installs side-by-side with `com.micronizationlab.glafira`, avoiding replacement/uninstall of the owner's current app.
+
+The owner APK workflow now builds `assembleOwnerTest` and uploads `app/build/outputs/apk/ownerTest/*.apk`. The artifact must still be built successfully and inspected before delivery. Pairing on this side-by-side test app will be a fresh pairing and will not reuse the existing app's Bridge identity.
