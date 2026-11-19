@@ -12,6 +12,7 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.KeyStore
+import java.time.Instant
 import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -129,7 +130,7 @@ internal object HrContactStore {
     private fun fileFor(context: Context, projectId: String): File {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(projectId.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
         return File(File(context.filesDir, DIRECTORY), "$digest.json.enc")
     }
 
