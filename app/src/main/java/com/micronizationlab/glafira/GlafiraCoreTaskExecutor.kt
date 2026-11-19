@@ -316,7 +316,7 @@ class GlafiraCoreTaskExecutor(
                 setOf(GlafiraTaskState.RUNNING),
                 GlafiraTaskState.WAITING_FOR_OWNER,
                 nowMillis,
-                lastError = "EXECUTION_OUTCOME_UNCERTAIN:${reason.take(256)}"
+                lastError = "EXECUTION_OUTCOME_UNCERTAIN"
             )
             return GlafiraTaskExecutionResult(
                 task.taskId,
