@@ -110,6 +110,35 @@ class GlafiraCoreBackupInstrumentedTest {
     }
 
     @Test
+    fun interruptedCoreTaskIsRequeuedAndAttemptCountIsPreserved() {
+        store.enqueue(task("interrupted-core-task"))
+        val firstAttempt = requireNotNull(store.claimNext(nowMillis = 2_000L))
+        assertEquals(1, firstAttempt.attemptCount)
+        assertEquals(GlafiraTaskState.RUNNING, firstAttempt.state)
+
+        assertEquals(1, store.recoverInterruptedCoreTasks(nowMillis = 3_000L, maxRetries = 5))
+        val recovered = requireNotNull(store.getTask("interrupted-core-task"))
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, recovered.state)
+        assertEquals(3_000L, recovered.retryAtMillis)
+        assertEquals("CORE_EXECUTION_INTERRUPTED", recovered.lastError)
+
+        val secondAttempt = requireNotNull(store.claimNext(nowMillis = 3_000L))
+        assertEquals(2, secondAttempt.attemptCount)
+        assertEquals(GlafiraTaskState.RUNNING, secondAttempt.state)
+    }
+
+    @Test
+    fun interruptedCoreTaskAtRetryLimitFailsClosed() {
+        store.enqueue(task("interrupted-exhausted-task"))
+        store.claimNext(nowMillis = 2_000L)
+        assertEquals(1, store.recoverInterruptedCoreTasks(nowMillis = 3_000L, maxRetries = 0))
+        val recovered = requireNotNull(store.getTask("interrupted-exhausted-task"))
+        assertEquals(GlafiraTaskState.FAILED, recovered.state)
+        assertEquals("CORE_INTERRUPTED_RETRY_LIMIT_REACHED", recovered.lastError)
+        assertNull(recovered.retryAtMillis)
+    }
+
+    @Test
     fun ownerApprovalExpiresAndCannotRemainInPendingQueueForever() {
         val approvalTask = task("approval-expiry-task").copy(
             payload = """{"actionSummary":"Read project details"}"""
