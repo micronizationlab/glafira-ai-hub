@@ -89,8 +89,12 @@ class AndroidKeystoreBridgePairingTicketStore(
                 val ciphertext = cursor.getBlob(1)
                 val expiresAt = cursor.getLong(2)
                 val verifier = decrypt(getExistingKey(), iv, ciphertext)
-                if (verifier.size != VERIFIER_KEY_BYTES) null
-                else GlafiraBridgePairingTicket(ticketId, verifier, expiresAt)
+                if (verifier.size != VERIFIER_KEY_BYTES) {
+                    verifier.fill(0)
+                    null
+                } else {
+                    GlafiraBridgePairingTicket(ticketId, verifier, expiresAt)
+                }
             }
         }.getOrNull()
     }
