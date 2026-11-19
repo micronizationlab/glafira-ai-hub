@@ -17,7 +17,10 @@ internal object DesktopBridgeJson {
         maxBytes: Int,
         expectedKeys: Set<String>
     ): org.json.JSONObject {
-        require(source.toByteArray(Charsets.UTF_8).size in 1..maxBytes)
+        require(maxBytes in 1..(64 * 1024))
+        // Reject oversized character input before allocating a UTF-8 copy of the whole string.
+        require(source.length in 1..maxBytes)
+        require(source.toByteArray(Charsets.UTF_8).size <= maxBytes)
         val reader = JsonReader(StringReader(source)).apply { isLenient = false }
         val root = readValue(reader, 0)
         require(reader.peek() == JsonToken.END_DOCUMENT)
