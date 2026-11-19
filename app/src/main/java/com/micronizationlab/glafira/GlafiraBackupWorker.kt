@@ -51,7 +51,7 @@ class GlafiraBackupWorker(
                 } ?: error("Не удалось загрузить архив в облако.")
 
                 copyRemoteToLocal(applicationContext, uploadedRemote, verifyCopy)
-                BackupArchive.verify(verifyCopy, recoveryPassphrase)
+                BackupArchive.verify(applicationContext, verifyCopy, recoveryPassphrase)
 
                 val staleCopies = folder.listFiles()
                     .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != uploadedRemote.uri }
