@@ -100,24 +100,24 @@ jobs:
 
           collect_diagnostics() {
             status=$?
-            adb logcat -b crash -d -v threadtime > app/build/outputs/androidTest-crash-logcat.txt 2>&1 || true
-            adb shell dumpsys activity instrumentation > app/build/outputs/androidTest-instrumentation.txt 2>&1 || true
-            adb logcat -d -v threadtime > app/build/outputs/androidTest-logcat.txt 2>&1 || true
+            timeout 15s adb logcat -b crash -d -v threadtime > app/build/outputs/androidTest-crash-logcat.txt 2>&1 || true
+            timeout 15s adb shell dumpsys activity instrumentation > app/build/outputs/androidTest-instrumentation.txt 2>&1 || true
+            timeout 15s adb logcat -d -v threadtime > app/build/outputs/androidTest-logcat.txt 2>&1 || true
             # Stop the live logcat follower before shutting down the emulator so the
             # background adb process cannot keep the Actions step alive after tests finish.
             if [[ -n "${LOGCAT_PID:-}" ]]; then
               kill "$LOGCAT_PID" 2>/dev/null || true
               wait "$LOGCAT_PID" 2>/dev/null || true
             fi
-            adb -s emulator-5554 emu kill >/dev/null 2>&1 || kill "$EMULATOR_PID" 2>/dev/null || true
+            timeout 10s adb -s emulator-5554 emu kill >/dev/null 2>&1 || kill "$EMULATOR_PID" 2>/dev/null || true
             wait "$EMULATOR_PID" 2>/dev/null || true
             exit "$status"
           }
           trap collect_diagnostics EXIT
 
           booted=false
-          for attempt in $(seq 1 240); do
-            if boot_state=$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null) && [[ "$boot_state" == "1" ]]; then
+          for attempt in $(seq 1 120); do
+            if boot_state=$(timeout 3s adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null) && [[ "$boot_state" == "1" ]]; then
               booted=true
               break
             fi
@@ -131,14 +131,14 @@ jobs:
           # The upstream emulator-runner unconditionally sends keyevent 82 after
           # boot. On this hosted image that input-service call breaks the ADB
           # connection, so boot readiness is checked without injecting key events.
-          adb wait-for-device
+          timeout 30s adb wait-for-device
           for attempt in $(seq 1 60); do
-            if adb -s emulator-5554 shell pm path android >/dev/null 2>&1; then
+            if timeout 3s adb -s emulator-5554 shell pm path android >/dev/null 2>&1; then
               break
             fi
             sleep 2
           done
-          adb logcat -c
+          timeout 15s adb logcat -c
           adb logcat -b all -v threadtime > app/build/outputs/androidTest-logcat-live.txt 2>&1 &
           LOGCAT_PID=$!
           gradle connectedDebugAndroidTest --stacktrace
