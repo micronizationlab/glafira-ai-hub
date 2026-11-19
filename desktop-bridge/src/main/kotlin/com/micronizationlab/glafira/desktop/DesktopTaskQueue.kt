@@ -63,6 +63,7 @@ internal class DesktopTaskQueue(
         validate(envelope)
         val records = readAll().toMutableList()
         expireQueued(records, clock())
+        pruneTerminalHistory(records)
         require(records.none { it.envelope.taskId == envelope.taskId }) { "Duplicate taskId." }
         require(records.none { it.envelope.idempotencyKey == envelope.idempotencyKey }) {
             "Duplicate idempotency key."
@@ -242,6 +243,24 @@ internal class DesktopTaskQueue(
         require(task.idempotencyKey.matches(Regex("[A-Za-z0-9_-]{16,128}")))
     }
 
+    /** Keep durable history bounded without ever evicting work that is not terminal. */
+    private fun pruneTerminalHistory(records: MutableList<DesktopTaskRecord>) {
+        while (records.size >= MAX_RETAINED_RECORDS) {
+            val oldestTerminal = records.indices
+                .filter { index ->
+                    records[index].state !in setOf(
+                        DesktopTaskState.QUEUED,
+                        DesktopTaskState.DISPATCHED,
+                        DesktopTaskState.ACCEPTED,
+                        DesktopTaskState.RUNNING
+                    )
+                }
+                .minByOrNull { records[it].envelope.createdAt }
+                ?: throw IllegalStateException("Desktop task history is full of active work.")
+            records.removeAt(oldestTerminal)
+        }
+    }
+
     private fun expireQueued(records: MutableList<DesktopTaskRecord>, now: Long) {
         for (index in records.indices) {
             val current = records[index]
@@ -313,6 +332,7 @@ internal class DesktopTaskQueue(
 
         const val DEFAULT_MAX_QUEUED = 100
         const val MAX_QUEUE_LIMIT = 1_000
+        const val MAX_RETAINED_RECORDS = 400
         private const val MAX_INSTRUCTION_CHARS = 8_000
         private const val MAX_CONTEXT_REFS = 50
         private const val MAX_SCOPES = 32
