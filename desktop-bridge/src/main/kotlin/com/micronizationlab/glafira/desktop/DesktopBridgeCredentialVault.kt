@@ -158,40 +158,53 @@ object DesktopBridgeCredentialVault {
         val fileSize = Files.size(path)
         require(fileSize in 1..MAX_FILE_BYTES) { "Credential vault file size is invalid." }
         val bytes = Files.readAllBytes(path)
-        require(bytes.size.toLong() == fileSize && bytes.size in 1..MAX_FILE_BYTES)
-        val input = DataInputStream(ByteArrayInputStream(bytes))
-        require(input.readInt() == MAGIC && input.readInt() == VERSION) { "Unsupported credential vault." }
-        val iterations = input.readInt()
-        require(iterations == PBKDF2_ITERATIONS) { "Vault KDF parameters are unsupported." }
-        val saltSize = input.readInt()
-        require(saltSize == SALT_BYTES)
-        val salt = ByteArray(saltSize).also(input::readFully)
-        val ivSize = input.readInt()
-        require(ivSize == IV_BYTES)
-        val iv = ByteArray(ivSize).also(input::readFully)
-        val cipherSize = input.readInt()
-        require(cipherSize in 16..MAX_FILE_BYTES && cipherSize == input.available())
-        val ciphertext = ByteArray(cipherSize).also(input::readFully)
-        val key = deriveKey(passphrase, salt)
-        val plaintext = try {
-            Cipher.getInstance("AES/GCM/NoPadding").run {
-                init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
-                updateAAD(aad())
-                doFinal(ciphertext)
+        var salt: ByteArray? = null
+        var iv: ByteArray? = null
+        var ciphertext: ByteArray? = null
+        var plaintext: ByteArray? = null
+        var key: SecretKeySpec? = null
+        try {
+            require(bytes.size.toLong() == fileSize && bytes.size in 1..MAX_FILE_BYTES)
+            val input = DataInputStream(ByteArrayInputStream(bytes))
+            require(input.readInt() == MAGIC && input.readInt() == VERSION) {
+                "Unsupported credential vault."
             }
-        } catch (_: AEADBadTagException) {
-            throw SecurityException("Vault passphrase is incorrect or the file was modified.")
+            val iterations = input.readInt()
+            require(iterations == PBKDF2_ITERATIONS) { "Vault KDF parameters are unsupported." }
+            val saltSize = input.readInt()
+            require(saltSize == SALT_BYTES)
+            salt = ByteArray(saltSize).also(input::readFully)
+            val ivSize = input.readInt()
+            require(ivSize == IV_BYTES)
+            iv = ByteArray(ivSize).also(input::readFully)
+            val cipherSize = input.readInt()
+            require(cipherSize in 16..MAX_FILE_BYTES && cipherSize == input.available())
+            ciphertext = ByteArray(cipherSize).also(input::readFully)
+            key = deriveKey(passphrase, salt)
+            plaintext = try {
+                Cipher.getInstance("AES/GCM/NoPadding").run {
+                    init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+                    updateAAD(aad())
+                    doFinal(ciphertext)
+                }
+            } catch (_: AEADBadTagException) {
+                throw SecurityException("Vault passphrase is incorrect or the file was modified.")
+            }
+            val entry = deserialize(plaintext)
+            try {
+                validate(entry)
+                return entry
+            } catch (failure: Exception) {
+                entry.hmacSecret.fill(0)
+                throw failure
+            }
         } finally {
-            key.encoded?.fill(0)
-            salt.fill(0)
-            iv.fill(0)
-            ciphertext.fill(0)
+            plaintext?.fill(0)
+            key?.encoded?.fill(0)
+            salt?.fill(0)
+            iv?.fill(0)
+            ciphertext?.fill(0)
             bytes.fill(0)
-        }
-        return try {
-            deserialize(plaintext).also(::validate)
-        } finally {
-            plaintext.fill(0)
         }
     }
 
@@ -224,18 +237,24 @@ object DesktopBridgeCredentialVault {
         }
 
     private fun deserialize(bytes: ByteArray): DesktopBridgeVaultEntry {
-        val data = DataInputStream(ByteArrayInputStream(bytes))
-        val origin = data.readUTF()
-        val deviceId = data.readUTF()
-        val secretSize = data.readInt()
-        require(secretSize == 32)
-        val secret = ByteArray(secretSize).also(data::readFully)
-        val count = data.readInt()
-        require(count in 1..32)
-        val scopes = buildSet { repeat(count) { require(add(data.readUTF())) } }
-        val pin = data.readUTF()
-        require(data.available() == 0)
-        return DesktopBridgeVaultEntry(origin, deviceId, secret, scopes, pin)
+        var secret: ByteArray? = null
+        try {
+            val data = DataInputStream(ByteArrayInputStream(bytes))
+            val origin = data.readUTF()
+            val deviceId = data.readUTF()
+            val secretSize = data.readInt()
+            require(secretSize == 32)
+            secret = ByteArray(secretSize).also(data::readFully)
+            val count = data.readInt()
+            require(count in 1..32)
+            val scopes = buildSet { repeat(count) { require(add(data.readUTF())) } }
+            val pin = data.readUTF()
+            require(data.available() == 0)
+            return DesktopBridgeVaultEntry(origin, deviceId, secret, scopes, pin)
+        } catch (failure: Exception) {
+            secret?.fill(0)
+            throw failure
+        }
     }
 
     private fun deriveKey(passphrase: CharArray, salt: ByteArray): SecretKeySpec {
