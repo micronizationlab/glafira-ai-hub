@@ -58,11 +58,11 @@ internal class GlafiraCoreDesktopTaskPort(
                     errorCode = current.lastError ?: current.state.databaseValue.uppercase()
                 )
                 GlafiraTaskState.WAITING_FOR_OWNER -> {
-                    val preview = runtime.dryRunPreview(task.taskId)
-                    if (preview != null) {
+                    val previewJson = runtime.dryRunPreviewJson(task.taskId)
+                    if (previewJson != null) {
                         return GlafiraDistributedTaskResult(
                             task.taskId, GlafiraExecutionNode.DESKTOP, false,
-                            output = preview.lastError?.removePrefix("DRY_RUN_PREVIEW:"),
+                            output = previewJson,
                             errorCode = "DRY_RUN_PREVIEWED"
                         )
                     }
