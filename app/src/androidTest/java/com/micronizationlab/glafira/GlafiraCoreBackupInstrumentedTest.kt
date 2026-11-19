@@ -284,6 +284,43 @@ class GlafiraCoreBackupInstrumentedTest {
     }
 
     @Test
+    fun backupRestorePreservesProviderSelectionPreferences() {
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val passphrase = "GLAFIRA-provider-backup-test".toCharArray()
+        val archive = BackupArchive.create(context, passphrase)
+        try {
+            assertTrue(
+                preferences.edit()
+                    .putString("peer_consultation_providers_acceptance", "openai,local")
+                    .putBoolean("peer_consultation_enabled_acceptance", true)
+                    .commit()
+            )
+            // The archive was created before these changes, so restore must return to its snapshot.
+            assertTrue(
+                preferences.edit()
+                    .putString("peer_consultation_providers_acceptance", "changed")
+                    .putBoolean("peer_consultation_enabled_acceptance", false)
+                    .commit()
+            )
+
+            BackupArchive.restore(context, archive, passphrase)
+
+            assertEquals(
+                "openai,local",
+                preferences.getString("peer_consultation_providers_acceptance", null)
+            )
+            assertTrue(preferences.getBoolean("peer_consultation_enabled_acceptance", false))
+        } finally {
+            archive.delete()
+            passphrase.fill('\u0000')
+            preferences.edit()
+                .remove("peer_consultation_providers_acceptance")
+                .remove("peer_consultation_enabled_acceptance")
+                .commit()
+        }
+    }
+
+    @Test
     fun backupRestoreRecoversCoreQueueStateAndPayload() = runBlocking {
         store.enqueue(task())
         assertTrue(
