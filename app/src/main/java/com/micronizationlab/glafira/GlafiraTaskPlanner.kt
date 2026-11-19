@@ -71,7 +71,12 @@ internal object GlafiraTaskPlanner {
     }
 
     /** Build executable batches with at most two independent tasks per batch. */
-    fun readyBatches(plan: GlafiraTaskPlan, completedIds: Set<String> = emptySet()): List<List<GlafiraSubtask>> {
+    fun readyBatches(
+        plan: GlafiraTaskPlan,
+        completedIds: Set<String> = emptySet(),
+        maxParallelTasks: Int = MAX_PARALLEL_TASKS
+    ): List<List<GlafiraSubtask>> {
+        require(maxParallelTasks in 1..GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS) { "Invalid subtask parallelism limit." }
         val completed = completedIds.toMutableSet()
         val tasksById = plan.tasks.associateBy { it.id }
         require(completed.all { id -> id in tasksById }) {
@@ -84,7 +89,7 @@ internal object GlafiraTaskPlanner {
         val batches = mutableListOf<List<GlafiraSubtask>>()
         while (remaining.isNotEmpty()) {
             val ready = remaining.filter { task -> task.dependsOn.all { it in completed } }
-                .take(MAX_PARALLEL_TASKS)
+                .take(maxParallelTasks)
             check(ready.isNotEmpty()) { "План не может быть выполнен: обнаружена циклическая зависимость." }
             batches += ready
             val ids = ready.map { it.id }.toSet()
