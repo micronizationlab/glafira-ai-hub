@@ -35,11 +35,14 @@ class GlafiraBackupWorker(
         try {
             val recoveryPassphrase = passphrase.toCharArray()
             try {
-                BackupArchive.create(applicationContext, recoveryPassphrase).also { created ->
+                val coordinator = GlafiraCoreBackupCoordinator(
+                    applicationContext, GlafiraCoreRuntimeOwner.get(applicationContext).taskStore
+                )
+                coordinator.create(recoveryPassphrase).also { created ->
                     created.copyTo(archive, overwrite = true)
                     created.delete()
                 }
-                BackupArchive.verify(applicationContext, archive, recoveryPassphrase)
+                coordinator.verify(archive, recoveryPassphrase)
 
                 val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                 val uploadName = "GLAFIRA-current-$stamp-${UUID.randomUUID()}.glb"
@@ -47,11 +50,11 @@ class GlafiraBackupWorker(
                     ?: error("Облачный сервис не разрешил создать временный файл.")
                 temporaryRemote = uploadedRemote
                 applicationContext.contentResolver.openOutputStream(uploadedRemote.uri, "wt")?.use { output ->
-                    archive.inputStream().use { input -> input.copyTo(output) }
+                    archive.inputStream().use { input -> BackupArchive.copyBounded(input, output) }
                 } ?: error("Не удалось загрузить архив в облако.")
 
                 copyRemoteToLocal(applicationContext, uploadedRemote, verifyCopy)
-                BackupArchive.verify(applicationContext, verifyCopy, recoveryPassphrase)
+                coordinator.verify(verifyCopy, recoveryPassphrase)
 
                 val staleCopies = folder.listFiles()
                     .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != uploadedRemote.uri }
@@ -75,6 +78,8 @@ class GlafiraBackupWorker(
             } finally {
                 recoveryPassphrase.fill('\u0000')
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             fail(prefs, error.message ?: "Неизвестная ошибка резервного копирования.")
         } finally {
@@ -92,12 +97,12 @@ class GlafiraBackupWorker(
             .putString(KEY_LAST_STATUS, "Ошибка резервного копирования")
             .putString(KEY_LAST_ERROR, message)
             .apply()
-        return Result.retry()
+        return if (runAttemptCount < 4) Result.retry() else Result.failure()
     }
 
     private fun copyRemoteToLocal(context: Context, source: DocumentFile, target: File) {
         context.contentResolver.openInputStream(source.uri)?.use { input ->
-            target.outputStream().use { output -> input.copyTo(output) }
+            target.outputStream().use { output -> BackupArchive.copyBounded(input, output) }
         } ?: error("Не удалось прочитать файл из облака для проверки.")
     }
 

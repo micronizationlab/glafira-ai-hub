@@ -47,6 +47,9 @@ import java.util.Locale
 fun BackupSettingsSection() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val backupCoordinator = remember(context) {
+        GlafiraCoreBackupCoordinator(context, GlafiraCoreRuntimeOwner.get(context).taskStore)
+    }
     val prefs = remember { context.getSharedPreferences(GlafiraBackupWorker.BACKUP_PREFS, android.content.Context.MODE_PRIVATE) }
     var passphrase by remember { mutableStateOf("") }
     var status by remember {
@@ -89,13 +92,19 @@ fun BackupSettingsSection() {
             scope.launch {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
-                        val archive = BackupArchive.create(context, recoveryPassphrase)
+                        val archive = backupCoordinator.create(recoveryPassphrase)
                         try {
                             val destination = context.contentResolver.openOutputStream(uri)
                                 ?: error("Не удалось открыть файл назначения.")
-                            destination.use { output -> archive.inputStream().use { input -> input.copyTo(output) } }
-                            val verification = BackupArchive.verify(context, archive, recoveryPassphrase)
-                            "Архив проверен: ${verification.fileCount} файлов, ${formatBackupSize(verification.totalBytes)}."
+                            destination.use { output -> archive.inputStream().use { input -> BackupArchive.copyBounded(input, output) } }
+                            val readBack = File.createTempFile("glafira-export-check-", ".glb", context.cacheDir)
+                            val verification = try {
+                                context.contentResolver.openInputStream(uri)?.use { input ->
+                                    readBack.outputStream().use { output -> BackupArchive.copyBounded(input, output) }
+                                } ?: error("Архив отправлен, но хранилище не разрешило проверить сохранённый файл.")
+                                backupCoordinator.verify(readBack, recoveryPassphrase)
+                            } finally { readBack.delete() }
+                            "Сохранённый архив проверен: ${verification.fileCount} файлов, ${formatBackupSize(verification.totalBytes)}."
                         } finally {
                             archive.delete()
                             recoveryPassphrase.fill('\u0000')
@@ -120,7 +129,7 @@ fun BackupSettingsSection() {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Зашифрованная копия данных GLAFIRA", color = Color(0xFF202020), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    "Архив шифруется на устройстве. API-ключи, OAuth-токены и секреты Android Keystore не включаются.",
+                    "Архив шифруется на устройстве. API-ключи, OAuth-токены, хранилище паролей, разрешения устройств и ключи Android Keystore не включаются.",
                     color = Tx, fontSize = 12.sp
                 )
                 OutlinedTextField(
@@ -238,7 +247,7 @@ fun BackupSettingsSection() {
         AlertDialog(
             onDismissRequest = { pendingRestoreUri = null },
             title = { Text("Восстановить резервную копию?") },
-            text = { Text("Архив будет проверен до восстановления. Одноимённые файлы приложения будут заменены. Создай отдельную свежую копию перед восстановлением, если в телефоне есть более новые данные.") },
+            text = { Text("Архив будет проверен до восстановления. Данные и очередь будут заменены снимком. Незавершённые задачи потребуют повторного разрешения владельца; учётные данные и права устройств не переносятся. Создай свежую копию, если на телефоне есть более новые данные.") },
             confirmButton = {
                 TextButton(onClick = {
                     val uri = pendingRestoreUri
@@ -253,10 +262,10 @@ fun BackupSettingsSection() {
                                     val temp = File(context.cacheDir, "restore-selected-${System.currentTimeMillis()}.glb")
                                     try {
                                         context.contentResolver.openInputStream(uri)?.use { input ->
-                                            temp.outputStream().use { output -> input.copyTo(output) }
+                                            temp.outputStream().use { output -> BackupArchive.copyBounded(input, output) }
                                         } ?: error("Не удалось прочитать выбранный файл.")
-                                        val verification = BackupArchive.restore(context, temp, recoveryPassphrase)
-                                        "Восстановлено: ${verification.fileCount} файлов из копии от ${verification.createdAt}."
+                                        val verification = backupCoordinator.restore(temp, recoveryPassphrase)
+                                        "Восстановлено: ${verification.fileCount} файлов из копии от ${verification.createdAt}. Незавершённые задачи ожидают проверки владельца."
                                     } finally {
                                         temp.delete()
                                         recoveryPassphrase.fill('\u0000')
@@ -265,6 +274,11 @@ fun BackupSettingsSection() {
                             }
                             status = result.getOrElse { "Ошибка восстановления: ${it.message ?: "неизвестная ошибка"}" }
                             busy = false
+                            if (result.isSuccess) {
+                                prefs.edit().putString(GlafiraBackupWorker.KEY_LAST_STATUS, status).apply()
+                                // Rebuild cached projects/history from the restored durable state.
+                                context.backupActivity()?.recreate()
+                            }
                         }
                     }
                 }) { Text("ВОССТАНОВИТЬ") }
@@ -281,4 +295,15 @@ private fun formatBackupSize(bytes: Long): String = when {
     bytes < 1024 -> "$bytes Б"
     bytes < 1024 * 1024 -> "${bytes / 1024} КБ"
     else -> String.format(Locale.getDefault(), "%.1f МБ", bytes / (1024.0 * 1024.0))
+}
+
+private fun android.content.Context.backupActivity(): android.app.Activity? {
+    var current: android.content.Context = this
+    while (current is android.content.ContextWrapper) {
+        if (current is android.app.Activity) return current
+        val next = current.baseContext
+        if (next === current) return null
+        current = next
+    }
+    return current as? android.app.Activity
 }
