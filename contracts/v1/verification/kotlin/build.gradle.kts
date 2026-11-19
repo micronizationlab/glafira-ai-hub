@@ -9,11 +9,27 @@ repositories {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    testImplementation("junit:junit:4.13.2")
 }
 
 kotlin {
     jvmToolchain(17)
-    sourceSets.main {
-        kotlin.srcDir("../../generated/kotlin")
+    sourceSets {
+        main {
+            kotlin.srcDir("../../generated/kotlin")
+        }
+        test {
+            kotlin.srcDir("src/test/kotlin")
+        }
     }
+}
+
+sourceSets {
+    test {
+        resources.srcDir("../../fixtures")
+    }
+}
+
+tasks.test {
+    useJUnit()
 }

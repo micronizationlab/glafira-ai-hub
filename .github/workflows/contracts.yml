@@ -78,7 +78,7 @@ jobs:
         with:
           gradle-version: "8.9"
       - name: Compile generated Kotlin models
-        run: gradle -p contracts/v1/verification/kotlin compileKotlin --no-daemon --stacktrace
+        run: gradle -p contracts/v1/verification/kotlin test --no-daemon --stacktrace
 
   compile-swift-dtos:
     name: Compile generated Swift DTOs
@@ -98,7 +98,8 @@ jobs:
           swift --version
           xcodebuild -version
       - name: Compile generated Swift models
-        run: swiftc -parse-as-library -emit-module -module-name GLAFIRAContracts contracts/v1/generated/swift/*.swift -o "$RUNNER_TEMP/GLAFIRAContracts.swiftmodule"
+        run: swiftc -module-name GLAFIRAContracts contracts/v1/generated/swift/*.swift contracts/v1/verification/swift/main.swift -o "$RUNNER_TEMP/glafira-contract-swift-fixtures"
+          "$RUNNER_TEMP/glafira-contract-swift-fixtures"
 
   compile-csharp-dtos:
     name: Compile generated C# DTOs
@@ -118,4 +119,4 @@ jobs:
         with:
           dotnet-version: "8.0.x"
       - name: Compile generated C# models
-        run: dotnet build contracts/v1/verification/csharp/Glafira.GeneratedContracts.csproj --configuration Release
+        run: dotnet run --project contracts/v1/verification/csharp/Glafira.GeneratedContracts.csproj --configuration Release
