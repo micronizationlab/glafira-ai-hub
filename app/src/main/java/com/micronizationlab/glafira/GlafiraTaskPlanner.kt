@@ -70,7 +70,7 @@ internal object GlafiraTaskPlanner {
         return GlafiraTaskPlan(goal, tasks)
     }
 
-    /** Build executable batches with at most two independent tasks per batch. */
+    /** Build dependency-ready batches bounded by the supplied global parallelism limit. */
     fun readyBatches(
         plan: GlafiraTaskPlan,
         completedIds: Set<String> = emptySet(),
