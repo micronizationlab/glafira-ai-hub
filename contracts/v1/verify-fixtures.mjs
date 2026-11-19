@@ -11,6 +11,7 @@ const schema = await readJson("./glafira-task-agent.schema.json");
 const signingFixture = await readJson("./fixtures/bridge-hmac-unicode.json");
 const validMessages = await readJson("./fixtures/valid-messages.json");
 const invalidMessages = await readJson("./fixtures/invalid-messages.json");
+const lifecycleScenarios = await readJson("./fixtures/task-lifecycle-scenarios.json");
 
 assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
 for (const name of [
@@ -64,7 +65,30 @@ for (const [index, message] of invalidMessages.entries()) {
     `Invalid fixture ${index} unexpectedly passed schema validation`);
 }
 
+const scenarioIds = lifecycleScenarios.scenarios.map(scenario => scenario.id);
+assert.equal(lifecycleScenarios.schemaVersion, 1, "Unsupported lifecycle fixture version");
+assert.equal(new Set(scenarioIds).size, scenarioIds.length, "Duplicate lifecycle scenario ID");
+const requiredScenarios = [
+  "duplicate-delivery-001",
+  "dependency-gate-001",
+  "lease-fencing-001",
+  "agent-revocation-001",
+  "unknown-side-effect-001"
+];
+for (const id of requiredScenarios) {
+  assert.ok(scenarioIds.includes(id), `Missing lifecycle scenario: ${id}`);
+}
+const scenario = id => lifecycleScenarios.scenarios.find(item => item.id === id);
+assert.equal(scenario("duplicate-delivery-001").expect.executionCount, 1);
+assert.equal(scenario("dependency-gate-001").expect.childClaimBeforeParentSuccess, false);
+assert.equal(scenario("lease-fencing-001").expect.staleResultAccepted, false);
+assert.equal(scenario("agent-revocation-001").expect.claimAccepted, false);
+assert.equal(scenario("unknown-side-effect-001").expect.outcome, "OUTCOME_UNKNOWN");
+assert.equal(scenario("unknown-side-effect-001").expect.retryable, false);
+assert.equal(scenario("unknown-side-effect-001").expect.automaticReplayAllowed, false);
+
 console.log(
   `Contract schema: ${validMessages.length} valid messages accepted, ${invalidMessages.length} invalid messages rejected.`
 );
+console.log(`Shared lifecycle scenarios: ${lifecycleScenarios.scenarios.length} invariants checked.`);
 console.log("Bridge v1 Unicode HMAC golden vector: PASS");
