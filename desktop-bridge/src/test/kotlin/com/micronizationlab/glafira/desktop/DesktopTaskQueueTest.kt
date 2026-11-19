@@ -85,6 +85,32 @@ class DesktopTaskQueueTest {
     }
 
     @Test
+    fun taskExpiredDuringExecutionCannotBeMarkedSuccessful() {
+        val q = queue()
+        q.enqueue(task(expiresAt = now + 10))
+        q.claimNext()
+        q.transition("task_1", DesktopTaskState.ACCEPTED)
+        q.transition("task_1", DesktopTaskState.RUNNING)
+        now += 11
+
+        val completed = q.complete("task_1", "late result")
+        assertEquals(DesktopTaskState.FAILED, completed.state)
+        assertEquals("TASK_EXPIRED", completed.errorCode)
+        assertNull(completed.result)
+    }
+
+    @Test
+    fun taskExpiredBeforeRunningIsNotDispatched() {
+        val q = queue()
+        q.enqueue(task(expiresAt = now + 10))
+        q.claimNext()
+        now += 11
+
+        val accepted = q.transition("task_1", DesktopTaskState.ACCEPTED)
+        assertEquals(DesktopTaskState.EXPIRED, accepted.state)
+    }
+
+    @Test
     fun rejectsOversizedQueueFileBeforeReadingItIntoMemory() {
         val path = temp.root.toPath().resolve("oversized-tasks.json")
         Files.writeString(path, " ".repeat(16 * 1024 * 1024 + 1))
