@@ -81,8 +81,8 @@ The owner explicitly asked GLAFIRA to work on multiple independent project tasks
 | [#65](https://github.com/micronizationlab/glafira-ai-hub/pull/65) | `glafira/dual-core-ownership-contract` | `codex/p1-result-delivery` | Dual-Core ownership, fencing, reconciliation and failover contract | Android JVM passed; emulator pending; documentation-only change |
 
 Read the corresponding documents before touching each branch:
-- Android: this file.
-- Desktop: `docs/GLAFIRA_DESKTOP_SHUTDOWN_HANDOFF.md`.
-- Dual-Core: `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md`.
+- Android: this file on branch `glafira/bridge-keystore-signer-fix`.
+- Desktop: [handoff document on branch `glafira/desktop-shutdown-drain-guard`](https://github.com/micronizationlab/glafira-ai-hub/blob/glafira/desktop-shutdown-drain-guard/docs/GLAFIRA_DESKTOP_SHUTDOWN_HANDOFF.md).
+- Dual-Core: [ownership contract on branch `glafira/dual-core-ownership-contract`](https://github.com/micronizationlab/glafira-ai-hub/blob/glafira/dual-core-ownership-contract/docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md).
 
 Do not merge these branches into one another or into `main` blindly. PR #64 depends on PR #62's Desktop queue branch; PR #65 depends on PR #58's result-delivery branch. PR #63 remains stacked on the Android Bridge settings branch. Preserve those dependencies when planning integration.
