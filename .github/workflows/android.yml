@@ -13,7 +13,7 @@ permissions:
 # Intentionally no concurrency group: GitHub retains only one pending run
 # per group and replaces an older pending run when a newer run arrives.
 # These validation runs must all execute; allow GitHub's normal runner queue
-# to serialize/parallelize them without cancelling or superseding a run.
+# to queue each run without cancelling or superseding earlier checks.
 
 jobs:
   unit-tests:
@@ -112,6 +112,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Setup Gradle 8.9 and cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
       - name: Assemble debug APK
         run: gradle assembleDebug
 
