@@ -111,6 +111,23 @@ class DesktopTaskQueueTest {
     }
 
     @Test
+    fun retainedTaskHistoryIsBoundedWithoutDroppingActiveWork() {
+        val q = DesktopTaskQueue(null, 10) { now }
+        repeat(DesktopTaskQueue.MAX_RETAINED_RECORDS + 2) { index ->
+            val id = "task_$index"
+            q.enqueue(task(id = id))
+            q.claimNext()
+            q.transition(id, DesktopTaskState.ACCEPTED)
+            q.transition(id, DesktopTaskState.RUNNING)
+            q.complete(id, "result-$index")
+        }
+
+        assertEquals(DesktopTaskQueue.MAX_RETAINED_RECORDS, q.list().size)
+        assertNull(q.get("task_0"))
+        assertNotNull(q.get("task_${DesktopTaskQueue.MAX_RETAINED_RECORDS + 1}"))
+    }
+
+    @Test
     fun rejectsOversizedQueueFileBeforeReadingItIntoMemory() {
         val path = temp.root.toPath().resolve("oversized-tasks.json")
         Files.writeString(path, " ".repeat(16 * 1024 * 1024 + 1))
