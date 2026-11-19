@@ -124,4 +124,19 @@ internal object DesktopCliLockProbe {
         }
         kotlin.system.exitProcess(if (acquired) 0 else 23)
     }
+    @Test
+    fun failedWorkerCloseRetainsProcessLockUntilExplicitSafeRelease() {
+        val path = vaultPath()
+        val session = desktopCliTaskSession(path)
+        val stuckWorker = AutoCloseable { throw IllegalStateException("worker still active") }
+
+        assertThrows(IllegalStateException::class.java) {
+            closeDesktopWorkerAndSession(stuckWorker, session)
+        }
+        assertThrows(IllegalStateException::class.java) { desktopCliTaskSession(path) }
+
+        // The caller may release only after it has independently confirmed worker termination.
+        session.close()
+        desktopCliTaskSession(path).use { assertTrue(it.queue.list().isEmpty()) }
+    }
 }
