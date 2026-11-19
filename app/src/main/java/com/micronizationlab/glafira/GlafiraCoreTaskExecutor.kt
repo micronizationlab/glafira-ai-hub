@@ -203,7 +203,7 @@ class GlafiraCoreTaskExecutor(
         } catch (timeout: TimeoutCancellationException) {
             return scheduleRetry(task, "RUNTIME_TIME_LIMIT_EXCEEDED", clock(), effectiveBudget.maxRetries)
         } catch (cancelled: CancellationException) {
-            // Persist a bounded retry even while the parent coroutine is cancelling,
+            // Persist a risk-aware recovery state even while the parent coroutine is cancelling,
             // then preserve structured concurrency by propagating cancellation.
             withContext(NonCancellable) {
                 runCatching {
@@ -304,6 +304,7 @@ class GlafiraCoreTaskExecutor(
         return GlafiraTaskExecutionResult(task.taskId, status, "CORE_RESULT_PERSIST_FAILED")
     }
 
+    /** Automatic retries are restricted to registry-classified read-only operations. */
     private fun scheduleRetry(
         task: GlafiraTask,
         reason: String,
