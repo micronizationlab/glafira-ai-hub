@@ -3,9 +3,11 @@ package com.micronizationlab.glafira
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 sealed class GlafiraTaskExecutionOutcome {
     data class Succeeded(val summary: String? = null) : GlafiraTaskExecutionOutcome()
@@ -42,13 +44,18 @@ class GlafiraCoreTaskExecutor(
     private val clock: () -> Long = System::currentTimeMillis,
     private val maxAttempts: Int = 6,
     private val baseRetryDelayMillis: Long = 5_000L,
-    private val maxRetryDelayMillis: Long = 15 * 60_000L
+    private val maxRetryDelayMillis: Long = 15 * 60_000L,
+    private val runtimeBudget: GlafiraRuntimeBudget = GlafiraRuntimeBudget(),
+    private val costMeter: GlafiraTaskCostMeter? = null
 ) {
     private val executionMutex = Mutex()
     private val handlerMap = handlers.toMap()
 
     init {
         require(maxAttempts in 1..20)
+        require(runtimeBudget.maxRetries <= maxAttempts - 1) {
+            "Runtime retry budget cannot exceed the executor's hard attempt limit."
+        }
         require(baseRetryDelayMillis > 0L)
         require(maxRetryDelayMillis >= baseRetryDelayMillis)
         require(handlerMap.size == handlers.size) { "Duplicate GLAFIRA task handler registration." }
@@ -106,12 +113,25 @@ class GlafiraCoreTaskExecutor(
         }
 
         val handler = handlerMap[task.taskType] ?: return fail(task, "NO_HANDLER_REGISTERED")
+        val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
+            task = task,
+            nowMillis = clock(),
+            budgetStartedAtMillis = task.createdAtMillis,
+            budget = runtimeBudget,
+            measuredCostMicros = costMeter?.measuredCostMicros(task.taskId)
+        )
+        if (!budgetDecision.allowed) return fail(task, budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED")
+
         val outcome = try {
-            handler.execute(task)
+            // One registered Core handler is one typed execution step. The timeout also
+            // bounds cooperative suspend handlers and cancels them when their allowance ends.
+            withTimeout(budgetDecision.timeoutMillis) { handler.execute(task) }
+        } catch (timeout: TimeoutCancellationException) {
+            return fail(task, "RUNTIME_TIME_LIMIT_EXCEEDED")
         } catch (cancelled: CancellationException) {
-            return scheduleRetry(task, "EXECUTION_CANCELLED", nowMillis)
+            return scheduleRetry(task, "EXECUTION_CANCELLED", clock())
         } catch (failure: Exception) {
-            return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", nowMillis)
+            return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock())
         }
 
         return when (outcome) {
