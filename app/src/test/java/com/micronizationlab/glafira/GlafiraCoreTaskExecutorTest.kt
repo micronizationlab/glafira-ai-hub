@@ -1,5 +1,6 @@
 package com.micronizationlab.glafira
 
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CancellationException
 import org.junit.Assert.assertEquals
@@ -181,7 +182,7 @@ class GlafiraCoreTaskExecutorTest {
         )
 
         runBlocking {
-            val job = kotlinx.coroutines.launch { worker.executeNext() }
+            val job = launch { worker.executeNext() }
             job.join()
             assertTrue(job.isCancelled)
         }
