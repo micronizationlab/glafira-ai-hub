@@ -1,12 +1,16 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 
@@ -45,7 +49,11 @@ internal fun readBoundedProviderResponse(
         output.write(buffer, 0, count)
         total += count
     }
-    return String(output.toByteArray(), Charsets.UTF_8)
+    return StandardCharsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(ByteBuffer.wrap(output.toByteArray()))
+        .toString()
 }
 
 suspend fun callAiProvider(
@@ -128,6 +136,8 @@ suspend fun callAiProvider(
                 val safeDetails = GlafiraSecretRedactor.redact(details).take(400)
                 "Ошибка API ${providerId.displayName}: HTTP $status${if (safeDetails.isBlank()) "" else " — $safeDetails"}"
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             "Ошибка соединения с ${providerId.displayName}. Проверьте сеть, настройки ключа и повторите попытку."
         } finally {
