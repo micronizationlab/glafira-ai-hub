@@ -252,5 +252,11 @@ jobs:
             echo "Skipped means not selected for this commit; it is not a passing test result."
           } >> "$GITHUB_STEP_SUMMARY"
           for result in "$CHANGES" "$WORKFLOW_LINT" "$ANDROID" "$APK" "$EMULATOR" "$IOS" "$AGENT" "$CONTRACTS"; do
-            if [[ "$result" == failure || "$result" == cancelled ]]; then exit 1; fi
+            case "$result" in
+              success|skipped) ;;
+              *)
+                echo "Unexpected or unsuccessful validation result: $result" >&2
+                exit 1
+                ;;
+            esac
           done
