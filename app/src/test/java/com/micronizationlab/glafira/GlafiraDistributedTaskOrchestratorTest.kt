@@ -146,4 +146,38 @@ class GlafiraDistributedTaskOrchestratorTest {
         assertEquals(1, maximumActive.get())
     }
 
+    @Test
+    fun ownerGlobalBudgetCapsDesktopEvenWhenNodeAdvertisesMoreCapacity() = runBlocking {
+        val active = AtomicInteger()
+        val maximumActive = AtomicInteger()
+        val desktopNode = GlafiraNodeCapabilities(
+            nodeId = "desktop-node-0002",
+            available = true,
+            maxParallelTasks = 8,
+            capabilities = safeCapabilities
+        )
+        val orchestrator = GlafiraDistributedTaskOrchestrator(
+            desktop = GlafiraDesktopTaskPort { task ->
+                val current = active.incrementAndGet()
+                maximumActive.updateAndGet { previous -> maxOf(previous, current) }
+                try {
+                    delay(25L)
+                    GlafiraDistributedTaskResult(task.taskId, GlafiraExecutionNode.DESKTOP, true)
+                } finally {
+                    active.decrementAndGet()
+                }
+            },
+            android = GlafiraLocalTaskPort { error("All tasks should be routed through Desktop.") },
+            desktopCapabilities = { desktopNode },
+            safeAndroidCapabilities = emptySet(),
+            localMaxParallelTasks = { 1 },
+            clock = { 10_000L }
+        )
+
+        val results = orchestrator.execute("project-1", plan())
+
+        assertEquals(4, results.size)
+        assertEquals(1, maximumActive.get())
+    }
+
 }
