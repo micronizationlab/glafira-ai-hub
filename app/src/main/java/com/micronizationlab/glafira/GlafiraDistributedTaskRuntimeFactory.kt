@@ -19,6 +19,7 @@ internal object GlafiraDistributedTaskRuntimeFactory {
             desktopCapabilities = { desktopCapabilities() ?: coreRuntime.desktopNodeCapabilities() },
             safeAndroidCapabilities = safeAndroidCapabilities,
             localMaxParallelTasks = { coreRuntime.runtimeBudget().maxConcurrentTasks },
+            globalExecutionLimiter = coreRuntime.executionLimiter,
             onTaskResult = notifications::publish
         )
     }
