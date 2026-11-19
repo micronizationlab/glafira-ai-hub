@@ -59,52 +59,52 @@ class GlafiraBridgePairingApprovalInstrumentedTest {
             invitation.ticketId, clientNonce, proof, now + 2L
         )
         val enrollment = (verification as? GlafiraBridgePairingResult.Verified)?.enrollment
-        assertNotNull(enrollment)
+            ?: error("Valid one-time pairing proof was not accepted.")
 
         val service = GlafiraBridgeOwnerApprovalService(store)
         val pending = service.submitVerifiedEnrollment(
             GlafiraBridgePairingCandidate(
-                enrollment = enrollment!!,
+                enrollment = enrollment,
                 deviceLabel = "GLAFIRA Desktop",
                 platform = GlafiraBridgeClientPlatform.DESKTOP,
                 requestedScopes = setOf("project.read"),
                 receivedAtEpochMs = now + 3L
             )
         )
-        assertNotNull(pending)
+        val pendingApproval = pending ?: error("Verified enrollment was not queued for owner approval.")
 
         val ownerSession = GlafiraBridgeOwnerSession(
             sessionId = "owner-session-acceptance-001",
             expiresAtEpochMs = now + 60_000L
         )
         val approved = service.approve(
-            pending!!.approvalId,
+            pendingApproval.approvalId,
             setOf("project.read"),
             ownerSession,
             now + 4L
         )
         val deviceId = (approved as? GlafiraBridgeApprovalMutation.Approved)?.deviceId
-        assertNotNull(deviceId)
+            ?: error("Owner approval did not issue a paired device credential.")
 
         val claimed = service.claimCredentialDelivery(
-            pending.approvalId,
+            pendingApproval.approvalId,
             ownerSession,
             now + 5L
         )
         val delivery = (claimed as? GlafiraBridgeDeliveryResult.Available)?.delivery
-        assertNotNull(delivery)
+            ?: error("Owner credential delivery could not be claimed.")
 
-        val storedCredential = store.load(deviceId!!)
-        assertNotNull(storedCredential)
-        assertArrayEquals(delivery!!.hmacSecret, storedCredential!!.hmacSecret)
+        val storedCredential = store.load(deviceId)
+            ?: error("Issued device credential could not be decrypted from Android Keystore storage.")
+        assertArrayEquals(delivery.hmacSecret, storedCredential.hmacSecret)
         assertEquals(setOf("project.read"), delivery.grantedScopes)
         assertEquals(delivery.grantedScopes, storedCredential.grantedScopes)
 
         assertTrue(service.acknowledgeCredentialDelivery(
-            pending.approvalId, ownerSession, now + 6L
+            pendingApproval.approvalId, ownerSession, now + 6L
         ))
         assertTrue(
-            service.claimCredentialDelivery(pending.approvalId, ownerSession, now + 7L)
+            service.claimCredentialDelivery(pendingApproval.approvalId, ownerSession, now + 7L)
                 is GlafiraBridgeDeliveryResult.AlreadyAcknowledged
         )
 

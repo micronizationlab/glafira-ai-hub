@@ -100,8 +100,8 @@ class AndroidKeystoreBridgePairingApprovalStore(
                 val pendingCount = db.rawQuery(
                     "SELECT COUNT(*) FROM $APPROVALS WHERE status = ?",
                     arrayOf(GlafiraBridgeApprovalStatus.PENDING.name)
-                ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else MAX_PENDING_APPROVALS }
-                if (pendingCount < MAX_PENDING_APPROVALS) {
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else GlafiraBridgeOwnerApprovalService.MAX_PENDING_APPROVALS }
+                if (pendingCount < GlafiraBridgeOwnerApprovalService.MAX_PENDING_APPROVALS) {
                     val values = ContentValues().apply {
                         put("approval_id", candidate.approvalId)
                         put("ticket_id", candidate.ticketId)
