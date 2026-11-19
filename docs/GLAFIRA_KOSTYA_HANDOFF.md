@@ -25,7 +25,7 @@ Root cause:
 
 Change made:
 - Keep `ANDROID_KEY_STORE = "AndroidKeyStore"` for key generation and keystore access.
-- Select `ANDROID_KEYSTORE_SIGNATURE_PROVIDER = "AndroidKeyStoreBCWorkaround"` for the `SHA256withECDSA` content signer.
+- Remove the forced `.setProvider(ANDROID_KEY_STORE)` from `JcaContentSignerBuilder`; let JCA select the provider that supports the Android Keystore private-key type. On Android this is the purpose of the registered `AndroidKeyStoreBCWorkaround` provider.
 - Keep the private key non-exportable; no TLS downgrade, protocol change, or key export.
 
 Reference implementation rationale: Android Open Source Project documents the workaround provider as the provider for JCA crypto operations on Android Keystore keys. See:
