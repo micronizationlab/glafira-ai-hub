@@ -28,7 +28,7 @@ class GlafiraBridgeTlsHttpServer(
     private val identity: BridgeServerIdentity,
     private val admission: GlafiraBridgeRequestAdmission,
     private val enrollmentCoordinator: GlafiraBridgeEnrollmentCoordinator,
-    private val operationDispatcher: GlafiraBridgeOperationDispatcher,
+    private val coreIngress: GlafiraCoreBridgeIngress,
     private val addressRateLimiter: GlafiraBridgeRateLimiter,
     private val deviceRateLimiter: GlafiraBridgeRateLimiter
 ) : AutoCloseable {
@@ -232,10 +232,58 @@ class GlafiraBridgeTlsHttpServer(
                     writeResponse(client, HTTP_TOO_MANY_REQUESTS, responseJson(admitted))
                     return
                 }
-                // Only a fully authenticated, scoped, non-replayed ACCEPTED request reaches Core execution.
-                // Action approval requests fail closed until their durable owner queue is wired.
+                // Every supported Bridge operation becomes a durable Core task.
+                // No operation is dispatched directly from the HTTPS worker thread.
                 val response = if (admitted.status == GlafiraBridgeStatus.ACCEPTED) {
-                    operationDispatcher.dispatch(request)
+                    val coreOperation = runCatching {
+                        GlafiraCoreBridgeIngress.Operation.valueOf(request.operation.name)
+                    }.getOrNull()
+                    if (coreOperation == null) {
+                        GlafiraBridgeResponse(
+                            GlafiraBridgeProtocol.CURRENT_VERSION,
+                            request.requestId,
+                            GlafiraBridgeStatus.FAILED,
+                            errorCode = "CORE_OPERATION_NOT_SUPPORTED"
+                        )
+                    } else {
+                        try {
+                            val submission = coreIngress.submit(
+                                GlafiraCoreBridgeIngress.VerifiedRequest(
+                                    requestId = request.requestId,
+                                    idempotencyKey = request.idempotencyKey,
+                                    authenticatedDeviceId = request.deviceId,
+                                    projectId = request.projectId,
+                                    operation = coreOperation,
+                                    payload = request.payload,
+                                    expiresAtEpochMs = request.expiresAtEpochMs
+                                )
+                            )
+                            GlafiraBridgeResponse(
+                                GlafiraBridgeProtocol.CURRENT_VERSION,
+                                request.requestId,
+                                GlafiraBridgeStatus.ACCEPTED,
+                                result = mapOf(
+                                    "taskId" to submission.taskId,
+                                    "state" to submission.state.databaseValue,
+                                    "inserted" to submission.inserted.toString()
+                                )
+                            )
+                        } catch (failure: IllegalArgumentException) {
+                            GlafiraBridgeResponse(
+                                GlafiraBridgeProtocol.CURRENT_VERSION,
+                                request.requestId,
+                                GlafiraBridgeStatus.FAILED,
+                                errorCode = failure.message?.take(80) ?: "INVALID_CORE_TASK"
+                            )
+                        } catch (_: Exception) {
+                            GlafiraBridgeResponse(
+                                GlafiraBridgeProtocol.CURRENT_VERSION,
+                                request.requestId,
+                                GlafiraBridgeStatus.FAILED,
+                                errorCode = "CORE_QUEUE_UNAVAILABLE"
+                            )
+                        }
+                    }
                 } else admitted
                 val status = if (response.status == GlafiraBridgeStatus.ACCEPTED ||
                     response.status == GlafiraBridgeStatus.PENDING_APPROVAL
