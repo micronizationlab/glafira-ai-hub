@@ -5,11 +5,39 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 
 /** Endpoint defaults are deliberately centralized so provider model IDs can be updated without UI changes. */
 private data class CompatibleEndpoint(val url: String, val model: String)
+
+private const val PROVIDER_CONNECT_TIMEOUT_MS = 20_000
+private const val PROVIDER_READ_TIMEOUT_MS = 90_000
+private const val MAX_PROVIDER_RESPONSE_BYTES = 1_048_576
+
+/** Reads a bounded UTF-8 response so a provider cannot exhaust app memory. */
+internal fun readBoundedProviderResponse(
+    input: InputStream,
+    maxBytes: Int = MAX_PROVIDER_RESPONSE_BYTES
+): String {
+    require(maxBytes > 0) { "Response limit must be positive." }
+    val output = ByteArrayOutputStream(minOf(maxBytes, 8_192))
+    val buffer = ByteArray(8_192)
+    var total = 0
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        if (count == 0) continue
+        if (count > maxBytes - total) {
+            throw IllegalStateException("Provider response exceeded the allowed size.")
+        }
+        output.write(buffer, 0, count)
+        total += count
+    }
+    return output.toString(Charsets.UTF_8.name())
+}
 
 suspend fun callAiProvider(
     context: Context,
@@ -41,8 +69,8 @@ suspend fun callAiProvider(
         try {
             connection = (URL(endpoint.url).openConnection() as HttpsURLConnection).apply {
                 requestMethod = "POST"
-                connectTimeout = 20_000
-                readTimeout = if (providerId == ProviderId.GROK) 900_000 else 90_000
+                connectTimeout = PROVIDER_CONNECT_TIMEOUT_MS
+                readTimeout = PROVIDER_READ_TIMEOUT_MS
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Accept", "application/json")
@@ -73,7 +101,7 @@ suspend fun callAiProvider(
             connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val status = connection.responseCode
             val responseStream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val responseText = responseStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val responseText = responseStream?.use { readBoundedProviderResponse(it) }.orEmpty()
 
             if (status in 200..299) {
                 JSONObject(responseText)
@@ -88,10 +116,11 @@ suspend fun callAiProvider(
                 } catch (_: Exception) {
                     ""
                 }
-                "Ошибка API ${providerId.displayName}: HTTP $status${if (details.isBlank()) "" else " — $details"}"
+                val safeDetails = GlafiraSecretRedactor.redact(details).take(400)
+                "Ошибка API ${providerId.displayName}: HTTP $status${if (safeDetails.isBlank()) "" else " — $safeDetails"}"
             }
-        } catch (error: Exception) {
-            "Ошибка сети (${providerId.displayName}): ${error.message ?: "неизвестная ошибка"}"
+        } catch (_: Exception) {
+            "Ошибка соединения с ${providerId.displayName}. Проверьте сеть, настройки ключа и повторите попытку."
         } finally {
             connection?.disconnect()
         }
