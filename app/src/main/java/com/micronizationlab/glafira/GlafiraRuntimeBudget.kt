@@ -64,6 +64,9 @@ internal object GlafiraRuntimeBudgetPolicy {
             if (measuredCostMicros == null) {
                 return GlafiraRuntimeBudgetDecision(false, "RUNTIME_COST_UNMETERED")
             }
+            if (measuredCostMicros < 0L) {
+                return GlafiraRuntimeBudgetDecision(false, "RUNTIME_COST_METER_INVALID")
+            }
             if (measuredCostMicros > budget.maxCostMicros) {
                 return GlafiraRuntimeBudgetDecision(false, "RUNTIME_COST_LIMIT_EXCEEDED")
             }
