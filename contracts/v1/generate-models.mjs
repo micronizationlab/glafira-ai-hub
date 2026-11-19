@@ -86,7 +86,7 @@ try {
       sharedSwiftHelpersKept = true;
       continue;
     }
-    writeFileSync(output, generated.slice(0, markerIndex).trimEnd() + "\\n");
+    writeFileSync(output, generated.slice(0, markerIndex).trimEnd() + "\n");
   }
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
