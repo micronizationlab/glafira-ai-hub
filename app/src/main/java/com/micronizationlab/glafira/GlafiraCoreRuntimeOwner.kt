@@ -96,6 +96,50 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         return executor.executeNext()
     }
 
+
+    /** Authenticated Desktop workers claim only after the same Core authorizer approves the task. */
+    fun claimDesktopTask(
+        deviceId: String,
+        capabilities: Set<String>,
+        maxParallelTasks: Int
+    ): GlafiraTask? {
+        val now = System.currentTimeMillis()
+        for (candidate in taskStore.queuedDesktopTasks()) {
+            val leased = taskStore.claimDesktopTask(
+                candidate.taskId, deviceId, capabilities, maxParallelTasks, now
+            ) ?: continue
+            val decision = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource)
+                .authorize(leased, now)
+            when (decision.status) {
+                GlafiraTaskAuthorizationStatus.AUTHORIZED -> return leased
+                GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER -> {
+                    taskStore.releaseDesktopLease(leased.taskId, deviceId)
+                    if (isEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+                }
+                GlafiraTaskAuthorizationStatus.DENIED -> {
+                    taskStore.transition(
+                        leased.taskId, setOf(GlafiraTaskState.RUNNING),
+                        GlafiraTaskState.FAILED, now, lastError = decision.reason ?: "DESKTOP_TASK_DENIED"
+                    )
+                    taskStore.releaseDesktopLease(leased.taskId, deviceId)
+                }
+            }
+        }
+        return null
+    }
+
+    fun updateDesktopTask(
+        taskId: String,
+        deviceId: String,
+        state: String,
+        progressPercent: Int,
+        progressMessage: String?,
+        result: String?,
+        errorCode: String?
+    ): Boolean = taskStore.updateDesktopTask(
+        taskId, deviceId, state, progressPercent, progressMessage, result, errorCode
+    )
+
     fun pendingOwnerApprovals(): List<GlafiraPendingActionApproval> =
         ownerApprovalStore.pendingApprovals()
 
