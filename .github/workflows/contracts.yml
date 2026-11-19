@@ -27,5 +27,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Verify schema JSON and Bridge HMAC golden vector
+      - name: Install JSON Schema validator
+        run: npm install --no-save --no-package-lock ajv@8 ajv-formats@3
+      - name: Validate message fixtures and Bridge HMAC golden vector
         run: node contracts/v1/verify-fixtures.mjs
