@@ -184,10 +184,10 @@ class GlafiraCoreBackupInstrumentedTest {
     )
 
     @Test
-    fun databaseUsesReviewedSchemaVersionThree() {
+    fun databaseUsesReviewedSchemaVersionFour() {
         store.writableDatabase.rawQuery("PRAGMA user_version", null).use { cursor ->
             assertTrue(cursor.moveToFirst())
-            assertEquals(3, cursor.getInt(0))
+            assertEquals(4, cursor.getInt(0))
         }
     }
 
