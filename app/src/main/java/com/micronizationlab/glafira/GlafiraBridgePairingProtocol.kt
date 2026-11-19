@@ -116,14 +116,14 @@ class GlafiraBridgePairingProtocol(
         val ticket = runCatching { ticketStore.find(ticketId) }.getOrNull()
             ?: return rejected(GlafiraBridgePairingError.TICKET_NOT_FOUND)
 
-        if (ticket.expiresAtEpochMs <= nowEpochMs) {
-            return rejected(GlafiraBridgePairingError.TICKET_EXPIRED)
-        }
-        if (ticket.verifierKey.size != SHA256_BYTES) {
-            return rejected(GlafiraBridgePairingError.STORAGE_ERROR)
-        }
-
         try {
+            if (ticket.expiresAtEpochMs <= nowEpochMs) {
+                return rejected(GlafiraBridgePairingError.TICKET_EXPIRED)
+            }
+            if (ticket.verifierKey.size != SHA256_BYTES) {
+                return rejected(GlafiraBridgePairingError.STORAGE_ERROR)
+            }
+
             val suppliedProof = runCatching { proofHex.hexToBytes() }.getOrNull()
                 ?: return rejected(GlafiraBridgePairingError.INVALID_INPUT)
             val expectedProof = hmacSha256(
