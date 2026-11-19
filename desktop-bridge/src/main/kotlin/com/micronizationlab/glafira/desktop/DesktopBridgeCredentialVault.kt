@@ -9,7 +9,6 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermission
 import java.security.SecureRandom
-import java.security.spec.KeySpec
 import java.util.Base64
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
@@ -59,62 +58,62 @@ object DesktopBridgeCredentialVault {
         require(passphrase.size >= 12) { "Vault passphrase must contain at least 12 characters." }
         val secret = Base64.getUrlDecoder().decode(hmacSecretBase64Url)
         try {
-            require(secret.size == 32) { "Device HMAC secret must be exactly 256 bits." }
-        val entry = DesktopBridgeVaultEntry(
-            origin = origin,
-            deviceId = deviceId,
-            hmacSecret = secret,
-            grantedScopes = grantedScopes.toSet(),
-            serverCertificateSha256 = serverCertificateSha256.lowercase()
-        )
-        validate(entry)
-        val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
-        val iv = ByteArray(IV_BYTES).also(SecureRandom()::nextBytes)
-        val plaintext = serialize(entry)
-        val key = deriveKey(passphrase, salt)
-        val ciphertext = try {
-            Cipher.getInstance("AES/GCM/NoPadding").run {
-                init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
-                updateAAD(aad())
-                doFinal(plaintext)
+                require(secret.size == 32) { "Device HMAC secret must be exactly 256 bits." }
+            val entry = DesktopBridgeVaultEntry(
+                origin = origin,
+                deviceId = deviceId,
+                hmacSecret = secret,
+                grantedScopes = grantedScopes.toSet(),
+                serverCertificateSha256 = serverCertificateSha256.lowercase()
+            )
+            validate(entry)
+            val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
+            val iv = ByteArray(IV_BYTES).also(SecureRandom()::nextBytes)
+            val plaintext = serialize(entry)
+            val key = deriveKey(passphrase, salt)
+            val ciphertext = try {
+                Cipher.getInstance("AES/GCM/NoPadding").run {
+                    init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
+                    updateAAD(aad())
+                    doFinal(plaintext)
+                }
+            } finally {
+                plaintext.fill(0)
+                key.encoded?.fill(0)
             }
-        } finally {
-            plaintext.fill(0)
-            key.encoded?.fill(0)
-        }
-        val output = ByteArrayOutputStream().use { buffer ->
-            DataOutputStream(buffer).use { data ->
-                data.writeInt(MAGIC)
-                data.writeInt(VERSION)
-                data.writeInt(PBKDF2_ITERATIONS)
-                data.writeInt(salt.size)
-                data.write(salt)
-                data.writeInt(iv.size)
-                data.write(iv)
-                data.writeInt(ciphertext.size)
-                data.write(ciphertext)
+            val output = ByteArrayOutputStream().use { buffer ->
+                DataOutputStream(buffer).use { data ->
+                    data.writeInt(MAGIC)
+                    data.writeInt(VERSION)
+                    data.writeInt(PBKDF2_ITERATIONS)
+                    data.writeInt(salt.size)
+                    data.write(salt)
+                    data.writeInt(iv.size)
+                    data.write(iv)
+                    data.writeInt(ciphertext.size)
+                    data.write(ciphertext)
+                }
+                buffer.toByteArray()
             }
-            buffer.toByteArray()
-        }
-        require(output.size <= MAX_FILE_BYTES)
-        path.toAbsolutePath().parent?.let(Files::createDirectories)
-        val temp = Files.createTempFile(path.toAbsolutePath().parent, ".glafira-vault-", ".tmp")
-        try {
-            setOwnerOnly(temp)
-            Files.write(temp, output)
+            require(output.size <= MAX_FILE_BYTES)
+            path.toAbsolutePath().parent?.let(Files::createDirectories)
+            val temp = Files.createTempFile(path.toAbsolutePath().parent, ".glafira-vault-", ".tmp")
             try {
-                Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-                Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING)
+                setOwnerOnly(temp)
+                Files.write(temp, output)
+                try {
+                    Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                    Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING)
+                }
+                setOwnerOnly(path)
+            } finally {
+                Files.deleteIfExists(temp)
+                output.fill(0)
+                ciphertext.fill(0)
+                salt.fill(0)
+                iv.fill(0)
             }
-            setOwnerOnly(path)
-        } finally {
-            Files.deleteIfExists(temp)
-            output.fill(0)
-            ciphertext.fill(0)
-            salt.fill(0)
-            iv.fill(0)
-        }
         } finally {
             // Cover validation, serialization and filesystem failures as well as encryption.
             secret.fill(0)
