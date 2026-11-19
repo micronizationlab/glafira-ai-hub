@@ -131,6 +131,7 @@ class GlafiraBridgeTlsHttpServer(
             }
             if (!addressRateLimiter.tryAcquire(remote)) {
                 runCatching { writeResponse(socket, HTTP_TOO_MANY_REQUESTS, errorResponse("RATE_LIMITED")) }
+                activeSockets.remove(socket)
                 runCatching { socket.close() }
                 continue
             }
