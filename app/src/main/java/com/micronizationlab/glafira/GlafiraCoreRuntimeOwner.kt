@@ -225,18 +225,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     fun desktopTaskLeaseExpiry(taskId: String): Long? = taskStore.desktopTaskLeaseExpiry(taskId)
 
-    /** Redacted Dry Run previews awaiting owner review, newest tasks first. */
-    fun dryRunPreviews(limit: Int = 100): List<GlafiraTask> {
-        require(limit in 1..500)
-        return taskStore.listTasks(setOf(GlafiraTaskState.WAITING_FOR_OWNER), limit)
-            .filter { it.lastError?.startsWith(DRY_RUN_PREVIEW_PREFIX) == true }
-    }
+    /** Tasks with typed, durable Dry Run previews awaiting owner review. */
+    fun dryRunPreviews(limit: Int = 100): List<GlafiraTask> =
+        taskStore.dryRunPreviews(limit).mapNotNull { taskStore.getTask(it.taskId) }
 
-    /** Returns a preview only when the task is still marked as a Dry Run result. */
+    /** Returns the Core task only while its typed preview row still exists. */
     fun dryRunPreview(taskId: String): GlafiraTask? =
         taskStore.getTask(taskId)?.takeIf {
             it.state == GlafiraTaskState.WAITING_FOR_OWNER &&
-                it.lastError?.startsWith(DRY_RUN_PREVIEW_PREFIX) == true
+                taskStore.dryRunPreview(taskId) != null
         }
 
     /** Typed, encrypted Dry Run previews for the owner review screen. */
