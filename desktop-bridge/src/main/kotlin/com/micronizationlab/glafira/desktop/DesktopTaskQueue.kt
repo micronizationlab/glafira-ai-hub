@@ -279,11 +279,17 @@ internal class DesktopTaskQueue(
     }
 
     private fun setOwnerOnly(path: Path) {
-        runCatching {
+        try {
             Files.setPosixFilePermissions(
                 path,
                 setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
             )
+        } catch (_: UnsupportedOperationException) {
+            val file = path.toFile()
+            check(file.setReadable(false, false) && file.setWritable(false, false) &&
+                file.setReadable(true, true) && file.setWritable(true, true)) {
+                "Unable to restrict Desktop task queue file permissions."
+            }
         }
     }
 
