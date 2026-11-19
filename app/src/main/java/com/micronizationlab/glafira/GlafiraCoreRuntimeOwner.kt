@@ -24,6 +24,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     )
 
     private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
+    // Live mode remains unavailable until a separate owner-approved run API is implemented.
+    private val executionMode = GlafiraExecutionMode.DRY_RUN
 
     private val executor = GlafiraCoreTaskExecutor(
         queue = taskStore,
@@ -34,7 +36,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) }
         ),
         runtimeBudget = { loadRuntimeBudget() },
-        executionMode = { GlafiraExecutionMode.DRY_RUN }
+        executionMode = { executionMode }
     )
 
     private fun executeBridgeTask(task: GlafiraTask): GlafiraTaskExecutionOutcome {
@@ -131,7 +133,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     ): GlafiraTask? {
         // Desktop workers cannot bypass the Core Dry Run gate. Until the Desktop
         // preview protocol exists, claims are withheld rather than executed live.
-        if (GlafiraExecutionMode.DRY_RUN == GlafiraExecutionMode.DRY_RUN) return null
+        if (executionMode == GlafiraExecutionMode.DRY_RUN) return null
         val now = System.currentTimeMillis()
         for (candidate in taskStore.queuedDesktopTasks()) {
             val configuredConcurrency = loadRuntimeBudget().maxConcurrentTasks
