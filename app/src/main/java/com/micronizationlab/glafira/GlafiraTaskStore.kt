@@ -61,6 +61,7 @@ class GlafiraTaskStore(context: Context) :
         db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_leases (task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE, device_id TEXT NOT NULL, lease_expires_at INTEGER NOT NULL, attempt_count INTEGER NOT NULL, progress_percent INTEGER NOT NULL DEFAULT 0, progress_message TEXT, updated_at INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_results (task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE, result_ciphertext TEXT, error_code TEXT, completed_at INTEGER NOT NULL)")
         db.execSQL("CREATE INDEX IF NOT EXISTS index_core_desktop_lease_device ON core_desktop_leases(device_id, lease_expires_at)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_nodes (device_id TEXT PRIMARY KEY NOT NULL, last_seen_at INTEGER NOT NULL, capabilities_json TEXT NOT NULL, max_parallel_tasks INTEGER NOT NULL)")
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -213,6 +214,36 @@ class GlafiraTaskStore(context: Context) :
         ) == 1
     }
 
+
+    @Synchronized
+    fun recordDesktopNode(deviceId: String, capabilities: Set<String>, maxParallelTasks: Int,
+                          nowMillis: Long = System.currentTimeMillis()) {
+        require(deviceId.matches(Regex("[A-Za-z0-9_.-]{8,128}")))
+        require(capabilities.size <= 16 && capabilities.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
+        require(maxParallelTasks in 1..8)
+        writableDatabase.insertWithOnConflict("core_desktop_nodes", null, ContentValues().apply {
+            put("device_id", deviceId); put("last_seen_at", nowMillis)
+            put("capabilities_json", JSONArray(capabilities.sorted()).toString())
+            put("max_parallel_tasks", maxParallelTasks)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    @Synchronized
+    fun desktopNodeCapabilities(maxAgeMillis: Long = 45_000L): GlafiraNodeCapabilities? {
+        val now = System.currentTimeMillis()
+        return readableDatabase.query("core_desktop_nodes", null, "last_seen_at >= ?",
+            arrayOf((now - maxAgeMillis).toString()), null, null, "last_seen_at DESC", "1").use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val json = JSONArray(cursor.getString(cursor.getColumnIndexOrThrow("capabilities_json")))
+            val capabilities = buildSet { for (i in 0 until json.length()) add(json.getString(i)) }
+            GlafiraNodeCapabilities(
+                nodeId = cursor.getString(cursor.getColumnIndexOrThrow("device_id")),
+                available = true,
+                maxParallelTasks = cursor.getInt(cursor.getColumnIndexOrThrow("max_parallel_tasks")).coerceIn(1, 8),
+                capabilities = capabilities
+            )
+        }
+    }
 
     @Synchronized
     fun queuedDesktopTasks(limit: Int = 100): List<GlafiraTask> {
