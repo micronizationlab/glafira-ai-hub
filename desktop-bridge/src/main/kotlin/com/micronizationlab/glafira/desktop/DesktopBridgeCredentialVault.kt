@@ -255,10 +255,19 @@ object DesktopBridgeCredentialVault {
     private fun aad() = "GLAFIRA-DESKTOP-CREDENTIAL-VAULT-V1".toByteArray(Charsets.UTF_8)
 
     private fun setOwnerOnly(path: Path) {
-        runCatching {
-            Files.setPosixFilePermissions(path, setOf(
-                PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE
-            ))
+        try {
+            Files.setPosixFilePermissions(
+                path,
+                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+            )
+        } catch (_: UnsupportedOperationException) {
+            // Non-POSIX fallback (for example Windows). Fail closed if ACL-style
+            // owner-only permissions cannot be applied.
+            val file = path.toFile()
+            check(file.setReadable(false, false) && file.setWritable(false, false) &&
+                file.setReadable(true, true) && file.setWritable(true, true)) {
+                "Unable to restrict Desktop credential vault permissions."
+            }
         }
     }
 }
