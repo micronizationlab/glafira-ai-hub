@@ -30,6 +30,16 @@ interface GlafiraInterruptedTaskRecovery {
     ): Int
 }
 
+/** Optional atomic result persistence for successful Core handlers. */
+interface GlafiraCoreTaskResultPersistence {
+    fun persistCoreTaskResult(
+        taskId: String,
+        expectedStates: Set<GlafiraTaskState>,
+        result: String,
+        nowMillis: Long
+    ): Boolean
+}
+
 
 /** Returns true only when a bounded batch needs a follow-up drain. */
 internal suspend fun drainGlafiraCoreBatch(
