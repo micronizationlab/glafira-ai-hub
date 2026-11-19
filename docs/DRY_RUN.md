@@ -16,7 +16,7 @@ Dry Run creates a redacted, deterministic preview of a Core task without invokin
 
 ## Simulation semantics
 
-- Registered read-only and draft tools are marked `SIMULATABLE`: the plan describes a proposed operation, but does not run a mock against a live service.
+- Registered read-only and draft tools are marked `PREVIEW_ONLY`: the plan describes a proposed operation, but does not run a mock against a live service.
 - External-write, financial, destructive and unknown tools are `NOT_SIMULATABLE` until a reviewed sandbox adapter exists.
 - A NOT_SIMULATABLE plan is still useful as an action preview, but it must never be described as a successful simulation.
 - A plan hash binds the exact task identity, project, tool, origin, payload and required scopes. Any change to the action produces a different hash.
