@@ -24,9 +24,9 @@ Dry Run creates a redacted, deterministic preview of a Core task without invokin
 ## Desktop Bridge preview channel
 
 - An authenticated Desktop claim poll is still admitted by the existing TLS/HMAC, paired-device scope, replay and rate-limit checks.
-- While Core is in Dry Run, the claim method returns no lease. The Bridge then performs a separate read-only query over queued `desktop.execute` tasks and selects a task matching the paired node's advertised capabilities.
+- While Core is in Dry Run, the claim method returns no lease. The Bridge asks Core to select a queued `desktop.execute` task matching the paired node's advertised capabilities; Core persists the redacted preview on that task and moves it to `WAITING_FOR_OWNER`.
 - Core returns only the redacted `GlafiraDryRunPlan` JSON, including task ID, project ID, tool ID, risk, simulation status, required permissions, approval points, limitations and plan hash.
-- The raw task instruction, task payload values, secrets and executable handler arguments are not sent to Desktop in this path.
+- The raw task instruction, task payload values, secrets and executable handler arguments are not sent to Desktop in this path. The Core orchestrator can retrieve the same stored preview and stop waiting for a live Desktop result.
 - The Desktop worker validates a strict preview schema and invokes its `onDryRunPreview` callback. It does not enqueue the preview in the Desktop task queue, invoke an agent executor, or send a task-result update.
 - The current Desktop CLI renders the callback as a clearly labelled `PREVIEW ONLY; NOT EXECUTED` report, including the plan hash and redacted JSON.
 - If no compatible queued task exists, the normal `available=false` response is returned. Malformed preview envelopes fail closed.
