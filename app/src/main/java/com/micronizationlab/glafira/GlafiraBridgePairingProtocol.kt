@@ -39,7 +39,10 @@ data class GlafiraBridgePairingInvitation(
     /** Display once to the owner; never log or persist this value in plaintext. */
     val pairingCapability: String,
     val expiresAtEpochMs: Long
-)
+) {
+    override fun toString(): String =
+        "GlafiraBridgePairingInvitation(ticketId=$ticketId, pairingCapability=[REDACTED], expiresAtEpochMs=$expiresAtEpochMs)"
+}
 
 data class GlafiraBridgeVerifiedEnrollment(
     val ticketId: String,
