@@ -33,9 +33,11 @@ class GlafiraBridgeTlsHttpServer(
     private val deviceRateLimiter: GlafiraBridgeRateLimiter
 ) : AutoCloseable {
     @Volatile private var running = false
+    @Volatile private var closed = false
     @Volatile private var boundPort: Int = DEFAULT_PORT
     private var serverSocket: SSLServerSocket? = null
     private var acceptThread: Thread? = null
+    private val activeSockets = java.util.concurrent.ConcurrentHashMap.newKeySet<SSLSocket>()
     private val workers = ThreadPoolExecutor(
         WORKER_COUNT,
         WORKER_COUNT,
@@ -48,6 +50,7 @@ class GlafiraBridgeTlsHttpServer(
 
     @Synchronized
     fun start(bindAddress: InetAddress, port: Int = DEFAULT_PORT) {
+        check(!closed) { "Bridge HTTPS server has been closed and cannot be restarted." }
         check(!running) { "Bridge HTTPS listener is already running." }
         require(bindAddress is java.net.Inet4Address && bindAddress.isSiteLocalAddress) {
             "Bridge host must bind to an explicitly selected private IPv4 LAN address."
@@ -87,12 +90,22 @@ class GlafiraBridgeTlsHttpServer(
 
     @Synchronized
     override fun close() {
+        if (closed) return
+        closed = true
         running = false
         runCatching { serverSocket?.close() }
         serverSocket = null
         acceptThread?.interrupt()
         acceptThread = null
+        // Close active sockets first so blocked reads/handshakes cannot outlive the stores
+        // owned by the foreground service.
+        activeSockets.toList().forEach { socket -> runCatching { socket.close() } }
         workers.shutdownNow()
+        try {
+            workers.awaitTermination(WORKER_SHUTDOWN_WAIT_MS, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 
     private fun acceptLoop(listener: SSLServerSocket) {
@@ -105,8 +118,14 @@ class GlafiraBridgeTlsHttpServer(
                 if (running) running = false
                 break
             }
+            if (!running) {
+                runCatching { socket.close() }
+                break
+            }
+            activeSockets.add(socket)
             val remote = socket.inetAddress.hostAddress
             if (remote == null) {
+                activeSockets.remove(socket)
                 socket.close()
                 continue
             }
@@ -116,8 +135,15 @@ class GlafiraBridgeTlsHttpServer(
                 continue
             }
             try {
-                workers.execute { handle(socket) }
+                workers.execute {
+                    try {
+                        handle(socket)
+                    } finally {
+                        activeSockets.remove(socket)
+                    }
+                }
             } catch (_: java.util.concurrent.RejectedExecutionException) {
+                activeSockets.remove(socket)
                 runCatching { socket.close() }
             }
         }
@@ -475,6 +501,7 @@ class GlafiraBridgeTlsHttpServer(
         const val DEFAULT_PORT = 47_321
         private const val WORKER_COUNT = 4
         private const val WORK_QUEUE_CAPACITY = 8
+        private const val WORKER_SHUTDOWN_WAIT_MS = 2_000L
         private const val ACCEPT_TIMEOUT_MS = 1_000
         private const val HANDSHAKE_TIMEOUT_MS = 5_000
         private const val HEADER_IDLE_TIMEOUT_MS = 5_000
