@@ -91,15 +91,18 @@ Each step must be independently testable and may be paused without leaving the q
 
 ## Step 2 implementation progress (partial)
 
-A first Core Dry Run slice is now present:
-- Core has explicit DRY_RUN/LIVE mode contracts; the application runtime owner selects DRY_RUN only.
-- The redacted planner binds a deterministic plan hash to task identity, project, tool, origin, payload and required scopes.
-- The planner reports tool risk, simulation availability, safe target-field names, expected changes, permissions, approval points and limitations.
-- The Core executor returns a preview and does not invoke the registered handler in DRY_RUN.
-- The preview is stored in the existing task status detail; tasks wait for owner review.
-- Desktop claims are blocked while the Core owner is in DRY_RUN, pending a Desktop preview protocol.
+The current implementation now includes:
+- Core selects DRY_RUN only; there is no owner-facing LIVE switch.
+- The redacted planner binds a deterministic SHA-256 plan hash to task identity, project, tool, origin, payload and required scopes.
+- Core performs read-only authorization inspection and never invokes registered handlers in Dry Run.
+- Preview plans are persisted in the encrypted, typed `core_dry_run_previews` table (SQLite schema v3); task metadata stores only a fixed marker.
+- Persistence is transactional with the task transition, hash-conflict protected and idempotent for the same plan.
+- A Compose owner review screen lists plans, expected changes, permissions, risk, limitations and hash.
+- Acknowledge/reject requires fresh owner authentication and is bound to the exact plan hash. It records review only; it does not authorize or start LIVE execution.
+- Desktop claim polling returns a redacted preview without a lease. Desktop validates the schema and displays the plan without enqueuing or executing it.
+- Twenty small persistence/review safeguards and ten Desktop codec hardening checks are documented in [DRY_RUN.md](DRY_RUN.md).
 
-This is not Step 2 acceptance yet. A typed durable preview store, owner-facing review UI, Desktop preview protocol, sandbox adapters and a separate action-bound LIVE run flow remain outstanding. See [DRY_RUN.md](DRY_RUN.md).
+Step 2 is still not accepted: a separate LIVE-run creation path bound to a reviewed hash, provider sandbox adapters and physical Android/Desktop acceptance remain outstanding. Migration/backup and emulator tests for schema v3 must pass before an installable build is handed over.
 
 ## Status checklist
 
