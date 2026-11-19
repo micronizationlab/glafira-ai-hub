@@ -173,24 +173,29 @@ object DesktopBridgeCredentialVault {
             require(iterations == PBKDF2_ITERATIONS) { "Vault KDF parameters are unsupported." }
             val saltSize = input.readInt()
             require(saltSize == SALT_BYTES)
-            salt = ByteArray(saltSize).also(input::readFully)
+            val saltBytes = ByteArray(saltSize).also(input::readFully)
+            salt = saltBytes
             val ivSize = input.readInt()
             require(ivSize == IV_BYTES)
-            iv = ByteArray(ivSize).also(input::readFully)
+            val ivBytes = ByteArray(ivSize).also(input::readFully)
+            iv = ivBytes
             val cipherSize = input.readInt()
             require(cipherSize in 16..MAX_FILE_BYTES && cipherSize == input.available())
-            ciphertext = ByteArray(cipherSize).also(input::readFully)
-            key = deriveKey(passphrase, salt)
-            plaintext = try {
+            val ciphertextBytes = ByteArray(cipherSize).also(input::readFully)
+            ciphertext = ciphertextBytes
+            val derivedKey = deriveKey(passphrase, saltBytes)
+            key = derivedKey
+            val plaintextBytes = try {
                 Cipher.getInstance("AES/GCM/NoPadding").run {
-                    init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+                    init(Cipher.DECRYPT_MODE, derivedKey, GCMParameterSpec(128, ivBytes))
                     updateAAD(aad())
-                    doFinal(ciphertext)
+                    doFinal(ciphertextBytes)
                 }
             } catch (_: AEADBadTagException) {
                 throw SecurityException("Vault passphrase is incorrect or the file was modified.")
             }
-            val entry = deserialize(plaintext)
+            plaintext = plaintextBytes
+            val entry = deserialize(plaintextBytes)
             try {
                 validate(entry)
                 return entry
