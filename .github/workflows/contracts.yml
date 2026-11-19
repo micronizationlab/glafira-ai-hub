@@ -31,3 +31,26 @@ jobs:
         run: npm install --no-save --no-package-lock ajv@8 ajv-formats@3
       - name: Validate message fixtures and Bridge HMAC golden vector
         run: node contracts/v1/verify-fixtures.mjs
+
+  generate-cross-platform-models:
+    name: Generate Kotlin, Swift and C# contract DTOs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned quicktype generator
+        run: npm install --no-save --no-package-lock quicktype@26.0.0
+      - name: Generate platform DTOs from the canonical schema
+        run: node contracts/v1/generate-models.mjs
+      - name: Publish generated DTO bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-contract-dtos-${{ github.sha }}
+          path: contracts/v1/generated/
+          if-no-files-found: error
+          retention-days: 14
