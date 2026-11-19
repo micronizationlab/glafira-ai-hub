@@ -7,6 +7,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.nio.file.Files
 
 class DesktopTaskQueueTest {
     @get:Rule
@@ -81,6 +82,14 @@ class DesktopTaskQueueTest {
         now += 11
         assertNull(q.claimNext())
         assertEquals(DesktopTaskState.EXPIRED, q.get("task_1")?.state)
+    }
+
+    @Test
+    fun rejectsOversizedQueueFileBeforeReadingItIntoMemory() {
+        val path = temp.root.toPath().resolve("oversized-tasks.json")
+        Files.writeString(path, " ".repeat(16 * 1024 * 1024 + 1))
+        val q = DesktopTaskQueue(path, 10) { now }
+        assertThrows(IllegalArgumentException::class.java) { q.list() }
     }
 
     @Test
