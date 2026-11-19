@@ -82,9 +82,17 @@ jobs:
           script: |
             set +e
             mkdir -p app/build/outputs
-            gradle connectedDebugAndroidTest
+            adb devices -l > app/build/outputs/androidTest-adb-devices.txt 2>&1
+            adb logcat -c
+            adb logcat -b all -v threadtime > app/build/outputs/androidTest-logcat-live.txt 2>&1 &
+            LOGCAT_PID=$!
+            gradle connectedDebugAndroidTest --stacktrace
             test_status=$?
+            adb logcat -b crash -d -v threadtime > app/build/outputs/androidTest-crash-logcat.txt 2>&1 || true
+            adb shell dumpsys activity instrumentation > app/build/outputs/androidTest-instrumentation.txt 2>&1 || true
             adb logcat -d -v threadtime > app/build/outputs/androidTest-logcat.txt 2>&1 || true
+            kill "$LOGCAT_PID" 2>/dev/null || true
+            wait "$LOGCAT_PID" 2>/dev/null || true
             exit "$test_status"
 
       - name: Upload emulator test diagnostics
@@ -94,7 +102,7 @@ jobs:
           name: glafira-emulator-test-diagnostics
           path: |
             app/build/reports/androidTests/connected/
-            app/build/outputs/androidTest-logcat.txt
+            app/build/outputs/androidTest-*.txt
           if-no-files-found: warn
           retention-days: 7
 
@@ -111,11 +119,6 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-
-      - name: Setup Gradle 8.9 and cache
-        uses: gradle/actions/setup-gradle@v4
-        with:
           gradle-version: '8.9'
 
       - name: Assemble debug APK
