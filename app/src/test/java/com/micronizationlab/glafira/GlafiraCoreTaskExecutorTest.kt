@@ -5,7 +5,6 @@ import java.util.concurrent.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -181,8 +180,10 @@ class GlafiraCoreTaskExecutorTest {
             })
         )
 
-        assertThrows(CancellationException::class.java) {
-            runBlocking { worker.executeNext() }
+        runBlocking {
+            val job = kotlinx.coroutines.launch { worker.executeNext() }
+            job.join()
+            assertTrue(job.isCancelled)
         }
         assertEquals(GlafiraTaskState.RETRY_SCHEDULED, queue.task?.state)
         assertEquals(15_000L, queue.lastRetryAt)
