@@ -2,6 +2,7 @@ package com.micronizationlab.glafira
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -69,7 +70,8 @@ class GlafiraCoreTaskExecutorTest {
         queue: FakeQueue,
         authorization: GlafiraTaskAuthorizationStatus = GlafiraTaskAuthorizationStatus.AUTHORIZED,
         outcome: GlafiraTaskExecutionOutcome = GlafiraTaskExecutionOutcome.Succeeded(),
-        clock: () -> Long = { 10_000L }
+        clock: () -> Long = { 10_000L },
+        mode: GlafiraExecutionMode = GlafiraExecutionMode.LIVE
     ) = GlafiraCoreTaskExecutor(
         queue = queue,
         authorizer = GlafiraTaskAuthorizer { _, _ ->
@@ -78,7 +80,8 @@ class GlafiraCoreTaskExecutorTest {
         handlers = listOf("project.read" to GlafiraTaskHandler { outcome }),
         clock = clock,
         baseRetryDelayMillis = 1_000L,
-        maxRetryDelayMillis = 8_000L
+        maxRetryDelayMillis = 8_000L,
+        executionMode = { mode }
     )
 
     @Test
@@ -213,4 +216,35 @@ class GlafiraCoreTaskExecutorTest {
         }.exceptionOrNull()
         assertNotNull(error)
     }
+
+    @Test
+    fun dryRunNeverInvokesHandlerAndPersistsRedactedPreview() = runBlocking {
+        val queued = task().copy(
+            payload = """{"actionSummary":"Review draft only","recipient":"private@example.com","token":"never-store-this"}"""
+        )
+        val queue = FakeQueue(queued)
+        var handlerCalled = false
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                handlerCalled = true
+                GlafiraTaskExecutionOutcome.Succeeded("must not run")
+            }),
+            executionMode = { GlafiraExecutionMode.DRY_RUN }
+        )
+
+        val result = worker.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED, result.status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.task?.state)
+        assertFalse(handlerCalled)
+        assertTrue(queue.task?.lastError?.contains("DRY_RUN_PREVIEW:") == true)
+        assertTrue(queue.task?.lastError?.contains("recipient") == true)
+        assertFalse(queue.task?.lastError?.contains("private@example.com") == true)
+        assertFalse(queue.task?.lastError?.contains("never-store-this") == true)
+    }
+
 }
