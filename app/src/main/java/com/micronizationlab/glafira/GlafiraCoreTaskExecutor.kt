@@ -165,7 +165,9 @@ class GlafiraCoreTaskExecutor(
         } catch (timeout: TimeoutCancellationException) {
             return fail(task, "RUNTIME_TIME_LIMIT_EXCEEDED")
         } catch (cancelled: CancellationException) {
-            return scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+            // Preserve structured concurrency: shutdown, user cancellation and parent-job
+            // cancellation must propagate to the caller. Lease recovery handles the task.
+            throw cancelled
         } catch (failure: Exception) {
             return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock(), effectiveBudget.maxRetries)
         }
