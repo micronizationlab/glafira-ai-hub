@@ -251,10 +251,25 @@ class GlafiraBridgeTlsHttpServer(
                             val parallel = request.payload.getValue("maxParallelTasks").toInt()
                             val task = coreIngress.claimDesktopTask(request.deviceId, capabilities, parallel)
                             if (task == null) {
-                                GlafiraBridgeResponse(
-                                    GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
-                                    GlafiraBridgeStatus.ACCEPTED, result = mapOf("available" to "false")
-                                )
+                                // In Dry Run the claim path intentionally returns no executable
+                                // task. A separate read-only query may return a redacted plan.
+                                val preview = coreIngress.previewDesktopTask(capabilities)
+                                if (preview == null) {
+                                    GlafiraBridgeResponse(
+                                        GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                        GlafiraBridgeStatus.ACCEPTED, result = mapOf("available" to "false")
+                                    )
+                                } else {
+                                    GlafiraBridgeResponse(
+                                        GlafiraBridgeProtocol.CURRENT_VERSION, request.requestId,
+                                        GlafiraBridgeStatus.ACCEPTED,
+                                        result = mapOf(
+                                            "available" to "false",
+                                            "dryRunPreview" to "true",
+                                            "previewJson" to preview.toSafeJson()
+                                        )
+                                    )
+                                }
                             } else {
                                 val payload = JSONObject(task.payload)
                                 GlafiraBridgeResponse(
