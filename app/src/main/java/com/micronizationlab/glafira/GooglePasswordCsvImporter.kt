@@ -49,7 +49,7 @@ object GooglePasswordCsvImporter {
             val passwordIndex = headers["password"] ?: error("В CSV не найден столбец password.")
             val noteIndex = headers["note"]
 
-            require(rows.size - 1 <= MAX_ROWS) { "В CSV больше $MAX_ROWS записей. Разделите файл на части." }
+            require(rows.size - 1 <= MAX_ROWS) { "В CSV больше 10 000 записей. Разделите файл на части." }
 
             var skipped = 0
             val entries = rows.drop(1).mapNotNull { row ->
@@ -141,12 +141,11 @@ object GooglePasswordCsvImporter {
 
         fun finishRow() {
             finishField()
-            if (row.any { it.isNotEmpty() }) {
-                require(rows.size < MAX_ROWS + 1) {
-                    "В CSV больше $MAX_ROWS записей. Разделите файл на части."
-                }
-                rows.add(row)
+            require(rows.size < MAX_ROWS + 1) {
+                "В CSV больше 10 000 записей. Разделите файл на части."
             }
+            // Preserve empty CSV records so the importer can report them as skipped.
+            rows.add(row)
             row = mutableListOf()
         }
 
