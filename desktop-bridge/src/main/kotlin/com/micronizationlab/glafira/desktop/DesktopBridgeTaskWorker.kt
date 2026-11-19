@@ -11,7 +11,7 @@ internal class DesktopBridgeTaskWorker(
     private val origin: String,
     private val credentials: DesktopBridgeCredentials,
     private val projectId: String,
-    private val queue: DesktopTaskQueue,
+    private val queue: DesktopTaskQueue = DesktopTaskQueue.inMemory(),
     handlers: Map<String, DesktopAgentExecutor>,
     private val client: DesktopBridgeHttpsClient = DesktopBridgeHttpsClient(),
     private val maxParallelTasks: Int = DesktopTaskRuntime.DEFAULT_PARALLELISM,
@@ -54,12 +54,25 @@ internal class DesktopBridgeTaskWorker(
                 "maxParallelTasks" to maxParallelTasks.toString()
             )
         )
-        if (response.status != DesktopBridgeStatus.SUCCEEDED) {
+        if (response.status != DesktopBridgeStatus.ACCEPTED &&
+            response.status != DesktopBridgeStatus.SUCCEEDED
+        ) {
             throw IllegalStateException(response.errorCode ?: "DESKTOP_TASK_CLAIM_FAILED")
         }
-        val raw = response.result["taskJson"] ?: throw IllegalStateException("TASK_RESPONSE_MISSING")
-        if (raw != "none") {
-            val json = JSONObject(raw)
+        if (response.result["available"] == "true") {
+            val json = JSONObject().apply {
+                put("taskId", response.result.getValue("taskId"))
+                put("projectId", response.result.getValue("projectId"))
+                put("parentTaskId", response.result.getValue("parentTaskId"))
+                put("subtaskId", response.result.getValue("subtaskId"))
+                put("title", response.result.getValue("title"))
+                put("instruction", response.result.getValue("instruction"))
+                put("executor", response.result.getValue("executor"))
+                put("requiredCapabilities", JSONArray(response.result.getValue("requiredCapabilities")))
+                put("createdAtEpochMs", response.result.getValue("createdAtEpochMs").toLong())
+                put("expiresAtEpochMs", response.result.getValue("expiresAtEpochMs").toLong())
+                put("priority", response.result.getValue("priority").toInt())
+            }
             val task = decodeTask(json)
             val existing = queue.get(task.taskId)
             when (existing?.state) {
