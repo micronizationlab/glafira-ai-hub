@@ -21,7 +21,10 @@ fun interface GlafiraTaskAuthorizer {
 
     /** Read-only policy inspection for Dry Run; implementations must not enqueue approvals. */
     fun inspectForDryRun(task: GlafiraTask, nowMillis: Long): GlafiraTaskAuthorizationResult =
-        authorize(task, nowMillis)
+        GlafiraTaskAuthorizationResult(
+            GlafiraTaskAuthorizationStatus.DENIED,
+            "DRY_RUN_POLICY_INSPECTION_UNAVAILABLE"
+        )
 }
 
 /** Unknown tools and missing scopes are denied; risky actions wait for exact owner approval. */
