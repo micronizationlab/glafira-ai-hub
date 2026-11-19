@@ -103,6 +103,12 @@ jobs:
             adb logcat -b crash -d -v threadtime > app/build/outputs/androidTest-crash-logcat.txt 2>&1 || true
             adb shell dumpsys activity instrumentation > app/build/outputs/androidTest-instrumentation.txt 2>&1 || true
             adb logcat -d -v threadtime > app/build/outputs/androidTest-logcat.txt 2>&1 || true
+            # Stop the live logcat follower before shutting down the emulator so the
+            # background adb process cannot keep the Actions step alive after tests finish.
+            if [[ -n "${LOGCAT_PID:-}" ]]; then
+              kill "$LOGCAT_PID" 2>/dev/null || true
+              wait "$LOGCAT_PID" 2>/dev/null || true
+            fi
             adb -s emulator-5554 emu kill >/dev/null 2>&1 || kill "$EMULATOR_PID" 2>/dev/null || true
             wait "$EMULATOR_PID" 2>/dev/null || true
             exit "$status"
