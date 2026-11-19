@@ -180,4 +180,31 @@ class GlafiraDistributedTaskOrchestratorTest {
         assertEquals(1, maximumActive.get())
     }
 
+    @Test
+    fun thrownAgentFailureDoesNotCancelIndependentSiblingOrRunDependents() = runBlocking {
+        val started = Collections.synchronizedSet(mutableSetOf<String>())
+        val orchestrator = GlafiraDistributedTaskOrchestrator(
+            desktop = GlafiraDesktopTaskPort { error("Desktop is not available in this test.") },
+            android = GlafiraLocalTaskPort { task ->
+                started += task.subtaskId
+                if (task.subtaskId == "a") throw IllegalStateException("simulated local agent crash")
+                if (task.subtaskId == "b") delay(50L)
+                GlafiraDistributedTaskResult(task.taskId, GlafiraExecutionNode.ANDROID, true)
+            },
+            desktopCapabilities = { null },
+            safeAndroidCapabilities = safeCapabilities,
+            localMaxParallelTasks = { 2 },
+            clock = { 10_000L }
+        )
+
+        val results = orchestrator.execute("project-1", plan())
+
+        assertEquals(2, results.size)
+        assertEquals(1, results.count { !it.succeeded })
+        assertEquals(1, results.count { it.succeeded })
+        assertTrue(started.containsAll(setOf("a", "b")))
+        assertFalse(started.contains("c"))
+        assertFalse(started.contains("d"))
+    }
+
 }
