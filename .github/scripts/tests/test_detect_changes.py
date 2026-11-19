@@ -20,13 +20,13 @@ class ChangeSelectionTests(unittest.TestCase):
         ):
             (self.root / path).mkdir(parents=True, exist_ok=True)
         (self.root / "settings.gradle.kts").write_text(
-            'rootProject.name = "test"\\n', encoding="utf-8"
+            'rootProject.name = "test"\n', encoding="utf-8"
         )
         (self.root / "ios/GlafiraBridgeKit/Package.swift").write_text(
-            "// test\\n", encoding="utf-8"
+            "// test\n", encoding="utf-8"
         )
         (self.root / "windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj").write_text(
-            "<Project />\\n", encoding="utf-8"
+            "<Project />\n", encoding="utf-8"
         )
 
     def tearDown(self):
@@ -45,6 +45,15 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertFalse(selected["ios"])
         self.assertFalse(selected["agent"])
         self.assertFalse(selected["contracts"])
+
+    def test_ci_script_change_runs_selector_checks_not_app_build(self):
+        selected = MODULE.classify_paths(
+            [".github/scripts/detect_changes.py"], "pull_request", self.root
+        )
+        self.assertTrue(selected["workflow_lint"])
+        self.assertFalse(selected["android"])
+        self.assertFalse(selected["ios"])
+        self.assertFalse(selected["agent"])
 
     def test_android_core_change_selects_android_and_contracts(self):
         selected = MODULE.classify_paths(
@@ -68,7 +77,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertFalse(selected["android_acceptance"])
         harness = self.root / ".github/scripts/run-android-instrumentation.sh"
         harness.parent.mkdir(parents=True, exist_ok=True)
-        harness.write_text("#!/usr/bin/env bash\\n", encoding="utf-8")
+        harness.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
         selected = MODULE.classify_paths(
             ["app/src/main/java/com/micronizationlab/glafira/GlafiraBridgeHostService.kt"],
             "pull_request",
