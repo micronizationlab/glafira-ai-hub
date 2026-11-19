@@ -37,6 +37,11 @@ internal class DesktopTaskRuntime(
     private val workers: ExecutorService = Executors.newFixedThreadPool(maxParallelTasks)
     private val active = java.util.concurrent.ConcurrentHashMap<String, CompletableFuture<DesktopAgentResult>>()
 
+    init {
+        // Recover only at runtime construction, before this worker can own any active tasks.
+        queue.recoverInterruptedTasks()
+    }
+
     /** Claims and starts up to the available worker capacity; safe to call repeatedly. */
     fun dispatchAvailable(): Int {
         check(!closed.get()) { "Desktop task runtime is closed." }
