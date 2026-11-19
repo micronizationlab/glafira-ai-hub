@@ -1,8 +1,10 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.database.sqlite.SQLiteConstraintException
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.After
 import org.junit.Assert.*
@@ -13,20 +15,36 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class GlafiraDurableBridgeIngressInstrumentedTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
-    private val runtime = GlafiraCoreRuntimeOwner.get(context)
+    private lateinit var runtime: GlafiraCoreRuntimeOwner
     private val projectId = "ingress-project-${UUID.randomUUID()}"
     private val operationKey = "ingress-operation-${UUID.randomUUID()}"
     private val device = "ingress-device-001"
     private val secret = ByteArray(32) { 7 }
     private val scopes = setOf("project.read", "conversation.read", "conversation.append")
 
-    @Before fun pauseAutonomousWork() {
+    @Before fun reopenRuntimeStorageForThisFixture(): Unit = runBlocking {
+        runtime = GlafiraCoreRuntimeOwner.get(context)
         // These fault tests exercise admission/storage only, never a LIVE handler.
         runtime.setEnabled(false)
+        GlafiraCoreMaintenanceGate.withExclusive {
+            // Other database fixtures replace/delete the task DB using independent
+            // helpers. The Application singleton can still hold its former SQLite
+            // inode. Reopen it and repeat startup's result-schema initialization;
+            // do not create a second autonomous runtime or reset persisted tasks.
+            runtime.taskStore.close()
+            GlafiraTaskResultStore(runtime.taskStore)
+        }
     }
 
-    @After fun cleanUp() {
-        runtime.taskStore.writableDatabase.delete("core_tasks", "project_id = ?", arrayOf(projectId))
+    @After fun cleanUp(): Unit = runBlocking {
+        GlafiraCoreMaintenanceGate.withExclusive {
+            try {
+                runtime.taskStore.writableDatabase.delete("core_tasks", "project_id = ?", arrayOf(projectId))
+            } finally {
+                // Later fixtures may replace the file; do not leave this helper open.
+                runtime.taskStore.close()
+            }
+        }
     }
 
     private fun request(deviceId: String = device, message: String = "append once") =
@@ -81,7 +99,9 @@ class GlafiraDurableBridgeIngressInstrumentedTest {
         db.execSQL("""CREATE TEMP TRIGGER $trigger BEFORE INSERT ON core_tasks
             WHEN NEW.project_id = '$projectId' BEGIN SELECT RAISE(ABORT, 'injected enqueue failure'); END""".trimIndent())
         try {
-            assertThrows(Exception::class.java) { submit(original) }
+            val failure = assertThrows(SQLiteConstraintException::class.java) { submit(original) }
+            assertTrue("Must fail at the injected trigger, not at an unrelated database error.",
+                failure.message.orEmpty().contains("injected enqueue failure"))
             assertEquals(0, countTasks())
         } finally { db.execSQL("DROP TRIGGER $trigger") }
         val retry = request()
