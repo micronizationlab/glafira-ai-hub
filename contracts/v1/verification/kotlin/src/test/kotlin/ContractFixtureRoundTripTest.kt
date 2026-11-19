@@ -10,7 +10,6 @@ import glafira.contracts.v1.generated.taskstatusevent.TaskStatusEvent
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.parseToJsonElement
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
