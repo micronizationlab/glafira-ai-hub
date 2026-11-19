@@ -51,7 +51,9 @@ class GlafiraCoreTaskExecutor(
     private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE },
     private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null
 ) {
-    private val executionMutex = Mutex()
+    private val executionLimiter = GlafiraCoreExecutionLimiter()
+    private val recoveryMutex = Mutex()
+    @Volatile private var recoveredMaintenanceEpoch = -1L
     private val handlerMap = handlers.toMap()
 
     init {
@@ -64,24 +66,54 @@ class GlafiraCoreTaskExecutor(
         }
     }
 
-    suspend fun executeNext(): GlafiraTaskExecutionResult =
-        GlafiraCoreMaintenanceGate.withExclusive {
-            withContext(dispatcher) {
-                executionMutex.withLock {
-                    val now = clock()
-                    // One budget snapshot governs both orphan recovery and this attempt.
-                    val configuredBudget = runtimeBudget()
-                    val effectiveBudget = configuredBudget.copy(
-                        maxRetries = minOf(configuredBudget.maxRetries, maxAttempts - 1)
-                    )
-                    (queue as? GlafiraInterruptedTaskRecovery)
-                        ?.recoverInterruptedCoreTasks(now, effectiveBudget.maxRetries)
-                    val task = queue.claimNext(now)
-                        ?: return@withLock GlafiraTaskExecutionResult(null, GlafiraTaskExecutionStatus.IDLE)
-                    executeClaimed(task, now, effectiveBudget)
+    suspend fun executeNext(): GlafiraTaskExecutionResult {
+        while (true) {
+            val configuredBudget = runtimeBudget()
+            val effectiveBudget = configuredBudget.copy(
+                maxRetries = minOf(configuredBudget.maxRetries, maxAttempts - 1)
+            )
+            ensureInterruptedTaskRecovery(effectiveBudget.maxRetries)
+
+            // The permit is acquired before the maintenance lease. Waiting workers therefore
+            // do not block a snapshot/restore from draining the handlers already in flight.
+            val result = executionLimiter.withPermit(configuredBudget.maxConcurrentTasks) {
+                GlafiraCoreMaintenanceGate.withExecution {
+                    // A backup/restore may have completed after recovery but before this lease.
+                    // In that case release the lease and run recovery against the new DB epoch.
+                    if (recoveredMaintenanceEpoch != GlafiraCoreMaintenanceGate.maintenanceEpoch) {
+                        null
+                    } else {
+                        withContext(dispatcher) {
+                            val now = clock()
+                            val task = queue.claimNext(now)
+                                ?: return@withContext GlafiraTaskExecutionResult(
+                                    null, GlafiraTaskExecutionStatus.IDLE
+                                )
+                            executeClaimed(task, now, effectiveBudget)
+                        }
+                    }
                 }
             }
+            if (result != null) return result
         }
+    }
+
+    /**
+     * Recovery is performed once per maintenance epoch, before new work can enter.
+     * It is never run beside live handlers, so one worker cannot requeue another worker's task.
+     */
+    private suspend fun ensureInterruptedTaskRecovery(maxRetries: Int) {
+        recoveryMutex.withLock {
+            if (recoveredMaintenanceEpoch == GlafiraCoreMaintenanceGate.maintenanceEpoch) return
+            GlafiraCoreMaintenanceGate.withExclusive {
+                withContext(dispatcher) {
+                    (queue as? GlafiraInterruptedTaskRecovery)
+                        ?.recoverInterruptedCoreTasks(clock(), maxRetries)
+                }
+            }
+            recoveredMaintenanceEpoch = GlafiraCoreMaintenanceGate.maintenanceEpoch
+        }
+    }
 
     private suspend fun executeClaimed(
         task: GlafiraTask,
