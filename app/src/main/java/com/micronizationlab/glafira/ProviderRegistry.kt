@@ -62,3 +62,28 @@ fun saveGlafiraPrimaryProvider(context: Context, provider: ProviderId): Boolean 
     return context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         .edit().putString("glafira_primary_provider", provider.name).commit()
 }
+
+/** Provider model IDs are owner-configurable; this does not imply quota or free availability. */
+fun loadProviderModel(context: Context, id: ProviderId, defaultModel: String): String =
+    context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        .getString("provider_model_${id.name}", null)?.takeIf { validProviderModel(it) } ?: defaultModel
+
+fun saveProviderModel(context: Context, id: ProviderId, model: String): Boolean {
+    val value = model.trim()
+    if (!validProviderModel(value)) return false
+    return context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE).edit()
+        .putString("provider_model_${id.name}", value).commit()
+}
+
+internal fun validProviderModel(value: String): Boolean =
+    value.length in 1..160 && value.none { it.isISOControl() || it.isWhitespace() }
+
+fun defaultProviderModel(id: ProviderId): String = when (id) {
+    ProviderId.GIGACHAT -> "GigaChat-2"
+    ProviderId.OPENAI -> "gpt-4o-mini"
+    ProviderId.DEEPSEEK -> "deepseek-chat"
+    ProviderId.GROK -> "grok-4.7"
+    ProviderId.GEMINI -> "gemini-3.8-flash"
+    ProviderId.OPENROUTER -> "openrouter/free"
+    ProviderId.YANDEX -> ""
+}
