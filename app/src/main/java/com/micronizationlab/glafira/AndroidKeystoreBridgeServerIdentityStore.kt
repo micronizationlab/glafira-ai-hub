@@ -156,8 +156,11 @@ class AndroidKeystoreBridgeServerIdentityStore(context: Context) {
             false,
             ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth)
         )
+        // AndroidKeyStore stores and protects the private key, but it does not expose
+        // Signature services. Android installs this provider specifically to perform
+        // JCA signature operations with non-exportable Android Keystore keys.
         val signer = JcaContentSignerBuilder(SIGNATURE_ALGORITHM)
-            .setProvider(ANDROID_KEY_STORE)
+            .setProvider(ANDROID_KEYSTORE_SIGNATURE_PROVIDER)
             .build(privateKey)
         return JcaX509CertificateConverter()
             .setProvider(BouncyCastleProvider())
@@ -200,6 +203,7 @@ class AndroidKeystoreBridgeServerIdentityStore(context: Context) {
 
     companion object {
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
+        private const val ANDROID_KEYSTORE_SIGNATURE_PROVIDER = "AndroidKeyStoreBCWorkaround"
         private const val PREFS_NAME = "glafira_bridge_server_identity"
         private const val KEY_ALIAS = "glafira.bridge.server.identity"
         private const val KEY_HOST = "host"
