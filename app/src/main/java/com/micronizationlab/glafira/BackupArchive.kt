@@ -98,7 +98,7 @@ object BackupArchive {
                     }
                 }
             }
-            verify(output, passphrase)
+            verify(context, output, passphrase)
             return output
         } catch (error: Exception) {
             output.delete()
