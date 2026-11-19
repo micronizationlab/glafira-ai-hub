@@ -116,14 +116,11 @@ internal class DesktopTaskQueue(
                     DesktopTaskState.RUNNING
                 )
             ) continue
+            val expired = current.envelope.expiresAt <= clock()
             records[index] = current.copy(
-                state = if (current.envelope.expiresAt <= clock()) {
-                    DesktopTaskState.EXPIRED
-                } else {
-                    DesktopTaskState.FAILED
-                },
+                state = if (expired) DesktopTaskState.EXPIRED else DesktopTaskState.FAILED,
                 sequence = current.sequence + 1,
-                errorCode = if (current.envelope.expiresAt <= clock()) null else "WORKER_INTERRUPTED"
+                errorCode = if (expired) null else "WORKER_INTERRUPTED"
             )
             recovered++
         }
