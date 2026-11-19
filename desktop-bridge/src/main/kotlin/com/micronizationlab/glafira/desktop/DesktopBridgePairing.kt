@@ -52,14 +52,18 @@ object DesktopBridgePairing {
         var proofBytes: ByteArray? = null
         try {
             require(capability.size == CAPABILITY_BYTES)
-            nonceBytes = ByteArray(NONCE_BYTES).also(random::nextBytes)
-            val nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes)
-            verifier = MessageDigest.getInstance("SHA-256").digest(capability)
-            message = "GLAFIRA-BRIDGE-PAIRING-V1\u0000$ticketId\u0000$nonce".toByteArray(Charsets.UTF_8)
+            val nonceMaterial = ByteArray(NONCE_BYTES).also(random::nextBytes)
+            nonceBytes = nonceMaterial
+            val nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceMaterial)
+            val verifierMaterial = MessageDigest.getInstance("SHA-256").digest(capability)
+            verifier = verifierMaterial
+            val messageMaterial = "GLAFIRA-BRIDGE-PAIRING-V1\u0000$ticketId\u0000$nonce".toByteArray(Charsets.UTF_8)
+            message = messageMaterial
             val mac = Mac.getInstance("HmacSHA256")
-            mac.init(SecretKeySpec(verifier, "HmacSHA256"))
-            proofBytes = mac.doFinal(message)
-            val proof = proofBytes.joinToString("") { "%02x".format(it) }
+            mac.init(SecretKeySpec(verifierMaterial, "HmacSHA256"))
+            val proofMaterial = mac.doFinal(messageMaterial)
+            proofBytes = proofMaterial
+            val proof = proofMaterial.joinToString("") { "%02x".format(it) }
             return DesktopBridgeEnrollmentRequest(
                 ticketId = ticketId,
                 clientNonce = nonce,
