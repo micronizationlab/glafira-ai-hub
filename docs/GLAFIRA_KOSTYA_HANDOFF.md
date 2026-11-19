@@ -21,7 +21,7 @@ Observed owner-device failure:
 Root cause:
 - The EC private key is generated and retained in Android Keystore under provider `AndroidKeyStore`.
 - That provider is the keystore/key-generation provider; it does not provide the JCA `Signature` implementation requested by Bouncy Castle's `JcaContentSignerBuilder`.
-- Android provides `AndroidKeyStoreBCWorkaround` specifically for JCA signature operations using non-exportable Android Keystore keys.
+- Android registers `AndroidKeyStoreBCWorkaround` specifically for JCA signature operations using non-exportable Android Keystore keys; JCA provider selection should be allowed to choose it based on key compatibility.
 
 Change made:
 - Keep `ANDROID_KEY_STORE = "AndroidKeyStore"` for key generation and keystore access.
