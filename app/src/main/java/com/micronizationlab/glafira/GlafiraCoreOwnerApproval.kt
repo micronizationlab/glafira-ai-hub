@@ -54,7 +54,7 @@ data class GlafiraPendingActionApproval(
     val reviewDetails: String
         get() = runCatching {
             val json = org.json.JSONObject(task.payload)
-            val secretKey = Regex("(?i).*(password|passphrase|secret|token|api.?key|authorization|credential|private.?key).*")
+            val secretKey = Regex("(?i).*(password|passphrase|secret|token|api.?key|authorization|credential|private.?key|cookie|signature|auth).*")
             val keys = json.keys().asSequence().filterNot { secretKey.matches(it) }.sorted().toList()
             val visible = keys.take(MAX_REVIEW_FIELDS).map { key ->
                 val rawValue = json.opt(key)?.toString().orEmpty()
@@ -94,7 +94,8 @@ internal object GlafiraOwnerApprovalPreviewRedactor {
         Regex("(?i)(password\\s*[:=]\\s*)[^\\s,;]{4,}"),
         Regex("(?i)(пароль\\s*[:=]\\s*)[^\\s,;]{4,}"),
         Regex("(?i)\\b(?:ghp_|gho_|github_pat_)[A-Za-z0-9_]{20,}\\b"),
-        Regex("\\bAKIA[0-9A-Z]{16}\\b")
+        Regex("\\bAKIA[0-9A-Z]{16}\\b"),
+        Regex("\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b")
     )
 
     fun redact(value: String): String {
