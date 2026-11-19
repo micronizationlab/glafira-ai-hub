@@ -1,0 +1,47 @@
+name: GLAFIRA Desktop Bridge Test Client
+
+on:
+  push:
+    branches:
+      - glafira/desktop-shutdown-drain-guard
+  pull_request:
+    branches:
+      - glafira/desktop-shutdown-drain-guard
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glafira-desktop-bridge-client-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-desktop-bridge:
+    name: Build portable Desktop Bridge CLI distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Desktop Bridge branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build distribution ZIP
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :desktop-bridge:distZip
+
+      - name: Upload Desktop Bridge client
+        uses: actions/upload-artifact@v4
+        with:
+          name: glafira-desktop-bridge-client
+          path: desktop-bridge/build/distributions/*.zip
+          if-no-files-found: error
+          retention-days: 14
