@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -64,6 +64,29 @@ try {
       }
       console.log(`Generated ${target.language} ${definitionName}`);
     }
+  }
+
+  // quicktype emits the same file-level JSON encoder/decoder helpers into every
+  // standalone Swift message file. Keep one shared definition so the files
+  // compile together as a single Swift module.
+  const swiftDirectory = resolve(outputRoot, "swift");
+  const swiftFiles = readdirSync(swiftDirectory)
+    .filter(filename => filename.endsWith(".swift"))
+    .sort();
+  const helperMarker = "// MARK: - Helper functions for creating encoders and decoders";
+  let sharedSwiftHelpersKept = false;
+  for (const filename of swiftFiles) {
+    const output = resolve(swiftDirectory, filename);
+    const generated = readFileSync(output, "utf8");
+    const markerIndex = generated.indexOf(helperMarker);
+    if (markerIndex < 0) {
+      throw new Error(`Swift DTO file is missing shared JSON helpers: ${filename}`);
+    }
+    if (!sharedSwiftHelpersKept) {
+      sharedSwiftHelpersKept = true;
+      continue;
+    }
+    writeFileSync(output, generated.slice(0, markerIndex).trimEnd() + "\\n");
   }
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
