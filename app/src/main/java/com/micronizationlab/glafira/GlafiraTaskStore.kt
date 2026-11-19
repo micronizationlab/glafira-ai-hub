@@ -217,11 +217,33 @@ class GlafiraTaskStore(context: Context) :
     @Synchronized
     fun queuedDesktopTasks(limit: Int = 100): List<GlafiraTask> {
         require(limit in 1..500)
-        return readableDatabase.query(TABLE_TASKS, null, "task_type = ? AND state = ?",
-            arrayOf(DESKTOP_TASK_TYPE, GlafiraTaskState.QUEUED.databaseValue),
-            null, null, "priority DESC, created_at ASC", limit.toString()).use { cursor ->
-            buildList { while (cursor.moveToNext()) add(cursor.toTask()) }
-        }
+        val db = writableDatabase
+        val now = System.currentTimeMillis()
+        db.beginTransaction()
+        try {
+            db.execSQL(
+                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+                    "WHERE task_type = ? AND state = ? AND task_id IN " +
+                    "(SELECT task_id FROM core_desktop_leases WHERE lease_expires_at <= ?) AND attempt_count < 3",
+                arrayOf(GlafiraTaskState.QUEUED.databaseValue, now, "DESKTOP_LEASE_EXPIRED",
+                    DESKTOP_TASK_TYPE, GlafiraTaskState.RUNNING.databaseValue, now)
+            )
+            db.execSQL(
+                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+                    "WHERE task_type = ? AND state = ? AND task_id IN " +
+                    "(SELECT task_id FROM core_desktop_leases WHERE lease_expires_at <= ?) AND attempt_count >= 3",
+                arrayOf(GlafiraTaskState.FAILED.databaseValue, now, "DESKTOP_DELIVERY_RETRIES_EXCEEDED",
+                    DESKTOP_TASK_TYPE, GlafiraTaskState.RUNNING.databaseValue, now)
+            )
+            db.delete("core_desktop_leases", "lease_expires_at <= ?", arrayOf(now.toString()))
+            val tasks = db.query(TABLE_TASKS, null, "task_type = ? AND state = ?",
+                arrayOf(DESKTOP_TASK_TYPE, GlafiraTaskState.QUEUED.databaseValue),
+                null, null, "priority DESC, created_at ASC", limit.toString()).use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.toTask()) }
+            }
+            db.setTransactionSuccessful()
+            return tasks
+        } finally { db.endTransaction() }
     }
 
     @Synchronized
