@@ -127,3 +127,11 @@ internal object GlafiraTaskRecoveryPolicy {
         else GlafiraTaskRecoveryDecision(GlafiraTaskState.RETRY_SCHEDULED, "CORE_EXECUTION_INTERRUPTED")
     }
 }
+
+/** Decrypted Core result returned only after a project-scoped lookup. */
+data class GlafiraCoreTaskResultRecord(
+    val taskId: String,
+    val projectId: String,
+    val result: String,
+    val completedAtMillis: Long
+)
