@@ -1,10 +1,10 @@
-# SMM Specialist Role
+# Press Secretary / Communications & Media
 
 ## Purpose
 
-Add **SMM Specialist** as a first-class, assignable AI employee in GLAFIRA AI HUB. The role owns social-media and messaging communications for the projects/brands to which it is assigned. It is a role/persona with scoped capabilities, not a model provider and not an independent authority outside Glafira Core.
+Add **Press Secretary** as a first-class, assignable AI employee in GLAFIRA AI HUB. The role owns social-media, messaging, public communications and spokesperson workflows for assigned projects/brands. It is a role/persona with scoped capabilities, not a model provider and not an independent authority outside Glafira Core.
 
-Glafira remains the coordinator and owner-facing assistant. The SMM Specialist may use configured LLM providers through the existing orchestration layer; its role instructions and permissions remain separate from the selected model.
+Glafira remains the coordinator and owner-facing assistant. The Press Secretary may use configured LLM providers through the existing orchestration layer; its role instructions and permissions remain separate from the selected model.
 
 ## Responsibilities
 
@@ -15,6 +15,8 @@ Glafira remains the coordinator and owner-facing assistant. The SMM Specialist m
 - Triage leads and support requests; create or update CRM records only through approved integrations and permissions.
 - Escalate complaints, refund requests, legal/medical/financial claims, threats, sensitive personal data and uncertain cases to the owner or a designated human.
 - Track channel activity and prepare performance summaries using available platform analytics.
+- Continuously research platform changes, recommendation algorithms, advertising formats, creator tools, policy updates and emerging promotion practices across Instagram, Telegram, MAX, VK, Facebook and other relevant channels; date-stamp sources and assess applicability before recommending experiments.
+- Prepare spokesperson scripts, talking points, interviews, presentations and audience-facing speech; in a later phase, operate as an explicitly disclosed AI voice operator or synthetic spokesperson.
 - Maintain a consistent, project-specific brand voice and response knowledge base.
 
 ## Channel coverage
@@ -33,7 +35,7 @@ Prefer official APIs and approved integrations. Do not bypass platform protectio
 
 ## Architecture
 
-- `SmmSpecialistRole`: role prompt, responsibility boundaries and escalation rules.
+- `PressSecretaryRole`: role prompt, responsibility boundaries and escalation rules.
 - `SocialChannelConnector`: common interface for channel adapters.
 - `TelegramConnector`, `VkConnector`, `InstagramConnector`, `FacebookConnector`, `MaxConnector`: independent adapters, implemented only against supported APIs and capabilities.
 - `ChannelCapabilityRegistry`: declares per-account capabilities such as read messages, read comments, draft reply, send reply, publish post, upload media, read analytics.
@@ -57,7 +59,7 @@ All channel credentials must be managed by the secure credential/OAuth broker. N
 
 ## Owner experience
 
-The SMM Specialist appears as a selectable role in the project's employee/agent list. The owner can assign it to a project and connect one or more social accounts. The interface should show each account's connection state and actual available capabilities; unavailable actions must not be displayed as active.
+The Press Secretary appears as a selectable role in the project's employee/agent list. The owner can assign it to a project and connect one or more social accounts. The interface should show each account's connection state and actual available capabilities; unavailable actions must not be displayed as active.
 
 The role can be assigned a configured provider/model by Glafira's model-routing policy. Changing the provider must not change the role's permissions, brand profile or conversation history.
 
@@ -70,5 +72,6 @@ The role can be assigned a configured provider/model by Glafira's model-routing 
 5. Investigate MAX official developer access and implement only when a supported API is available.
 6. Add publishing queue, owner approval, audit trail and safe per-channel auto-reply rules.
 7. Add CRM integration and analytics after the channel foundation is stable.
+8. Add spokesperson studio: approved voice sessions, speech scripts, presentation rehearsal and disclosed AI-generated speech; never impersonate the owner or another person without explicit authorization.
 
 Each adapter must have automated tests for permission denial, expired credentials, rate limiting, duplicate events, retries, webhook verification and safe failure. Never report a message or post as sent until the connector confirms success.
