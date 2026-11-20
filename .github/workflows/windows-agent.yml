@@ -29,6 +29,10 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - name: Setup Python for report verification
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
       - name: Restore
         run: dotnet restore windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj
       - name: Run Agent tests and write TRX report
