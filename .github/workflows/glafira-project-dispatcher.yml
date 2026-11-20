@@ -22,7 +22,8 @@ permissions:
 
 concurrency:
   group: glafira-project-dispatcher
-  cancel-in-progress: true
+  # Serialize global status reconciliation; do not cancel an active scan because another PR changed.
+  cancel-in-progress: false
 
 jobs:
   project-status:
