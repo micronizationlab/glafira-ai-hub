@@ -21,6 +21,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.work.getWorkInfosForUniqueWorkFlow
+import androidx.work.WorkManager
+import androidx.work.WorkInfo
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +63,28 @@ fun BackupSettingsSection() {
     var wifiOnly by remember { mutableStateOf(prefs.getBoolean("backup_wifi_only", true)) }
     var lastSuccess by remember { mutableStateOf(prefs.getLong(GlafiraBackupWorker.KEY_LAST_SUCCESS, 0L)) }
     var folderError by remember { mutableStateOf<String?>(null) }
+    var persistedStatus by remember { mutableStateOf(prefs.getString(GlafiraBackupWorker.KEY_LAST_STATUS, null)) }
+    var lastError by remember { mutableStateOf(prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)) }
+    val workManager = remember { WorkManager.getInstance(context) }
+
+    LaunchedEffect(workManager) {
+        workManager.getWorkInfosForUniqueWorkFlow("glafira_backup_now").collect { infos ->
+            val work = infos.lastOrNull() ?: return@collect
+            status = BackupWorkStatus.message(work.state, work.runAttemptCount)
+            persistedStatus = prefs.getString(GlafiraBackupWorker.KEY_LAST_STATUS, null)
+            lastError = prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)
+            lastSuccess = prefs.getLong(GlafiraBackupWorker.KEY_LAST_SUCCESS, 0L)
+        }
+    }
+    LaunchedEffect(workManager) {
+        workManager.getWorkInfosForUniqueWorkFlow("glafira_daily_backup").collect { infos ->
+            val work = infos.lastOrNull() ?: return@collect
+            if (work.state == WorkInfo.State.FAILED || work.state == WorkInfo.State.CANCELLED) {
+                lastError = prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)
+                persistedStatus = prefs.getString(GlafiraBackupWorker.KEY_LAST_STATUS, null)
+            }
+        }
+    }
 
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -71,11 +97,23 @@ fun BackupSettingsSection() {
                 )
                 folderUri = uri.toString()
                 prefs.edit().putString(GlafiraBackupWorker.KEY_TREE_URI, folderUri).apply()
+                val persistedWriteGrant = context.contentResolver.persistedUriPermissions.any {
+                    it.uri == uri && it.isWritePermission
+                }
+                val writableFolder = DocumentFile.fromTreeUri(context, uri)?.canWrite() == true
+                if (!persistedWriteGrant || !writableFolder) {
+                    error("Провайдер не выдал постоянный доступ на запись. Выбери папку повторно и подтверди доступ.")
+                }
+                folderUri = uri.toString()
+                prefs.edit().putString(GlafiraBackupWorker.KEY_TREE_URI, folderUri).apply()
                 folderError = null
-                status = "Папка облачного хранилища подключена."
+                status = "Папка облачного хранилища подключена и доступна для записи."
             } catch (error: Exception) {
-                folderError = "Не удалось сохранить доступ к папке: ${error.message ?: "ошибка разрешения"}"
+                folderError = "Не удалось подключить папку: ${error.message ?: "ошибка разрешения"}"
+                status = "Выбранная папка не подключена. Предыдущая настройка сохранена."
             }
+        } else {
+            status = "Выбор папки отменён. Текущая настройка не изменена."
         }
     }
 
@@ -135,7 +173,15 @@ fun BackupSettingsSection() {
                 Text("Сохрани пароль отдельно. На этом телефоне он хранится в зашифрованном виде: для повторного ручного запуска поле можно оставить пустым. На новом устройстве потребуется ввести пароль снова.", color = Tx, fontSize = 11.sp)
 
                 OutlinedButton(
-                    onClick = { folderPicker.launch(null) },
+                    onClick = {
+                        try {
+                            folderError = null
+                            folderPicker.launch(null)
+                        } catch (error: Exception) {
+                            folderError = "Не удалось открыть выбор папки: ${error.message ?: "ошибка Android"}"
+                            status = "Проверь доступность Google Drive / Яндекс Диска и повтори попытку."
+                        }
+                    },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(if (folderUri == null) "Выбрать папку Google Drive / Яндекс Диска" else "Изменить папку облачной копии") }
@@ -248,9 +294,7 @@ fun BackupSettingsSection() {
                 if (lastSuccess > 0L) {
                     Text("Последняя успешная копия: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(lastSuccess))}", color = Gr, fontSize = 11.sp)
                 }
-                val lastError = prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)
                 if (!lastError.isNullOrBlank()) Text("Последняя ошибка: $lastError", color = Red, fontSize = 11.sp)
-                val persistedStatus = prefs.getString(GlafiraBackupWorker.KEY_LAST_STATUS, null)
                 if (!persistedStatus.isNullOrBlank()) {
                     Text("Последний результат: $persistedStatus", color = Tx, fontSize = 10.sp)
                 }
