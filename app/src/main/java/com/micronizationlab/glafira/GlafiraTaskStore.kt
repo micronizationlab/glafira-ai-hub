@@ -747,7 +747,7 @@ class GlafiraTaskStore(context: Context) :
     /** Propagates terminal predecessor failure for both Core and Desktop task lanes. */
     private fun failTasksWithFailedDependencies(db: SQLiteDatabase, nowMillis: Long) {
         db.execSQL(
-            "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+            "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ?, retry_at = NULL " +
                 "WHERE state IN (?, ?) AND task_id IN (" +
                 "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
                 "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
