@@ -565,3 +565,14 @@ Before public launch, model at least 100 / 1,000 / 10,000 subscribers and multip
 
 Pilot metrics: activation, paid conversion, day-7/day-30 retention, monthly active use, AI task mix, cost per accepted deliverable, VPN traffic per paid user, compute participation rate, accepted work per device class, net reward after incremental cost, support burden and refunds. Stop or redesign any task class whose net participant benefit is negative or opaque.
 
+
+
+### 16.7 Competitive positioning guardrail
+
+The owner-selected product direction is a full AI office, not a chatbot or thin model aggregator. Competitor research shows that multi-model access, project-scoped chats/files/instructions, provider routing/fallback, web search, file input, voice and agentic research are already available in other products. GLAFIRA must not claim any of these individually as unique.
+
+The target differentiation is the combination of persistent owner-controlled projects and tasks, accountable specialist agents, Windows Desktop + Windows Agent execution, optional user-owned participant compute, an audited funded task marketplace, Mother account/wallet control plane, optional VPN entitlement and transparent GCU/GLF economics.
+
+This is a target-state description, not a current feature claim. The current build was characterized in a 2026-11-18 external technical review as an Android LLM-orchestration client with nascent multi-agent logic; Web/Browser Agent, Desktop Bridge and CRM were still planned. Every public claim must be gated by implementation and end-to-end acceptance.
+
+The proposed 500 RUB GLAFIRA subscription must be compared directly with multi-model aggregators such as Poe, whose published entry subscription starts at $4.99/month (about 409 RUB at the 2026-11-20 CBR rate before local tax/pricing) and uses capped compute points. GLAFIRA's premium over that entry price must be justified by operational workspaces, agents, local/desktop execution, service network value and transparent optional contribution rewards.
