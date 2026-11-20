@@ -46,6 +46,17 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
         CryptographicOperations.ZeroMemory(secret);
         CryptographicOperations.ZeroMemory(credential.HmacSecret);
 
+        // Simulate process death after credential/enrollment commit but before
+        // the pending scheduler row was persisted; dashboard reconciliation repairs it.
+        using (var connection = new SqliteConnection($"Data Source={_databasePath}"))
+        {
+            connection.Open();
+            using var delete = connection.CreateCommand();
+            delete.CommandText = "DELETE FROM Agents WHERE agent_id = 'agent-01';";
+            delete.ExecuteNonQuery();
+        }
+        Assert.Equal(1, hubStore.ReconcilePendingAgents(_clock.GetUtcNow()));
+
         var pending = Assert.Single(hubStore.GetAgents(_clock.GetUtcNow()));
         Assert.Equal("agent-01", pending.AgentId);
         Assert.False(pending.OwnerApproved);
