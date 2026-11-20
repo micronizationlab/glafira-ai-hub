@@ -173,7 +173,7 @@ class PinnedHttpsGlafiraBridgeClient(
     }
 }
 
-internal data class BridgeHttpsEndpoint private constructor(private val origin: URI) {
+internal class BridgeHttpsEndpoint private constructor(private val origin: URI) {
     fun resolveRequestUrl(): URI = origin.resolve("/bridge/v1/requests")
 
     companion object {
