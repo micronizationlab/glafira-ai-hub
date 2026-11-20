@@ -109,6 +109,9 @@ object BackupArchive {
     fun verify(context: Context, file: File, passphrase: CharArray): BackupVerification {
         val extracted = decryptToStaging(context, file, passphrase)
         try {
+            require(extracted.appId == context.packageName) {
+                "Резервная копия создана для другого приложения."
+            }
             return extracted.verification
         } finally {
             extracted.directory.deleteRecursively()
