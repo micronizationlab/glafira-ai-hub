@@ -45,17 +45,35 @@
     </StackPanel>
     <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" Foreground="#52645D" FontSize="11" Margin="0,8,0,0"/>
     <TabControl Background="White">
-      <TabItem Header="АГЕНТЫ"><DataGrid ItemsSource="{Binding Agents}">
-        <DataGrid.Columns>
-          <DataGridTextColumn Header="Agent ID" Binding="{Binding AgentId}" Width="*"/>
-          <DataGridTextColumn Header="Устройство" Binding="{Binding DeviceId}" Width="*"/>
-          <DataGridTextColumn Header="Возможности" Binding="{Binding Capabilities}" Width="2*"/>
-          <DataGridTextColumn Header="Параллельность" Binding="{Binding MaxParallelTasks}" Width="110"/>
-          <DataGridCheckBoxColumn Header="Одобрен" Binding="{Binding OwnerApproved}" Width="80"/>
-          <DataGridCheckBoxColumn Header="Онлайн" Binding="{Binding IsOnline}" Width="70"/>
-          <DataGridTextColumn Header="Последний heartbeat" Binding="{Binding LastHeartbeat, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="150"/>
-        </DataGrid.Columns>
-      </DataGrid></TabItem>
+      <TabItem Header="АГЕНТЫ">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Bottom" Background="#F4F7F6" CornerRadius="8" Padding="12" Margin="0,8,0,0">
+            <StackPanel>
+              <TextBlock Text="ОДОБРЕНИЕ И ДОСТУПЫ ВЛАДЕЛЬЦА" FontWeight="Bold" FontSize="11" Foreground="#176B55"/>
+              <WrapPanel Margin="0,8,0,0" VerticalAlignment="Center">
+                <TextBlock Text="Capabilities:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox x:Name="AgentCapabilitiesInput" Width="330" Margin="0,0,12,0"/>
+                <TextBlock Text="Параллельность:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox x:Name="AgentParallelInput" Width="48" Text="1" Margin="0,0,12,0"/>
+                <Button Content="Одобрить выбранного" Height="30" Padding="10,0" Margin="0,0,8,0" Click="ApproveSelectedAgent_Click"/>
+                <Button Content="Отозвать доступ" Height="30" Padding="10,0" Click="RevokeSelectedAgent_Click"/>
+              </WrapPanel>
+              <TextBlock Text="Допустимые возможности: document.analysis, code.build, web.research, core.orchestration. Сопряжение создаёт агента без прав; права появляются только после вашего одобрения." FontSize="10" Foreground="#52645D" TextWrapping="Wrap" Margin="0,7,0,0"/>
+            </StackPanel>
+          </Border>
+          <DataGrid x:Name="AgentsGrid" ItemsSource="{Binding Agents}" IsReadOnly="True" AutoGenerateColumns="False" SelectionMode="Single">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Agent ID" Binding="{Binding AgentId}" Width="*"/>
+              <DataGridTextColumn Header="Устройство" Binding="{Binding DeviceId}" Width="*"/>
+              <DataGridTextColumn Header="Возможности" Binding="{Binding Capabilities}" Width="2*"/>
+              <DataGridTextColumn Header="Параллельность" Binding="{Binding MaxParallelTasks}" Width="110"/>
+              <DataGridCheckBoxColumn Header="Одобрен" Binding="{Binding OwnerApproved}" Width="80"/>
+              <DataGridCheckBoxColumn Header="Онлайн" Binding="{Binding IsOnline}" Width="70"/>
+              <DataGridTextColumn Header="Последний heartbeat" Binding="{Binding LastHeartbeat, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="150"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
       <TabItem Header="ОЧЕРЕДЬ ЗАДАЧ"><DataGrid ItemsSource="{Binding Tasks}" SelectionChanged="Tasks_SelectionChanged">
         <DataGrid.Columns>
           <DataGridTextColumn Header="Task ID" Binding="{Binding TaskId}" Width="1.5*"/>
@@ -82,6 +100,6 @@
         </DataGrid>
       </TabItem>
     </TabControl>
-    <TextBlock DockPanel.Dock="Bottom" Text="Режим мониторинга: только чтение. Сопряжение, выдача разрешений и LIVE-действия здесь пока не включены." Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0"/>
+    <TextBlock DockPanel.Dock="Bottom" Text="Bridge pairing и owner approval доступны; Agent runtime, installer и LIVE-действия ещё не включены." Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0"/>
   </DockPanel>
 </Window>
