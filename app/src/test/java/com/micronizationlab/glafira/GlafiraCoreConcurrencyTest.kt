@@ -319,4 +319,31 @@ class GlafiraCoreConcurrencyTest {
         assertNull(queue.result("cancelled-write"))
     }
 
+    @Test
+    fun liveModeFallsBackToDryRunWhenExactTaskAdmissionIsMissing() = runBlocking {
+        val queue = ConcurrentQueue(listOf(task("not-admitted")))
+        val handlerCalls = AtomicInteger()
+        val executor = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                handlerCalls.incrementAndGet()
+                GlafiraTaskExecutionOutcome.Succeeded("must not execute")
+            }),
+            dispatcher = Dispatchers.Default,
+            clock = { 10_000L },
+            executionMode = { GlafiraExecutionMode.LIVE },
+            liveTaskAdmission = GlafiraLiveTaskAdmission.DENY_ALL
+        )
+
+        val result = executor.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED, result.status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.getTask("not-admitted")?.state)
+        assertEquals(0, handlerCalls.get())
+        assertNull(queue.result("not-admitted"))
+    }
+
 }

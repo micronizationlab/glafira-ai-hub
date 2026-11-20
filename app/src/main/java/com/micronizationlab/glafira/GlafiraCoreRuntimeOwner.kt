@@ -25,10 +25,13 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         ownerApprovalStore,
         bridgeCredentialStore
     )
+    private val liveRunStore = GlafiraCoreLiveRunStore(taskStore)
 
     private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
-    // Live mode remains unavailable until a separate owner-approved run API is implemented.
-    private val executionMode = GlafiraExecutionMode.DRY_RUN
+    // Core evaluates LIVE per task. Only a fresh, durable, owner-approved read grant can pass;
+    // every other task falls back to a new Dry Run preview without invoking its handler.
+    private val executionMode = GlafiraExecutionMode.LIVE
+    private val desktopExecutionMode = GlafiraExecutionMode.DRY_RUN
     internal val executionLimiter = GlafiraCoreExecutionLimiter()
 
     private val executor = GlafiraCoreTaskExecutor(
@@ -43,6 +46,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         ),
         runtimeBudget = { loadRuntimeBudget() },
         executionMode = { executionMode },
+        liveTaskAdmission = liveRunStore,
         dryRunPreviewPersistence = taskStore,
         executionLimiter = executionLimiter
     )
@@ -191,7 +195,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     ): GlafiraDesktopTaskLease? {
         // Desktop workers cannot bypass the Core Dry Run gate. Preview plans are delivered
         // through previewDesktopTask; this claim API never issues a lease in DRY_RUN.
-        if (executionMode == GlafiraExecutionMode.DRY_RUN) return null
+        if (desktopExecutionMode == GlafiraExecutionMode.DRY_RUN) return null
         val now = System.currentTimeMillis()
         for (candidate in taskStore.queuedDesktopTasks()) {
             val configuredConcurrency = loadRuntimeBudget().maxConcurrentTasks
@@ -242,7 +246,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
      * the task. Only the plan is returned over Bridge; executable payload values stay in Core.
      */
     fun previewDesktopTask(capabilities: Set<String>): GlafiraDryRunPlan? {
-        if (executionMode != GlafiraExecutionMode.DRY_RUN) return null
+        if (desktopExecutionMode != GlafiraExecutionMode.DRY_RUN) return null
         require(capabilities.size <= 16)
         val authorizer = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource)
         val now = System.currentTimeMillis()
@@ -331,6 +335,22 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     ): Boolean {
         if (!ownerSession.consume()) return false
         return taskStore.reviewDryRunPreview(taskId, expectedPlanHash, decision)
+    }
+
+    /**
+     * Requeues one acknowledged read-only preview for LIVE execution after a second fresh owner
+     * authentication. The exact task and plan remain bound to a short-lived durable grant.
+     */
+    fun approveLiveReadRun(
+        taskId: String,
+        expectedPlanHash: String,
+        ownerSession: GlafiraCoreOwnerSession
+    ): GlafiraLiveRunApprovalMutation {
+        val result = liveRunStore.approveReadOnlyRun(taskId, expectedPlanHash, ownerSession)
+        if (result == GlafiraLiveRunApprovalMutation.APPROVED && isEnabled) {
+            GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+        }
+        return result
     }
 
     fun pendingOwnerApprovals(): List<GlafiraPendingActionApproval> =

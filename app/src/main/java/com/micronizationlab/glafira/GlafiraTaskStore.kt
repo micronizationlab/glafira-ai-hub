@@ -93,6 +93,7 @@ class GlafiraTaskStore(context: Context) :
         createCoreTaskResultsSchema(db)
         createTaskDependenciesSchema(db)
         createTaskPlansSchema(db)
+        GlafiraCoreLiveRunStore.createSchema(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -103,7 +104,8 @@ class GlafiraTaskStore(context: Context) :
         if (oldVersion < 6) createTaskDependenciesSchema(db)
         if (oldVersion < 7) createTaskPlansSchema(db)
         if (oldVersion < 8) migrateDesktopLeaseFencing(db)
-        if (newVersion > 8) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 9) GlafiraCoreLiveRunStore.createSchema(db)
+        if (newVersion > 9) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
     }
 
     private fun createTaskDependenciesSchema(db: SQLiteDatabase) {
@@ -233,6 +235,32 @@ class GlafiraTaskStore(context: Context) :
             ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
             if (existingHash != null) {
                 check(existingHash == plan.planHash) { "DRY_RUN_PLAN_HASH_CONFLICT" }
+                val task = queryTask(db, taskId) ?: return false
+                if (task.projectId != plan.projectId || task.taskType != plan.toolId ||
+                    task.state !in expectedStates
+                ) return false
+                val placeholders = expectedStates.joinToString(",") { "?" }
+                val changed = db.update(
+                    TABLE_TASKS,
+                    ContentValues().apply {
+                        put("state", GlafiraTaskState.WAITING_FOR_OWNER.databaseValue)
+                        put("updated_at", nowMillis)
+                        put("last_error", "DRY_RUN_PREVIEW_STORED")
+                    },
+                    "task_id = ? AND state IN ($placeholders)",
+                    arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray()
+                )
+                if (changed != 1) return false
+                db.update(
+                    GlafiraDryRunPreviewSchema.TABLE,
+                    ContentValues().apply {
+                        put("review_status", GlafiraDryRunReviewStatus.PENDING.name)
+                        putNull("reviewed_at")
+                        put("created_at", nowMillis)
+                    },
+                    "task_id = ? AND plan_hash = ?",
+                    arrayOf(taskId, plan.planHash)
+                )
                 db.setTransactionSuccessful()
                 return true
             }
@@ -1448,7 +1476,7 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 8
+        private const val DATABASE_VERSION = 9
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"

@@ -216,7 +216,10 @@ internal class GlafiraPortableCoreSnapshot(
         private const val PREVIEWS = "core_dry_run_previews"
         private const val HISTORY = "core_task_history"
         private val TERMINAL = setOf("succeeded", "failed", "cancelled")
-        private val NON_PORTABLE = listOf("core_action_approvals", "core_desktop_leases", "core_desktop_nodes")
+        private val NON_PORTABLE = listOf(
+            "core_action_approvals", "core_desktop_leases", "core_desktop_nodes",
+            GlafiraCoreLiveRunStore.TABLE
+        )
         private val NULLABLE = setOf("deadline_at", "retry_at", "last_error", "result_ciphertext", "error_code", "reviewed_at", "from_state", "reason")
         private val NUMBERS = setOf("event_id", "ordinal", "created_at", "updated_at", "attempt_count", "deadline_at", "retry_at", "completed_at", "reviewed_at", "changed_at")
         private val TABLES = listOf(

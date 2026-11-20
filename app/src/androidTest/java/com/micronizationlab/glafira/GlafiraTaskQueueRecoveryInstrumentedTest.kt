@@ -2,6 +2,7 @@ package com.micronizationlab.glafira
 
 import android.content.ContentValues
 import android.content.Context
+import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
@@ -13,6 +14,7 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
@@ -194,7 +196,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         db.version = 3
         store.close()
         store = GlafiraTaskStore(context)
-        assertEquals(8, store.writableDatabase.version)
+        assertEquals(9, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy")?.state)
         assertEquals("HISTORY_BASELINE", store.taskHistory("legacy", "project").single().reason)
         store.claimNext(2_000)
@@ -208,7 +210,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         store.close()
         store = GlafiraTaskStore(context)
 
-        assertEquals(8, store.writableDatabase.version)
+        assertEquals(9, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy-v4")?.state)
         assertTrue(store.readableDatabase.rawQuery(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'core_task_results'",
@@ -337,6 +339,116 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(GlafiraTaskExecutionStatus.SUCCEEDED, result.status)
         assertEquals("persisted by Core executor", store.coreTaskResult("executor-result", "project")?.result)
         assertEquals(GlafiraTaskState.SUCCEEDED, store.getTask("executor-result")?.state)
+    }
+
+    @Test fun acknowledgedReadPreviewNeedsFreshDurableGrantBeforeLiveHandlerRuns() = runBlocking {
+        val read = task("reviewed-live-read").copy(
+            payload = """{"actionSummary":"Read current project metadata"}""",
+            requiredScopes = setOf("project.read"),
+            deadlineAtMillis = 100_000L
+        )
+        store.enqueue(read)
+        val handlerCalls = java.util.concurrent.atomic.AtomicInteger()
+        val dryExecutor = GlafiraCoreTaskExecutor(
+            queue = store,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                handlerCalls.incrementAndGet()
+                GlafiraTaskExecutionOutcome.Succeeded("unexpected dry-run execution")
+            }),
+            dispatcher = Dispatchers.IO,
+            clock = { 2_000L },
+            executionMode = { GlafiraExecutionMode.LIVE },
+            liveTaskAdmission = GlafiraLiveTaskAdmission.DENY_ALL,
+            dryRunPreviewPersistence = store
+        )
+
+        assertEquals(GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED, dryExecutor.executeNext().status)
+        assertEquals(0, handlerCalls.get())
+        val preview = requireNotNull(store.dryRunPreview(read.taskId))
+        assertEquals(GlafiraDryRunReviewStatus.PENDING, preview.reviewStatus)
+        assertTrue(store.reviewDryRunPreview(
+            read.taskId, preview.planHash, GlafiraDryRunReviewStatus.ACKNOWLEDGED, 2_500L
+        ))
+        val liveRuns = GlafiraCoreLiveRunStore(store)
+        assertEquals(
+            GlafiraLiveRunApprovalMutation.APPROVED,
+            liveRuns.approveReadOnlyRun(read.taskId, preview.planHash, ownerSession(), 3_000L)
+        )
+        assertEquals(GlafiraTaskState.QUEUED, store.getTask(read.taskId)?.state)
+
+        store.close()
+        store = GlafiraTaskStore(context)
+        val reopenedAdmission = GlafiraCoreLiveRunStore(store)
+        assertTrue(reopenedAdmission.allows(requireNotNull(store.getTask(read.taskId)), 4_000L))
+        val liveExecutor = GlafiraCoreTaskExecutor(
+            queue = store,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                handlerCalls.incrementAndGet()
+                GlafiraTaskExecutionOutcome.Succeeded("durable reviewed read")
+            }),
+            dispatcher = Dispatchers.IO,
+            clock = { 4_000L },
+            executionMode = { GlafiraExecutionMode.LIVE },
+            liveTaskAdmission = reopenedAdmission,
+            dryRunPreviewPersistence = store
+        )
+
+        assertEquals(GlafiraTaskExecutionStatus.SUCCEEDED, liveExecutor.executeNext().status)
+        assertEquals(1, handlerCalls.get())
+        assertEquals("durable reviewed read", store.coreTaskResult(read.taskId, read.projectId)?.result)
+    }
+
+    @Test fun acknowledgedExternalWritePreviewCannotReceiveInitialLiveReadGrant() = runBlocking {
+        val write = task("write-not-admitted", "message.send").copy(
+            payload = """{"actionSummary":"Send a message"}""",
+            requiredScopes = setOf("communications.send"),
+            deadlineAtMillis = 100_000L
+        )
+        store.enqueue(write)
+        val executor = GlafiraCoreTaskExecutor(
+            queue = store,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER, "OWNER_APPROVAL_REQUIRED")
+            },
+            handlers = listOf("message.send" to GlafiraTaskHandler {
+                GlafiraTaskExecutionOutcome.Succeeded("must not send")
+            }),
+            dispatcher = Dispatchers.IO,
+            clock = { 2_000L },
+            executionMode = { GlafiraExecutionMode.DRY_RUN },
+            dryRunPreviewPersistence = store
+        )
+        assertEquals(GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED, executor.executeNext().status)
+        val preview = requireNotNull(store.dryRunPreview(write.taskId))
+        assertTrue(store.reviewDryRunPreview(
+            write.taskId, preview.planHash, GlafiraDryRunReviewStatus.ACKNOWLEDGED, 2_500L
+        ))
+
+        assertEquals(
+            GlafiraLiveRunApprovalMutation.TOOL_NOT_ALLOWED,
+            GlafiraCoreLiveRunStore(store).approveReadOnlyRun(
+                write.taskId, preview.planHash, ownerSession(), 3_000L
+            )
+        )
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask(write.taskId)?.state)
+    }
+
+    private fun ownerSession(): GlafiraCoreOwnerSession {
+        val constructor = GlafiraCoreOwnerSession::class.java.getDeclaredConstructor(
+            String::class.java,
+            java.lang.Long.TYPE
+        )
+        constructor.isAccessible = true
+        return constructor.newInstance(
+            UUID.randomUUID().toString(),
+            SystemClock.elapsedRealtime() + 60_000L
+        )
     }
 
 
