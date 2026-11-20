@@ -204,6 +204,26 @@ The catalog entry must not imply that unsupported connectors or permissions are 
 - No automatic model fine-tuning on raw personal data.
 - No claim of completion until code, tests, CI and owner acceptance prove it.
 
+
+## 14. Implemented Android foundation (current branch)
+
+The first Android implementation slice now includes:
+- Stable in-app role ID `hr-intelligence`, role version 1 and a versioned Russian instruction set.
+- КАДРОВИК entry in the Android intelligent-agent catalog, using the configured GigaChat provider like the existing specialist roles.
+- Stable role ID for chat history and drafts.
+- Typed contact cards, evidence facts, source references, interaction records and commitments.
+- Local project-scoped contact storage encrypted with a dedicated Android Keystore AES-256-GCM key; project ID is authenticated as associated data.
+- Atomic replacement of the encrypted contact document; decrypt/schema/scope failures fail closed and do not become an empty list.
+- Manual contact directory UI with add/list/delete, available from the Кадровик chat.
+- All-eligible-agent memory review policy with explicit NOT_REVIEWED accounting, duplicate-vote rejection, conflict blocking and owner approval for high-impact promotion.
+
+Limitations:
+- No Gmail, Telegram, Instagram, calendar, CRM or other external connector is activated by this slice.
+- No automatic overnight ingestion or background schedule is enabled.
+- Contact records are entered manually by the owner; no messages are sent and no external records are changed.
+- Android Keystore encryption requires real-device/emulator acceptance testing, including backup/restore behavior. A passing JVM build alone does not prove device crypto acceptance.
+- The all-agent review policy is currently a tested domain gate; it is not yet wired to a live multi-agent review coordinator.
+
 ## 13. Acceptance checklist
 
 - [ ] "Кадровик" appears in the in-app agent catalog with stable ID.
