@@ -152,14 +152,62 @@ GLAFIRA should not position itself as "another chatbot with many model logos." T
 
 This is a hypothesis to validate through a competitive feature matrix and user interviews. It must not be marketed as implemented until the features exist and pass acceptance.
 
+
+
+## 5A. Competitive reality check: multi-model access is not enough
+
+The current competitor landscape makes one point clear: **GLAFIRA cannot win by saying only "we have several models in one app."** Several products already cover parts of that proposition.
+
+| Competitor archetype | What is already offered | Implication for GLAFIRA |
+|---|---|---|
+| DeepSeek (model + app/API platform) | DeepSeek's current API can expose web search, multi-step deep-thinking search, file parsing, URL reading and voice-related app capabilities | A model provider can add app-like tools through API. GLAFIRA must add persistent cross-project orchestration and device/network ownership, not just proxy model calls |
+| Poe (consumer model aggregator) | One subscription exposes many major models/bots, images/video/audio; starts at $4.99/month with daily/monthly compute points; extra points can be purchased | This directly undercuts a 500 RUB GLAFIRA tier on entry price. Poe points are usage-limited, non-transferable, non-cash and normally do not roll over; GLAFIRA must explain its additional work value and token utility |
+| OpenRouter (developer model router/gateway) | One API key across many providers, model catalog, provider routing/fallback, price/latency/throughput controls, budgets, free models; standard/business credit purchases incur platform fees | Model aggregation, fallback and cost routing are not unique. GLAFIRA's routing must connect to project/task state, accepted-output quality, specialist agents and user-owned execution |
+| ChatGPT Projects / Work (AI work environment) | Project-scoped chats, files, instructions and memory; cross-device continuity, connected apps and deep research; longer multi-step Work/browser processes | Projects, memory, files, apps and agentic research are already strong competitors. GLAFIRA needs more control over local/peer execution, Windows Agent fleet, owner-run Mother and the user compute marketplace |
+| Yandex / GigaChat (regional assistants and APIs) | Russian-language assistant ecosystems, local payments and API products, plus free/low-cost consumer entry points | GLAFIRA must win on cross-provider neutrality, actual workflows, local/desktop integration and transparent pricing—not merely Russian-language support |
+| DePIN / bandwidth / compute networks (Salad, Grass, Honeygain, Golem etc.) | Reward people for providing GPU compute, bandwidth or other resources | They validate the supply-side incentive concept but do not deliver the complete personal AI office. GLAFIRA can connect user-owned devices to real task demand, but must prove safe, profitable workloads |
+
+### Pricing implications
+
+- Poe's official Help Center advertises multi-model access from $4.99/month. At the 2026-11-20 CBR rate this is about 409 RUB before local pricing/tax. It is therefore cheaper than the proposed 500 RUB GLAFIRA AI subscription, although its compute points and model-specific usage limits mean it is not unlimited.
+- OpenRouter's free tier advertises 25+ free models and 4 free providers; paid inference is billed at provider list price, with a 5.5% credit-purchase fee on Standard and 8% on Business. It is a developer router rather than a consumer AI office.
+- ChatGPT Projects already combine project chats, files, instructions, memory and cross-device continuation; Deep Research creates cited reports, and Work handles longer multi-step tasks. GLAFIRA must not claim these capabilities are unique.
+- DeepSeek's November 2026 API announcement exposes web search, deep-thinking search, files, URL reading and voice-oriented building blocks. This reduces the defensibility of a simple "we integrate models plus web/file/voice" pitch.
+
+### What GLAFIRA must become to be meaningfully different
+
+The defensible target is **a user-owned distributed AI office and service network**, not a thin multi-model frontend:
+1. **Persistent projects as operational workspaces:** tasks, decisions, files, agent roles, source evidence, deliverables and history remain linked across devices.
+2. **Multi-agent execution with accountability:** a coordinator decomposes work, assigns specialist agents, manages dependencies, verifies outputs and records what was actually completed.
+3. **User-owned execution capacity:** Windows Desktop is the owner's control center; Windows Agents and opt-in participant devices execute isolated, bounded tasks under owner consent and Core policy.
+4. **A real compute marketplace:** buyers post funded tasks; provider GLAFIRAs accept scoped leases; results are verified; rewards settle only after acceptance. This is distinct from points for uptime or tapping.
+5. **Mother + VPN service plane:** one account, device enrollment, internal wallet/ledger and optional VPN entitlement, separated from the VPN data plane.
+6. **Transparent economics:** per-task usage receipts, GCU measurement, GLF reward accounting, hard buyer budgets and explicit provider costs.
+7. **Portability and owner control:** provider-neutral model registry, local/remote execution choice, exportable project data, revocable device participation and no mandatory lock-in to one model company.
+
+**Current maturity warning:** an external technical review on 2026-11-18 characterized the then-current GLAFIRA build as an Android LLM-orchestration client with nascent multi-agent logic; task decomposition/distribution, Web/Browser Agent, Desktop Bridge and CRM were still planned. The owner's accepted product direction was a full AI office. Treat the seven points above as target differentiators, not present-tense capabilities, until each is implemented and accepted.
+
+### Go-to-market conclusion
+
+The 800 RUB bundle can be attractive as an introductory package, but it is not automatically a price win:
+- VPN at 300 RUB is close to Amnezia's two-year effective monthly rate and above some first-year promotional VPN rates.
+- AI at 500 RUB is above Poe's advertised entry price (about 409 RUB at the CBR rate), but could justify the difference if it includes useful persistent projects, agents, local/desktop execution and a real compute reward marketplace.
+- The combined 800 RUB package must show measurable daily utility. A customer should understand what they can do with GLAFIRA that they cannot do by paying for Poe or using free DeepSeek/Yandex/GigaChat plus a separate VPN.
+- Run a pilot and publish real usage limits. Never imply unlimited frontier models or guaranteed token earnings.
+
+### Historical context for the selected model stack
+
+In the prior project discussions, DeepSeek was used as a technical expert/reviewer, not simply chosen as the product to copy. Gemini and Anthropic were also accepted as independent PR reviewers, with the Anthropic API cost and Gemini free-tier data-use caveat explicitly noted. The competitor matrix above is a fresh product-market comparison and should not be confused with that reviewer stack.
+
 ## 6. Next research actions
 
 - Validate and normalize the ten initial provider entries, then expand the API table to at least fifteen providers using official price cards; capture input/output/cached/reasoning, image/audio/video, batch, long context, regions, free tiers, effective dates and tax treatment.
 - Compare direct DeepSeek API with DeepSeek hosted through Yandex and other aggregators; record routing/markup differences.
 - Benchmark YandexGPT, Grok, DeepSeek, GigaChat and selected alternatives on the same Russian-language business tasks; calculate cost per accepted deliverable.
-- Verify the exact consumer prices and checkout availability for ChatGPT, Claude, Gemini, DeepSeek, GigaChat, Alice and Grok in Russia.
+- Verify the exact consumer prices and checkout availability for ChatGPT, Claude, Gemini, DeepSeek, GigaChat, Alice, Poe and Grok in Russia.
 - Build VPN competitor matrix: monthly vs annual effective price, devices, traffic, protocols, anti-blocking capability, support, refund and payment route.
 - Research DePIN compute projects (Salad, Grass, Honeygain, Golem, Akash, io.net and others) using official economics docs plus clearly labelled user reports.
+- Build a feature-by-feature competitor matrix for Poe, OpenRouter, ChatGPT Projects/Work, DeepSeek, Yandex/GigaChat and VPN/DePIN projects; validate Russian availability and real checkout prices.
 - Estimate unit economics for 100, 1,000 and 10,000 subscribers and for several device participation rates. Include API, VPN egress, compute verification, rewards, support, payment, tax, fraud and churn.
 - Review Russian legal and platform requirements for VPN distribution, crypto/token rewards, consumer subscriptions, payment processing, advertising and personal data before public launch.
 
