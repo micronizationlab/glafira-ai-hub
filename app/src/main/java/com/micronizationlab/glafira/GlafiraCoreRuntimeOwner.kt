@@ -29,7 +29,10 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         handlers = listOf(
             "project.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
-            "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) }
+            "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
+            // Owner-created queue items are persisted as drafts and remain pending review.
+            // This handler deliberately performs no external side effect.
+            "content.draft" to GlafiraTaskHandler { GlafiraTaskExecutionOutcome.WaitingForOwner }
         ),
         dryRunPreviewPersistence = taskStore
     )
