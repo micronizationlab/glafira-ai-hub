@@ -73,7 +73,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["contracts"])
         self.assertFalse(selected["ios"])
         self.assertFalse(selected["agent"])
-        self.assertFalse(selected["android_acceptance"])
+        self.assertTrue(selected["android_acceptance"])
 
     def test_bridge_change_selects_instrumentation_when_android_test_suite_exists(self):
         path = "app/src/main/java/com/micronizationlab/glafira/GlafiraBridgeHostService.kt"
