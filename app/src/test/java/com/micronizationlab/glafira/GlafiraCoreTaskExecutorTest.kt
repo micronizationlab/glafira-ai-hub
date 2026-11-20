@@ -141,6 +141,7 @@ class GlafiraCoreTaskExecutorTest {
                 handlerCalled = true
                 GlafiraTaskExecutionOutcome.WaitingForOwner
             }),
+            clock = { 10_000L },
             executionMode = { GlafiraExecutionMode.DRY_RUN }
         )
 
