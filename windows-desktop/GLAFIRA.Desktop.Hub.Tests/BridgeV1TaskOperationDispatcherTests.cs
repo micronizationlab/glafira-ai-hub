@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using GLAFIRA.Desktop.Hub.Core;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace GLAFIRA.Desktop.Hub.Tests;
