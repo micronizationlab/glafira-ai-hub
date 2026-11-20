@@ -4,11 +4,8 @@ import android.content.Context
 import java.io.File
 
 /**
- * Coordinates portable encrypted backups with the persistent Core task database.
- *
- * The shared maintenance gate prevents task execution while the SQLite snapshot is copied or
- * replaced. The archive is authenticated before restore, and a second encrypted snapshot plus
- * a database rollback copy are retained until the restore has been validated.
+ * Coordinates encrypted file backups with the persistent Core task database.
+ * All methods pause the shared executor while the database snapshot is taken or restored.
  */
 class GlafiraCoreBackupCoordinator(
     context: Context,
@@ -23,23 +20,13 @@ class GlafiraCoreBackupCoordinator(
 
     suspend fun verify(archive: File, passphrase: CharArray): BackupVerification =
         GlafiraCoreMaintenanceGate.withExclusive {
-            BackupArchive.verifyContains(
-                appContext,
-                archive,
-                passphrase,
-                CORE_DATABASE_SNAPSHOT_PATH
-            )
+            BackupArchive.verifyContains(appContext, archive, passphrase, CORE_DATABASE_SNAPSHOT_PATH)
         }
 
     suspend fun restore(archive: File, passphrase: CharArray): BackupVerification =
         GlafiraCoreMaintenanceGate.withExclusive {
             // Reject legacy/incomplete archives before touching the current installation.
-            BackupArchive.verifyContains(
-                appContext,
-                archive,
-                passphrase,
-                CORE_DATABASE_SNAPSHOT_PATH
-            )
+            BackupArchive.verifyContains(appContext, archive, passphrase, CORE_DATABASE_SNAPSHOT_PATH)
 
             val safetyDatabase = File(
                 appContext.cacheDir,
@@ -51,7 +38,8 @@ class GlafiraCoreBackupCoordinator(
 
             try {
                 taskStore.exportConsistentSnapshot(safetyDatabase)
-                safetyArchive = createSnapshotArchive(passphrase)
+                val createdSafetyArchive = createSnapshotArchive(passphrase)
+                safetyArchive = createdSafetyArchive
 
                 try {
                     val verification = BackupArchive.restore(appContext, archive, passphrase)
@@ -64,10 +52,7 @@ class GlafiraCoreBackupCoordinator(
                     return@withExclusive verification
                 } catch (restoreError: Exception) {
                     try {
-                        val rollbackArchive = requireNotNull(safetyArchive) {
-                            "Не создана резервная копия текущего состояния GLAFIRA Core."
-                        }
-                        BackupArchive.restore(appContext, rollbackArchive, passphrase)
+                        BackupArchive.restore(appContext, createdSafetyArchive, passphrase)
                         taskStore.restoreConsistentSnapshot(safetyDatabase)
                         rollbackCompleted = true
                     } catch (rollbackError: Exception) {
@@ -75,7 +60,7 @@ class GlafiraCoreBackupCoordinator(
                         restoreError.addSuppressed(
                             IllegalStateException(
                                 "Файлы восстановления сохранены для ручного восстановления: " +
-                                    "${safetyArchive?.absolutePath} ; ${safetyDatabase.absolutePath}"
+                                    createdSafetyArchive.absolutePath + " ; " + safetyDatabase.absolutePath
                             )
                         )
                     }
@@ -112,5 +97,18 @@ class GlafiraCoreBackupCoordinator(
         private const val CORE_DATABASE_SNAPSHOT_NAME = "glafira_core_tasks.db"
         private const val CORE_DATABASE_SNAPSHOT_PATH =
             "$CORE_DATABASE_SNAPSHOT_DIRECTORY/$CORE_DATABASE_SNAPSHOT_NAME"
+    }
+}
+
+/** Opens the shared Core store for the duration of a backup operation and always closes it. */
+internal suspend fun <T> withCoreBackupCoordinator(
+    context: Context,
+    block: suspend (GlafiraCoreBackupCoordinator) -> T
+): T {
+    val store = GlafiraTaskStore(context.applicationContext)
+    try {
+        return block(GlafiraCoreBackupCoordinator(context, store))
+    } finally {
+        store.close()
     }
 }
