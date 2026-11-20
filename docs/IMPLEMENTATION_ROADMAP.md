@@ -213,3 +213,10 @@ Implementation is not complete merely because this roadmap and training contract
 The owner-approved requirements for the Windows Desktop control center, three Settings tabs (General; Agent APIs & Tools; Wallet), six specialist-agent connector cards with twelve connector slots, secure credential vault and health indicators, archival yellow Кадровик dossier, File Intelligence Engine, and future GLF wallet/compute marketplace/treasury are documented in [Windows Desktop Control Center and GLF Economy Specification](WINDOWS_DESKTOP_CONTROL_CENTER_AND_GLF_ECONOMY_SPEC.md), tracked by [Issue #152](https://github.com/micronizationlab/glafira-ai-hub/issues/152).
 
 This is a specification only. Candidate connectors require individual source/license/terms/security/free-tier validation. The wallet, token issuance, escrow and cross-customer marketplace are future design items, not implemented features. Keep Core → Bridge → Applications priority; within Queue 3, Windows Desktop precedes iOS. Do not begin Queue 4 agent implementation until Queues 1–3 are established unless the owner explicitly reprioritizes.
+
+
+## GLAFIRA Compute Economics & Pricing Engine
+
+The owner-approved GCU/GLF normalization and pricing requirements are specified as Section 11 in [Windows Desktop Control Center and GLF Economy Specification](WINDOWS_DESKTOP_CONTROL_CENTER_AND_GLF_ECONOMY_SPEC.md) and tracked in [Issue #154](https://github.com/micronizationlab/glafira-ai-hub/issues/154).
+
+GCU measures normalized resource consumption using a versioned calibration profile; GLF remains the internal settlement/accounting unit. Preserve raw provider usage and invoice dimensions, local resource measurements and estimates, quality/latency/retry data, price-card provenance and effective dates. Keep measurement records separate from the GLF double-entry ledger. Any GCU-to-GLF pricing policy requires explicit owner approval; no arbitrary fixed conversion and no automatic issuance. This is future work and must not delay Core → Bridge → functional Windows Desktop.
