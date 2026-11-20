@@ -517,14 +517,24 @@ class GlafiraTaskStore(context: Context) :
                     "AND NOT EXISTS (SELECT 1 FROM $TABLE_DEPENDENCIES d " +
                     "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
                     "WHERE d.task_id = t.task_id AND p.state != ?) " +
-                    "ORDER BY priority DESC, created_at ASC LIMIT 1",
+                    "ORDER BY " +
+                    // Prevent a busy project from monopolizing every Core worker. The first
+                    // key favors projects with fewer active tasks; the second rotates equal
+                    // load toward the project that has waited longest since its last dispatch.
+                    "(SELECT COUNT(*) FROM $TABLE_TASKS active " +
+                    "WHERE active.project_id = t.project_id AND active.state = ?) ASC, " +
+                    "COALESCE((SELECT MAX(h.changed_at) FROM core_task_history h " +
+                    "WHERE h.project_id = t.project_id AND h.to_state = ?), 0) ASC, " +
+                    "priority DESC, created_at ASC LIMIT 1",
                 arrayOf(
                     GlafiraTaskState.QUEUED.databaseValue,
                     GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
                     DESKTOP_TASK_TYPE,
                     nowMillis.toString(),
                     nowMillis.toString(),
-                    GlafiraTaskState.SUCCEEDED.databaseValue
+                    GlafiraTaskState.SUCCEEDED.databaseValue,
+                    GlafiraTaskState.RUNNING.databaseValue,
+                    GlafiraTaskState.RUNNING.databaseValue
                 )
             ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
 
