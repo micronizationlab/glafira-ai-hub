@@ -412,11 +412,28 @@ class GlafiraTaskStore(context: Context) :
                 require(existingPlan == plan.planId) { "TASK_PLAN_IDEMPOTENCY_CONFLICT" }
                 val existingRecord = readTaskPlan(db, plan.planId, plan.projectId)
                     ?: throw IllegalStateException("Persisted task plan could not be read.")
+                require(existingRecord.createdAtMillis == plan.createdAtMillis) {
+                    "TASK_PLAN_CONTENT_CONFLICT"
+                }
+                val existingNodes = existingRecord.nodes.associateBy { it.taskId }
                 val expectedIds = plan.nodes.map { it.task.taskId }
                 require(existingRecord.nodes.map { it.taskId } == expectedIds) {
                     "TASK_PLAN_CONTENT_CONFLICT"
                 }
                 plan.nodes.forEach { node ->
+                    val existingTask = existingNodes[node.task.taskId]
+                        ?: throw IllegalStateException("TASK_PLAN_NODE_MISSING")
+                    require(
+                        existingTask.projectId == node.task.projectId &&
+                        existingTask.taskType == node.task.taskType &&
+                        existingTask.payload == node.task.payload &&
+                        existingTask.origin == node.task.origin &&
+                        existingTask.priority == node.task.priority &&
+                        existingTask.createdAtMillis == node.task.createdAtMillis &&
+                        existingTask.deadlineAtMillis == node.task.deadlineAtMillis &&
+                        existingTask.idempotencyKey == node.task.idempotencyKey &&
+                        existingTask.requiredScopes == node.task.requiredScopes
+                    ) { "TASK_PLAN_CONTENT_CONFLICT" }
                     val actual = db.query(TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
                         "task_id = ?", arrayOf(node.task.taskId), null, null, null
                     ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
