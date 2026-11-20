@@ -147,3 +147,24 @@ Entries are append-only. Statuses are snapshots; always refresh GitHub before re
 4. Keep Core changes serial where they touch task store/dependency chain; continue independent Bridge and Windows Desktop work in parallel.
 5. Review #178 and model-level quota evidence. Keep free quota separate from GLAFIRA included allowance; no silent paid fallback.
 6. Do not merge drafts, issue GLF, activate paid billing or claim device earnings without owner authorization and acceptance evidence.
+
+
+
+
+## 2026-11-20 addendum — model quota precision and iOS cleanup
+
+- PR #178 latest head 652bda160ca2eb62e3244b9688fceea408e04d32. Latest code-change-aware CI run 44727432665 passed; this is documentation-only, so platform build/test jobs were correctly skipped. Project Dispatcher run 44727432525 was cancelled by a newer run/concurrency; an earlier exact-head dispatcher run 44727071415 passed.
+- Token spec now includes 15 concrete benchmark candidate profiles (all E — unmeasured), model-specific free quota catalogue and CSV, plus VPN-first then AI reward allocation. No device has been labelled profitable without measured benchmarks.
+- Current provider evidence: GigaChat eligible existing individual customers have 365M tokens over 12 months split Lite 250M / Pro 40M / Max 25M / Ultra 50M; new customers from 2026-09-01 are directed to cloud.ru. Alibaba free quota is typically 1M combined input+output tokens per eligible model, only Singapore + International scope, 90-day expiry, and Free-Quota-Only must be enabled to prevent paid fallback. OpenRouter :free variants are 20 RPM / 50 RPD, rising to 1,000 RPD only after $10 credits; Cohere trial is endpoint-limited (Chat 20 RPM, Embed 5 RPM, other endpoints 1,000 calls/month). Consumer app subscriptions are not API quotas.
+- PR #181 is a validation-only PR from updated #122 head 60a819f1c476db48571e290de4fb0f8bd60bfcad. It replaces deprecated iOS Keychain prompt and SecTrust certificate APIs; CI run 44727389394 was still in progress at this snapshot. Do not claim the warnings are removed until the Swift log confirms zero corresponding warnings and all 24 package tests pass.
+- PR #122 pre-cleanup exact-head run 44701584391 had Android JVM 137 tests, 0 failures/errors/skips; Android emulator 16 tests, 0 failures/errors/skips; Swift BridgeKit 24 tests, 0 failures (2 Security API deprecation warnings); Windows Agent 4 tests, 0 failures; Android APK and cross-platform contract checks succeeded. #104 and #119 runs each had 121 JUnit cases, 0 failures/errors/skips, but emulator acceptance was skipped.
+- PR #170 Project Dispatcher retry run 44723514112 succeeded after the earlier GitHub API 403 rate-limit failure. Windows Desktop Hub 39/39, Windows Agent 15/15, Android JVM 134, Android emulator 12, and contract conformance all passed. Workflow lint skipped. See prior entry for per-platform evidence.
+- PR #151 was closed as stale duplicate: dependency policy and dependency enqueue/claim methods already exist in current main, while its TaskStore/RuntimeOwner copies are older than main. PR #153 was superseded by #178. Temporary validation PRs #179/#180 were closed because they produced no CI run.
+
+### Next actions
+1. Poll PR #181 until completion; inspect Swift test counts and verify the two deprecation warnings are gone. Fix any compile/test regression immediately.
+2. Poll PR #178 after the latest documentation update; verify its exact-head summary and dispatcher result.
+3. Keep PR #139/#140 draft pending physical-device acceptance: test selected Google Drive folder, real manual upload + remote read-back verification, council with configured provider(s), Bridge owner approval and LAN client pairing.
+4. Continue #104 → #119 → #122 in order. Do not cherry-pick stale #151 source over current main.
+5. Continue Windows Desktop/Agent HTTPS pairing and real result journal; #170 is lease-fencing validation, not a complete remote fleet.
+6. Implement the token calculator engine and wallet ledger only after the owner approves GLF reference, contributor share/caps, service-day and expiry rules. Keep current docs/CSVs as design inputs, not production prices.
