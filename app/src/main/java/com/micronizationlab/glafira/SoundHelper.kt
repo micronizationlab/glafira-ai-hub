@@ -13,9 +13,14 @@ object SoundHelper {
     private var soundPool: SoundPool? = null
     private val soundIds = mutableMapOf<String, Int>()
     private val loadedIds = mutableSetOf<Int>()
+    private var enabled = true
+    private var volume = 1f
 
     @Synchronized
     fun init(context: Context) {
+        val preferences = context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
+        enabled = preferences.getBoolean("sound_effects_enabled", true)
+        volume = preferences.getFloat("sound_effects_volume", 1f).coerceIn(0f, 1f)
         if (soundPool != null) return
 
         val attributes = AudioAttributes.Builder()
@@ -42,6 +47,20 @@ object SoundHelper {
         soundIds["file"] = pool.load(context, R.raw.icq_incoming_file, 1)
     }
 
+    @Synchronized
+    fun setEnabled(context: Context, value: Boolean) {
+        enabled = value
+        context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
+            .edit().putBoolean("sound_effects_enabled", value).apply()
+    }
+
+    @Synchronized
+    fun setVolume(context: Context, value: Float) {
+        volume = value.coerceIn(0f, 1f)
+        context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
+            .edit().putFloat("sound_effects_volume", volume).apply()
+    }
+
     fun playIncoming() = play("incoming")
     fun playOnline() = play("online")
     fun playSent() = play("sent")
@@ -50,10 +69,11 @@ object SoundHelper {
 
     @Synchronized
     private fun play(event: String) {
+        if (!enabled) return
         val pool = soundPool ?: return
         val sampleId = soundIds[event] ?: return
         if (sampleId !in loadedIds) return
-        pool.play(sampleId, 1f, 1f, 1, 0, 1f)
+        pool.play(sampleId, volume, volume, 1, 0, 1f)
     }
 
     @Synchronized
