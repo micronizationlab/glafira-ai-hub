@@ -47,7 +47,7 @@ finish() {
 }
 trap finish EXIT
 
-yes | "$SDKMANAGER" --licenses >/dev/null
+yes | "$SDKMANAGER" --licenses >/dev/null || "$SDKMANAGER" --licenses </dev/null >/dev/null
 "$SDKMANAGER" "platform-tools" "platforms;android-35" "$IMAGE"
 
 echo "no" | "$AVDMANAGER" create avd --force --name "$AVD_NAME" --package "$IMAGE" --device "pixel_2"
