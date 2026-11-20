@@ -154,6 +154,10 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     fun taskPlan(planId: String, projectId: String): GlafiraTaskPlanRecord? =
         taskStore.taskPlan(planId, projectId)
 
+    /** Project-scoped plan journal, including current node states and outcomes. */
+    fun taskPlans(projectId: String, limit: Int = 100): List<GlafiraTaskPlanRecord> =
+        taskStore.taskPlans(projectId, limit)
+
     internal suspend fun executeNext(): GlafiraTaskExecutionResult {
         check(isEnabled) { "GLAFIRA autonomous runtime is paused by owner." }
         return executor.executeNext()
