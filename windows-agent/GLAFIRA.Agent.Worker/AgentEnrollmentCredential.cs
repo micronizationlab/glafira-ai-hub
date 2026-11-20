@@ -1,3 +1,7 @@
+using System.Net.Security;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+
 namespace GLAFIRA.Agent.Worker;
 
 /// <summary>
@@ -8,6 +12,7 @@ public sealed record AgentEnrollmentCredential(
     string AgentId,
     string DesktopHubId,
     Uri Endpoint,
+    string TlsCertificateSha256,
     string SharedSecretBase64,
     IReadOnlySet<string> Scopes,
     DateTimeOffset EnrolledAt,
@@ -36,6 +41,10 @@ public static class AgentEnrollmentCredentialPolicy
             !string.IsNullOrEmpty(credential.Endpoint.Query) ||
             !string.IsNullOrEmpty(credential.Endpoint.Fragment))
             throw new ArgumentException("Agent enrollment requires a credential-free HTTPS endpoint.", nameof(credential));
+        if (!IsCanonicalSha256(credential.TlsCertificateSha256))
+            throw new ArgumentException(
+                "Enrollment requires the Desktop Hub TLS certificate SHA-256 pin as 64 lowercase hexadecimal characters.",
+                nameof(credential));
 
         byte[] secret;
         try { secret = Convert.FromBase64String(credential.SharedSecretBase64); }
@@ -53,5 +62,39 @@ public static class AgentEnrollmentCredentialPolicy
         if (credential.EnrolledAt > now.AddMinutes(5) || credential.ExpiresAt <= now ||
             credential.ExpiresAt <= credential.EnrolledAt)
             throw new ArgumentException("Enrollment credential is not currently valid.", nameof(credential));
+    }
+
+    private static bool IsCanonicalSha256(string value) =>
+        value is { Length: 64 } && value.All(character =>
+            character is >= '0' and <= '9' or >= 'a' and <= 'f');
+}
+
+/// <summary>
+/// Fail-closed certificate callback for the self-signed Desktop Hub identity.
+/// A pinned self-signed certificate may have chain errors, but a missing certificate,
+/// endpoint-name mismatch or a different certificate is always rejected.
+/// </summary>
+public static class AgentTlsCertificatePinPolicy
+{
+    public static bool Validate(
+        AgentEnrollmentCredential credential,
+        X509Certificate2? certificate,
+        SslPolicyErrors policyErrors)
+    {
+        ArgumentNullException.ThrowIfNull(credential);
+        if (certificate is null ||
+            (policyErrors & (SslPolicyErrors.RemoteCertificateNotAvailable |
+                             SslPolicyErrors.RemoteCertificateNameMismatch)) != 0)
+            return false;
+
+        Span<byte> expected = stackalloc byte[32];
+        if (!Convert.TryFromHexString(credential.TlsCertificateSha256, expected, out var written) || written != 32)
+            return false;
+
+        Span<byte> actual = stackalloc byte[32];
+        if (!SHA256.TryHashData(certificate.RawData, actual, out written) || written != 32)
+            return false;
+
+        return CryptographicOperations.FixedTimeEquals(expected, actual);
     }
 }
