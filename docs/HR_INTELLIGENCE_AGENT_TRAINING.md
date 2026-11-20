@@ -213,6 +213,7 @@ The first Android implementation slice now includes:
 - Stable role ID for chat history and drafts.
 - Typed contact cards, evidence facts, source references, interaction records and commitments.
 - Local project-scoped contact storage encrypted with a dedicated Android Keystore AES-256-GCM key; project ID is authenticated as associated data.
+- Contact files live under Android `noBackupFilesDir` because the device-bound Keystore key is intentionally excluded from portable backups. The UI discloses that dossiers do not yet migrate to a new device; portable encrypted export/restore is a required follow-up.
 - Atomic replacement of the encrypted contact document; decrypt/schema/scope failures fail closed and do not become an empty list.
 - Manual contact directory UI with add/list/delete, available from the Кадровик chat.
 - All-eligible-agent memory review policy with explicit NOT_REVIEWED accounting, duplicate-vote rejection, conflict blocking and owner approval for high-impact promotion.
