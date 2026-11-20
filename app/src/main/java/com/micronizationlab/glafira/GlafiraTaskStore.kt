@@ -58,6 +58,7 @@ class GlafiraTaskStore(context: Context) :
         GlafiraDryRunPreviewSchema.create(db)
         createHistorySchema(db)
         createCoreTaskResultsSchema(db)
+        createTaskDependenciesSchema(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -65,7 +66,8 @@ class GlafiraTaskStore(context: Context) :
         if (oldVersion < 3) GlafiraDryRunPreviewSchema.create(db)
         if (oldVersion < 4) createHistorySchema(db)
         if (oldVersion < 5) createCoreTaskResultsSchema(db)
-        if (newVersion > 5) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 6) createTaskDependenciesSchema(db)
+        if (newVersion > 6) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
     }
 
     /** Triggers also cover state writes by same-database approval/result adapters. */
@@ -95,6 +97,17 @@ class GlafiraTaskStore(context: Context) :
             WHEN OLD.state IN ('succeeded','failed','cancelled') AND OLD.state != NEW.state BEGIN
             SELECT RAISE(ABORT,'TERMINAL_TASK_IMMUTABLE');
         END""")
+    }
+
+    private fun createTaskDependenciesSchema(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS core_task_dependencies (
+            task_id TEXT NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE,
+            depends_on_task_id TEXT NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY(task_id, depends_on_task_id),
+            CHECK(task_id != depends_on_task_id)
+        )""")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_core_task_dependencies_predecessor ON core_task_dependencies(depends_on_task_id, task_id)")
     }
 
     private fun createCoreTaskResultsSchema(db: SQLiteDatabase) {
@@ -381,6 +394,64 @@ class GlafiraTaskStore(context: Context) :
     }
 
     /**
+     * Adds predecessor edges to a queued task. All tasks must belong to the same project.
+     * The operation is atomic and rejects cycles before any edge is persisted.
+     */
+    @Synchronized
+    fun addTaskDependencies(
+        taskId: String,
+        dependencyTaskIds: Set<String>,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean {
+        require(taskId.isNotBlank() && nowMillis > 0L)
+        require(dependencyTaskIds.size <= GlafiraTaskDependencyPolicy.MAX_DEPENDENCIES_PER_TASK)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val task = queryTask(db, taskId) ?: return false
+            if (task.state != GlafiraTaskState.QUEUED) return false
+            val existing = db.query(
+                TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
+                "task_id = ?", arrayOf(taskId), null, null, null
+            ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+            val merged = existing + dependencyTaskIds
+            val graph = mutableMapOf<String, MutableSet<String>>()
+            db.query(TABLE_TASK_DEPENDENCIES, arrayOf("task_id", "depends_on_task_id"),
+                null, null, null, null, null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    graph.getOrPut(cursor.getString(0)) { mutableSetOf() }.add(cursor.getString(1))
+                }
+            }
+            GlafiraTaskDependencyPolicy.validate(taskId, merged, graph)
+            for (dependencyId in dependencyTaskIds) {
+                val predecessor = queryTask(db, dependencyId)
+                    ?: throw IllegalArgumentException("A task dependency must reference an existing task.")
+                require(predecessor.projectId == task.projectId) {
+                    "Task dependencies cannot cross project boundaries."
+                }
+                if (dependencyId !in existing) {
+                    db.insertOrThrow(TABLE_TASK_DEPENDENCIES, null, ContentValues().apply {
+                        put("task_id", taskId)
+                        put("depends_on_task_id", dependencyId)
+                        put("created_at", nowMillis)
+                    })
+                }
+            }
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Returns direct predecessors for diagnostics and dependency-aware scheduling. */
+    @Synchronized
+    fun taskDependencies(taskId: String): Set<String> = readableDatabase.query(
+        TABLE_TASK_DEPENDENCIES, arrayOf("depends_on_task_id"),
+        "task_id = ?", arrayOf(taskId), null, null, null
+    ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+
+    /**
      * Atomically claims one eligible task and increments its attempt count.
      * A worker crash after this point is recovered by a later Core recovery pass.
      */
@@ -390,18 +461,38 @@ class GlafiraTaskStore(context: Context) :
         db.beginTransaction()
         try {
             expirePendingTasks(db, nowMillis)
+            // A terminally failed predecessor makes the dependent task permanently un-runnable.
+            // Record that outcome instead of leaving the task queued forever.
+            db.execSQL(
+                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+                    "WHERE state IN (?, ?) AND task_id IN (" +
+                    "SELECT d.task_id FROM $TABLE_TASK_DEPENDENCIES d " +
+                    "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+                    "WHERE p.state IN (?, ?))",
+                arrayOf(
+                    GlafiraTaskState.FAILED.databaseValue, nowMillis, "DEPENDENCY_FAILED",
+                    GlafiraTaskState.QUEUED.databaseValue,
+                    GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
+                    GlafiraTaskState.FAILED.databaseValue,
+                    GlafiraTaskState.CANCELLED.databaseValue
+                )
+            )
             val taskId = db.rawQuery(
-                "SELECT task_id FROM $TABLE_TASKS " +
+                "SELECT task_id FROM $TABLE_TASKS t " +
                     "WHERE state IN (?, ?) AND task_type != ? " +
                     "AND (retry_at IS NULL OR retry_at <= ?) " +
                     "AND (deadline_at IS NULL OR deadline_at >= ?) " +
+                    "AND NOT EXISTS (SELECT 1 FROM $TABLE_TASK_DEPENDENCIES d " +
+                    "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+                    "WHERE d.task_id = t.task_id AND p.state != ?) " +
                     "ORDER BY priority DESC, created_at ASC LIMIT 1",
                 arrayOf(
                     GlafiraTaskState.QUEUED.databaseValue,
                     GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
                     DESKTOP_TASK_TYPE,
                     nowMillis.toString(),
-                    nowMillis.toString()
+                    nowMillis.toString(),
+                    GlafiraTaskState.SUCCEEDED.databaseValue
                 )
             ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
 
@@ -966,10 +1057,11 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 5
+        private const val DATABASE_VERSION = 6
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
         private const val TABLE_CORE_RESULTS = "core_task_results"
+        private const val TABLE_DEPENDENCIES = "core_task_dependencies"
     }
 }
