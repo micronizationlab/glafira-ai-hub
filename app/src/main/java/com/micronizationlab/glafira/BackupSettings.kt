@@ -95,8 +95,6 @@ fun BackupSettingsSection() {
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
-                folderUri = uri.toString()
-                prefs.edit().putString(GlafiraBackupWorker.KEY_TREE_URI, folderUri).apply()
                 val persistedWriteGrant = context.contentResolver.persistedUriPermissions.any {
                     it.uri == uri && it.isWritePermission
                 }
