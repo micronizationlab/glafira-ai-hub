@@ -17,7 +17,7 @@ This checklist validates Desktop ↔ Agent pairing, owner approval, authenticate
 ## Desktop/Hub computer
 
 - [ ] Extract `GLAFIRA-Desktop-win-x64.zip`.
-- [ ] Run elevated PowerShell: `.scriptsinstall-desktop.ps1`.
+- [ ] Run elevated PowerShell: `.\scripts\install-desktop.ps1`.
 - [ ] Launch GLAFIRA Desktop from Start Menu.
 - [ ] In Bridge, select the active private LAN address and click **Start HTTPS**.
 - [ ] Confirm the endpoint is `https://<private-ip>:8443/bridge/v1`.
@@ -27,7 +27,7 @@ This checklist validates Desktop ↔ Agent pairing, owner approval, authenticate
 ## Agent computer
 
 - [ ] Extract `GLAFIRA-Agent-win-x64.zip`.
-- [ ] Run elevated PowerShell: `.scriptsinstall-agent.ps1`.
+- [ ] Run elevated PowerShell: `.\scripts\install-agent.ps1`.
 - [ ] Confirm service `GLAFIRA Agent` is installed and running as LocalSystem.
 - [ ] Run the pairing wizard from elevated PowerShell:
   `& "$env:ProgramFiles\GLAFIRA\Agent\GLAFIRA.Agent.Worker.exe" --pair`.
