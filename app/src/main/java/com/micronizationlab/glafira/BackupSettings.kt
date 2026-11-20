@@ -223,13 +223,17 @@ fun BackupSettingsSection() {
                                     context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY, effectivePassphrase
                                 ) -> status = "Не удалось сохранить пароль в Android Keystore."
                                 else -> {
-                                    BackupScheduler.runNow(context, wifiOnly)
-                                    status = "Резервная копия поставлена в очередь. Пароль взят из защищённого хранилища; проверь результат загрузки ниже."
+                                    status = "Отправляю запрос на запуск резервного копирования…"
+                                    val scheduled = runCatching { BackupScheduler.runNow(context, wifiOnly) }
+                                    status = scheduled.fold(
+                                        { "Резервная копия поставлена в очередь. Пароль взят из защищённого хранилища; проверь результат загрузки ниже." },
+                                        { "Не удалось поставить резервную копию в очередь: ${it.message ?: "ошибка WorkManager"}" }
+                                    )
                                 }
                             }
                         },
                         enabled = !busy,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).testTag("backup_manual_save")
                     ) { Text("Сохранить сейчас") }
                     OutlinedButton(
                         onClick = {
