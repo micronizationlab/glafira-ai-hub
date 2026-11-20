@@ -374,6 +374,10 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
 
         Spacer(Modifier.height(16.dp))
 
+        Text("ПОДКЛЮЧЕНИЕ К DESKTOP", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        AndroidBridgeSettingsSection()
+
+        Spacer(Modifier.height(16.dp))
         BackupSettingsSection()
 
         if (currentProject == null) {
