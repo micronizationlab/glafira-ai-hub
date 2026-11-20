@@ -199,6 +199,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-xcode-${{ steps.apple-toolchain.outputs.xcode_version }}-swift-${{ steps.apple-toolchain.outputs.swift_version }}-
       - run: swift test --package-path ios/GlafiraBridgeKit
+      - name: Build native iOS app for simulator
+        run: xcodebuild -project ios/GLAFIRA.xcodeproj -scheme GLAFIRA -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 
   windows-agent-tests:
     name: Windows Agent tests and build
