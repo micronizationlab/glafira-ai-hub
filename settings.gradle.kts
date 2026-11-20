@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "GLAFIRA AI HUB"
-include(":app")
+include(":app", ":desktop-bridge")
