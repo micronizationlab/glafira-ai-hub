@@ -65,6 +65,10 @@ def classify_paths(
                 path,
                 "app/src/main/java/com/micronizationlab/glafira/*Core*",
             )
+            # Project registry and local persistence changes need an emulator
+            # acceptance run: JVM tests and APK packaging alone cannot validate
+            # upgrade/preservation behavior against an installed app database.
+            or path == "app/src/main/java/com/micronizationlab/glafira/DataManager.kt"
             or path.startswith("desktop-bridge/")
             or path == ".github/scripts/run-android-instrumentation.sh"
         ):
@@ -116,7 +120,7 @@ def main() -> None:
     output_path = os.environ["GITHUB_OUTPUT"]
     with open(output_path, "a", encoding="utf-8") as output:
         for name, value in selected.items():
-            output.write(f"{name}={str(value).lower()}\n")
+            output.write(f"{name}={str(value).lower()}\\n")
     print("Changed paths:")
     for path in changed:
         print(f"  {path}")
