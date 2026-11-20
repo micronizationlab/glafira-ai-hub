@@ -36,24 +36,26 @@ class ChangeSelectionTests(unittest.TestCase):
         selected = MODULE.classify_paths(["docs/architecture.md"], "pull_request", self.root)
         self.assertFalse(any(selected.values()))
 
-    def test_workflow_only_change_runs_linter_not_app_builds(self):
+    def test_workflow_only_change_runs_linter_and_all_present_platform_suites(self):
         selected = MODULE.classify_paths(
             [".github/workflows/android.yml"], "pull_request", self.root
         )
         self.assertTrue(selected["workflow_lint"])
-        self.assertFalse(selected["android"])
-        self.assertFalse(selected["ios"])
-        self.assertFalse(selected["agent"])
-        self.assertFalse(selected["contracts"])
+        self.assertTrue(selected["android"])
+        self.assertTrue(selected["ios"])
+        self.assertTrue(selected["agent"])
+        self.assertTrue(selected["contracts"])
+        self.assertFalse(selected["android_acceptance"])
 
-    def test_ci_script_change_runs_selector_checks_not_app_build(self):
+    def test_ci_script_change_runs_linter_and_all_present_platform_suites(self):
         selected = MODULE.classify_paths(
             [".github/scripts/detect_changes.py"], "pull_request", self.root
         )
         self.assertTrue(selected["workflow_lint"])
-        self.assertFalse(selected["android"])
-        self.assertFalse(selected["ios"])
-        self.assertFalse(selected["agent"])
+        self.assertTrue(selected["android"])
+        self.assertTrue(selected["ios"])
+        self.assertTrue(selected["agent"])
+        self.assertTrue(selected["contracts"])
 
     def test_android_core_change_selects_android_and_contracts(self):
         selected = MODULE.classify_paths(
