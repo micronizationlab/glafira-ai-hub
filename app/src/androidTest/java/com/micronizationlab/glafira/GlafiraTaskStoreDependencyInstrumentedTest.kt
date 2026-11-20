@@ -66,6 +66,17 @@ class GlafiraTaskStoreDependencyInstrumentedTest {
         assertEquals("child", store.claimNext(4_001L)?.taskId)
     }
 
+    @Test fun enqueueWithDependenciesPersistsTheGraphBeforeTheTaskCanBeClaimed() {
+        val store = newStore()
+        enqueue(store, task("parent"))
+        val result = store.enqueueWithDependencies(task("child"), setOf("parent"), 2_000L)
+        assertTrue(result.inserted)
+        assertEquals(setOf("parent"), store.taskDependencies("child"))
+        assertEquals("parent", store.claimNext(3_000L)?.taskId)
+        assertNull("Newly inserted dependent task must not race ahead of its predecessor",
+            store.claimNext(3_001L))
+    }
+
     @Test fun failedPredecessorFailsDependentInsteadOfLeavingItQueuedForever() {
         val store = newStore()
         enqueue(store, task("parent"))
