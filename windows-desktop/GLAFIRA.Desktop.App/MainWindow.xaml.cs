@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using GLAFIRA.Desktop.Hub.Core;
 
 namespace GLAFIRA.Desktop.App;
@@ -16,4 +17,9 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
     }
     private void Refresh_Click(object sender, RoutedEventArgs e) => _viewModel.Refresh();
+    private void Tasks_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is DataGrid grid && grid.SelectedItem is HubTaskSnapshot task)
+            _viewModel.LoadTaskHistory(task);
+    }
 }

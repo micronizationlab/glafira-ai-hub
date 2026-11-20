@@ -29,7 +29,7 @@
           <DataGridTextColumn Header="Последний heartbeat" Binding="{Binding LastHeartbeat, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="150"/>
         </DataGrid.Columns>
       </DataGrid></TabItem>
-      <TabItem Header="ОЧЕРЕДЬ ЗАДАЧ"><DataGrid ItemsSource="{Binding Tasks}">
+      <TabItem Header="ОЧЕРЕДЬ ЗАДАЧ"><DataGrid ItemsSource="{Binding Tasks}" SelectionChanged="Tasks_SelectionChanged">
         <DataGrid.Columns>
           <DataGridTextColumn Header="Task ID" Binding="{Binding TaskId}" Width="1.5*"/>
           <DataGridTextColumn Header="Проект" Binding="{Binding ProjectId}" Width="*"/>
@@ -41,6 +41,19 @@
           <DataGridTextColumn Header="Создана" Binding="{Binding CreatedAt, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="140"/>
         </DataGrid.Columns>
       </DataGrid></TabItem>
+      <TabItem Header="ИСТОРИЯ ЗАДАЧ">
+        <DataGrid ItemsSource="{Binding TaskHistory}" IsReadOnly="True" AutoGenerateColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Событие" Binding="{Binding EventId}" Width="85"/>
+            <DataGridTextColumn Header="Состояние" Binding="{Binding State}" Width="130"/>
+            <DataGridTextColumn Header="Время" Binding="{Binding OccurredAt, StringFormat={}{0:dd.MM.yyyy HH:mm:ss}}" Width="165"/>
+            <DataGridTextColumn Header="Агент" Binding="{Binding AgentId}" Width="*"/>
+            <DataGridTextColumn Header="Код" Binding="{Binding EventCode}" Width="160"/>
+            <DataGridTextColumn Header="Прогресс" Binding="{Binding ProgressPercent}" Width="90"/>
+            <DataGridTextColumn Header="Сообщение" Binding="{Binding ProgressMessage}" Width="2*"/>
+          </DataGrid.Columns>
+        </DataGrid>
+      </TabItem>
     </TabControl>
     <TextBlock DockPanel.Dock="Bottom" Text="Режим мониторинга: только чтение. Сопряжение, выдача разрешений и LIVE-действия здесь пока не включены." Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0"/>
   </DockPanel>
