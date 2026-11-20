@@ -416,7 +416,7 @@ class GlafiraTaskStore(context: Context) :
             ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
             val merged = existing + dependencyTaskIds
             val graph = mutableMapOf<String, MutableSet<String>>()
-            db.query(TABLE_TASK_DEPENDENCIES, arrayOf("task_id", "depends_on_task_id"),
+            db.query(TABLE_DEPENDENCIES, arrayOf("task_id", "depends_on_task_id"),
                 null, null, null, null, null).use { cursor ->
                 while (cursor.moveToNext()) {
                     graph.getOrPut(cursor.getString(0)) { mutableSetOf() }.add(cursor.getString(1))
@@ -430,7 +430,7 @@ class GlafiraTaskStore(context: Context) :
                     "Task dependencies cannot cross project boundaries."
                 }
                 if (dependencyId !in existing) {
-                    db.insertOrThrow(TABLE_TASK_DEPENDENCIES, null, ContentValues().apply {
+                    db.insertOrThrow(TABLE_DEPENDENCIES, null, ContentValues().apply {
                         put("task_id", taskId)
                         put("depends_on_task_id", dependencyId)
                         put("created_at", nowMillis)
@@ -447,7 +447,7 @@ class GlafiraTaskStore(context: Context) :
     /** Returns direct predecessors for diagnostics and dependency-aware scheduling. */
     @Synchronized
     fun taskDependencies(taskId: String): Set<String> = readableDatabase.query(
-        TABLE_TASK_DEPENDENCIES, arrayOf("depends_on_task_id"),
+        TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
         "task_id = ?", arrayOf(taskId), null, null, null
     ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
 
@@ -466,7 +466,7 @@ class GlafiraTaskStore(context: Context) :
             db.execSQL(
                 "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
                     "WHERE state IN (?, ?) AND task_id IN (" +
-                    "SELECT d.task_id FROM $TABLE_TASK_DEPENDENCIES d " +
+                    "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
                     "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
                     "WHERE p.state IN (?, ?))",
                 arrayOf(
@@ -482,7 +482,7 @@ class GlafiraTaskStore(context: Context) :
                     "WHERE state IN (?, ?) AND task_type != ? " +
                     "AND (retry_at IS NULL OR retry_at <= ?) " +
                     "AND (deadline_at IS NULL OR deadline_at >= ?) " +
-                    "AND NOT EXISTS (SELECT 1 FROM $TABLE_TASK_DEPENDENCIES d " +
+                    "AND NOT EXISTS (SELECT 1 FROM $TABLE_DEPENDENCIES d " +
                     "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
                     "WHERE d.task_id = t.task_id AND p.state != ?) " +
                     "ORDER BY priority DESC, created_at ASC LIMIT 1",
