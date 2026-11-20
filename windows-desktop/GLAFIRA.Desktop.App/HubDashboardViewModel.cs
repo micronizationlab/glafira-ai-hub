@@ -32,6 +32,7 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
         try
         {
             var now = DateTimeOffset.UtcNow;
+            _store.ReconcilePendingAgents(now);
             var agents = _store.GetAgents(now);
             var tasks = _store.GetTasks();
             Agents.Clear();
