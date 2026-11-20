@@ -12,49 +12,51 @@ class GlafiraJsonTaskPlanDecoderTest {
         createdAtMillis = 1_000L
     )
 
-    @Test fun decodesIndependentBranchesAndDerivesScopesFromTrustedRegistry() {
+    @Test fun reusesExistingPlannerSchemaAndDerivesScopesFromTrustedToolRegistry() {
         val json = """{
-            "planId":"plan-00000001",
-            "nodes":[
-                {"taskId":"root","taskType":"project.read","payload":"{}"},
-                {"taskId":"branch-a","taskType":"project.read","payload":"{}","dependsOnTaskIds":["root"],"requiredScopes":["admin.root"]},
-                {"taskId":"branch-b","taskType":"project.read","payload":"{}","dependsOnTaskIds":["root"]},
-                {"taskId":"join","taskType":"conversation.read","payload":"{}","dependsOnTaskIds":["branch-a","branch-b"]}
+            "goal":"Research and summarize project materials",
+            "tasks":[
+                {"id":"root","title":"Read source material","instruction":"Read the project source material","executor":"GLAFIRA","dependsOn":[]},
+                {"id":"branch_a","title":"Analyze","instruction":"Analyze the source material","executor":"ANALYST","dependsOn":["root"],"requiredScopes":["admin.root"]},
+                {"id":"branch_b","title":"Research","instruction":"Research supporting sources","executor":"RESEARCHER","dependsOn":["root"]},
+                {"id":"join","title":"Synthesize","instruction":"Combine both branch results","executor":"GLAFIRA","dependsOn":["branch_a","branch_b"]}
             ]
         }"""
-        val plan = GlafiraJsonTaskPlanDecoder.decode(
-            request, json, setOf("project.read", "conversation.read")
-        )
+        val plan = GlafiraJsonTaskPlanDecoder.decode(request, json)
         assertEquals(4, plan.nodes.size)
-        assertEquals(setOf("project.read"), plan.nodes[1].task.requiredScopes)
-        assertEquals(setOf("branch-a", "branch-b"), plan.nodes.last().dependsOnTaskIds)
+        assertEquals(setOf("desktop.task.execute"), plan.nodes[1].task.requiredScopes)
+        assertEquals(setOf(plan.nodes[1].task.taskId, plan.nodes[2].task.taskId),
+            plan.nodes.last().dependsOnTaskIds)
+        assertEquals(plan.planId, GlafiraCoreTaskPlanAdapter.toPlannerPlan(plan).let { 
+            GlafiraCoreTaskPlanAdapter.fromPlannerPlan(request, it).planId
+        })
     }
 
-    @Test fun rejectsTaskTypesOutsideAllowlistOrRegistry() {
-        val json = """{"planId":"plan-00000002","nodes":[
-            {"taskId":"root","taskType":"system.shell","payload":"{}"}
+    @Test fun rejectsUnknownExecutorAndMalformedPlannerPayloads() {
+        val unknown = """{"goal":"Do work","tasks":[
+            {"id":"root","title":"Run shell","instruction":"Run arbitrary shell commands","executor":"SYSTEM","dependsOn":[]}
         ]}"""
-        assertThrows(IllegalArgumentException::class.java) {
-            GlafiraJsonTaskPlanDecoder.decode(request, json, setOf("project.read"))
+        assertThrows(IllegalStateException::class.java) {
+            GlafiraJsonTaskPlanDecoder.decode(request, unknown)
         }
-        assertThrows(IllegalArgumentException::class.java) {
-            GlafiraJsonTaskPlanDecoder.decode(request, json, setOf("system.shell"))
-        }
-    }
-
-    @Test fun rejectsMalformedPayloadsAndDependencyCycles() {
-        val malformed = """{"planId":"plan-00000003","nodes":[
-            {"taskId":"root","taskType":"project.read","payload":"not-json"}
-        ]}"""
         assertThrows(Exception::class.java) {
-            GlafiraJsonTaskPlanDecoder.decode(request, malformed, setOf("project.read"))
+            GlafiraJsonTaskPlanDecoder.decode(request, "not-json")
         }
-        val cyclic = """{"planId":"plan-00000004","nodes":[
-            {"taskId":"a","taskType":"project.read","payload":"{}","dependsOnTaskIds":["b"]},
-            {"taskId":"b","taskType":"project.read","payload":"{}","dependsOnTaskIds":["a"]}
+    }
+
+    @Test fun rejectsDependencyCyclesAndUnknownDependencies() {
+        val cyclic = """{"goal":"Do work","tasks":[
+            {"id":"a","title":"A","instruction":"Task A","executor":"GLAFIRA","dependsOn":["b"]},
+            {"id":"b","title":"B","instruction":"Task B","executor":"ANALYST","dependsOn":["a"]}
         ]}"""
         assertThrows(IllegalArgumentException::class.java) {
-            GlafiraJsonTaskPlanDecoder.decode(request, cyclic, setOf("project.read"))
+            GlafiraJsonTaskPlanDecoder.decode(request, cyclic)
+        }
+        val unknownDependency = """{"goal":"Do work","tasks":[
+            {"id":"a","title":"A","instruction":"Task A","executor":"GLAFIRA","dependsOn":["outside"]}
+        ]}"""
+        assertThrows(IllegalArgumentException::class.java) {
+            GlafiraJsonTaskPlanDecoder.decode(request, unknownDependency)
         }
     }
 }
