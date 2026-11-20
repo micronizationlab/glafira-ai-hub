@@ -21,8 +21,10 @@ object GlafiraDesktopDispatchPlanner {
     fun plan(
         tasks: List<GlafiraTask>,
         nodes: List<GlafiraNodeCapabilities>,
-        activeLeasesByNode: Map<String, Int>
+        activeLeasesByNode: Map<String, Int>,
+        nowMillis: Long = System.currentTimeMillis()
     ): List<GlafiraDesktopDispatchAssignment> {
+        require(nowMillis > 0L)
         val load = nodes.associate { node ->
             node.nodeId to (activeLeasesByNode[node.nodeId] ?: 0).coerceAtLeast(0)
         }.toMutableMap()
@@ -30,11 +32,13 @@ object GlafiraDesktopDispatchPlanner {
 
         tasks.asSequence()
             .filter { it.taskType == GlafiraTaskStore.DESKTOP_TASK_TYPE && it.state == GlafiraTaskState.QUEUED }
+            .filter { it.deadlineAtMillis == null || it.deadlineAtMillis > nowMillis }
             .sortedWith(compareByDescending<GlafiraTask> { it.priority }.thenBy { it.createdAtMillis })
             .forEach { task ->
                 val required = runCatching {
-                    val values = JSONObject(task.payload).getJSONArray("requiredCapabilities")
-                    buildSet { for (index in 0 until values.length()) add(values.getString(index)) }
+                    val values = JSONObject(task.payload).optJSONArray("requiredCapabilities")
+                    if (values == null) emptySet() else
+                        buildSet { for (index in 0 until values.length()) add(values.getString(index)) }
                 }.getOrElse { return@forEach }
                 val candidate = nodes.asSequence()
                     .filter { it.available && it.capabilities.containsAll(required) }
