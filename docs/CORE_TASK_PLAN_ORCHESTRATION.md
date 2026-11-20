@@ -4,7 +4,7 @@
 
 A high-level instruction is normalized into `GlafiraTaskPlanRequest` and passed to a trusted `GlafiraTaskPlanDecomposer`. The planner returns typed `GlafiraTaskPlanNode` values; it does not execute tools or receive credentials. `GlafiraTaskPlanOrchestrator` validates project scope, idempotency, timestamps, node limits and the complete acyclic dependency graph before persistence.
 
-The Core owner exposes `submitInstruction`, `enqueuePlan` and project-scoped `taskPlan` status. Plan header, node membership and dependency edges are persisted in one SQLite transaction. A crash cannot expose a partially inserted plan. Repeated submissions are idempotent and conflicting reuse is rejected.
+The Core owner exposes `submitInstruction`, `enqueuePlan`, project-scoped `taskPlan` / `taskPlans` status, and `taskPlanJournal` with each node's transition history and persisted result. Plan header, node membership and dependency edges are persisted in one SQLite transaction. A crash cannot expose a partially inserted plan. Repeated submissions are idempotent and conflicting reuse is rejected.
 
 ## Parallel branches and dependency semantics
 
@@ -20,7 +20,7 @@ Task state transitions remain recorded in `core_task_history`. Plan status is de
 
 ## Safety boundary and remaining integration
 
-The current runtime remains `DRY_RUN`; Desktop claim/lease issuance and external LIVE actions are not enabled by this change. A model provider must implement `GlafiraTaskPlanDecomposer` and return only registered, typed task operations. The provider adapter, owner-facing plan approval UI, end-to-end authenticated multi-device Bridge execution and cross-platform plan-status views require separate integration and validation. No generated plan can grant itself permissions or switch execution mode.
+The current runtime remains `DRY_RUN`; Desktop claim/lease issuance and external LIVE actions are not enabled by this change. The planner interface is implemented, but a production model-provider adapter and its prompt/schema validation still need to be connected and tested. A model provider must implement `GlafiraTaskPlanDecomposer` and return only registered, typed task operations. The provider adapter, owner-facing plan approval UI, end-to-end authenticated multi-device Bridge execution and cross-platform plan-status views require separate integration and validation. No generated plan can grant itself permissions or switch execution mode.
 
 ## Limits
 
