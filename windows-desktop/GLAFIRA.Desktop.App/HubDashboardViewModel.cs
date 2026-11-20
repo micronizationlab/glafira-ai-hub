@@ -47,6 +47,36 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
         catch (Exception error) { Status = $"Не удалось прочитать состояние Desktop Hub: {error.Message}"; }
     }
 
+    public void ApproveAgent(string agentId, IEnumerable<string> requestedCapabilities, int maxParallelTasks)
+    {
+        var agent = Agents.SingleOrDefault(item => StringComparer.Ordinal.Equals(item.AgentId, agentId))
+            ?? throw new InvalidOperationException("Выбранный Agent больше не зарегистрирован.");
+        var capabilities = requestedCapabilities
+            .Select(value => value.Trim())
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var allowed = new HashSet<string>(
+            ["document.analysis", "code.build", "web.research", "core.orchestration"],
+            StringComparer.Ordinal);
+        if (capabilities.Length is < 1 or > 4 || capabilities.Any(value => !allowed.Contains(value)))
+            throw new ArgumentException("Выберите одну или несколько поддерживаемых возможностей Agent.");
+        if (!_store.ConfigureAgentApproval(agent.AgentId, capabilities, maxParallelTasks))
+            throw new InvalidOperationException("Не удалось применить одобрение Agent.");
+        Refresh();
+        Status = $"Agent {agent.AgentId} одобрен. Он появится онлайн только после первого аутентифицированного heartbeat.";
+    }
+
+    public bool RevokeAgent(string agentId)
+    {
+        var revoked = BridgeHost.RevokeAgent(agentId);
+        Refresh();
+        Status = revoked
+            ? $"Сопряжение Agent {agentId} отозвано; credential отключён."
+            : $"Agent {agentId} не найден.";
+        return revoked;
+    }
+
     public void LoadTaskHistory(HubTaskSnapshot? task)
     {
         TaskHistory.Clear();
