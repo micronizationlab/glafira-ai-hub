@@ -21,10 +21,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.work.getWorkInfosForUniqueWorkFlow
 import androidx.work.WorkManager
 import androidx.work.WorkInfo
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Observer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,22 +67,28 @@ fun BackupSettingsSection() {
     var lastError by remember { mutableStateOf(prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)) }
     val workManager = remember { WorkManager.getInstance(context) }
 
-    LaunchedEffect(workManager) {
-        workManager.getWorkInfosForUniqueWorkFlow("glafira_backup_now").collect { infos ->
-            val work = infos.lastOrNull() ?: return@collect
+    DisposableEffect(workManager) {
+        val manualWork = workManager.getWorkInfosForUniqueWorkLiveData("glafira_backup_now")
+        val manualObserver = Observer<List<WorkInfo>> { infos ->
+            val work = infos?.lastOrNull() ?: return@Observer
             status = BackupWorkStatus.message(work.state, work.runAttemptCount)
             persistedStatus = prefs.getString(GlafiraBackupWorker.KEY_LAST_STATUS, null)
             lastError = prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)
             lastSuccess = prefs.getLong(GlafiraBackupWorker.KEY_LAST_SUCCESS, 0L)
         }
-    }
-    LaunchedEffect(workManager) {
-        workManager.getWorkInfosForUniqueWorkFlow("glafira_daily_backup").collect { infos ->
-            val work = infos.lastOrNull() ?: return@collect
+        val dailyWork = workManager.getWorkInfosForUniqueWorkLiveData("glafira_daily_backup")
+        val dailyObserver = Observer<List<WorkInfo>> { infos ->
+            val work = infos?.lastOrNull() ?: return@Observer
             if (work.state == WorkInfo.State.FAILED || work.state == WorkInfo.State.CANCELLED) {
                 lastError = prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)
                 persistedStatus = prefs.getString(GlafiraBackupWorker.KEY_LAST_STATUS, null)
             }
+        }
+        manualWork.observeForever(manualObserver)
+        dailyWork.observeForever(dailyObserver)
+        onDispose {
+            manualWork.removeObserver(manualObserver)
+            dailyWork.removeObserver(dailyObserver)
         }
     }
 
