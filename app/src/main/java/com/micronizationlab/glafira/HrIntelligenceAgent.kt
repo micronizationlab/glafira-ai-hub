@@ -168,6 +168,11 @@ data class HrAgentReview(
     init {
         require(agentId.isNotBlank())
         require(rationale.isNotBlank())
+        if (decision in setOf(HrReviewDecision.ACCEPT, HrReviewDecision.CORRECT, HrReviewDecision.CONFLICT)) {
+            require(sourceReferences.isNotEmpty()) {
+                "Accept, correct and conflict reviews must cite their evidence."
+            }
+        }
     }
 }
 
