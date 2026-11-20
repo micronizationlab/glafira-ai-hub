@@ -45,7 +45,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["ios"])
         self.assertTrue(selected["agent"])
         self.assertTrue(selected["contracts"])
-        self.assertFalse(selected["android_acceptance"])
+        self.assertTrue(selected["android_acceptance"])
 
     def test_ci_script_change_runs_linter_and_all_present_platform_suites(self):
         selected = MODULE.classify_paths(
