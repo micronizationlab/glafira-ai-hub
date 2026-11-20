@@ -59,9 +59,6 @@ dependencies {
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    androidTestImplementation("androidx.compose.ui:ui-test")
-    // The Android variant contains the instrumentation test API classes used by the UI suite.
-    androidTestImplementation("androidx.compose.ui:ui-test-android:1.7.2")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.work:work-testing:2.10.0")
 }
