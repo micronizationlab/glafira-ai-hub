@@ -44,7 +44,7 @@ No rented server or paid backend is required for the initial implementation. And
 3. Implement the optional Voice Assistant plugin with a simple enable/disable, plugin selection and availability status.
 4. Preserve automatic voice delivery profiles: personal chats use the selected informal profile; work chats use the formal profile; uncertain chat type defaults to formal.
 5. Apply consent and licensing safeguards for recognizable real-person voices.
-6. Add SMM, Accountant, Medical/Scientific Consultant, Lawyer and Commercial Director roles, then further roles such as Analyst and Procurement/Logistics as prioritized by the owner.
+6. Add Press Secretary / Communications & Media, Banker / Finance, Accounting & Tax, Врач / Medical Intelligence, Юрист / Legal Intelligence and Commercial Director roles. Analytical reasoning is a mandatory shared capability of every agent; do not create a standalone Analyst role.
 7. Voice and role behavior must not change facts, permissions, privacy or authority.
 
 ## Priority 4 — Knowledge Ingestion and Retrieval Extensions
@@ -79,6 +79,8 @@ The module is not yet the authoritative Core queue and must not be treated as th
 5. Add dry-run/preview mode and recovery checkpoints before consequential actions.
 
 ## Priority 7 — Skill Engine and Governed Plugin Marketplace
+
+Owner-approved scope is tracked in [Plugin Ecosystem Issue #101](https://github.com/micronizationlab/glafira-ai-hub/issues/101). Agent discovery/recommendations may run in parallel with P0/P1 work, but no emulator-heavy jobs or production activation may interfere with release-critical validation.
 
 1. Versioned skill manifest and package validation.
 2. Local skill library with import/export, install/update/uninstall and rollback.
@@ -163,7 +165,7 @@ These are roadmap capabilities, not a claim that they are already implemented. E
 - Still required for Backup & Recovery: real-device/provider acceptance testing, permission-expiry and quota failure tests, clean-device restore test, status notifications, and optional email fallback. WorkManager timing is best-effort.
 - GLAFIRA Core hardening has started: cross-provider consultation is owner opt-in and disabled by default; common tokens/passwords/contact details are pattern-redacted; the primary model can return a direct answer from the planning call to avoid duplicate requests; Council synthesis now follows the configured primary model.
 - Still required for GLAFIRA Core: field-level data-sharing classifications, broader coordinator tests, timeout/cancellation/fallback policy, context-boundary tests, typed tool registry, approval engine, unified operational memory, independent Reviewer and structured Trace/Audit. Their contracts are specified but not yet implemented by the new specification PR.
-- Voice runtime and SMM/social connectors remain specifications until implemented and tested.
+- Voice runtime and Press Secretary/social connectors remain specifications until implemented and tested.
 
 - Restore semantics hardened: selected backup now replaces the app-private file snapshot, including removing files created after that backup; safety snapshot rollback remains in place. Requires device acceptance tests.
 - Latest observed PR #35 validation: Android Unit Tests passed, but Android Emulator Integration Tests failed because the emulator did not finish booting before timeout. This is an infrastructure/test-run failure, not a passing restore acceptance; rerun and investigate before merge.
