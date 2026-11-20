@@ -88,17 +88,20 @@ Upstream provider quota and GLAFIRA's subsidized allowance are separate. GLAFIRA
 
 | Provider | Free-access signal | Caveat / control |
 |---|---|---|
-| Google Gemini API | Selected models (e.g. Gemini 3.8 Flash, 3.1 Flash-Lite) list free input/output | Project/model limits change; free-tier data may improve Google products; exclude sensitive data unless terms permit |
-| GroqCloud | Model-specific rate limits published; GPT-OSS 120B example: 30 RPM, 1,000 RPD, 8K TPM, 200K TPD | Organization-level limits and exceptions; never promise identical limits |
-| Mistral | Free experimentation/prototyping mode may be available | Verify exact quota in account console before use |
-| Cohere Trial | Trial key free; Chat example 20 calls/min, Embed 5/min; other endpoints 1,000 calls/month | Endpoint-specific; not production key |
-| OpenAI API | Metered price catalogue; account grants/tier vary | ChatGPT subscription does not imply API credits; treat as paid unless billing proves grant |
-| Anthropic API | No general free production allowance assumed | Verify actual Console credits/terms |
-| DeepSeek API | API pricing/granted balance separate from consumer app free access | Do not infer API free from app |
-| xAI API | Prepaid API credits and spend limits | Consumer Grok subscription is separate |
-| Yandex/GigaChat | Trial/consumer access may differ from commercial API quotas | Verify actual region/model/account terms |
+| Google Gemini API — Gemini 3.8 Flash / 3.1 Flash-Lite | Official pricing page shows free input/output tier for selected models | Exact RPM/TPM/RPD/TPD are project+model+region specific; fetch quota from API and console. Free tier data may be used to improve Google products. Not an unlimited shared pool |
+| GroqCloud — GPT-OSS 120B / 20B | Official table example: 30 RPM, 1,000 RPD, 8K TPM, 200K TPD | Treat as an organization-level rate ceiling, not a per-user entitlement; verify current model/account page |
+| Mistral La Plateforme — selected models | Free experimentation tier exists | No universal public token amount; read current RPS/TPM/month limits from account console and commercial terms |
+| Cohere Trial — Chat / Embed | Trial key: Chat example 20 calls/min, Embed 5 calls/min; other endpoints 1,000 calls/month | Endpoint-specific, not production service; production key is metered |
+| OpenRouter free model variants (:free) | 20 requests/minute and 50 requests/day; after buying $10 credits the free-model cap can rise to 1,000/day | Failed attempts count; model availability/provider limits vary; this is a paid-credit condition for the higher cap |
+| Alibaba Cloud Model Studio — eligible Qwen/other model IDs | New-account free quota is typically 1M tokens per eligible model, valid 90 days; per-model eligibility is shown in console | Not every model/region qualifies. On 2026-11-15 free quotas were removed for DeepSeek V4.1 Flash-1017, Qwen3.8-Max-0902, DeepSeek V4-Pro and Kimi-K3. Enable Free-Quota-Only to prevent automatic paid fallback |
+| GigaChat API — Lite / Pro / Max / Ultra | Published Freemium for eligible existing individual customers: 250M / 40M / 25M / 50M tokens respectively, 12 months; one generation stream | Important transition: new customers or customers who had not bought a package from 2026-09-01 are directed to cloud.ru tariffs. Do not assume every new GLAFIRA customer receives the historical Freemium grant |
+| OpenAI API | API is metered by default; eligible ChatGPT Pro/Business subscribers may separately claim monthly API credits: Pro $100/$200/$500; Business $20 per Standard seat and $100 per Premium seat, workspace cap $500 | Claim required, 7-day eligibility and linked API organization; credits expire at cycle end. ChatGPT app Free/Plus/Pro allowance is not an API token quota |
+| Anthropic API | General Console API is separately billed; approved External Researcher Access applications for eligible AI safety research may receive $1,000 API credits | Research-only program, application/approval required; Claude.ai Free/Pro app access is not API credits. Claude Pro does not include Console API usage |
+| DeepSeek API | API inference billed against account balance/granted credits; consumer DeepSeek app free use is a different product | Do not infer API free access from app. Free Files API or search/fetch promotions are separate from model inference |
+| xAI API | Prepaid API credits / monthly invoiced billing; no general free model-token quota assumed | Grok consumer subscription and xAI API credits are separate |
+| Yandex Cloud AI Studio / YandexGPT | No universal per-model free API token quota confirmed for new customers; cloud trial grants are billing-account/service dependent and currently unavailable to new clients in the trial flow | Do not use old promo pages as current quota; inspect live billing console and current regional terms |
 
-Store official source, checked_at, account/project, model, region, RPM/RPD/TPM/TPD/spend, reset timezone, commercial-use/data terms and effective dates. Stale/unknown quota blocks automatic free routing. On exhaustion, stop, ask to spend GLF, or route to local model; no silent paid fallback.
+Store official source, checked_at, account/project, exact model ID, region, free token/request amount, RPM/RPD/TPM/TPD/monthly spend, reset timezone, expiry, eligibility, commercial-use/data terms and effective dates. Consumer chat subscriptions, API trial grants and API free quotas are three different products; never pool them together. Before exposing a provider free tier to customers, verify that the provider terms permit multi-user/commercial use and that free-tier data handling is appropriate. Stale/unknown quota blocks automatic free routing. On exhaustion, stop, ask to spend GLF, or route to local model; no silent paid fallback.
 
 ## 8. Telegram shop
 
