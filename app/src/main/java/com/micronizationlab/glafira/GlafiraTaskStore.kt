@@ -15,7 +15,7 @@ import java.io.File
  */
 class GlafiraTaskStore(context: Context) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
-    GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery {
+    GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraCoreTaskResultPersistence {
     private val appContext = context.applicationContext
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -56,12 +56,68 @@ class GlafiraTaskStore(context: Context) :
         )
         createDesktopTables(db)
         GlafiraDryRunPreviewSchema.create(db)
+        createHistorySchema(db)
+        createCoreTaskResultsSchema(db)
+        createTaskDependenciesSchema(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) createDesktopTables(db)
         if (oldVersion < 3) GlafiraDryRunPreviewSchema.create(db)
-        if (newVersion > 3) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 4) createHistorySchema(db)
+        if (oldVersion < 5) createCoreTaskResultsSchema(db)
+        if (oldVersion < 6) createTaskDependenciesSchema(db)
+        if (newVersion > 6) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+    }
+
+    /** Triggers also cover state writes by same-database approval/result adapters. */
+    private fun createHistorySchema(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS core_task_history (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES core_tasks(task_id) ON DELETE CASCADE,
+            project_id TEXT NOT NULL, from_state TEXT, to_state TEXT NOT NULL,
+            changed_at INTEGER NOT NULL, attempt_count INTEGER NOT NULL, reason TEXT
+        )""")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_core_task_history_task ON core_task_history(task_id,event_id)")
+        // A migration can preserve only the current state, never invent earlier events.
+        db.execSQL("""INSERT INTO core_task_history(task_id,project_id,from_state,to_state,changed_at,attempt_count,reason)
+            SELECT task_id,project_id,NULL,state,updated_at,attempt_count,'HISTORY_BASELINE'
+            FROM core_tasks WHERE NOT EXISTS
+            (SELECT 1 FROM core_task_history h WHERE h.task_id = core_tasks.task_id)""")
+        db.execSQL("""CREATE TRIGGER IF NOT EXISTS core_task_history_insert AFTER INSERT ON core_tasks BEGIN
+            INSERT INTO core_task_history(task_id,project_id,from_state,to_state,changed_at,attempt_count,reason)
+            VALUES(NEW.task_id,NEW.project_id,NULL,NEW.state,NEW.updated_at,NEW.attempt_count,NEW.last_error);
+        END""")
+        db.execSQL("""CREATE TRIGGER IF NOT EXISTS core_task_history_transition AFTER UPDATE OF state ON core_tasks
+            WHEN OLD.state != NEW.state BEGIN
+            INSERT INTO core_task_history(task_id,project_id,from_state,to_state,changed_at,attempt_count,reason)
+            VALUES(NEW.task_id,NEW.project_id,OLD.state,NEW.state,NEW.updated_at,NEW.attempt_count,NEW.last_error);
+        END""")
+        db.execSQL("""CREATE TRIGGER IF NOT EXISTS core_task_terminal_guard BEFORE UPDATE OF state ON core_tasks
+            WHEN OLD.state IN ('succeeded','failed','cancelled') AND OLD.state != NEW.state BEGIN
+            SELECT RAISE(ABORT,'TERMINAL_TASK_IMMUTABLE');
+        END""")
+    }
+
+    private fun createTaskDependenciesSchema(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS core_task_dependencies (
+            task_id TEXT NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE,
+            depends_on_task_id TEXT NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY(task_id, depends_on_task_id),
+            CHECK(task_id != depends_on_task_id)
+        )""")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_core_task_dependencies_predecessor ON core_task_dependencies(depends_on_task_id, task_id)")
+    }
+
+    private fun createCoreTaskResultsSchema(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS $TABLE_CORE_RESULTS (
+                task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE,
+                result_ciphertext TEXT NOT NULL,
+                completed_at INTEGER NOT NULL
+            )""".trimIndent()
+        )
     }
 
     private fun createDesktopTables(db: SQLiteDatabase) {
@@ -243,13 +299,23 @@ class GlafiraTaskStore(context: Context) :
     @Synchronized
     fun listTasks(
         states: Set<GlafiraTaskState> = emptySet(),
-        limit: Int = 100
+        limit: Int = 100,
+        projectId: String? = null
     ): List<GlafiraTask> {
         require(limit in 1..500) { "Task list limit must be between 1 and 500." }
-        val selection = if (states.isEmpty()) null else {
-            "state IN (" + states.joinToString(",") { "?" } + ")"
+        require(projectId == null || projectId.isNotBlank())
+        val predicates = mutableListOf<String>()
+        val arguments = mutableListOf<String>()
+        if (states.isNotEmpty()) {
+            predicates += "state IN (" + states.joinToString(",") { "?" } + ")"
+            arguments += states.map { it.databaseValue }
         }
-        val args = if (states.isEmpty()) null else states.map { it.databaseValue }.toTypedArray()
+        if (projectId != null) {
+            predicates += "project_id = ?"
+            arguments += projectId
+        }
+        val selection = predicates.takeIf { it.isNotEmpty() }?.joinToString(" AND ")
+        val args = arguments.takeIf { it.isNotEmpty() }?.toTypedArray()
         return readableDatabase.query(
             TABLE_TASKS,
             null,
@@ -266,6 +332,172 @@ class GlafiraTaskStore(context: Context) :
         }
     }
 
+    /** Scoped status lookup for callers with a project authorization boundary. */
+    @Synchronized
+    fun getTask(taskId: String, projectId: String): GlafiraTask? {
+        require(projectId.isNotBlank())
+        return readableDatabase.query(TABLE_TASKS, null, "task_id = ? AND project_id = ?",
+            arrayOf(taskId, projectId), null, null, null, "1"
+        ).use { if (it.moveToFirst()) it.toTask() else null }
+    }
+
+    @Synchronized
+    fun taskHistory(taskId: String, projectId: String, limit: Int = 100): List<GlafiraTaskStateEvent> {
+        require(projectId.isNotBlank() && limit in 1..500)
+        return readableDatabase.query("core_task_history", null, "task_id = ? AND project_id = ?",
+            arrayOf(taskId, projectId), null, null, "event_id DESC", limit.toString()
+        ).use { cursor -> buildList {
+            while (cursor.moveToNext()) add(GlafiraTaskStateEvent(
+                eventId = cursor.getLong(cursor.getColumnIndexOrThrow("event_id")),
+                taskId = taskId, projectId = projectId,
+                fromState = cursor.getColumnIndexOrThrow("from_state").let {
+                    if (cursor.isNull(it)) null else GlafiraTaskState.fromDatabaseValue(cursor.getString(it))
+                },
+                toState = GlafiraTaskState.fromDatabaseValue(cursor.getString(cursor.getColumnIndexOrThrow("to_state"))),
+                changedAtMillis = cursor.getLong(cursor.getColumnIndexOrThrow("changed_at")),
+                attemptCount = cursor.getInt(cursor.getColumnIndexOrThrow("attempt_count")),
+                reason = cursor.getColumnIndexOrThrow("reason").let { if (cursor.isNull(it)) null else cursor.getString(it) }
+            ))
+        } }
+    }
+
+    /** Called only from WorkManager's connected-network wakeup, never from claimNext. */
+    @Synchronized
+    fun resumeWaitingForNetwork(nowMillis: Long = System.currentTimeMillis()): Int =
+        writableDatabase.update(TABLE_TASKS, ContentValues().apply {
+            put("state", GlafiraTaskState.QUEUED.databaseValue)
+            put("updated_at", nowMillis)
+            putNull("retry_at")
+            put("last_error", "NETWORK_AVAILABLE")
+        }, "state = ? AND task_type != ?", arrayOf(GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue, DESKTOP_TASK_TYPE))
+
+    @Synchronized
+    fun hasWaitingForNetworkTasks(): Boolean = readableDatabase.rawQuery(
+        "SELECT 1 FROM core_tasks WHERE state = ? AND task_type != ? LIMIT 1",
+        arrayOf(GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue, DESKTOP_TASK_TYPE)
+    ).use { it.moveToFirst() }
+
+    @Synchronized
+    fun nextRetryAtMillis(): Long? = readableDatabase.rawQuery(
+        "SELECT MIN(retry_at) FROM core_tasks WHERE state = ? AND task_type != ?",
+        arrayOf(GlafiraTaskState.RETRY_SCHEDULED.databaseValue, DESKTOP_TASK_TYPE)
+    ).use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null }
+
+    private fun expirePendingTasks(db: SQLiteDatabase, nowMillis: Long) {
+        db.update(TABLE_TASKS, ContentValues().apply {
+            put("state", GlafiraTaskState.FAILED.databaseValue)
+            put("updated_at", nowMillis)
+            putNull("retry_at")
+            put("last_error", "TASK_DEADLINE_EXPIRED")
+        }, "state IN ('queued','waiting_for_network','waiting_for_owner','retry_scheduled') AND deadline_at <= ? AND (last_error IS NULL OR last_error NOT IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN'))",
+            arrayOf(nowMillis.toString()))
+    }
+
+    /**
+     * Adds predecessor edges to a queued task. All tasks must belong to the same project.
+     * The operation is atomic and rejects cycles before any edge is persisted.
+     */
+    @Synchronized
+    fun addTaskDependencies(
+        taskId: String,
+        dependencyTaskIds: Set<String>,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean {
+        require(taskId.isNotBlank() && nowMillis > 0L)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val task = queryTask(db, taskId) ?: return false
+            if (task.state != GlafiraTaskState.QUEUED) return false
+            attachTaskDependencies(db, task, dependencyTaskIds, nowMillis)
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
+     * Inserts a task and all predecessor edges in one SQLite transaction. This is the safe
+     * creation path for a live queue: no concurrent drain worker can claim the task between
+     * insertion and dependency registration.
+     */
+    @Synchronized
+    fun enqueueWithDependencies(
+        task: GlafiraTask,
+        dependencyTaskIds: Set<String>,
+        nowMillis: Long = System.currentTimeMillis()
+    ): GlafiraTaskEnqueueResult {
+        GlafiraTaskPolicy.validate(task)
+        require(nowMillis > 0L)
+        require(dependencyTaskIds.size <= GlafiraTaskDependencyPolicy.MAX_DEPENDENCIES_PER_TASK)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val result = enqueue(task)
+            if (result.inserted) {
+                val insertedTask = queryTask(db, task.taskId)
+                    ?: throw IllegalStateException("Inserted Core task could not be read back.")
+                attachTaskDependencies(db, insertedTask, dependencyTaskIds, nowMillis)
+            } else {
+                val existing = db.query(
+                    TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
+                    "task_id = ?", arrayOf(result.task.taskId), null, null, null
+                ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+                require(existing == dependencyTaskIds) {
+                    "IDEMPOTENCY_DEPENDENCY_CONFLICT"
+                }
+            }
+            db.setTransactionSuccessful()
+            return result
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun attachTaskDependencies(
+        db: SQLiteDatabase,
+        task: GlafiraTask,
+        dependencyTaskIds: Set<String>,
+        nowMillis: Long
+    ) {
+        require(dependencyTaskIds.size <= GlafiraTaskDependencyPolicy.MAX_DEPENDENCIES_PER_TASK)
+        val existing = db.query(
+            TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
+            "task_id = ?", arrayOf(task.taskId), null, null, null
+        ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+        val merged = existing + dependencyTaskIds
+        val graph = mutableMapOf<String, MutableSet<String>>()
+        db.query(TABLE_DEPENDENCIES, arrayOf("task_id", "depends_on_task_id"),
+            null, null, null, null, null).use { cursor ->
+            while (cursor.moveToNext()) {
+                graph.getOrPut(cursor.getString(0)) { mutableSetOf() }.add(cursor.getString(1))
+            }
+        }
+        GlafiraTaskDependencyPolicy.validate(task.taskId, merged, graph)
+        for (dependencyId in dependencyTaskIds) {
+            val predecessor = queryTask(db, dependencyId)
+                ?: throw IllegalArgumentException("A task dependency must reference an existing task.")
+            require(predecessor.projectId == task.projectId) {
+                "Task dependencies cannot cross project boundaries."
+            }
+            if (dependencyId !in existing) {
+                db.insertOrThrow(TABLE_DEPENDENCIES, null, ContentValues().apply {
+                    put("task_id", task.taskId)
+                    put("depends_on_task_id", dependencyId)
+                    put("created_at", nowMillis)
+                })
+            }
+        }
+    }
+
+    /** Returns direct predecessors for diagnostics and dependency-aware scheduling. */
+    @Synchronized
+    fun taskDependencies(taskId: String): Set<String> = readableDatabase.query(
+        TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
+        "task_id = ?", arrayOf(taskId), null, null, null
+    ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+
     /**
      * Atomically claims one eligible task and increments its attempt count.
      * A worker crash after this point is recovered by a later Core recovery pass.
@@ -275,18 +507,24 @@ class GlafiraTaskStore(context: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
+            expirePendingTasks(db, nowMillis)
+            failTasksWithFailedDependencies(db, nowMillis)
             val taskId = db.rawQuery(
-                "SELECT task_id FROM $TABLE_TASKS " +
+                "SELECT task_id FROM $TABLE_TASKS t " +
                     "WHERE state IN (?, ?) AND task_type != ? " +
                     "AND (retry_at IS NULL OR retry_at <= ?) " +
                     "AND (deadline_at IS NULL OR deadline_at >= ?) " +
+                    "AND NOT EXISTS (SELECT 1 FROM $TABLE_DEPENDENCIES d " +
+                    "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+                    "WHERE d.task_id = t.task_id AND p.state != ?) " +
                     "ORDER BY priority DESC, created_at ASC LIMIT 1",
                 arrayOf(
                     GlafiraTaskState.QUEUED.databaseValue,
                     GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
                     DESKTOP_TASK_TYPE,
                     nowMillis.toString(),
-                    nowMillis.toString()
+                    nowMillis.toString(),
+                    GlafiraTaskState.SUCCEEDED.databaseValue
                 )
             ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
 
@@ -330,43 +568,19 @@ class GlafiraTaskStore(context: Context) :
         require(nowMillis > 0L)
         require(maxRetries in 0..20)
         val db = writableDatabase
-        val retryLimit = maxRetries + 1
         db.beginTransaction()
         try {
-            val failed = db.update(
-                TABLE_TASKS,
-                ContentValues().apply {
-                    put("state", GlafiraTaskState.FAILED.databaseValue)
-                    put("updated_at", nowMillis)
-                    putNull("retry_at")
-                    put("last_error", "CORE_INTERRUPTED_RETRY_LIMIT_REACHED")
-                },
-                "state = ? AND task_type != ? AND attempt_count >= ?",
-                arrayOf(
-                    GlafiraTaskState.RUNNING.databaseValue,
-                    DESKTOP_TASK_TYPE,
-                    retryLimit.toString()
-                )
-            )
-            val requeued = db.update(
-                TABLE_TASKS,
-                ContentValues().apply {
-                    put("state", GlafiraTaskState.RETRY_SCHEDULED.databaseValue)
-                    put("updated_at", nowMillis)
-                    // Retry immediately after process recovery. Idempotency is required
-                    // by every registered Core handler; repeated crashes consume attempts.
-                    put("retry_at", nowMillis)
-                    put("last_error", "CORE_EXECUTION_INTERRUPTED")
-                },
-                "state = ? AND task_type != ? AND attempt_count < ?",
-                arrayOf(
-                    GlafiraTaskState.RUNNING.databaseValue,
-                    DESKTOP_TASK_TYPE,
-                    retryLimit.toString()
-                )
-            )
+            val interrupted = db.query(TABLE_TASKS, null, "state = ? AND task_type != ?",
+                arrayOf(GlafiraTaskState.RUNNING.databaseValue, DESKTOP_TASK_TYPE),
+                null, null, null).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.toTask()) } }
+            for (task in interrupted) {
+                val decision = GlafiraTaskRecoveryPolicy.interrupted(task, maxRetries)
+                transition(task.taskId, setOf(GlafiraTaskState.RUNNING), decision.state, nowMillis,
+                    retryAtMillis = if (decision.state == GlafiraTaskState.RETRY_SCHEDULED) nowMillis else null,
+                    lastError = decision.reason)
+            }
             db.setTransactionSuccessful()
-            return failed + requeued
+            return interrupted.size
         } finally {
             db.endTransaction()
         }
@@ -385,6 +599,7 @@ class GlafiraTaskStore(context: Context) :
         retryAtMillis: Long?,
         lastError: String?
     ): Boolean {
+        require(nowMillis > 0L && (retryAtMillis == null || retryAtMillis >= nowMillis))
         require(expectedStates.isNotEmpty()) { "At least one expected task state is required." }
         require(expectedStates.all { GlafiraTaskPolicy.canTransition(it, nextState) }) {
             "The requested GLAFIRA task state transition is not allowed."
@@ -409,6 +624,95 @@ class GlafiraTaskStore(context: Context) :
         ) == 1
     }
 
+
+    /**
+     * Atomically stores an encrypted handler result and marks the Core task succeeded.
+     * State history and the result row commit or roll back together.
+     */
+    @Synchronized
+    override fun persistCoreTaskResult(
+        taskId: String,
+        expectedStates: Set<GlafiraTaskState>,
+        result: String,
+        nowMillis: Long
+    ): Boolean {
+        require(taskId.isNotBlank() && nowMillis > 0L)
+        require(expectedStates == setOf(GlafiraTaskState.RUNNING))
+        require(result.length <= GlafiraCoreTaskResultPersistence.MAX_RESULT_CHARS) { "CORE_TASK_RESULT_TOO_LARGE" }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val task = queryTask(db, taskId) ?: return false
+            val existingResult = db.query(
+                TABLE_CORE_RESULTS, arrayOf("result_ciphertext"),
+                "task_id = ?", arrayOf(taskId), null, null, null, "1"
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null else GlafiraTaskPayloadCrypto.decrypt(
+                    cursor.getString(0), taskId + "|core-result|" + task.projectId
+                )
+            }
+            if (existingResult != null) {
+                check(existingResult == result) { "CORE_TASK_RESULT_CONFLICT" }
+                if (task.state == GlafiraTaskState.SUCCEEDED) {
+                    db.setTransactionSuccessful()
+                    return true
+                }
+                throw IllegalStateException("CORE_TASK_RESULT_STATE_MISMATCH")
+            }
+            if (task.state !in expectedStates) return false
+
+            val ciphertext = GlafiraTaskPayloadCrypto.encrypt(
+                result, taskId + "|core-result|" + task.projectId
+            )
+            val changed = db.update(
+                TABLE_TASKS,
+                ContentValues().apply {
+                    put("state", GlafiraTaskState.SUCCEEDED.databaseValue)
+                    put("updated_at", nowMillis)
+                    putNull("retry_at")
+                    putNull("last_error")
+                },
+                "task_id = ? AND state = ?",
+                arrayOf(taskId, GlafiraTaskState.RUNNING.databaseValue)
+            )
+            if (changed != 1) return false
+            db.insertOrThrow(
+                TABLE_CORE_RESULTS,
+                null,
+                ContentValues().apply {
+                    put("task_id", taskId)
+                    put("result_ciphertext", ciphertext)
+                    put("completed_at", nowMillis)
+                }
+            )
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Returns a decrypted result only when the task belongs to the requested project. */
+    @Synchronized
+    fun coreTaskResult(taskId: String, projectId: String): GlafiraCoreTaskResultRecord? {
+        require(taskId.isNotBlank() && projectId.isNotBlank())
+        val task = getTask(taskId, projectId) ?: return null
+        if (task.state != GlafiraTaskState.SUCCEEDED) return null
+        return readableDatabase.query(
+            TABLE_CORE_RESULTS, arrayOf("result_ciphertext", "completed_at"),
+            "task_id = ?", arrayOf(taskId), null, null, null, "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            GlafiraCoreTaskResultRecord(
+                taskId = taskId,
+                projectId = projectId,
+                result = GlafiraTaskPayloadCrypto.decrypt(
+                    cursor.getString(0), taskId + "|core-result|" + projectId
+                ),
+                completedAtMillis = cursor.getLong(1)
+            )
+        }
+    }
 
     @Synchronized
     fun recordDesktopNode(deviceId: String, capabilities: Set<String>, maxParallelTasks: Int,
@@ -440,30 +744,71 @@ class GlafiraTaskStore(context: Context) :
         }
     }
 
+    /** Propagates terminal predecessor failure for both Core and Desktop task lanes. */
+    private fun failTasksWithFailedDependencies(db: SQLiteDatabase, nowMillis: Long) {
+        val values = ContentValues().apply {
+            put("state", GlafiraTaskState.FAILED.databaseValue)
+            put("updated_at", nowMillis)
+            put("last_error", "DEPENDENCY_FAILED")
+            putNull("retry_at")
+        }
+        val selection = "state IN (?, ?) AND task_id IN (" +
+            "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
+            "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+            "WHERE p.state IN (?, ?))"
+        val args = arrayOf(
+            GlafiraTaskState.QUEUED.databaseValue,
+            GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
+            GlafiraTaskState.FAILED.databaseValue,
+            GlafiraTaskState.CANCELLED.databaseValue
+        )
+        // Iterate until no more descendants are unblocked by a newly failed predecessor.
+        // A single pass would leave grandchildren queued after their parent is failed here.
+        while (db.update(TABLE_TASKS, values, selection, args) > 0) {
+            // Continue propagating through the acyclic dependency graph.
+        }
+    }
+
+    private fun hasUnresolvedTaskDependencies(db: SQLiteDatabase, taskId: String): Boolean =
+        db.rawQuery(
+            "SELECT 1 FROM $TABLE_DEPENDENCIES d " +
+                "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+                "WHERE d.task_id = ? AND p.state != ? LIMIT 1",
+            arrayOf(taskId, GlafiraTaskState.SUCCEEDED.databaseValue)
+        ).use { it.moveToFirst() }
+
+    /** Expiration proves loss of contact, never that an external operation did not happen. */
+    private fun quarantineExpiredDesktopLeases(db: SQLiteDatabase, nowMillis: Long) {
+        db.execSQL(
+            "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+                "WHERE task_type = ? AND state = ? AND task_id IN " +
+                "(SELECT task_id FROM core_desktop_leases WHERE lease_expires_at <= ?)",
+            arrayOf(GlafiraTaskState.WAITING_FOR_OWNER.databaseValue, nowMillis,
+                "DESKTOP_EXECUTION_OUTCOME_UNKNOWN", DESKTOP_TASK_TYPE,
+                GlafiraTaskState.RUNNING.databaseValue, nowMillis)
+        )
+        // Preserve the original device binding so a delayed terminal result can reconcile it.
+    }
+
     @Synchronized
-    fun queuedDesktopTasks(limit: Int = 100): List<GlafiraTask> {
+    fun queuedDesktopTasks(limit: Int = 100, projectId: String? = null): List<GlafiraTask> {
         require(limit in 1..500)
+        require(projectId == null || projectId.isNotBlank())
         val db = writableDatabase
         val now = System.currentTimeMillis()
         db.beginTransaction()
         try {
-            db.execSQL(
-                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
-                    "WHERE task_type = ? AND state = ? AND task_id IN " +
-                    "(SELECT task_id FROM core_desktop_leases WHERE lease_expires_at <= ?) AND attempt_count < 3",
-                arrayOf(GlafiraTaskState.QUEUED.databaseValue, now, "DESKTOP_LEASE_EXPIRED",
-                    DESKTOP_TASK_TYPE, GlafiraTaskState.RUNNING.databaseValue, now)
-            )
-            db.execSQL(
-                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
-                    "WHERE task_type = ? AND state = ? AND task_id IN " +
-                    "(SELECT task_id FROM core_desktop_leases WHERE lease_expires_at <= ?) AND attempt_count >= 3",
-                arrayOf(GlafiraTaskState.FAILED.databaseValue, now, "DESKTOP_DELIVERY_RETRIES_EXCEEDED",
-                    DESKTOP_TASK_TYPE, GlafiraTaskState.RUNNING.databaseValue, now)
-            )
-            db.delete("core_desktop_leases", "lease_expires_at <= ?", arrayOf(now.toString()))
-            val tasks = db.query(TABLE_TASKS, null, "task_type = ? AND state = ?",
-                arrayOf(DESKTOP_TASK_TYPE, GlafiraTaskState.QUEUED.databaseValue),
+            quarantineExpiredDesktopLeases(db, now)
+            failTasksWithFailedDependencies(db, now)
+            val selection = "task_type = ? AND state = ?" +
+                " AND NOT EXISTS (SELECT 1 FROM $TABLE_DEPENDENCIES d " +
+                "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+                "WHERE d.task_id = $TABLE_TASKS.task_id AND p.state != ?)" +
+                if (projectId == null) "" else " AND project_id = ?"
+            val args = arrayOf(DESKTOP_TASK_TYPE, GlafiraTaskState.QUEUED.databaseValue,
+                GlafiraTaskState.SUCCEEDED.databaseValue) +
+                if (projectId == null) emptyArray() else arrayOf(projectId)
+            val tasks = db.query(TABLE_TASKS, null, selection, args,
                 null, null, "priority DESC, created_at ASC", limit.toString()).use { cursor ->
                 buildList { while (cursor.moveToNext()) add(cursor.toTask()) }
             }
@@ -481,31 +826,16 @@ class GlafiraTaskStore(context: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
-            // Recover crashed Desktop workers: expired leases return to the same Core queue.
-            db.execSQL(
-                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
-                    "WHERE task_type = ? AND state = ? AND task_id IN " +
-                    "(SELECT task_id FROM core_desktop_leases WHERE lease_expires_at <= ?) AND attempt_count < 3",
-                arrayOf(
-                    GlafiraTaskState.QUEUED.databaseValue, nowMillis, "DESKTOP_LEASE_EXPIRED",
-                    DESKTOP_TASK_TYPE, GlafiraTaskState.RUNNING.databaseValue, nowMillis
-                )
-            )
-            db.execSQL(
-                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
-                    "WHERE task_type = ? AND state = ? AND task_id IN " +
-                    "(SELECT task_id FROM core_desktop_leases WHERE lease_expires_at <= ?) AND attempt_count >= 3",
-                arrayOf(
-                    GlafiraTaskState.FAILED.databaseValue, nowMillis, "DESKTOP_DELIVERY_RETRIES_EXCEEDED",
-                    DESKTOP_TASK_TYPE, GlafiraTaskState.RUNNING.databaseValue, nowMillis
-                )
-            )
-            db.delete("core_desktop_leases", "lease_expires_at <= ?", arrayOf(nowMillis.toString()))
+            quarantineExpiredDesktopLeases(db, nowMillis)
+            failTasksWithFailedDependencies(db, nowMillis)
             val active = db.rawQuery("SELECT COUNT(*) FROM core_desktop_leases WHERE device_id = ? AND lease_expires_at > ?",
                 arrayOf(deviceId, nowMillis.toString())).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
             if (active >= maxParallelTasks) { db.setTransactionSuccessful(); return null }
             val task = queryTask(db, taskId) ?: run { db.setTransactionSuccessful(); return null }
             if (task.taskType != DESKTOP_TASK_TYPE || task.state != GlafiraTaskState.QUEUED) {
+                db.setTransactionSuccessful(); return null
+            }
+            if (hasUnresolvedTaskDependencies(db, taskId)) {
                 db.setTransactionSuccessful(); return null
             }
             if (task.deadlineAtMillis != null && task.deadlineAtMillis <= nowMillis) {
@@ -559,8 +889,12 @@ class GlafiraTaskStore(context: Context) :
                 "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0) to cursor.getLong(1) else null
             } ?: return false
-            if (lease.first != deviceId || lease.second <= nowMillis) return false
+            if (lease.first != deviceId) return false
+            val task = queryTask(db, taskId) ?: return false
+            val reconcilingUnknown = task.state == GlafiraTaskState.WAITING_FOR_OWNER &&
+                task.lastError == "DESKTOP_EXECUTION_OUTCOME_UNKNOWN"
             if (state in setOf("SUCCEEDED", "FAILED", "CANCELLED")) {
+                if (task.state != GlafiraTaskState.RUNNING && !reconcilingUnknown) return false
                 val terminal = when (state) {
                     "SUCCEEDED" -> GlafiraTaskState.SUCCEEDED
                     "FAILED" -> GlafiraTaskState.FAILED
@@ -569,7 +903,9 @@ class GlafiraTaskStore(context: Context) :
                 val changed = db.update(TABLE_TASKS, ContentValues().apply {
                     put("state", terminal.databaseValue); put("updated_at", nowMillis)
                     if (errorCode == null) putNull("last_error") else put("last_error", errorCode)
-                }, "task_id = ? AND state = ?", arrayOf(taskId, GlafiraTaskState.RUNNING.databaseValue))
+                }, "task_id = ? AND (state = ? OR (state = ? AND last_error = ?))",
+                    arrayOf(taskId, GlafiraTaskState.RUNNING.databaseValue,
+                        GlafiraTaskState.WAITING_FOR_OWNER.databaseValue, "DESKTOP_EXECUTION_OUTCOME_UNKNOWN"))
                 if (changed != 1) return false
                 db.insertWithOnConflict("core_desktop_results", null, ContentValues().apply {
                     put("task_id", taskId)
@@ -580,6 +916,7 @@ class GlafiraTaskStore(context: Context) :
                 }, SQLiteDatabase.CONFLICT_REPLACE)
                 db.delete("core_desktop_leases", "task_id = ?", arrayOf(taskId))
             } else {
+                if (lease.second <= nowMillis || task.state != GlafiraTaskState.RUNNING) return false
                 db.update("core_desktop_leases", ContentValues().apply {
                     put("lease_expires_at", nowMillis + DESKTOP_LEASE_MS)
                     put("progress_percent", progressPercent)
@@ -795,9 +1132,11 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 3
+        private const val DATABASE_VERSION = 6
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
+        private const val TABLE_CORE_RESULTS = "core_task_results"
+        private const val TABLE_DEPENDENCIES = "core_task_dependencies"
     }
 }
