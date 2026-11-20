@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using GLAFIRA.Desktop.Hub.Core;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace GLAFIRA.Desktop.Hub.Tests;
@@ -104,6 +105,38 @@ public sealed class BridgeV1RequestAuthenticatorTests
         Assert.True((await authenticator.AuthenticateAsync(request, now)).Accepted);
         Assert.Equal(BridgeV1AdmissionFailure.ReplayDetected,
             (await authenticator.AuthenticateAsync(request, now)).Failure);
+    }
+
+    [Fact]
+    public async Task ShortBridgeIdempotencyKeyWorksWithDurableSqliteReplayGuard()
+    {
+        var databasePath = Path.Combine(
+            Path.GetTempPath(), "glafira-bridge-v1-" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var request = Sign(GoldenRequest(signature: new string('0', 64)) with
+            {
+                IssuedAtEpochMs = now.AddSeconds(-1).ToUnixTimeMilliseconds(),
+                ExpiresAtEpochMs = now.AddMinutes(4).ToUnixTimeMilliseconds()
+            });
+            var authenticator = new BridgeV1RequestAuthenticator(
+                new FakeCredentialResolver(new HubRequestCredential(
+                    "device-0001", Secret, new HashSet<string> { "conversation.append" })),
+                new SqliteHubReplayGuard(databasePath));
+
+            Assert.True((await authenticator.AuthenticateAsync(request, now)).Accepted);
+            Assert.Equal(BridgeV1AdmissionFailure.ReplayDetected,
+                (await authenticator.AuthenticateAsync(request, now)).Failure);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (var file in new[] { databasePath, databasePath + "-wal", databasePath + "-shm" })
+            {
+                if (File.Exists(file)) File.Delete(file);
+            }
+        }
     }
 
     [Fact]
