@@ -11,6 +11,14 @@ object TtsHelper {
     private var pendingText: String? = null
     private var onDoneCallback: (() -> Unit)? = null
     private var enabled = true
+    @Volatile private var speechRate = 1f
+
+    fun setSpeechRate(context: Context, value: Float) {
+        speechRate = value.coerceIn(0.5f, 2f)
+        context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
+            .edit().putFloat("voice_speech_rate", speechRate).apply()
+        tts?.setSpeechRate(speechRate)
+    }
 
     fun setEnabled(context: Context, value: Boolean) {
         enabled = value
@@ -20,14 +28,19 @@ object TtsHelper {
     }
 
     fun init(context: Context) {
-        enabled = context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
-            .getBoolean("voice_output_enabled", true)
-        if (tts != null) return
+        val preferences = context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
+        enabled = preferences.getBoolean("voice_output_enabled", true)
+        speechRate = preferences.getFloat("voice_speech_rate", 1f).coerceIn(0.5f, 2f)
+        if (tts != null) {
+            tts?.setSpeechRate(speechRate)
+            return
+        }
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val result = tts?.setLanguage(Locale("ru", "RU"))
                 isReady = result != TextToSpeech.LANG_MISSING_DATA &&
                           result != TextToSpeech.LANG_NOT_SUPPORTED
+                if (isReady) tts?.setSpeechRate(speechRate)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
                     override fun onDone(utteranceId: String?) {
