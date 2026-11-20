@@ -151,7 +151,7 @@ The versioned role and training contract is [HR Intelligence Agent — Role, Tra
 - A staged training curriculum, synthetic/approved examples, role-specific evaluation suite and versioned promotion/rollback.
 - In-app catalog status for enablement, source permissions, schedule, last refresh, pending reviews and training version.
 
-The first Android vertical slice adds the role to the agent catalog and defines typed, provenance-backed dossier/review contracts. It does not yet connect external sources or persist dossiers. Full implementation remains gated on encrypted persistence, approved connector adapters, scheduled refresh, owner approvals and end-to-end tests. Do not mark the agent operational until these acceptance gates pass.
+The first Android vertical slice adds the role to the agent catalog and defines typed, provenance-backed dossier/review contracts. The current branch also adds a local project-scoped encrypted contact store and a manual contact directory UI. External sources, overnight refresh, live multi-agent review coordination and owner review/approval UI are still pending. Android Keystore and backup/restore behavior require device acceptance tests. Do not mark the agent fully operational until all acceptance gates pass.
 
 ## Continuous requirements across all priorities
 
