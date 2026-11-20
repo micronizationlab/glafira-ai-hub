@@ -1,46 +1,262 @@
-name: GLAFIRA AI HUB Android Build
+name: GLAFIRA CI — change-aware platform validation
 
 on:
   pull_request:
-    branches:
-      - main
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+# Supersede only stale runs belonging to the same PR; never cancel another PR.
+concurrency:
+  group: glafira-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build Android APK
+  changes:
+    name: Detect changed components
     runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.detect.outputs.android }}
+      android_acceptance: ${{ steps.detect.outputs.android_acceptance }}
+      ios: ${{ steps.detect.outputs.ios }}
+      agent: ${{ steps.detect.outputs.agent }}
+      contracts: ${{ steps.detect.outputs.contracts }}
+      workflow_lint: ${{ steps.detect.outputs.workflow_lint }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Test change-aware suite selector
+        run: python3 -m unittest discover -s .github/scripts/tests -v
+      - id: detect
+        name: Detect changed paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: python3 .github/scripts/detect_changes.py
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
+  workflow-lint:
+    name: GitHub Actions workflow lint
+    needs: changes
+    if: needs.changes.outputs.workflow_lint == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: Validate workflow syntax and expressions
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
+
+  android-tests:
+    name: Android JVM tests
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-
-      - name: Setup Gradle 8.9 and cache
-        uses: gradle/actions/setup-gradle@v4
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
-
-      - name: Run Unit Tests
-        run: gradle testDebugUnitTest
-
-      - name: Build Debug APK
-        run: gradle assembleDebug
-
-      - name: Upload APK artifact
+          gradle-version: "8.9"
+      - name: Host-side CI regressions when present
+        run: |
+          if [[ -d .github/scripts/tests ]]; then python3 -m unittest discover -s .github/scripts/tests -v; else echo "No host harness tests in this revision."; fi
+      - name: Run Android and Desktop JVM suites when present
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if grep -Fq ':desktop-bridge' settings.gradle.kts; then
+            ./gradlew :app:testDebugUnitTest :desktop-bridge:test --no-daemon --stacktrace
+          else
+            ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+          fi
+      - name: Upload JVM reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: glafira-debug-apk
+          name: android-jvm-reports-${{ github.run_id }}
+          path: |
+            app/build/test-results/
+            app/build/reports/tests/
+            desktop-bridge/build/test-results/
+            desktop-bridge/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 7
+
+  android-apk:
+    name: Android debug APK package
+    needs: [changes, android-tests]
+    if: needs.changes.outputs.android == 'true' && needs.android-tests.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glafira-debug-apk-${{ github.sha }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+  android-emulator:
+    name: Android emulator acceptance
+    needs: [changes, android-tests]
+    if: needs.changes.outputs.android_acceptance == 'true' && needs.android-tests.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Require hardware acceleration
+        run: |
+          set -Eeuo pipefail
+          test -c /dev/kvm || { echo "KVM required; software CPU emulation is not an accepted fallback." >&2; exit 1; }
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - run: bash .github/scripts/run-android-instrumentation.sh
+      - name: Upload emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-diagnostics-${{ github.run_id }}
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+            app/build/outputs/androidTest-*.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios-tests:
+    name: iOS Swift package tests
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - id: apple-toolchain
+        name: Identify Apple toolchain for safe cache keys
+        run: |
+          swift_version="$(swift --version | awk '{ for (i=1; i<=NF; i++) if ($i == "version") { print $(i+1); exit } }')"
+          xcode_version="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
+          echo "swift_version=$swift_version" >> "$GITHUB_OUTPUT"
+          echo "xcode_version=$xcode_version" >> "$GITHUB_OUTPUT"
+      - name: Cache Swift package dependencies and build products
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ios/GlafiraBridgeKit/.build
+          key: ${{ runner.os }}-xcode-${{ steps.apple-toolchain.outputs.xcode_version }}-swift-${{ steps.apple-toolchain.outputs.swift_version }}-${{ hashFiles('ios/GlafiraBridgeKit/Package.swift', 'ios/GlafiraBridgeKit/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-${{ steps.apple-toolchain.outputs.xcode_version }}-swift-${{ steps.apple-toolchain.outputs.swift_version }}-
+      - run: swift test --package-path ios/GlafiraBridgeKit
+
+  windows-agent-tests:
+    name: Windows Agent tests and build
+    needs: changes
+    if: needs.changes.outputs.agent == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('windows-agent/**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet test windows-agent/GLAFIRA.Agent.Worker.Tests/GLAFIRA.Agent.Worker.Tests.csproj --configuration Release
+      - run: dotnet build windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj --configuration Release --no-restore
+
+  contract-conformance:
+    name: Shared contract conformance
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-save --no-audit --no-fund ajv@8 ajv-formats@3
+      - run: node contracts/v1/verify-fixtures.mjs
+
+  ci-summary:
+    name: Exact-head CI summary
+    if: always()
+    needs: [changes, workflow-lint, android-tests, android-apk, android-emulator, ios-tests, windows-agent-tests, contract-conformance]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish exact SHA and honest component status
+        env:
+          SHA: ${{ github.sha }}
+          CHANGES: ${{ needs.changes.result }}
+          WORKFLOW_LINT: ${{ needs.workflow-lint.result }}
+          ANDROID: ${{ needs.android-tests.result }}
+          APK: ${{ needs.android-apk.result }}
+          EMULATOR: ${{ needs.android-emulator.result }}
+          IOS: ${{ needs.ios-tests.result }}
+          AGENT: ${{ needs.windows-agent-tests.result }}
+          CONTRACTS: ${{ needs.contract-conformance.result }}
+        run: |
+          {
+            echo "## GLAFIRA CI — exact-head report"
+            echo
+            echo "Commit: $SHA"
+            echo
+            echo "| Validation | Result |"
+            echo "|---|---|"
+            echo "| Change detection | $CHANGES |"
+            echo "| Workflow lint | $WORKFLOW_LINT |"
+            echo "| Android JVM | $ANDROID |"
+            echo "| Android APK | $APK |"
+            echo "| Android emulator | $EMULATOR |"
+            echo "| iOS Swift | $IOS |"
+            echo "| Windows Agent | $AGENT |"
+            echo "| Contracts | $CONTRACTS |"
+            echo
+            echo "Skipped means not selected for this commit; it is not a passing test result."
+          } >> "$GITHUB_STEP_SUMMARY"
+          for result in "$CHANGES" "$WORKFLOW_LINT" "$ANDROID" "$APK" "$EMULATOR" "$IOS" "$AGENT" "$CONTRACTS"; do
+            case "$result" in
+              success|skipped) ;;
+              *)
+                echo "Unexpected or unsuccessful validation result: $result" >&2
+                exit 1
+                ;;
+            esac
+          done
