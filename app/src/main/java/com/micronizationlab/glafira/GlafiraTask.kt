@@ -68,7 +68,8 @@ internal object GlafiraTaskPolicy {
                 GlafiraTaskState.RUNNING,
                 GlafiraTaskState.WAITING_FOR_NETWORK,
                 GlafiraTaskState.WAITING_FOR_OWNER,
-                GlafiraTaskState.CANCELLED
+                GlafiraTaskState.CANCELLED,
+                GlafiraTaskState.FAILED
             )
             GlafiraTaskState.RUNNING -> to in setOf(
                 GlafiraTaskState.WAITING_FOR_NETWORK,
@@ -99,3 +100,38 @@ internal object GlafiraTaskPolicy {
             GlafiraTaskState.CANCELLED -> false
         }
 }
+
+
+data class GlafiraTaskStateEvent(
+    val eventId: Long,
+    val taskId: String,
+    val projectId: String,
+    val fromState: GlafiraTaskState?,
+    val toState: GlafiraTaskState,
+    val changedAtMillis: Long,
+    val attemptCount: Int,
+    val reason: String?
+)
+
+internal data class GlafiraTaskRecoveryDecision(val state: GlafiraTaskState, val reason: String)
+
+/** An unknown outcome of a write must be reconciled before it can be executed again. */
+internal object GlafiraTaskRecoveryPolicy {
+    fun interrupted(task: GlafiraTask, maxRetries: Int): GlafiraTaskRecoveryDecision {
+        require(maxRetries in 0..20)
+        val risk = GlafiraToolRegistry.find(task.taskType)?.risk
+        if (risk != ToolRiskLevel.READ_ONLY) return GlafiraTaskRecoveryDecision(
+            GlafiraTaskState.WAITING_FOR_OWNER, "CORE_EXECUTION_OUTCOME_UNKNOWN")
+        return if (task.attemptCount >= maxRetries + 1) GlafiraTaskRecoveryDecision(
+            GlafiraTaskState.FAILED, "CORE_INTERRUPTED_RETRY_LIMIT_REACHED")
+        else GlafiraTaskRecoveryDecision(GlafiraTaskState.RETRY_SCHEDULED, "CORE_EXECUTION_INTERRUPTED")
+    }
+}
+
+/** Decrypted Core result returned only after a project-scoped lookup. */
+data class GlafiraCoreTaskResultRecord(
+    val taskId: String,
+    val projectId: String,
+    val result: String,
+    val completedAtMillis: Long
+)
