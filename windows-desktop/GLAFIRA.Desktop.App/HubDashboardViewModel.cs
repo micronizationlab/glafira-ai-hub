@@ -14,6 +14,7 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
     public HubDashboardViewModel(DesktopHubStore store) { _store = store; Refresh(); }
     public ObservableCollection<HubAgentSnapshot> Agents { get; } = [];
     public ObservableCollection<HubTaskSnapshot> Tasks { get; } = [];
+    public ObservableCollection<HubTaskEventSnapshot> TaskHistory { get; } = [];
     public string Status { get => _status; private set => Set(ref _status, value); }
     public DateTimeOffset RefreshedAt { get => _refreshedAt; private set => Set(ref _refreshedAt, value); }
     public int OnlineAgents => Agents.Count(agent => agent.IsOnline && agent.OwnerApproved);
@@ -38,6 +39,27 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(AttentionTasks));
         }
         catch (Exception error) { Status = $"Не удалось прочитать состояние Desktop Hub: {error.Message}"; }
+    }
+
+    public void LoadTaskHistory(HubTaskSnapshot? task)
+    {
+        TaskHistory.Clear();
+        if (task is null)
+        {
+            Status = "Выберите задачу, чтобы просмотреть её историю.";
+            return;
+        }
+
+        try
+        {
+            foreach (var item in _store.GetTaskHistory(task.TaskId, 500))
+                TaskHistory.Add(item);
+            Status = $"История задачи {task.TaskId}: {TaskHistory.Count} событий";
+        }
+        catch (Exception error)
+        {
+            Status = $"Не удалось загрузить историю задачи: {error.Message}";
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
