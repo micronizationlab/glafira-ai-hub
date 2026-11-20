@@ -109,7 +109,7 @@ class GlafiraRuntimeBudgetTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun doesNotAllowUnboundedConcurrency() {
-        GlafiraRuntimeBudget(maxConcurrentTasks = 2)
+        GlafiraRuntimeBudget(maxConcurrentTasks = GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS + 1)
     }
     @Test
     fun allowsInitialAttemptAndConfiguredRetryBoundary() {
