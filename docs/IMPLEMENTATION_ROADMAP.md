@@ -225,3 +225,14 @@ This track may proceed **in parallel at the specification, threat-model and cont
 7. Open the external project marketplace and inter-owner settlement only after the earlier controls pass acceptance.
 
 Token issuance rates, VPN prices, supply policy and any cash/blockchain redemption remain undecided until owner approval, device/server benchmarks and legal/accounting review. Do not promise guaranteed earnings, cash value, unlimited VPN or zero-cost service.
+
+
+## Consumer distribution and token-economy requirements (parallel design track)
+
+- Add native macOS Desktop as a first-class target alongside Windows Desktop; Windows Agent remains a Windows background worker.
+- Website registration and account-bound sequential downloads support phone-first or Desktop-first pairing using short-lived signed one-time enrollment bundles, never embedded long-lived secrets.
+- Pin Windows Agent to a signed coordinator identity and verified endpoint; permit owner-authorized endpoint rotation. Never hardcode a mutable LAN IP.
+- Maintain per-device benchmark/reward formulas, conservative break-even and provider free-quota catalogue in TOKEN_DEVICE_ECONOMICS_AND_CONSUMER_PRICING.md.
+- Telegram in-app digital services use Stars; Stars remain distinct from GLF.
+- Consumer presentation leads with the AI agent and phone-first use; voluntary contribution may cover service credits but is never guaranteed income.
+- These design tasks do not displace Core → Bridge → Windows Desktop functional implementation.
