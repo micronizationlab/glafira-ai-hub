@@ -45,22 +45,15 @@ jobs:
           echo "| PR | Workstream | Branch | Head SHA | Latest matching CI | Draft |"
           echo "|---:|---|---|---|---|:---:|"
 
-          prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url)"
+          prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup)"
           count="$(jq 'length' <<< "$prs")"
           if [[ "$count" -eq 0 ]]; then
             echo "No open pull requests."
             exit 0
           fi
 
-          # Fetch one bounded repository-wide snapshot instead of one API request per PR.
-          # The previous per-branch loop exhausted the GitHub App installation rate limit.
-          runs_available=true
-          if ! runs="$(gh run list --repo "$GH_REPO" --limit 500 --json databaseId,status,conclusion,headSha,headBranch,workflowName,url,createdAt)"; then
-            runs='[]'
-            runs_available=false
-            echo "::warning::Workflow-run snapshot unavailable (API rate limit or network); PR rows will say unavailable."
-          fi
-
+          # statusCheckRollup is returned with the PR list in one GraphQL query.
+          # Avoid the Actions REST API: per-PR gh run list calls exhausted the installation rate limit.
           while IFS= read -r pr; do
             number="$(jq -r '.number' <<< "$pr")"
             title="$(jq -r '.title' <<< "$pr" | tr '|' '/')"
@@ -69,15 +62,11 @@ jobs:
             draft="$(jq -r '.isDraft' <<< "$pr")"
             url="$(jq -r '.url' <<< "$pr")"
 
-            if [[ "$runs_available" != true ]]; then
-              ci="RUN STATUS UNAVAILABLE (API rate limit/network)"
+            checks="$(jq -c '.statusCheckRollup.contexts.nodes // []' <<< "$pr")"
+            if [[ "$(jq 'length' <<< "$checks")" -eq 0 ]]; then
+              ci="NO CHECKS REPORTED FOR CURRENT PR HEAD"
             else
-              matching="$(jq --arg sha "$sha" --arg branch "$branch" '[.[] | select(.headSha == $sha and .headBranch == $branch)] | sort_by(.workflowName, .createdAt) | group_by(.workflowName) | map(sort_by(.createdAt) | last)' <<< "$runs")"
-              if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
-                ci="NO RUN FOR CURRENT SHA IN LAST 500 RUNS"
-              else
-                ci="$(jq -r '[.[] | "\(.workflowName): \(.status)/\(.conclusion // "pending") ([run](\(.url)))"] | join("<br>")' <<< "$matching")"
-              fi
+              ci="$(jq -r 'map(if .__typename == "CheckRun" then "\(.name): \(.status)/\(.conclusion // "pending") ([check](\(.detailsUrl)))" elif .__typename == "StatusContext" then "\(.context): \(.state) ([check](\(.targetUrl)))" else "UNKNOWN CHECK STATE" end) | join("<br>")' <<< "$checks")"
             fi
             short_sha="${sha:0:12}"
             echo "| [#$number]($url) $title | $branch | <code>$short_sha</code> | $ci | $draft |"
