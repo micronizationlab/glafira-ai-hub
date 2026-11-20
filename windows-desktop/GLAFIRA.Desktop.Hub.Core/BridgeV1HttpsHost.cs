@@ -180,7 +180,8 @@ public sealed class BridgeV1HttpsHost : IAsyncDisposable
                 request = await JsonSerializer.DeserializeAsync<BridgeV1PairingRequest>(
                     context.Request.Body, JsonOptions, context.RequestAborted).ConfigureAwait(false);
             }
-            catch (BadHttpRequestException error) when (error.StatusCode == StatusCodes.Status413PayloadTooLarge)
+            catch (Microsoft.AspNetCore.Http.BadHttpRequestException error)
+                when (error.StatusCode == StatusCodes.Status413PayloadTooLarge)
             {
                 context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                 return;
