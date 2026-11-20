@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
@@ -12,9 +13,11 @@ public sealed class DesktopHubStore
 {
     private static readonly TimeSpan AgentFreshness = TimeSpan.FromMinutes(2);
     private readonly string _connectionString;
+    private readonly IHubDataProtector _dataProtector;
 
-    public DesktopHubStore(string databasePath)
+    public DesktopHubStore(string databasePath, IHubDataProtector? dataProtector = null)
     {
+        _dataProtector = dataProtector ?? new WindowsDpapiHubDataProtector();
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         var fullPath = Path.GetFullPath(databasePath);
         var directory = Path.GetDirectoryName(fullPath);
@@ -302,8 +305,17 @@ public sealed class DesktopHubStore
         string leaseId,
         long fencingToken,
         bool succeeded,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? result = null,
+        string? errorCode = null)
     {
+        ValidateIdentifier(agentId, nameof(agentId));
+        ValidateIdentifier(taskId, nameof(taskId));
+        ValidateIdentifier(leaseId, nameof(leaseId));
+        if (fencingToken <= 0) throw new ArgumentOutOfRangeException(nameof(fencingToken));
+        if (result is { Length: > 16_384 }) throw new ArgumentException("Task result exceeds 16 KB.", nameof(result));
+        if (errorCode is { Length: > 128 }) throw new ArgumentException("Task error code exceeds 128 characters.", nameof(errorCode));
+
         using var connection = Open();
         using var transaction = connection.BeginTransaction(deferred: false);
         using (var validate = connection.CreateCommand())
@@ -326,10 +338,14 @@ public sealed class DesktopHubStore
             validate.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
             if (Convert.ToInt32(validate.ExecuteScalar()) != 1)
             {
+                var duplicate = IsExactDuplicateCompletion(
+                    connection, transaction, agentId, taskId, leaseId, fencingToken,
+                    succeeded, result, errorCode);
                 transaction.Commit();
-                return false;
+                return duplicate;
             }
         }
+
         using (var update = connection.CreateCommand())
         {
             update.Transaction = transaction;
@@ -350,15 +366,125 @@ public sealed class DesktopHubStore
             delete.Parameters.AddWithValue("$lease", leaseId);
             delete.ExecuteNonQuery();
         }
-        AppendTaskEvent(connection, transaction, taskId, succeeded ? HubTaskState.Succeeded : HubTaskState.Failed, now, agentId, leaseId, fencingToken, succeeded ? "TASK_SUCCEEDED" : "TASK_FAILED");
+
+        AppendTaskEvent(connection, transaction, taskId,
+            succeeded ? HubTaskState.Succeeded : HubTaskState.Failed,
+            now, agentId, leaseId, fencingToken,
+            succeeded ? "TASK_SUCCEEDED" : "TASK_FAILED");
+
+        var resultBytes = JsonSerializer.SerializeToUtf8Bytes(new HubTaskResult(result, errorCode, now));
+        var entropy = Encoding.UTF8.GetBytes("glafira.desktop-hub.task-result.v1:" + taskId);
+        byte[] ciphertext;
+        try
+        {
+            ciphertext = _dataProtector.Protect(resultBytes, entropy);
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(resultBytes);
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(entropy);
+        }
+        try
+        {
+            using var save = connection.CreateCommand();
+            save.Transaction = transaction;
+            save.CommandText = """
+                INSERT INTO TaskResults(task_id, result_ciphertext, completed_at_ms)
+                VALUES($task, $ciphertext, $completed)
+                ON CONFLICT(task_id) DO UPDATE SET
+                    result_ciphertext = excluded.result_ciphertext,
+                    completed_at_ms = excluded.completed_at_ms;
+                """;
+            save.Parameters.AddWithValue("$task", taskId);
+            save.Parameters.AddWithValue("$ciphertext", ciphertext);
+            save.Parameters.AddWithValue("$completed", now.ToUnixTimeMilliseconds());
+            save.ExecuteNonQuery();
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(ciphertext);
+        }
+
         transaction.Commit();
         return true;
     }
 
-    /// <summary>
-    /// Appends bounded progress only while the caller owns the current, unexpired fenced lease.
-    /// A stale worker cannot publish progress after lease reassignment.
-    /// </summary>
+    public HubTaskResult? GetTaskResult(string taskId)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT result_ciphertext FROM TaskResults WHERE task_id = $task;";
+        command.Parameters.AddWithValue("$task", taskId);
+        var value = command.ExecuteScalar();
+        if (value is not byte[] ciphertext) return null;
+        return UnprotectTaskResult(taskId, ciphertext);
+    }
+
+    private bool IsExactDuplicateCompletion(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string agentId,
+        string taskId,
+        string leaseId,
+        long fencingToken,
+        bool succeeded,
+        string? result,
+        string? errorCode)
+    {
+        using (var query = connection.CreateCommand())
+        {
+            query.Transaction = transaction;
+            query.CommandText = """
+                SELECT COUNT(*)
+                FROM Tasks t
+                JOIN TaskEvents e ON e.event_id = (
+                    SELECT MAX(latest.event_id) FROM TaskEvents latest WHERE latest.task_id = t.task_id
+                )
+                WHERE t.task_id = $task AND t.state = $state
+                  AND e.agent_id = $agent AND e.lease_id = $lease AND e.fencing_token = $fence;
+                """;
+            query.Parameters.AddWithValue("$task", taskId);
+            query.Parameters.AddWithValue("$state", succeeded ? "Succeeded" : "Failed");
+            query.Parameters.AddWithValue("$agent", agentId);
+            query.Parameters.AddWithValue("$lease", leaseId);
+            query.Parameters.AddWithValue("$fence", fencingToken);
+            if (Convert.ToInt32(query.ExecuteScalar()) != 1) return false;
+        }
+
+        using var read = connection.CreateCommand();
+        read.Transaction = transaction;
+        read.CommandText = "SELECT result_ciphertext FROM TaskResults WHERE task_id = $task;";
+        read.Parameters.AddWithValue("$task", taskId);
+        if (read.ExecuteScalar() is not byte[] ciphertext) return false;
+        var stored = UnprotectTaskResult(taskId, ciphertext);
+        return StringComparer.Ordinal.Equals(stored.Result, result) &&
+               StringComparer.Ordinal.Equals(stored.ErrorCode, errorCode);
+    }
+
+    private HubTaskResult UnprotectTaskResult(string taskId, byte[] ciphertext)
+    {
+        var entropy = Encoding.UTF8.GetBytes("glafira.desktop-hub.task-result.v1:" + taskId);
+        byte[] plaintext;
+        try
+        {
+            plaintext = _dataProtector.Unprotect(ciphertext, entropy);
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(entropy);
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<HubTaskResult>(plaintext)
+                ?? throw new System.Security.Cryptography.CryptographicException("Protected task result is empty.");
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(plaintext);
+        }
+    }
+
     public bool ReportProgress(
         string agentId,
         string taskId,
@@ -664,6 +790,12 @@ public sealed class DesktopHubStore
                 agent_id TEXT NOT NULL REFERENCES Agents(agent_id),
                 fencing_token INTEGER NOT NULL,
                 expires_at_ms INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS TaskResults(
+                task_id TEXT PRIMARY KEY REFERENCES Tasks(task_id) ON DELETE CASCADE,
+                result_ciphertext BLOB NOT NULL,
+                completed_at_ms INTEGER NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS TaskEvents(
