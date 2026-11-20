@@ -36,6 +36,6 @@ internal object GlafiraManualTaskFactory {
             updatedAtMillis = nowMillis,
             idempotencyKey = idempotencyKey,
             requiredScopes = setOf("content.draft")
-        ).also(GlafiraTaskPolicy::validate)
+        ).also { GlafiraTaskPolicy.validate(it) }
     }
 }
