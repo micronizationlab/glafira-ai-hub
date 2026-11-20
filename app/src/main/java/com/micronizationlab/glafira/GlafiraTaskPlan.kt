@@ -1,7 +1,7 @@
 package com.micronizationlab.glafira
 
 /** One executable unit in a durable, owner-approved orchestration plan. */
-data class GlafiraTaskPlanNode(
+data class GlafiraCoreTaskPlanNode(
     val task: GlafiraTask,
     /** IDs of predecessor nodes; a node is runnable only after all predecessors succeed. */
     val dependsOnTaskIds: Set<String> = emptySet()
@@ -13,19 +13,19 @@ data class GlafiraTaskPlanNode(
  * Decomposition is supplied by a trusted planner; this model never executes model-generated
  * code. The plan and every node/edge are persisted atomically before workers are notified.
  */
-data class GlafiraTaskPlan(
+data class GlafiraCoreTaskPlan(
     val planId: String,
     val projectId: String,
     val idempotencyKey: String,
-    val nodes: List<GlafiraTaskPlanNode>,
+    val nodes: List<GlafiraCoreTaskPlanNode>,
     val createdAtMillis: Long
 )
 
-enum class GlafiraTaskPlanStatus {
+enum class GlafiraCoreTaskPlanStatus {
     QUEUED, RUNNING, WAITING_FOR_NETWORK, WAITING_FOR_OWNER, RETRY_SCHEDULED, SUCCEEDED, FAILED, CANCELLED
 }
 
-data class GlafiraTaskPlanRecord(
+data class GlafiraCoreTaskPlanRecord(
     val planId: String,
     val projectId: String,
     val idempotencyKey: String,
@@ -33,20 +33,20 @@ data class GlafiraTaskPlanRecord(
     val updatedAtMillis: Long,
     val nodes: List<GlafiraTask>
 ) {
-    val status: GlafiraTaskPlanStatus
+    val status: GlafiraCoreTaskPlanStatus
         get() = when {
             nodes.all { it.state in setOf(
                 GlafiraTaskState.SUCCEEDED, GlafiraTaskState.FAILED, GlafiraTaskState.CANCELLED
-            ) } && nodes.any { it.state == GlafiraTaskState.FAILED } -> GlafiraTaskPlanStatus.FAILED
+            ) } && nodes.any { it.state == GlafiraTaskState.FAILED } -> GlafiraCoreTaskPlanStatus.FAILED
             nodes.all { it.state in setOf(
                 GlafiraTaskState.SUCCEEDED, GlafiraTaskState.FAILED, GlafiraTaskState.CANCELLED
-            ) } && nodes.any { it.state == GlafiraTaskState.CANCELLED } -> GlafiraTaskPlanStatus.CANCELLED
-            nodes.all { it.state == GlafiraTaskState.SUCCEEDED } -> GlafiraTaskPlanStatus.SUCCEEDED
-            nodes.any { it.state == GlafiraTaskState.RUNNING } -> GlafiraTaskPlanStatus.RUNNING
-            nodes.any { it.state == GlafiraTaskState.WAITING_FOR_OWNER } -> GlafiraTaskPlanStatus.WAITING_FOR_OWNER
-            nodes.any { it.state == GlafiraTaskState.WAITING_FOR_NETWORK } -> GlafiraTaskPlanStatus.WAITING_FOR_NETWORK
-            nodes.any { it.state == GlafiraTaskState.RETRY_SCHEDULED } -> GlafiraTaskPlanStatus.RETRY_SCHEDULED
-            else -> GlafiraTaskPlanStatus.QUEUED
+            ) } && nodes.any { it.state == GlafiraTaskState.CANCELLED } -> GlafiraCoreTaskPlanStatus.CANCELLED
+            nodes.all { it.state == GlafiraTaskState.SUCCEEDED } -> GlafiraCoreTaskPlanStatus.SUCCEEDED
+            nodes.any { it.state == GlafiraTaskState.RUNNING } -> GlafiraCoreTaskPlanStatus.RUNNING
+            nodes.any { it.state == GlafiraTaskState.WAITING_FOR_OWNER } -> GlafiraCoreTaskPlanStatus.WAITING_FOR_OWNER
+            nodes.any { it.state == GlafiraTaskState.WAITING_FOR_NETWORK } -> GlafiraCoreTaskPlanStatus.WAITING_FOR_NETWORK
+            nodes.any { it.state == GlafiraTaskState.RETRY_SCHEDULED } -> GlafiraCoreTaskPlanStatus.RETRY_SCHEDULED
+            else -> GlafiraCoreTaskPlanStatus.QUEUED
         }
     val completedCount: Int
         get() = nodes.count { it.state in setOf(
@@ -54,15 +54,15 @@ data class GlafiraTaskPlanRecord(
         ) }
 }
 
-data class GlafiraTaskPlanEnqueueResult(
-    val plan: GlafiraTaskPlanRecord,
+data class GlafiraCoreTaskPlanEnqueueResult(
+    val plan: GlafiraCoreTaskPlanRecord,
     val inserted: Boolean
 )
 
-internal object GlafiraTaskPlanPolicy {
+internal object GlafiraCoreTaskPlanPolicy {
     const val MAX_NODES = 64
 
-    fun validate(plan: GlafiraTaskPlan) {
+    fun validate(plan: GlafiraCoreTaskPlan) {
         require(plan.planId.matches(Regex("[A-Za-z0-9_.:-]{8,128}"))) { "Invalid task plan ID." }
         require(plan.projectId.isNotBlank()) { "Task plan project ID is required." }
         require(plan.idempotencyKey.matches(Regex("[A-Za-z0-9_.:-]{8,128}"))) {
@@ -101,14 +101,14 @@ internal object GlafiraTaskPlanPolicy {
 }
 
 /** One plan node with its durable transition journal and any persisted result. */
-data class GlafiraTaskPlanNodeJournal(
+data class GlafiraCoreTaskPlanNodeJournal(
     val task: GlafiraTask,
     val history: List<GlafiraTaskStateEvent>,
     val result: String?
 )
 
 /** Project-scoped orchestration journal assembled from the canonical task/result stores. */
-data class GlafiraTaskPlanJournal(
-    val plan: GlafiraTaskPlanRecord,
-    val nodes: List<GlafiraTaskPlanNodeJournal>
+data class GlafiraCoreTaskPlanJournal(
+    val plan: GlafiraCoreTaskPlanRecord,
+    val nodes: List<GlafiraCoreTaskPlanNodeJournal>
 )
