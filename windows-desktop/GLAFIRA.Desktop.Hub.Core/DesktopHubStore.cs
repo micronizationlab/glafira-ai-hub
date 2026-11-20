@@ -182,7 +182,7 @@ public sealed class DesktopHubStore
         using (var approval = connection.CreateCommand())
         {
             approval.Transaction = transaction;
-            approval.CommandText = "UPDATE Agents SET owner_approved = 0 WHERE agent_id = $agent;";
+            approval.CommandText = "UPDATE Agents SET owner_approved = 0, last_heartbeat_ms = 0 WHERE agent_id = $agent;";
             approval.Parameters.AddWithValue("$agent", agentId);
             if (approval.ExecuteNonQuery() == 0)
             {
