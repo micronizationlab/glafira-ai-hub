@@ -75,7 +75,7 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
             }
         }
     }
-    val configured = remember { VaultSession.exists(context) }
+    var configured by remember { mutableStateOf(VaultSession.exists(context)) }
 
     DisposableEffect(session) {
         val activeSession = session
@@ -139,8 +139,9 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                         } else {
                             VaultSession.create(context, chars)
                         }
-                        session = opened
                         entries = opened.loadEntries()
+                        configured = true
+                        session = opened
                         masterPassword = ""
                         confirmPassword = ""
                         error = null

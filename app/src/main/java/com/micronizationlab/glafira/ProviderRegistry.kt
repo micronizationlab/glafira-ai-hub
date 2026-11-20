@@ -13,6 +13,7 @@ enum class ProviderId(val prefKey: String, val displayName: String) {
 }
 
 fun isProviderConfigured(context: Context, id: ProviderId): Boolean {
+    if (id == ProviderId.YANDEX) return false
     if (id == ProviderId.GIGACHAT) {
         return loadApiKey(context).isNotBlank()
     }

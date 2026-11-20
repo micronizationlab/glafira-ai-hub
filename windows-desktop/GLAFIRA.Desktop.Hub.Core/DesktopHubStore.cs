@@ -222,6 +222,8 @@ public sealed class DesktopHubStore
 
         var agentCapabilities = new HashSet<string>(
             JsonSerializer.Deserialize<string[]>(capabilitiesJson) ?? [], StringComparer.Ordinal);
+        // Stream in scheduling order until the first eligible task. A SQL candidate limit
+        // before capability filtering can starve every compatible task behind that window.
         var candidates = new List<Candidate>();
         using (var command = connection.CreateCommand())
         {
@@ -241,7 +243,7 @@ public sealed class DesktopHubStore
                    WHERE active.project_id = t.project_id AND active.state = 'Leased') ASC,
                   t.priority DESC,
                   t.created_at_ms ASC
-                LIMIT 128;
+                ;
                 """;
             using var reader = command.ExecuteReader();
             while (reader.Read())

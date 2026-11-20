@@ -8,7 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -83,7 +83,7 @@ data class A(
 )
 data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "")
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { App() }
@@ -353,7 +353,7 @@ fun ContactList(
                 "Ты — Grok от xAI. Отвечай с лёгкой иронией, но по делу.",
                 "Модель xAI. Универсальный помощник. Для работы нужен API-ключ xAI (платный).",
                 ProviderId.GROK, AgentGroup.AI),
-            A("Алиса", "Yandex · не настроен", isProviderConfigured(context, ProviderId.YANDEX), "🟡",
+            A("Алиса", "Yandex · адаптер в разработке", isProviderConfigured(context, ProviderId.YANDEX), "🟡",
                 "Ты — Алиса от Яндекс. Отвечай на русском, дружелюбно и по делу.",
                 "YandexGPT через Yandex Cloud. Русскоязычные задачи. Для работы нужен API-ключ Yandex Cloud и folder ID.",
                 ProviderId.YANDEX, AgentGroup.AI),

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import fnmatch
 import os
 import subprocess
 from pathlib import Path
@@ -15,6 +14,7 @@ OUTPUT_NAMES = (
     "android_acceptance",
     "ios",
     "agent",
+    "desktop_hub",
     "contracts",
     "workflow_lint",
 )
@@ -40,6 +40,9 @@ def classify_paths(
         elif path.startswith("windows-agent/"):
             selected["agent"] = True
             selected["contracts"] |= (root / "contracts").is_dir()
+        elif path.startswith("windows-desktop/"):
+            selected["desktop_hub"] = True
+            selected["contracts"] |= (root / "contracts").is_dir()
         elif path.startswith("contracts/"):
             selected["contracts"] = True
             selected["android"] |= (root / "settings.gradle.kts").is_file()
@@ -47,6 +50,7 @@ def classify_paths(
             selected["agent"] |= (
                 root / "windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj"
             ).is_file()
+            selected["desktop_hub"] |= (root / "windows-desktop").is_dir()
         elif path.startswith(".github/workflows/") or path.startswith(".github/scripts/"):
             # CI control-plane changes must exercise the suites whose selection/execution
             # they can affect. A green linter alone is not validation of a changed pipeline.
@@ -57,6 +61,7 @@ def classify_paths(
                 root / "windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj"
             ).is_file()
             selected["contracts"] = (root / "contracts").is_dir()
+            selected["desktop_hub"] = (root / "windows-desktop").is_dir()
             selected["android_acceptance"] = (
                 (root / "app/build.gradle.kts").is_file()
                 and (root / "app/src/androidTest").is_dir()
@@ -65,14 +70,8 @@ def classify_paths(
         if (
             path.startswith("app/src/androidTest/")
             or path == "app/src/main/AndroidManifest.xml"
-            or fnmatch.fnmatch(
-                path,
-                "app/src/main/java/com/micronizationlab/glafira/*Bridge*",
-            )
-            or fnmatch.fnmatch(
-                path,
-                "app/src/main/java/com/micronizationlab/glafira/*Core*",
-            )
+            or path.startswith("app/src/main/")
+            or path == "app/build.gradle.kts"
             or path.startswith("desktop-bridge/")
             or path == ".github/scripts/run-android-instrumentation.sh"
         ):
@@ -82,6 +81,7 @@ def classify_paths(
         selected["android"] = True
         selected["ios"] = (root / "ios").is_dir()
         selected["agent"] = (root / "windows-agent").is_dir()
+        selected["desktop_hub"] = (root / "windows-desktop").is_dir()
         selected["contracts"] = (root / "contracts").is_dir()
         selected["android_acceptance"] = True
 

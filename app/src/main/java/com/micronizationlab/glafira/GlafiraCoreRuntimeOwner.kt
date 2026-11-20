@@ -73,7 +73,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             )
             val response = bridgeDispatcher.dispatch(request)
             if (response.status == GlafiraBridgeStatus.SUCCEEDED) {
-                GlafiraTaskExecutionOutcome.Succeeded("Bridge operation completed.")
+                GlafiraTaskExecutionOutcome.Succeeded(org.json.JSONObject(response.result).toString())
             } else {
                 GlafiraTaskExecutionOutcome.PermanentFailure(
                     response.errorCode ?: "BRIDGE_OPERATION_FAILED"
