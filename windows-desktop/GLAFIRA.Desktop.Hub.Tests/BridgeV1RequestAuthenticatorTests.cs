@@ -21,7 +21,7 @@ public sealed class BridgeV1RequestAuthenticatorTests
             canonical);
         Assert.Equal(
             "bb9e7f042e94f5910e877b4f660f20807a33c83cabe9afa47c3820413465cf91",
-            Convert.ToHexStringLower(signature));
+            Convert.ToHexString(signature).ToLowerInvariant());
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public sealed class BridgeV1RequestAuthenticatorTests
     {
         var canonical = BridgeV1RequestAuthenticator.BuildCanonicalRequest(request);
         var signature = HMACSHA256.HashData(Secret, Encoding.UTF8.GetBytes(canonical));
-        return request with { SignatureHex = Convert.ToHexStringLower(signature) };
+        return request with { SignatureHex = Convert.ToHexString(signature).ToLowerInvariant() };
     }
 
     private sealed class FakeCredentialResolver(HubRequestCredential? credential) : IHubCredentialResolver
