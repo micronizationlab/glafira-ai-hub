@@ -4,6 +4,7 @@ public enum AgentServiceStatus
 {
     Starting,
     AwaitingOwnerEnrollment,
+    Enrolled,
     Ready,
     Paused,
     Draining,
@@ -12,8 +13,7 @@ public enum AgentServiceStatus
 }
 
 /// <summary>
-/// In-memory service status only. Durable identity and enrollment arrive in a later
-/// security-reviewed increment; this class stores no credentials.
+/// In-memory service status only. Credentials remain in the OS-protected credential store.
 /// </summary>
 public sealed class AgentRuntimeState
 {
