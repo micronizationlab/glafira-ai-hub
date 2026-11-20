@@ -88,7 +88,9 @@ public static class AgentPairingWizard
         }
         Console.WriteLine();
         var result = new string(value.ToArray());
-        Array.Clear(value.ToArray());
+        for (var index = 0; index < value.Count; index++)
+            value[index] = '\\0';
+        value.Clear();
         return result;
     }
 }
