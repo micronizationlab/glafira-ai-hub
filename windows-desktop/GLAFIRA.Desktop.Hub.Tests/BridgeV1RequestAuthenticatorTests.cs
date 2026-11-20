@@ -140,6 +140,30 @@ public sealed class BridgeV1RequestAuthenticatorTests
     }
 
     [Fact]
+    public async Task AcceptsFencedTaskResultWithShortQueueTaskId()
+    {
+        var replay = new FakeReplayGuard();
+        var authenticator = CreateAuthenticator(replay);
+        var request = Sign(TaskResultRequest(new Dictionary<string, string>
+        {
+            ["taskId"] = "task_1",
+            ["leaseId"] = "lease-0001",
+            ["fencingToken"] = "42",
+            ["state"] = "SUCCEEDED",
+            ["progressPercent"] = "100",
+            ["progressMessage"] = "completed",
+            ["result"] = "done",
+            ["errorCode"] = "none"
+        }));
+
+        var result = await authenticator.AuthenticateAsync(
+            request, DateTimeOffset.FromUnixTimeMilliseconds(request.IssuedAtEpochMs));
+
+        Assert.True(result.Accepted);
+        Assert.Equal(1, replay.Claims);
+    }
+
+    [Fact]
     public async Task RejectsTaskResultWithoutLeaseFencing()
     {
         var replay = new FakeReplayGuard();
