@@ -10,7 +10,8 @@ public enum BridgeV1Operation
     CONVERSATION_APPEND,
     APPROVAL_REQUEST,
     DESKTOP_TASK_CLAIM,
-    DESKTOP_TASK_RESULT
+    DESKTOP_TASK_RESULT,
+    DESKTOP_AGENT_HEARTBEAT
 }
 
 public sealed record BridgeV1SignedRequest(
@@ -64,7 +65,8 @@ public sealed class BridgeV1RequestAuthenticator(
             [BridgeV1Operation.CONVERSATION_APPEND] = "conversation.append",
             [BridgeV1Operation.APPROVAL_REQUEST] = "approval.request",
             [BridgeV1Operation.DESKTOP_TASK_CLAIM] = "desktop.task.claim",
-            [BridgeV1Operation.DESKTOP_TASK_RESULT] = "desktop.task.result"
+            [BridgeV1Operation.DESKTOP_TASK_RESULT] = "desktop.task.result",
+            [BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT] = "desktop.task.claim"
         };
 
     private static readonly IReadOnlyDictionary<BridgeV1Operation, IReadOnlySet<string>> PayloadFields =
@@ -77,7 +79,8 @@ public sealed class BridgeV1RequestAuthenticator(
             [BridgeV1Operation.DESKTOP_TASK_CLAIM] = new HashSet<string>(["capabilities", "maxParallelTasks"], StringComparer.Ordinal),
             [BridgeV1Operation.DESKTOP_TASK_RESULT] = new HashSet<string>(
                 ["taskId", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode"],
-                StringComparer.Ordinal)
+                StringComparer.Ordinal),
+            [BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT] = new HashSet<string>(StringComparer.Ordinal)
         };
 
     public async ValueTask<BridgeV1AdmissionResult> AuthenticateAsync(

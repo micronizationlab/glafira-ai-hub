@@ -35,8 +35,7 @@ The installer creates the `GLAFIRA Agent` automatic Windows service under LocalS
 
 3. Enter the Desktop HTTPS endpoint, TLS SHA-256 fingerprint, ticket ID, one-time pairing code and Agent ID. The pairing code is masked while typing.
 4. The Agent saves the credential as a DPAPI LocalMachine-protected blob under `%ProgramData%\GLAFIRA\Agent`. The directory and file ACLs grant access only to LocalSystem and local Administrators.
-5. In GLAFIRA Desktop, select the pending Agent, assign only the capabilities it should receive, choose the parallelism limit and explicitly approve it.
-6. Restart the Windows service:
+5. Restart the Windows service so it loads the new credential:
 
 ```powershell
 Restart-Service "GLAFIRA Agent"
@@ -64,4 +63,4 @@ The default uninstall retains the machine-protected enrollment file. To also rem
 - The Windows service runs as LocalSystem so it can decrypt the machine-scoped credential.
 - Desktop enrollment creates a pending Agent with no capabilities. The owner explicitly assigns capabilities and approves it; revocation disables the credential and enrollment.
 
-This increment implements installation, secure one-time enrollment, machine-protected credential storage, pending registration and owner approval/revocation. The Agent service validates the stored enrollment at startup. **Authenticated task polling, heartbeat/lease renewal, typed task execution and result ACK are not enabled yet.** The service must not be described as a functioning remote task executor until those pieces and two-computer acceptance tests pass.
+The current increment implements installation, secure one-time enrollment, machine-protected credential storage, pending registration, owner approval/revocation and an authenticated TLS-pinned HMAC heartbeat every 30 seconds. Desktop shows an Agent online only after the owner approves it and the Hub receives a valid heartbeat. **Task polling, lease renewal, typed task execution and result ACK are not enabled yet.** The service must not be described as a functioning remote task executor until those pieces and two-computer acceptance tests pass.

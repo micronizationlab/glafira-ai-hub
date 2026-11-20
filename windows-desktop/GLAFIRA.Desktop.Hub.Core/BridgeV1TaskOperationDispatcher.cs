@@ -37,7 +37,7 @@ public sealed class BridgeV1TaskOperationDispatcher(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.Operation is not (BridgeV1Operation.DESKTOP_TASK_CLAIM or BridgeV1Operation.DESKTOP_TASK_RESULT))
+        if (request.Operation is not (BridgeV1Operation.DESKTOP_TASK_CLAIM or BridgeV1Operation.DESKTOP_TASK_RESULT or BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT))
             return Failure("OPERATION_NOT_IMPLEMENTED");
 
         var agents = store.GetAgents(now).Where(agent =>
@@ -50,6 +50,17 @@ public sealed class BridgeV1TaskOperationDispatcher(
         // capabilities or concurrency ceiling through an ordinary task request.
         if (!store.Heartbeat(agent.AgentId, agent.Capabilities, agent.MaxParallelTasks, now))
             return Failure("AGENT_NOT_REGISTERED");
+
+        if (request.Operation == BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT)
+        {
+            return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["agentId"] = agent.AgentId,
+                ["ownerApproved"] = "true",
+                ["capabilities"] = JsonSerializer.Serialize(agent.Capabilities),
+                ["maxParallelTasks"] = agent.MaxParallelTasks.ToString(CultureInfo.InvariantCulture)
+            });
+        }
 
         return request.Operation == BridgeV1Operation.DESKTOP_TASK_CLAIM
             ? await ClaimAsync(request, agent, now, cancellationToken)

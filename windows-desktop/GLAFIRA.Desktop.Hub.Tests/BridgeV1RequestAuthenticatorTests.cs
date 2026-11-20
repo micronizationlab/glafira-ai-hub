@@ -44,6 +44,28 @@ public sealed class BridgeV1RequestAuthenticatorTests
     }
 
     [Fact]
+    public async Task AdmitsAgentHeartbeatOnlyWithDesktopTaskClaimScopeAndEmptyPayload()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var replay = new FakeReplayGuard();
+        var authenticator = new BridgeV1RequestAuthenticator(
+            new FakeCredentialResolver(new HubRequestCredential(
+                "device-0001", Secret, new HashSet<string> { "desktop.task.claim" })), replay);
+        var request = Sign(new BridgeV1SignedRequest(
+            1, "request-heartbeat-01", "idem-heartbeat-01", "device-0001", "default",
+            BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT,
+            now.AddSeconds(-1).ToUnixTimeMilliseconds(),
+            now.AddMinutes(1).ToUnixTimeMilliseconds(),
+            new Dictionary<string, string>(),
+            new string('0', 64)));
+
+        var accepted = await authenticator.AuthenticateAsync(request, now);
+
+        Assert.True(accepted.Accepted);
+        Assert.Equal(1, replay.Claims);
+    }
+
+    [Fact]
     public async Task RejectsPayloadTamperingBeforeReplayClaim()
     {
         var replay = new FakeReplayGuard();
