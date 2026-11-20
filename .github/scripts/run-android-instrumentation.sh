@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}"
 if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT" ]]; then
   echo "Android SDK root is unavailable." >&2
   exit 2
