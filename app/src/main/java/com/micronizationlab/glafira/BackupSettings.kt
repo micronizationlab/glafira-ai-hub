@@ -131,12 +131,12 @@ fun BackupSettingsSection() {
             scope.launch {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
-                        val archive = BackupArchive.create(context, recoveryPassphrase)
+                        val archive = withCoreBackupCoordinator(context) { it.create(recoveryPassphrase) }
                         try {
                             val destination = context.contentResolver.openOutputStream(uri)
                                 ?: error("Не удалось открыть файл назначения.")
                             destination.use { output -> archive.inputStream().use { input -> input.copyTo(output) } }
-                            val verification = BackupArchive.verify(archive, recoveryPassphrase)
+                            val verification = withCoreBackupCoordinator(context) { it.verify(archive, recoveryPassphrase) }
                             "Архив проверен: ${verification.fileCount} файлов, ${formatBackupSize(verification.totalBytes)}."
                         } finally {
                             archive.delete()
@@ -328,7 +328,7 @@ fun BackupSettingsSection() {
                                         context.contentResolver.openInputStream(uri)?.use { input ->
                                             temp.outputStream().use { output -> input.copyTo(output) }
                                         } ?: error("Не удалось прочитать выбранный файл.")
-                                        val verification = BackupArchive.restore(context, temp, recoveryPassphrase)
+                                        val verification = withCoreBackupCoordinator(context) { it.restore(temp, recoveryPassphrase) }
                                         "Восстановлено: ${verification.fileCount} файлов из копии от ${verification.createdAt}."
                                     } finally {
                                         temp.delete()
