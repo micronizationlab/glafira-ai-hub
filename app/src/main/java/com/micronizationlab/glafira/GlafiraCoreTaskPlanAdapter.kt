@@ -45,7 +45,7 @@ internal object GlafiraCoreTaskPlanAdapter {
                 createdAtMillis = request.createdAtMillis,
                 updatedAtMillis = request.createdAtMillis,
                 deadlineAtMillis = deadline,
-                idempotencyKey = request.idempotencyKey + ":" + subtask.id,
+                idempotencyKey = stableNodeIdempotencyKey(request, subtask.id),
                 requiredScopes = desktopTool.requiredScopes
             )
             GlafiraCoreTaskPlanNode(
@@ -94,6 +94,16 @@ internal object GlafiraCoreTaskPlanAdapter {
         }
         val goal = JSONObject(plan.nodes.first().task.payload).optString("planGoal")
         return GlafiraTaskPlan(goal, tasks)
+    }
+
+    private fun stableNodeIdempotencyKey(
+        request: GlafiraCoreTaskPlanRequest,
+        subtaskId: String
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(("node|" + request.projectId + "|" + request.idempotencyKey + "|" + subtaskId)
+                .toByteArray(Charsets.UTF_8))
+        return "node-" + digest.take(24).joinToString("") { "%02x".format(it) }
     }
 
     private fun stablePlanId(request: GlafiraCoreTaskPlanRequest): String {
