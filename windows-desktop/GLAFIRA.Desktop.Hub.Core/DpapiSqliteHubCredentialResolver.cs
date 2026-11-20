@@ -15,14 +15,16 @@ namespace GLAFIRA.Desktop.Hub.Core;
 [SupportedOSPlatform("windows")]
 public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
 {
-    private static readonly byte[] Entropy =
-        Encoding.UTF8.GetBytes("GLAFIRA.Desktop.Hub.CredentialStore.v1");
-
     private readonly string _connectionString;
+    private readonly IHubDataProtector _dataProtector;
+    private readonly TimeProvider _timeProvider;
 
-    public DpapiSqliteHubCredentialResolver(string databasePath)
+    public DpapiSqliteHubCredentialResolver(
+        string databasePath,
+        IHubDataProtector? dataProtector = null,
+        TimeProvider? timeProvider = null)
     {
-        if (!OperatingSystem.IsWindows())
+        if (dataProtector is null && !OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Desktop Hub DPAPI credential storage is Windows-only.");
 
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
@@ -38,6 +40,8 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
             Cache = SqliteCacheMode.Shared,
             Pooling = true
         }.ToString();
+        _dataProtector = dataProtector ?? new WindowsDpapiHubDataProtector();
+        _timeProvider = timeProvider ?? TimeProvider.System;
 
         Initialize();
     }
@@ -57,10 +61,7 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
         byte[] protectedSecret;
         try
         {
-            protectedSecret = ProtectedData.Protect(
-                secretCopy,
-                Entropy,
-                DataProtectionScope.CurrentUser);
+            protectedSecret = HubCredentialCryptography.Protect(_dataProtector, secretCopy);
         }
         finally
         {
@@ -85,7 +86,7 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
             command.Parameters.AddWithValue("$device", deviceId);
             command.Parameters.Add("$secret", SqliteType.Blob).Value = protectedSecret;
             command.Parameters.AddWithValue("$scopes", scopesJson);
-            command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            command.Parameters.AddWithValue("$updated", _timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         finally
@@ -105,11 +106,17 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT protected_secret, scopes_json
-            FROM HubCredentials
-            WHERE device_id = $device AND enabled = 1;
+            SELECT credentials.protected_secret, credentials.scopes_json
+            FROM HubCredentials AS credentials
+            LEFT JOIN HubAgentEnrollments AS enrollment
+              ON enrollment.agent_id = credentials.device_id
+            WHERE credentials.device_id = $device
+              AND credentials.enabled = 1
+              AND (enrollment.agent_id IS NULL OR
+                   (enrollment.revoked_at_ms IS NULL AND enrollment.expires_at_ms > $now));
             """;
         command.Parameters.AddWithValue("$device", deviceId);
+        command.Parameters.AddWithValue("$now", _timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -119,10 +126,7 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
         var scopesJson = reader.GetString(1);
         try
         {
-            var secret = ProtectedData.Unprotect(
-                protectedSecret,
-                Entropy,
-                DataProtectionScope.CurrentUser);
+            var secret = HubCredentialCryptography.Unprotect(_dataProtector, protectedSecret);
             if (secret.Length != 32)
             {
                 CryptographicOperations.ZeroMemory(secret);
@@ -177,7 +181,9 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
         ValidateDeviceId(deviceId);
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
+        command.Transaction = (SqliteTransaction)transaction;
         command.CommandText = """
             UPDATE HubCredentials
             SET protected_secret = X'', scopes_json = '[]', enabled = 0,
@@ -185,8 +191,23 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
             WHERE device_id = $device AND enabled = 1;
             """;
         command.Parameters.AddWithValue("$device", deviceId);
-        command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        command.Parameters.AddWithValue("$updated", _timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
+        var revoked = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        if (revoked)
+        {
+            await using var enrollment = connection.CreateCommand();
+            enrollment.Transaction = (SqliteTransaction)transaction;
+            enrollment.CommandText = """
+                UPDATE HubAgentEnrollments
+                SET revoked_at_ms = $revoked
+                WHERE agent_id = $device AND revoked_at_ms IS NULL;
+                """;
+            enrollment.Parameters.AddWithValue("$device", deviceId);
+            enrollment.Parameters.AddWithValue("$revoked", _timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
+            await enrollment.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return revoked;
     }
 
     private void Initialize()
@@ -207,6 +228,19 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
             );
             CREATE INDEX IF NOT EXISTS IX_HubCredentials_Enabled
                 ON HubCredentials(enabled, device_id);
+            CREATE TABLE IF NOT EXISTS HubAgentEnrollments(
+                agent_id TEXT NOT NULL PRIMARY KEY,
+                desktop_hub_id TEXT NOT NULL,
+                endpoint TEXT NOT NULL,
+                tls_certificate_sha256 TEXT NOT NULL,
+                enrolled_at_ms INTEGER NOT NULL,
+                expires_at_ms INTEGER NOT NULL,
+                revoked_at_ms INTEGER NULL,
+                CHECK(expires_at_ms > enrolled_at_ms),
+                CHECK(revoked_at_ms IS NULL OR revoked_at_ms >= enrolled_at_ms)
+            );
+            CREATE INDEX IF NOT EXISTS IX_HubAgentEnrollments_Expiry
+                ON HubAgentEnrollments(expires_at_ms, revoked_at_ms);
             """;
         command.ExecuteNonQuery();
     }
@@ -231,4 +265,16 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
             !deviceId.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_'))
             throw new ArgumentException("Device ID must be a bounded ASCII identifier.", nameof(deviceId));
     }
+}
+
+internal static class HubCredentialCryptography
+{
+    private static readonly byte[] Entropy =
+        Encoding.UTF8.GetBytes("GLAFIRA.Desktop.Hub.CredentialStore.v1");
+
+    public static byte[] Protect(IHubDataProtector protector, ReadOnlySpan<byte> plaintext) =>
+        protector.Protect(plaintext, Entropy);
+
+    public static byte[] Unprotect(IHubDataProtector protector, ReadOnlySpan<byte> ciphertext) =>
+        protector.Unprotect(ciphertext, Entropy);
 }
