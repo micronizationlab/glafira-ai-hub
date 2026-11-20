@@ -1,0 +1,51 @@
+[
+  {
+    "schemaVersion": 1,
+    "taskId": "task-000001",
+    "projectId": "project-01",
+    "idempotencyKey": "idem-000001",
+    "taskType": "research.search",
+    "payloadRef": "payload://task-000001/input",
+    "payloadSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "issuedByDeviceId": "device-0001",
+    "targetAgentId": null,
+    "requiredCapabilities": [
+      "research.pubmed"
+    ],
+    "dependencyTaskIds": [],
+    "riskClass": "EXTERNAL_SIDE_EFFECT",
+    "approvalRef": null,
+    "createdAt": "2026-11-19T20:00:00Z",
+    "deadlineAt": null,
+    "resourceBudget": {
+      "maxRuntimeSeconds": 600,
+      "maxMemoryMiB": 1024,
+      "maxCpuPercent": 50
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "taskId": "task-000001",
+    "projectId": "project-01",
+    "idempotencyKey": "idem-000001",
+    "taskType": "research.search",
+    "payloadRef": "payload://task-000001/input",
+    "payloadSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "issuedByDeviceId": "device-0001",
+    "targetAgentId": null,
+    "requiredCapabilities": [
+      "research.pubmed"
+    ],
+    "dependencyTaskIds": [],
+    "riskClass": "READ_ONLY",
+    "approvalRef": null,
+    "createdAt": "2026-11-19T20:00:00Z",
+    "deadlineAt": null,
+    "resourceBudget": {
+      "maxRuntimeSeconds": 600,
+      "maxMemoryMiB": 1024,
+      "maxCpuPercent": 50
+    },
+    "apiKey": "must-not-be-accepted"
+  }
+]
