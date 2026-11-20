@@ -74,3 +74,5 @@ class GlafiraTaskDependencyPolicyTest {
 // CI freshness trigger: execute dependency-policy tests against this exact PR head.
 
 // Validation marker: fresh CI run after current mainline workflow updates.
+
+// CI trigger: execute full dependency suite from feat branch.
