@@ -4,8 +4,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Desktop-side pull worker. Android remains the TLS server; this node polls its authenticated
- * task inbox, executes only registered task handlers, and posts bounded results back.
+ * Legacy Desktop-side pull worker for the current Android-hosted Bridge v1 endpoint.
+ * The production architecture makes Windows Desktop Hub the authoritative TLS host.
+ * This compatibility worker keeps task execution registry-bound and fences every result
+ * update with the server-issued lease ID and fencing token.
  */
 internal class DesktopBridgeTaskWorker(
     private val origin: String,
@@ -46,7 +48,7 @@ internal class DesktopBridgeTaskWorker(
         }
     )
 
-    /** Polls one Android inbox item and starts available parallel work. */
+    /** Polls one owner-approved Bridge lease and starts available parallel work. */
     fun pollOnce(): Int {
         val response = client.post(
             origin, credentials, projectId,
@@ -86,11 +88,14 @@ internal class DesktopBridgeTaskWorker(
                 put("createdAtEpochMs", response.result.getValue("createdAtEpochMs").toLong())
                 put("expiresAtEpochMs", response.result.getValue("expiresAtEpochMs").toLong())
                 put("priority", response.result.getValue("priority").toInt())
+                put("leaseId", response.result.getValue("leaseId"))
+                put("fencingToken", response.result.getValue("fencingToken").toLong())
             }
             val task = decodeTask(json)
             val existing = queue.get(task.taskId)
             when (existing?.state) {
                 DesktopTaskState.SUCCEEDED -> {
+                    queue.attachLease(task.taskId, task.leaseId!!, task.fencingToken!!)
                     postTaskUpdate(task.taskId, "ACCEPTED", 0, "restored completed task", "none", "none")
                     postTaskUpdate(
                         task.taskId, "RUNNING", 99, "restoring result",
@@ -102,6 +107,7 @@ internal class DesktopBridgeTaskWorker(
                     )
                 }
                 DesktopTaskState.FAILED, DesktopTaskState.CANCELLED, DesktopTaskState.EXPIRED -> {
+                    queue.attachLease(task.taskId, task.leaseId!!, task.fencingToken!!)
                     postTaskUpdate(task.taskId, "ACCEPTED", 0, "restored terminal task", "none", "none")
                     postTaskUpdate(
                         task.taskId, "RUNNING", 99, "restoring failure", "none", "none"
@@ -113,6 +119,7 @@ internal class DesktopBridgeTaskWorker(
                 }
                 DesktopTaskState.DISPATCHED, DesktopTaskState.ACCEPTED, DesktopTaskState.RUNNING -> {
                     val failed = runCatching { queue.fail(task.taskId, "RECOVERY_REQUIRES_REVIEW") }.getOrNull()
+                    queue.attachLease(task.taskId, task.leaseId!!, task.fencingToken!!)
                     postTaskUpdate(task.taskId, "ACCEPTED", 0, "recovery check", "none", "none")
                     postTaskUpdate(
                         task.taskId, "RUNNING", 99, "recovery check", "none", "none"
@@ -124,6 +131,7 @@ internal class DesktopBridgeTaskWorker(
                 }
                 DesktopTaskState.QUEUED, null -> {
                     if (existing == null) queue.enqueue(task)
+                    else queue.attachLease(task.taskId, task.leaseId!!, task.fencingToken!!)
                     postTaskUpdate(task.taskId, "ACCEPTED", 0, "accepted", "none", "none")
                 }
             }
@@ -154,6 +162,10 @@ internal class DesktopBridgeTaskWorker(
         result: String,
         errorCode: String
     ) {
+        val lease = queue.get(taskId)?.envelope
+            ?: throw IllegalStateException("DESKTOP_TASK_LEASE_MISSING")
+        val leaseId = lease.leaseId ?: throw IllegalStateException("DESKTOP_TASK_LEASE_ID_MISSING")
+        val fencingToken = lease.fencingToken ?: throw IllegalStateException("DESKTOP_TASK_FENCING_TOKEN_MISSING")
         var lastError: Exception? = null
         repeat(3) { attempt ->
             try {
@@ -162,6 +174,8 @@ internal class DesktopBridgeTaskWorker(
                     DesktopBridgeOperation.DESKTOP_TASK_RESULT,
                     mapOf(
                         "taskId" to taskId,
+                        "leaseId" to leaseId,
+                        "fencingToken" to fencingToken.toString(),
                         "state" to state,
                         "progressPercent" to progress.toString(),
                         "progressMessage" to progressMessage,
@@ -227,7 +241,9 @@ internal class DesktopBridgeTaskWorker(
             priority = json.optInt("priority", 5),
             createdAt = json.getLong("createdAtEpochMs"),
             expiresAt = json.getLong("expiresAtEpochMs"),
-            idempotencyKey = "desktop-task-$taskId"
+            idempotencyKey = "desktop-task-$taskId",
+            leaseId = json.getString("leaseId"),
+            fencingToken = json.getLong("fencingToken")
         )
     }
 
