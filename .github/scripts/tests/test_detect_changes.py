@@ -65,24 +65,15 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["contracts"])
         self.assertFalse(selected["ios"])
         self.assertFalse(selected["agent"])
-        self.assertFalse(selected["android_acceptance"])
+        self.assertTrue(selected["android_acceptance"])
 
-    def test_bridge_change_selects_android_emulator_only_when_harness_exists(self):
+    def test_bridge_change_selects_android_emulator_acceptance(self):
         selected = MODULE.classify_paths(
             ["app/src/main/java/com/micronizationlab/glafira/GlafiraBridgeHostService.kt"],
             "pull_request",
             self.root,
         )
         self.assertTrue(selected["android"])
-        self.assertFalse(selected["android_acceptance"])
-        harness = self.root / ".github/scripts/run-android-instrumentation.sh"
-        harness.parent.mkdir(parents=True, exist_ok=True)
-        harness.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
-        selected = MODULE.classify_paths(
-            ["app/src/main/java/com/micronizationlab/glafira/GlafiraBridgeHostService.kt"],
-            "pull_request",
-            self.root,
-        )
         self.assertTrue(selected["android_acceptance"])
 
     def test_contract_change_selects_every_present_platform(self):
@@ -102,7 +93,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["ios"])
         self.assertTrue(selected["agent"])
         self.assertTrue(selected["contracts"])
-        self.assertFalse(selected["android_acceptance"])
+        self.assertTrue(selected["android_acceptance"])
 
 
 if __name__ == "__main__":
