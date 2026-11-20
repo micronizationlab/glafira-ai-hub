@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit
 
 /** Unique WorkManager entry point for deferred Core queue processing. */
 object GlafiraCoreWorkScheduler {
+    const val RESUME_NETWORK = "resume_network"
     private const val UNIQUE_WORK = "glafira-core-queue-drain"
 
     fun scheduleImmediate(context: Context) {
