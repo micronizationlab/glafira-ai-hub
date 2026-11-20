@@ -16,10 +16,14 @@ class BackupManualPassphraseTest {
         ))
     }
 
-    @Test fun fallsBackToStoredPassphraseWhenNewInputIsTooShort() {
-        assertEquals("stored-passphrase-123", BackupManualPassphrase.resolve(
+    @Test fun rejectsShortExplicitPassphraseInsteadOfSilentlyUsingStoredOne() {
+        assertEquals("", BackupManualPassphrase.resolve(
             "short", "stored-passphrase-123"
         ))
+    }
+
+    @Test fun rejectsWhitespaceOnlyInputAndStoredPassphrase() {
+        assertEquals("", BackupManualPassphrase.resolve("   ", "   "))
     }
 
     @Test fun rejectsWhenNeitherPassphraseMeetsTheMinimumLength() {
