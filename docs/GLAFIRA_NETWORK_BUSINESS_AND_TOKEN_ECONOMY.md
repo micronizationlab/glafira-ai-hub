@@ -1,5 +1,5 @@
 # GLAFIRA Network — commercial product, registration, token economy and VPN
-**Version:** 1.0-draft  
+**Version:** 1.1-draft  
 **Date:** 2026-11-20  
 **Status:** owner-approved product direction; implementation specification for review  
 **Authority:** GLAFIRA Core and the owner. This document extends, and does not replace, the Core, Bridge, account identity, backup/recovery and network specifications.
@@ -489,3 +489,79 @@ No public launch claim until all applicable gates pass:
 
 ---
 This document describes the intended product and technical design. Items marked as open questions or staged work are not implemented merely because they are specified here.
+
+
+## 16. Owner-approved launch offer, AI pricing and voluntary contribution strategy (2026-11-20)
+
+### 16.1 Introductory commercial offer — hypothesis, not final tariff
+
+The owner proposes testing the following promotional entry prices for the Russian market:
+- **VPN:** 300 RUB per month.
+- **Full GLAFIRA access:** 500 RUB per month.
+- **Combined bundle:** 800 RUB per month.
+- **Verified compute contribution rewards:** separate, optional and earned only for accepted useful work.
+
+These prices are a launch hypothesis and must not be advertised as final until competitor pricing, infrastructure cost and legal/payment review are complete. Define promotion duration, renewal/normal price, included devices, fair-use limits, cancellation/refund rules and regional availability before checkout.
+
+The 500 RUB GLAFIRA tier must not imply unlimited access to expensive frontier-model APIs. It needs explicit fair-use quotas, a usage receipt and hard cost limits. No hidden paid fallback, unapproved provider spend, silent model substitution or surprise overage. Users who do not contribute compute retain full paid access at the published price.
+
+### 16.2 Competitive price and value research
+
+Maintain a dated evidence table for:
+- Russian VPN providers: monthly and effective annual/multi-year price, devices, traffic, protocols, connection reliability, support, payment methods and refunds.
+- AI subscriptions and free tiers: included models, usage limits, tools, voice, files, agent workflows, regional availability and checkout price.
+- AI APIs: input/output/cached/reasoning tokens, image/audio/video/tool charges, batch rates, long-context tiers, region/deployment, tax and payment friction.
+- Distributed compute / DePIN / bandwidth projects: actual buyer demand, resource cost, reward formulas, payout usability, retention and user complaints.
+
+Keep API metering separate from consumer subscriptions. A subscription price cannot be divided by tokens unless its usage pool and effective limits are known. Provider credits are provider-specific and are not GLAFIRA tokens.
+
+The initial source-linked provider matrix (snapshot 2026-11-20) is maintained in `docs/TOKEN_CLOVER_MARKET_AND_COMPUTE_INCENTIVE_RESEARCH.md`. It includes Yandex, xAI/Grok, DeepSeek, OpenAI, Google Gemini, Mistral, Cohere, Groq, Alibaba/Qwen and Sber/GigaChat. Refresh every price card before a customer quote or financial commitment.
+
+Initial tariff observation: at the 2026-11-20 Bank of Russia USD rate of 81.929 RUB/USD, the published YandexGPT Pro 5.1 API rate of 0.8 RUB per 1,000 input/output tokens is approximately 4.9× Grok 4.7 input and 1.6× Grok 4.7 output list price after FX. This is not a quality comparison. Direct DeepSeek V4.1 Flash has peak/off-peak rates and differs materially from the Yandex-managed DeepSeek listing; exact model revision, endpoint, token accounting, VAT and hosting must be checked before drawing a markup conclusion.
+
+### 16.3 GLAFIRA's differentiation
+
+Multi-model access alone is not a sufficient moat. GLAFIRA's target differentiation is a persistent, owner-controlled AI work environment:
+- route tasks among multiple providers based on quality, cost, latency, context and permissions;
+- persistent project workspaces and evidence-backed task history;
+- specialist agents and coordinated workflows;
+- file, voice, tool and integration workflows with explicit approvals;
+- continuity across Android, Windows Desktop and optional Windows Agent;
+- owner-controlled local/edge execution and, later, an audited peer compute marketplace;
+- transparent usage metering, budget caps and accepted-deliverable receipts.
+
+This is a product hypothesis, not a claim that all capabilities are already implemented. Do not market a capability until code, tests and end-to-end acceptance prove it.
+
+### 16.4 No tap-to-earn: useful work only
+
+GLAFIRA must not reproduce tap-to-earn or hamster-style mechanics. Participants must not be asked to tap repeatedly, watch ads, generate fake engagement, keep the app open for points or stay online 24/7 just to inflate an activity score.
+
+- Contribution is opt-in, separately enabled per device, visible, pausable and revocable.
+- Reward only verified and accepted useful work. No reward for app opens, taps, referrals alone, raw uptime or unverified device claims.
+- Preserve smartphone ceiling: at most 10% of available compute budget; Wi-Fi only; never cellular data. Run only under safe charging/battery/thermal/idle conditions and immediately yield to the owner.
+- Windows Desktop/home PC may use a separately configured 20–100% idle resource ceiling, with immediate yield to owner activity.
+- These are maximum policy ceilings, not promised continuous utilization or guaranteed earnings.
+- Show measured/estimated CPU/GPU/NPU time, data volume, energy confidence, task status, acceptance, reward formula version and pending/posted balance.
+- Do not access personal files, browser profiles, credentials, microphone or camera by default. Tasks receive only minimal scoped inputs in an isolated sandbox.
+- Publish reward formula and changes in advance; keep historical receipts reproducible. Never retroactively change already accepted rewards without an auditable compensating event and disclosed dispute process.
+- If a device class cannot earn more value than its incremental energy, bandwidth, wear, coordination and verification costs, do not offer that task class for public rewards.
+
+### 16.5 Token and reward accounting
+
+Keep GCU (measured compute work) separate from GLF (internal settlement/reward unit). No fixed 1:1 conversion is assumed. The GCU methodology and GLF pricing/reward policy must be versioned and owner-approved.
+
+For every reward, store task class, raw provider/device usage, benchmark version, accepted output/quality result, resource estimates vs measurements, reward formula version, amount, account and ledger transaction ID. Preserve replayability under future formula changes without rewriting historical facts.
+
+No guaranteed income, investment return or fiat value is promised. External transfers, cash redemption, public exchange listings or sale of tokens require separate legal, tax, financial, fraud and consumer-protection review. Public token issuance remains owner-authorized, budgeted and capped by policy; agents cannot mint autonomously.
+
+### 16.6 Pilot and unit-economics acceptance
+
+Before public launch, model at least 100 / 1,000 / 10,000 subscribers and multiple compute participation rates. Include:
+- provider API cost by actual model mix, retries, cache, modalities and tools;
+- VPN egress, server capacity, IP/region diversity and abuse mitigation;
+- compute verification, scheduling, storage, networking and support;
+- payment processing, app-store commissions, taxes, refunds and chargebacks;
+- token reward liability, fraud, idle capacity, retention and churn.
+
+Pilot metrics: activation, paid conversion, day-7/day-30 retention, monthly active use, AI task mix, cost per accepted deliverable, VPN traffic per paid user, compute participation rate, accepted work per device class, net reward after incremental cost, support burden and refunds. Stop or redesign any task class whose net participant benefit is negative or opaque.
+
