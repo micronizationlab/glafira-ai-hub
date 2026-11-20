@@ -577,6 +577,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         }
     }
 
+    // Microphone access is requested only after the owner explicitly taps the voice control.
     val microphonePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
