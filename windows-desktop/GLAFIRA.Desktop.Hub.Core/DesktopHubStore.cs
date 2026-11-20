@@ -310,9 +310,14 @@ public sealed class DesktopHubStore
         {
             validate.Transaction = transaction;
             validate.CommandText = """
-                SELECT COUNT(*) FROM Leases
-                WHERE agent_id = $agent AND task_id = $task AND lease_id = $lease
-                  AND fencing_token = $fence AND expires_at_ms > $now;
+                SELECT COUNT(*)
+                FROM Leases l
+                JOIN Tasks t ON t.task_id = l.task_id
+                JOIN Agents a ON a.agent_id = l.agent_id
+                WHERE l.agent_id = $agent AND l.task_id = $task AND l.lease_id = $lease
+                  AND l.fencing_token = $fence AND l.expires_at_ms > $now
+                  AND t.state = 'Leased' AND t.fencing_token = $fence
+                  AND a.owner_approved = 1;
                 """;
             validate.Parameters.AddWithValue("$agent", agentId);
             validate.Parameters.AddWithValue("$task", taskId);
