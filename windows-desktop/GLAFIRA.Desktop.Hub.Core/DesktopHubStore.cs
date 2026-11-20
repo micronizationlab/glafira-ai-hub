@@ -376,8 +376,13 @@ public sealed class DesktopHubStore
         if (progressPercent is < 0 or > 100)
             throw new ArgumentOutOfRangeException(nameof(progressPercent));
         ArgumentException.ThrowIfNullOrWhiteSpace(progressMessage);
-        if (progressMessage.Length > 2_048)
-            throw new ArgumentException("Progress message exceeds 2048 characters.", nameof(progressMessage));
+        if (progressMessage.Length > 512)
+            throw new ArgumentException("Progress message exceeds 512 characters.", nameof(progressMessage));
+        var safeProgressMessage = new string(progressMessage
+            .Select(character => char.IsControl(character) ? ' ' : character)
+            .ToArray()).Trim();
+        if (safeProgressMessage.Length == 0)
+            throw new ArgumentException("Progress message must contain visible status text.", nameof(progressMessage));
 
         using var connection = Open();
         using var transaction = connection.BeginTransaction(deferred: false);
@@ -407,7 +412,7 @@ public sealed class DesktopHubStore
         }
 
         AppendTaskEvent(connection, transaction, taskId, HubTaskState.Leased, now,
-            agentId, leaseId, fencingToken, "TASK_PROGRESS", progressPercent, progressMessage);
+            agentId, leaseId, fencingToken, "TASK_PROGRESS", progressPercent, safeProgressMessage);
         transaction.Commit();
         return true;
     }
