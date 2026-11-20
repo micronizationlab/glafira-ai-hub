@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -25,7 +26,7 @@ class GlafiraRegressionUiTest {
         val statusNode = compose.onNodeWithTag("backup_status")
         val before = statusNode.fetchSemanticsNode().config[SemanticsProperties.Text]
             .joinToString("") { it.text }
-        compose.onNodeWithTag("backup_manual_save").assertExists().assertIsEnabled().performClick()
+        compose.onNodeWithTag("backup_manual_save").assertExists().assertIsEnabled().performScrollTo().performClick()
         compose.waitForIdle()
         val after = compose.onNodeWithTag("backup_status").fetchSemanticsNode().config[SemanticsProperties.Text]
             .joinToString("") { it.text }
