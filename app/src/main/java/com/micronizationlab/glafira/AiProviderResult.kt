@@ -42,9 +42,9 @@ fun AiProviderResult.userText(): String = when (this) {
             append(" Исход запроса неизвестен. Автоматический повтор отключён.")
         }
         if (error.partialResults.isNotEmpty()) {
-            append("\\n\\nПолученные мнения (синтез не завершён):\\n")
-            append(error.partialResults.entries.joinToString("\\n\\n") { (provider, text) ->
-                "--- $provider ---\\n$text"
+            append("\n\nПолученные мнения (синтез не завершён):\n")
+            append(error.partialResults.entries.joinToString("\n\n") { (provider, text) ->
+                "--- $provider ---\n$text"
             })
         }
     }
@@ -88,7 +88,7 @@ internal fun parseProviderRetryAfter(value: String?, nowMillis: Long = System.cu
 }
 
 /** Conservative adapter for the legacy String provider API: network failures are UNKNOWN, never NOT_SENT. */
-internal fun classifyLegacyProviderResponse(providerId: ProviderId, response: String): AiProviderResult {
+internal fun classifyLegacyProviderResponse(response: String): AiProviderResult {
     if (!response.startsWith("Ошибка")) return AiProviderResult.Success(response)
     if (response.contains("API-ключ") || response.contains("пока не реализовано") ||
         response.contains("не задан")) {
@@ -99,7 +99,7 @@ internal fun classifyLegacyProviderResponse(providerId: ProviderId, response: St
             outcome = AiRequestOutcome.NOT_SENT
         ))
     }
-    val status = Regex("HTTP\\\\s+(\\\\d{3})").find(response)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    val status = Regex("HTTP\\s+(\\d{3})").find(response)?.groupValues?.getOrNull(1)?.toIntOrNull()
     if (status != null) return providerHttpFailure(status).copy(
         error = providerHttpFailure(status).error.copy(message = response.take(500))
     )
