@@ -131,7 +131,7 @@ internal object HrContactStore {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(projectId.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-        return File(File(context.filesDir, DIRECTORY), "$digest.json.enc")
+        return File(File(context.noBackupFilesDir, DIRECTORY), "$digest.json.enc")
     }
 
     private fun associatedData(projectId: String) = "GLAFIRA_HR_CONTACTS_V1|$projectId"
