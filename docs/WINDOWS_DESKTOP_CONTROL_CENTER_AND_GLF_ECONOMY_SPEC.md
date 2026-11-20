@@ -196,3 +196,117 @@ Future economy acceptance:
 ## 10. Non-implementation statement
 
 This document records requirements and a candidate architecture. It does not mean that connector integrations, the Desktop GUI, File Intelligence, the GLF wallet, token issuance, compute marketplace, escrow or cross-customer GLAFIRA Bridge are already implemented or tested.
+
+
+## 11. GLAFIRA Compute Economics & Pricing Engine (GCU)
+
+### 11.1 Purpose and separation of units
+
+Introduce a provider-neutral cost and pricing engine to compare the actual cost of completing work across hosted AI models, local models, specialist agents, tools and compute providers.
+
+Keep two concepts strictly separate:
+- **GCU (GLAFIRA Compute Unit):** an internal normalized measurement of resources consumed to complete a task under a documented measurement profile.
+- **GLF:** the internal settlement/accounting unit used for offers, reservations and payments in the GLAFIRA economy.
+
+GCU is not a cryptocurrency, payment token, provider token or monetary value. GLF is not a direct synonym for GCU. Do not set a permanent or arbitrary 1:1 conversion. The GCU-to-GLF pricing relationship must be defined by an owner-approved pricing policy and the actual economic model.
+
+### 11.2 Why raw token counts are insufficient
+
+Providers expose different billing dimensions: input/output tokens, cached tokens, images, audio/video, request counts, tool calls, context tiers, batch modes, model-specific multipliers and sometimes time or compute charges. Local inference has no provider invoice per token and must instead account for measured hardware/time/energy and operating cost.
+
+Therefore:
+- preserve raw provider-native usage and invoice units;
+- preserve model/provider price-card version and effective dates;
+- normalize all measured dimensions into GCU using a versioned, transparent methodology;
+- retain raw observations so historical results can be recalculated when methodology changes;
+- never infer cost solely from generated-token count when additional billable dimensions exist.
+
+### 11.3 Cost ledger and normalized resource dimensions
+
+For each task execution, record as available:
+- provider, model, model version, deployment and region;
+- prompt/input, output, cached input and reasoning-token counts where provider exposes them;
+- image/audio/video units and resolution/duration where applicable;
+- tool/API calls, request count and separately billed retrieval/enrichment;
+- local CPU/GPU device, accelerator class, RAM/VRAM, wall-clock time, utilization and energy estimate or measured energy;
+- network/storage usage where material;
+- retries, failed attempts, fallback model/tool invocations and orchestration overhead;
+- provider invoice/usage record identifiers and currency;
+- success status, accepted deliverable, quality evaluation and latency.
+
+Distinguish **metered facts**, **provider-reported usage**, **estimated values** and **assumptions**. Do not present estimated energy or amortized hardware cost as directly measured. Avoid double counting costs already included in provider invoices.
+
+### 11.4 GCU normalization methodology
+
+GCU must be defined by a published, versioned calibration profile, not an arbitrary token conversion. The profile should:
+- specify the baseline workload/resource reference and normalization coefficients;
+- explain how unlike dimensions are combined and how uncertainty is represented;
+- support separate workload classes (text reasoning, coding, retrieval, image generation/analysis, audio, video, local inference, tool execution);
+- record calibration dataset, benchmark version, hardware/provider conditions and effective date;
+- allow recalculation and comparison across profiles without destroying original measurements;
+- expose a confidence/measurement-quality label where source data is incomplete.
+
+Do not imply that one GCU value proves equal capability or equal output quality. Report GCU alongside workload class, measured cost, elapsed time, quality and uncertainty. A single universal score may hide trade-offs; preserve the underlying vector of resource dimensions.
+
+### 11.5 Fair model and agent comparisons
+
+Create a repeatable benchmark harness:
+- same task specification, input data, context budget and tool permissions;
+- comparable output limits and timeouts;
+- multiple runs to measure variance where appropriate;
+- blind or rubric-based evaluation for correctness, completeness, factuality, safety and format compliance;
+- independent acceptance criteria and human review for consequential tasks;
+- include retries and failed runs in total cost;
+- distinguish model-only tests from end-to-end agent workflows, which include orchestration, retrieval and tools.
+
+Publish comparisons as cost per accepted task/deliverable and quality-adjusted cost, with latency and resource breakdown. Do not rank a model as cheaper merely because it emits fewer tokens or returns a shorter/incomplete answer. Never use an uncalibrated success probability as a guaranteed price.
+
+### 11.6 Provider price catalogue
+
+Maintain a versioned catalogue for each model/API/tool provider:
+- official source URL and retrieval time;
+- provider/model/region/deployment identifier;
+- all billing dimensions and units;
+- currency, taxes/fees if applicable, volume tiers, cache/batch discounts and minimum charges;
+- free quota and its conditions, if any;
+- effective-from/effective-to dates and evidence of price changes;
+- terms, rate limits, commercial-use and data-handling constraints.
+
+Automated price refresh must not silently activate paid tiers, paid fallback, metered endpoints or new billable capabilities. Respect owner-configured spending ceilings. If a price is unknown, stale or ambiguous, disable automatic offer calculation or require owner review rather than guessing.
+
+### 11.7 Offer and customer pricing
+
+For each requested job, compute and display separately:
+1. **Estimated resource cost:** expected provider/local compute and tool cost, with range and assumptions.
+2. **Observed/actual cost:** reconciled after execution from actual usage and invoices where available.
+3. **GCU consumption:** normalized measurement with profile/version and uncertainty.
+4. **Proposed GLF offer:** settlement amount generated under an owner-approved pricing policy.
+5. **Customer maximum budget:** explicit spending cap authorized by the buyer.
+6. **Margin/overhead:** separately visible policy components, not hidden in the resource estimate.
+
+Offer calculation must account for task scope, quality target, deadline, expected retries, fallback policy, provider availability, risk/uncertainty, platform overhead and any owner-approved margin. Show a range or contingency where cost is uncertain. Never exceed the buyer's cap without new explicit approval.
+
+The provider may submit an offer; the buyer may accept, reject or request revision. A quote expires after a defined period and must be recalculated if provider prices, task scope or resource conditions change materially.
+
+### 11.8 GLF settlement and GCU accounting
+
+Keep GCU measurement records separate from the GLF double-entry wallet ledger. The ledger records actual GLF transfers/reservations/releases/refunds. GCU records measured resource consumption and benchmark results.
+
+Any conversion policy between GCU and GLF must be explicit, versioned, owner-approved and auditable. It may include external operating costs and a policy margin, but must not claim that GCU is inherently a currency. Do not mint GLF automatically to match GCU consumption. Issuance remains subject to the Treasury and Issuance controls in Section 8.
+
+### 11.9 Acceptance gates
+
+Before production pricing:
+- validate provider usage against invoices or authoritative usage records;
+- test each billing dimension and price-card effective date;
+- test local resource metering and label estimates distinctly;
+- test retries, timeouts, fallbacks, cached tokens and tool charges for double counting;
+- replay historical jobs under a newer GCU profile and preserve prior results;
+- run standardized benchmark suites with repeatability and quality evaluation;
+- verify that customer budget caps cannot be exceeded;
+- verify quote expiry/repricing and owner approval paths;
+- verify ledger invariants independently from GCU calculations;
+- test that stale/unknown prices block unsafe automatic offers;
+- complete security, privacy, provider-terms and legal review.
+
+This engine is a future module. It must not delay Core, Bridge or the functional Windows Desktop milestone. Begin detailed implementation only after usage telemetry, provider catalogue, wallet ledger and contract lifecycle dependencies are stable and the owner reprioritizes or approves the relevant phase.
