@@ -43,8 +43,9 @@ class GlafiraBridgeAdmissionServiceTest {
         val replay = FakeReplayStore(BridgeReplayClaim.ACCEPTED)
         var dispatchCalls = 0
         val service = GlafiraBridgeAdmissionService(
-            credentialProvider = GlafiraBridgeCredentialProvider {
-                GlafiraBridgeDeviceCredential("desktop-01", storedSecret, setOf("project.read"))
+            credentialProvider = object : GlafiraBridgeCredentialProvider {
+                override fun load(deviceId: String) =
+                    GlafiraBridgeDeviceCredential("desktop-01", storedSecret, setOf("project.read"))
             },
             replayStore = replay,
             dispatch = {
@@ -69,8 +70,9 @@ class GlafiraBridgeAdmissionServiceTest {
         val replay = FakeReplayStore(BridgeReplayClaim.DUPLICATE)
         var dispatchCalls = 0
         val service = GlafiraBridgeAdmissionService(
-            credentialProvider = GlafiraBridgeCredentialProvider {
-                GlafiraBridgeDeviceCredential("desktop-01", secret.copyOf(), setOf("project.read"))
+            credentialProvider = object : GlafiraBridgeCredentialProvider {
+                override fun load(deviceId: String) =
+                    GlafiraBridgeDeviceCredential("desktop-01", secret.copyOf(), setOf("project.read"))
             },
             replayStore = replay,
             dispatch = {
