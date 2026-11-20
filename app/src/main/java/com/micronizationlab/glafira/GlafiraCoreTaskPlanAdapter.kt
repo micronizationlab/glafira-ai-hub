@@ -62,6 +62,17 @@ internal object GlafiraCoreTaskPlanAdapter {
         ).also(GlafiraCoreTaskPlanPolicy::validate)
     }
 
+    fun toPlannerPlan(record: GlafiraCoreTaskPlanRecord): GlafiraTaskPlan =
+        toPlannerPlan(GlafiraCoreTaskPlan(
+            planId = record.planId,
+            projectId = record.projectId,
+            idempotencyKey = record.idempotencyKey,
+            nodes = record.nodes.map { task ->
+                GlafiraCoreTaskPlanNode(task, record.dependencies[task.taskId].orEmpty())
+            },
+            createdAtMillis = record.createdAtMillis
+        ))
+
     fun toPlannerPlan(plan: GlafiraCoreTaskPlan): GlafiraTaskPlan {
         val nodesByTaskId = plan.nodes.associateBy { it.task.taskId }
         val subtaskIds = plan.nodes.associate { node ->
