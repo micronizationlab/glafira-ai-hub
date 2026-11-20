@@ -69,6 +69,89 @@ public sealed class DesktopHubStore
         command.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Creates a paired Agent in a denied-by-default state. Existing owner-approved
+    /// identities cannot be silently replaced by a new pairing ticket.
+    /// </summary>
+    public void RegisterPendingAgent(string agentId, string deviceId, DateTimeOffset now)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        ValidateIdentifier(deviceId, nameof(deviceId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO Agents(agent_id, device_id, capabilities_json, max_parallel, owner_approved, last_heartbeat_ms)
+            VALUES($agent, $device, '[]', 1, 0, $heartbeat)
+            ON CONFLICT(agent_id) DO UPDATE SET
+                device_id = excluded.device_id,
+                capabilities_json = '[]',
+                max_parallel = 1,
+                owner_approved = 0,
+                last_heartbeat_ms = excluded.last_heartbeat_ms
+            WHERE Agents.owner_approved = 0;
+            """;
+        command.Parameters.AddWithValue("$agent", agentId);
+        command.Parameters.AddWithValue("$device", deviceId);
+        command.Parameters.AddWithValue("$heartbeat", now.ToUnixTimeMilliseconds());
+        if (command.ExecuteNonQuery() != 1)
+            throw new InvalidOperationException("AGENT_ALREADY_OWNER_APPROVED");
+    }
+
+    public bool IsAgentOwnerApproved(string agentId)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT owner_approved FROM Agents WHERE agent_id = $agent;";
+        command.Parameters.AddWithValue("$agent", agentId);
+        return Convert.ToInt32(command.ExecuteScalar() ?? 0) == 1;
+    }
+
+    /// <summary>Revokes Hub credentials, enrollment and scheduler approval in one transaction.</summary>
+    public bool RevokeAgent(string agentId, DateTimeOffset now)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+        using (var approval = connection.CreateCommand())
+        {
+            approval.Transaction = transaction;
+            approval.CommandText = "UPDATE Agents SET owner_approved = 0 WHERE agent_id = $agent;";
+            approval.Parameters.AddWithValue("$agent", agentId);
+            if (approval.ExecuteNonQuery() == 0)
+            {
+                transaction.Commit();
+                return false;
+            }
+        }
+        using (var credential = connection.CreateCommand())
+        {
+            credential.Transaction = transaction;
+            credential.CommandText = """
+                UPDATE HubCredentials
+                SET protected_secret = X'', scopes_json = '[]', enabled = 0, updated_at_ms = $now
+                WHERE device_id = $agent;
+                """;
+            credential.Parameters.AddWithValue("$agent", agentId);
+            credential.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            credential.ExecuteNonQuery();
+        }
+        using (var enrollment = connection.CreateCommand())
+        {
+            enrollment.Transaction = transaction;
+            enrollment.CommandText = """
+                UPDATE HubAgentEnrollments
+                SET revoked_at_ms = $now
+                WHERE agent_id = $agent AND revoked_at_ms IS NULL;
+                """;
+            enrollment.Parameters.AddWithValue("$agent", agentId);
+            enrollment.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            enrollment.ExecuteNonQuery();
+        }
+        transaction.Commit();
+        return true;
+    }
+
     /// <summary>Called only by the owner-approval UI after an authenticated pairing ceremony.</summary>
     public bool SetAgentOwnerApproval(string agentId, bool approved)
     {
