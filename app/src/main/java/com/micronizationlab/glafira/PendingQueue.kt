@@ -21,7 +21,8 @@ data class PendingMessage(
     val nextAttemptAt: Long = 0,
     val session: String = "",
     val result: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val systemPrompt: String? = null
 )
 
 /** Durable outbox: a crashed request has an unknown outcome, never an automatic retry. */
@@ -113,7 +114,8 @@ internal class PendingMessageStore(directory: File, private val sessionId: Strin
                     o.optString("date", ""), PendingDeliveryState.valueOf(o.optString("state", "UNCERTAIN")),
                     o.optInt("attempts", 0), o.optLong("nextAttemptAt", 0), o.optString("session", ""),
                     if (o.isNull("result")) null else o.getString("result"),
-                    if (!o.has("state")) "Запрос из старой очереди: проверьте выполнение перед повтором." else if (o.isNull("error")) null else o.getString("error")
+                    if (!o.has("state")) "Запрос из старой очереди: проверьте выполнение перед повтором." else if (o.isNull("error")) null else o.getString("error"),
+                    if (o.isNull("systemPrompt")) null else o.getString("systemPrompt")
                 ).also { require(it.id.isNotBlank() && it.projectId.isNotBlank() && it.agentName.isNotBlank() && it.attempts >= 0)
                     require((it.projectId + it.agentName).none { char -> char == '/' || char == '\\' || char.isISOControl() }) }
             }.also { require(it.map { record -> record.id }.distinct().size == it.size) }
@@ -124,6 +126,7 @@ internal class PendingMessageStore(directory: File, private val sessionId: Strin
                 put("time", message.time); put("providerId", message.providerId); put("id", message.id); put("date", message.date)
                 put("state", message.state.name); put("attempts", message.attempts); put("nextAttemptAt", message.nextAttemptAt)
                 put("session", message.session); put("result", message.result ?: JSONObject.NULL); put("error", message.error ?: JSONObject.NULL)
+                put("systemPrompt", message.systemPrompt ?: JSONObject.NULL)
             }) }
         }.toString()
     }

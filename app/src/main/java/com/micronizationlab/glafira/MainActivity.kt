@@ -173,6 +173,8 @@ private fun WorkspaceApp() {
             showSettings -> SettingsScreen(
                 onBack = {
                     showSettings = false
+                    projects = loadProjects(context)
+                    currentProject = projects.firstOrNull { it.id == currentProject.id } ?: projects.first()
                     statusRefresh++
                 },
                 currentProject = currentProject
@@ -643,11 +645,14 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             return
         }
         val now = Date()
+        val projectContext = buildProjectContext(context, project.id, agent.n)
+        val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
         val pending = PendingMessage(
             project.id, agent.n, text,
             SimpleDateFormat("HH:mm", Locale.getDefault()).format(now),
             if (agent.n == "ГЛАФИРА") loadGlafiraPrimaryProvider(context).name else agent.providerId.name,
-            date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
+            date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now),
+            systemPrompt = fullPrompt
         )
         try {
             // Outbox precedes the call; a process death cannot erase the operation.
@@ -663,8 +668,6 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         }
         pendingMessages = pendingMessages + pending
         SoundHelper.playSent()
-        val projectContext = buildProjectContext(context, project.id, agent.n)
-        val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
         PendingDeliveryRuntime.dispatch(context, pending, fullPrompt)
     }
 

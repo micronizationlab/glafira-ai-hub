@@ -326,7 +326,17 @@ internal class DesktopTaskQueue(
         val size = Files.size(target)
         require(size in 1..MAX_QUEUE_FILE_BYTES.toLong()) { "Desktop task queue file size is invalid." }
         val type = object : TypeToken<List<DesktopTaskRecord>>() {}.type
-        return gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type) ?: emptyList()
+        return requireNotNull(gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type)) {
+            "Desktop task queue is null; preserve the file and recover it before starting the worker."
+        }.also { records ->
+            require(records.size <= MAX_RETAINED_RECORDS)
+            require(records.map { it.envelope.taskId }.distinct().size == records.size)
+            records.forEach { record ->
+                require(record.state in DesktopTaskState.entries && record.sequence >= 0)
+                require(record.envelope.taskId.isNotBlank() && record.envelope.projectId.isNotBlank())
+                require(record.envelope.instruction.isNotBlank())
+            }
+        }
     }
 
     private fun writeAll(records: List<DesktopTaskRecord>) {
@@ -344,7 +354,11 @@ internal class DesktopTaskQueue(
         val temp = Files.createTempFile(parent, ".glafira-task-queue-", ".tmp")
         try {
             setOwnerOnly(temp)
-            Files.writeString(temp, serialized, Charsets.UTF_8)
+            java.nio.channels.FileChannel.open(temp, java.nio.file.StandardOpenOption.WRITE).use { channel ->
+                val bytes = java.nio.ByteBuffer.wrap(serialized.toByteArray(Charsets.UTF_8))
+                while (bytes.hasRemaining()) channel.write(bytes)
+                channel.force(true)
+            }
             try {
                 Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             } catch (_: java.nio.file.AtomicMoveNotSupportedException) {

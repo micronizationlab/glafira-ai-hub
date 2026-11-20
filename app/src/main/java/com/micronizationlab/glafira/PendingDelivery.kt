@@ -69,8 +69,8 @@ internal suspend fun executePendingMessage(context: Context, pending: PendingMes
         val history = withContext(Dispatchers.IO) { appendPendingUserMessage(context, claimed) }
         val provider = runCatching { ProviderId.valueOf(claimed.providerId) }.getOrDefault(ProviderId.GIGACHAT)
         val reply = if (claimed.agentName == "ГЛАФИРА")
-            GlafiraCoordinator.respondResult(context, provider, history, prompt, claimed.projectId)
-        else callAiProviderResult(context, provider, history, prompt)
+            GlafiraCoordinator.respondResult(context, provider, history, claimed.systemPrompt ?: prompt, claimed.projectId)
+        else callAiProviderResult(context, provider, history, claimed.systemPrompt ?: prompt)
         // Once the response arrives, navigation/cancellation must not discard it.
         withContext(NonCancellable + Dispatchers.IO) {
             when (reply) {

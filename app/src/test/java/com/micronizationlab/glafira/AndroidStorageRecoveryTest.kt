@@ -12,6 +12,13 @@ class AndroidStorageRecoveryTest {
     @get:Rule val temporary = TemporaryFolder()
     private fun directory() = temporary.newFolder()
 
+    @Test fun queuedOperationRetainsItsOriginalPromptAfterRestart() {
+        val root = directory()
+        val message = PendingMessage("project", "agent", "question", "12:00", systemPrompt = "original project context")
+        PendingMessageStore(root).add(message)
+        assertEquals("original project context", PendingMessageStore(root).all().single().systemPrompt)
+    }
+
     @Test fun missingProjectsAlwaysProvideUsableDefault() {
         assertEquals(defaultProjects(), projectStore(directory()).read(::defaultProjects))
     }

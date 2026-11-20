@@ -21,8 +21,8 @@
       "module": "Android / бэкап",
       "title": "Архив основной ветки не включает базу задач Core",
       "approved": true,
-      "status": "partial",
-      "evidence": "main includes SQLite snapshot; F23 portability remains open"
+      "status": "implemented_pending_device_acceptance",
+      "evidence": "#206: logical portable tasks/results/plans/dependencies; Android CI 44754403234 passed"
     },
     {
       "id": "F03",
@@ -31,8 +31,8 @@
       "module": "Android / восстановление",
       "title": "Прерванное восстановление оставляет смесь поколений файлов",
       "approved": true,
-      "status": "open",
-      "evidence": "Not implemented/accepted in this execution."
+      "status": "implemented_pending_device_acceptance",
+      "evidence": "#206: fsynced journal, startup/runtime gates, correct-password rollback; simulated interrupted recovery passed in Android CI; OS-kill matrix remains"
     },
     {
       "id": "F04",
@@ -41,8 +41,8 @@
       "module": "Android / хранение",
       "title": "JSON-файлы пишутся неатомарно, повреждения скрываются",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#204; atomic generations and corruption quarantine"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#204 passed Android CI 44752350514; integrated prompt/tombstone regressions pending"
     },
     {
       "id": "F05",
@@ -51,8 +51,8 @@
       "module": "Android / очередь",
       "title": "Повтор очереди добавляет пользовательское сообщение второй раз",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#204; operation IDs and separate queue status"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#204 operation deduplication passed Android CI 44752350514"
     },
     {
       "id": "F06",
@@ -61,8 +61,8 @@
       "module": "Android / провайдеры",
       "title": "Неизвестный результат POST автоматически повторяется",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#204; typed transport outcomes and explicit unknown retry"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#204 typed outcomes passed Android CI; live provider fixture tests and final integrated CI remain"
     },
     {
       "id": "F07",
@@ -71,8 +71,8 @@
       "module": "Android / очередь",
       "title": "Восстановление сети само по себе не запускает очередь",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#204; foreground reconnection polling; background scheduling remains follow-up"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#204 foreground reconnect replay passed selected CI; background wake-up belongs to C1-031"
     },
     {
       "id": "F08",
@@ -81,8 +81,8 @@
       "module": "Android / жизненный цикл",
       "title": "Долгий запрос принадлежит экрану, а не долговечной задаче",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#204; application coroutine scope and process-death outbox recovery"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#204 application-scoped execution plus persisted prompt/outbox; selected Android CI passed, final integration pending"
     },
     {
       "id": "F09",
@@ -101,8 +101,8 @@
       "module": "Desktop JVM / очередь",
       "title": "CLI выбирает очередь в памяти при наличии долговечного класса",
       "approved": true,
-      "status": "open",
-      "evidence": "Not implemented/accepted in this execution."
+      "status": "implemented_pending_final_ci",
+      "evidence": "#207 plus integration fix: persistent CLI queue and cross-process lock; CI found JSON null fallback, corrected to reject/preserve source"
     },
     {
       "id": "F11",
@@ -111,8 +111,8 @@
       "module": "Desktop JVM / доставка",
       "title": "После трёх неудачных отправок результат теряется для Core",
       "approved": true,
-      "status": "open",
-      "evidence": "Not implemented/accepted in this execution."
+      "status": "implemented_pending_final_ci",
+      "evidence": "#207: terminal queue record retained until matching lease/fence/state/digest ACK; actual transport and runtime regression require final integrated CI"
     },
     {
       "id": "F12",
@@ -121,8 +121,8 @@
       "module": "Desktop JVM / остановка",
       "title": "close может завершиться при ещё работающем обработчике",
       "approved": true,
-      "status": "open",
-      "evidence": "Not implemented/accepted in this execution."
+      "status": "implemented_pending_final_ci",
+      "evidence": "#207: shutdown must prove handler termination before releasing process lock and HMAC material"
     },
     {
       "id": "F13",
@@ -131,8 +131,8 @@
       "module": "Bridge / поколения lease",
       "title": "Legacy-обновления не привязаны к конкретной аренде задачи",
       "approved": true,
-      "status": "open",
-      "evidence": "Not implemented/accepted in this execution."
+      "status": "partial",
+      "evidence": "#207: Kotlin wire carries lease/fence and Windows validates it; legacy local Android store API is not converted to production authority; M04 remains open"
     },
     {
       "id": "F14",
@@ -151,8 +151,8 @@
       "module": "Android / проекты",
       "title": "Удаление проекта оставляет связанные данные и может восстановить встроенный проект",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#204; Core terminal-data purge, queue/drafts/pins/history and tombstones"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#204 deletion cleanup and tombstone migration passed Android CI; added corrupted-generation tombstone regression pending"
     },
     {
       "id": "F16",
@@ -161,8 +161,8 @@
       "module": "Android / GigaChat",
       "title": "Вызовы GigaChat не ограничены тайм-аутом и размером ответа",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#204; OAuth/chat timeout, size bound and disconnect"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#204 bounded OAuth/chat transport and cleanup; selected Android CI passed"
     },
     {
       "id": "F17",
@@ -181,8 +181,8 @@
       "module": "Android / хранилище паролей",
       "title": "Новое хранилище нельзя повторно открыть после локальной блокировки",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#203/#204; vault configured state refresh"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#203/#204 configured state refresh and session locking; selected Android CI passed"
     },
     {
       "id": "F19",
@@ -191,8 +191,8 @@
       "module": "iOS / Face ID",
       "title": "В app target отсутствует описание использования Face ID",
       "approved": true,
-      "status": "implemented_pending_acceptance",
-      "evidence": "#203; both target configs declare Face ID usage; iOS runner queued"
+      "status": "implemented_pending_device_acceptance",
+      "evidence": "#203 Face ID description in Debug/Release; #207 iOS Swift package/app build passed; physical Face ID not run"
     },
     {
       "id": "F20",
@@ -221,8 +221,8 @@
       "module": "Android / статус бэкапа",
       "title": "Экран не наблюдает завершение фонового резервирования",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#204; manual/daily WorkManager observation"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#204 manual/daily WorkManager observation and smoke test passed selected Android CI"
     },
     {
       "id": "F23",
@@ -231,8 +231,8 @@
       "module": "Core / переносимость бэкапа",
       "title": "Копия SQLite из PR #191 не решает восстановление на новом телефоне",
       "approved": true,
-      "status": "open",
-      "evidence": "Not implemented/accepted in this execution."
+      "status": "implemented_pending_device_acceptance",
+      "evidence": "#206: recipient-key re-encryption covers actual Core results and task DAGs; distinct-key instrumentation passed; physical new-phone/cloud round-trip remains"
     },
     {
       "id": "M01",
@@ -251,8 +251,8 @@
       "module": "Windows Hub / сеть",
       "title": "Завершить авторитетный Windows HTTPS host и сопряжение",
       "approved": true,
-      "status": "open",
-      "evidence": "Not implemented/accepted in this execution."
+      "status": "partial",
+      "evidence": "main aeda4a69 adds owner-started Windows HTTPS host and payload store; pairing/enrollment/revocation UI and two-Agent acceptance remain open"
     },
     {
       "id": "M03",
@@ -361,8 +361,8 @@
       "module": "Android / vault",
       "title": "Добавить автоматическую блокировку и ограничение сессии",
       "approved": true,
-      "status": "implemented_pending_ci",
-      "evidence": "#204; background lock and five-minute session limit"
+      "status": "implemented_pending_final_ci",
+      "evidence": "#204 background lock and five-minute session limit; selected Android CI passed"
     },
     {
       "id": "U05",
@@ -3067,5 +3067,26 @@
       "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
     }
   ],
-  "cycle_2": "Not generated: must be based on the completed first cycle and subsequent full regression. No second cycle is claimed running."
+  "cycle_2": "Not generated: must be based on the completed first cycle and subsequent full regression. No second cycle is claimed running.",
+  "integration_base": "aeda4a69b1eb6cfc1eccdb7eccd3962206a506ce",
+  "validation": [
+    {
+      "sha": "8101fdb9e1b816d9f8d3af85a4ade44f31e51e64",
+      "run": 44752350514,
+      "result": "success",
+      "scope": "Android JVM/Desktop JVM, APK, emulator, contracts; other platforms skipped by selector"
+    },
+    {
+      "sha": "b044b6a02383fe2f3778ca668915bc23a7e7f4fd",
+      "run": 44754403234,
+      "result": "success",
+      "scope": "Android JVM/Desktop JVM, APK, emulator including portable/recovery tests, contracts; other platforms skipped"
+    },
+    {
+      "sha": "7adba7ee17b222f072d0d7066f474986756e13a5",
+      "run": 44755389543,
+      "result": "failure",
+      "scope": "Windows Hub/build, Windows Agent, contracts and iOS passed; JVM failed corrupted/null queue regression; corrected in integration, rerun required"
+    }
+  ]
 }

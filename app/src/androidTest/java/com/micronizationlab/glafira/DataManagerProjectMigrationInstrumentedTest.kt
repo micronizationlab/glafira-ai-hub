@@ -71,6 +71,8 @@ class DataManagerProjectMigrationInstrumentedTest {
 
         assertTrue(loadProjects(context).none { it.id == "token" })
         assertTrue(loadProjects(context).none { it.id == "token" })
+        File(context.filesDir, "projects.json").writeText("{broken")
+        assertTrue(loadProjects(context).none { it.id == "token" })
     }
 
     @Test

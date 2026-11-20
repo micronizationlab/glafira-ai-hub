@@ -50,12 +50,17 @@ fun saveProjects(context: Context, projects: List<Project>) =
 
 fun loadProjects(context: Context): List<Project> = GlafiraFileMaintenance.withExclusive {
     val store = projectStore(context.filesDir)
-    val projects = store.read(::defaultProjects)
     val deleted = deletedProjectStore(context.filesDir).read { emptySet() }
+    val fallback = defaultProjects().filterNot { it.id in deleted }.ifEmpty {
+        listOf(Project("recovered-${java.util.UUID.randomUUID()}", "Восстановленный проект"))
+    }
+    val stored = store.read { fallback }
+    val projects = stored.filterNot { it.id in deleted }.ifEmpty { fallback }
     val missing = builtInProjects.filter { candidate -> candidate.id !in deleted && projects.none { it.id == candidate.id } }
-    if (missing.isNotEmpty() || !File(context.filesDir, "projects.json").exists()) {
-        store.update(::defaultProjects) { current ->
-            current + missing.filter { candidate -> current.none { it.id == candidate.id } }
+    if (missing.isNotEmpty() || projects != stored || !File(context.filesDir, "projects.json").exists()) {
+        store.update({ fallback }) { current ->
+            val kept = current.filterNot { it.id in deleted }.ifEmpty { fallback }
+            kept + missing.filter { candidate -> kept.none { it.id == candidate.id } }
         }
     } else projects
 }

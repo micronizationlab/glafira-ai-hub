@@ -17,30 +17,30 @@
 | ID | Решение | Состояние | Доказательство / остаток |
 |---|---|---|---|
 | F01 | Принять | implemented_pending_acceptance | #203; FragmentActivity; emulator passed for c3f7d5f, real biometrics not run |
-| F02 | Принять | partial | main includes SQLite snapshot; F23 portability remains open |
-| F03 | Принять | open | Not implemented/accepted in this execution. |
-| F04 | Принять | implemented_pending_ci | #204; atomic generations and corruption quarantine |
-| F05 | Принять | implemented_pending_ci | #204; operation IDs and separate queue status |
-| F06 | Принять | implemented_pending_ci | #204; typed transport outcomes and explicit unknown retry |
-| F07 | Принять | implemented_pending_ci | #204; foreground reconnection polling; background scheduling remains follow-up |
-| F08 | Принять | implemented_pending_ci | #204; application coroutine scope and process-death outbox recovery |
+| F02 | Принять | implemented_pending_device_acceptance | #206: logical portable tasks/results/plans/dependencies; Android CI 44754403234 passed |
+| F03 | Принять | implemented_pending_device_acceptance | #206: fsynced journal, startup/runtime gates, correct-password rollback; simulated interrupted recovery passed in Android CI; OS-kill matrix remains |
+| F04 | Принять | implemented_pending_final_ci | #204 passed Android CI 44752350514; integrated prompt/tombstone regressions pending |
+| F05 | Принять | implemented_pending_final_ci | #204 operation deduplication passed Android CI 44752350514 |
+| F06 | Принять | implemented_pending_final_ci | #204 typed outcomes passed Android CI; live provider fixture tests and final integrated CI remain |
+| F07 | Принять | implemented_pending_final_ci | #204 foreground reconnect replay passed selected CI; background wake-up belongs to C1-031 |
+| F08 | Принять | implemented_pending_final_ci | #204 application-scoped execution plus persisted prompt/outbox; selected Android CI passed, final integration pending |
 | F09 | Принять | implemented_pending_acceptance | #203; actual Bridge result retained |
-| F10 | Принять | open | Not implemented/accepted in this execution. |
-| F11 | Принять | open | Not implemented/accepted in this execution. |
-| F12 | Принять | open | Not implemented/accepted in this execution. |
-| F13 | Принять | open | Not implemented/accepted in this execution. |
+| F10 | Принять | implemented_pending_final_ci | #207 plus integration fix: persistent CLI queue and cross-process lock; CI found JSON null fallback, corrected to reject/preserve source |
+| F11 | Принять | implemented_pending_final_ci | #207: terminal queue record retained until matching lease/fence/state/digest ACK; actual transport and runtime regression require final integrated CI |
+| F12 | Принять | implemented_pending_final_ci | #207: shutdown must prove handler termination before releasing process lock and HMAC material |
+| F13 | Принять | partial | #207: Kotlin wire carries lease/fence and Windows validates it; legacy local Android store API is not converted to production authority; M04 remains open |
 | F14 | Принять | implemented_pending_acceptance | current main validates/restores peer provider allowlist |
-| F15 | Принять | implemented_pending_ci | #204; Core terminal-data purge, queue/drafts/pins/history and tombstones |
-| F16 | Принять | implemented_pending_ci | #204; OAuth/chat timeout, size bound and disconnect |
+| F15 | Принять | implemented_pending_final_ci | #204 deletion cleanup and tombstone migration passed Android CI; added corrupted-generation tombstone regression pending |
+| F16 | Принять | implemented_pending_final_ci | #204 bounded OAuth/chat transport and cleanup; selected Android CI passed |
 | F17 | Принять | implemented_pending_acceptance | #203; unimplemented Yandex adapter is unavailable |
-| F18 | Принять | implemented_pending_ci | #203/#204; vault configured state refresh |
-| F19 | Принять | implemented_pending_acceptance | #203; both target configs declare Face ID usage; iOS runner queued |
+| F18 | Принять | implemented_pending_final_ci | #203/#204 configured state refresh and session locking; selected Android CI passed |
+| F19 | Принять | implemented_pending_device_acceptance | #203 Face ID description in Debug/Release; #207 iOS Swift package/app build passed; physical Face ID not run |
 | F20 | Принять | implemented_pending_acceptance | #203; 129th candidate regression passed in Windows CI |
 | F21 | Принять | implemented_pending_acceptance | #203; main Android source selects emulator; Windows Hub added to common CI |
-| F22 | Принять | implemented_pending_ci | #204; manual/daily WorkManager observation |
-| F23 | Принять | open | Not implemented/accepted in this execution. |
+| F22 | Принять | implemented_pending_final_ci | #204 manual/daily WorkManager observation and smoke test passed selected Android CI |
+| F23 | Принять | implemented_pending_device_acceptance | #206: recipient-key re-encryption covers actual Core results and task DAGs; distinct-key instrumentation passed; physical new-phone/cloud round-trip remains |
 | M01 | Принять | open | Not implemented/accepted in this execution. |
-| M02 | Принять | open | Not implemented/accepted in this execution. |
+| M02 | Принять | partial | main aeda4a69 adds owner-started Windows HTTPS host and payload store; pairing/enrollment/revocation UI and two-Agent acceptance remain open |
 | M03 | Принять | open | Not implemented/accepted in this execution. |
 | M04 | Принять | open | Not implemented/accepted in this execution. |
 | M05 | Принять | open | Not implemented/accepted in this execution. |
@@ -51,7 +51,7 @@
 | U01 | Принять | partial | #204 model IDs configurable; full provider health UI/fallback not complete |
 | U02 | Принять | open | Not implemented/accepted in this execution. |
 | U03 | Принять | open | Not implemented/accepted in this execution. |
-| U04 | Принять | implemented_pending_ci | #204; background lock and five-minute session limit |
+| U04 | Принять | implemented_pending_final_ci | #204 background lock and five-minute session limit; selected Android CI passed |
 | U05 | Принять | partial | main includes project fairness; direct provider cost accounting not complete |
 | U06 | Принять | partial | main has task queue UI and Desktop event history; unified authority/result view not complete |
 | U07 | Принять | partial | #204 extracts history/pending delivery; complete navigation/accessibility work not done |
@@ -421,3 +421,13 @@
 
 150. **C1-150** — Добавить пакет доказательств итоговой регрессии и сформировать второй цикл из 150 задач по фактическим результатам. Зависит от `C1-149`.
 
+
+## Интеграция и фактические проверки
+
+Изменения сверены с main `aeda4a69`, включая HTTPS host и control center Валеры. Локальное объединение прошло без конфликтов. Первичные PR #203 → #204 → #206 → #207 служат историей отдельных этапов; итоговый интеграционный PR становится точкой проверки на общей базе.
+
+- `8101fdb9`: CI 44752350514 — выбранные Android JVM/Desktop JVM/APK/emulator и contracts прошли.
+- `b044b6a0`: CI 44754403234 — выбранные Android проверки, включая перенос под другим ключом и восстановление журнала, прошли.
+- `7adba7ee`: CI 44755389543 — Windows Hub/Agent, iOS package/app build и contracts прошли; Desktop JVM обнаружил ошибку принятия JSON `null` за пустую очередь. Интеграция исправляет чтение: повреждённый файл сохраняется, startup отклоняется, lock освобождается. Итоговый CI обязателен.
+
+Ни один предварительный шаг C1-001…C1-150 не объявляется выполненным на основании этих исправлений. Незавершённые M01…M09 и U-пункты учитываются отдельно. Второй цикл не сформирован до завершения первого. Реальная подпись релизов, облачный round-trip, физические устройства и утверждённая политика Mother/токенов/VPN остаются отдельными условиями приёмки.
