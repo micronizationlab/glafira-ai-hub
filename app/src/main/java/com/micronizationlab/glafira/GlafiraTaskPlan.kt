@@ -99,3 +99,16 @@ internal object GlafiraTaskPlanPolicy {
         }
     }
 }
+
+/** One plan node with its durable transition journal and any persisted result. */
+data class GlafiraTaskPlanNodeJournal(
+    val task: GlafiraTask,
+    val history: List<GlafiraTaskStateEvent>,
+    val result: String?
+)
+
+/** Project-scoped orchestration journal assembled from the canonical task/result stores. */
+data class GlafiraTaskPlanJournal(
+    val plan: GlafiraTaskPlanRecord,
+    val nodes: List<GlafiraTaskPlanNodeJournal>
+)
