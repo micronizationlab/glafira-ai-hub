@@ -35,7 +35,8 @@ The installer copies the app to \`%ProgramFiles%\GLAFIRA\Desktop\`, creates a St
 3. Select the active private LAN address shown by the app.
 4. Click **Start HTTPS**.
 5. Create a one-time pairing ticket and share its endpoint, TLS fingerprint, ticket ID and code only with the Agent computer.
-6. After the Agent enrolls, approve it in the Agents tab and assign only the capabilities it should receive.
+6. After the Agent enrolls and restarts its service, approve it in the Agents tab and assign only the capabilities it should receive. The Agent should appear online within 30 seconds after approval.
+7. This release verifies pairing and heartbeat only; task polling, task execution and result ACK are not enabled yet.
 
 The Hub binds only to private LAN addresses. The Agent must be able to reach the Desktop computer on TCP 8443. If Windows classifies the LAN as Public, change the network profile to Private only when that is appropriate for the network.
 
