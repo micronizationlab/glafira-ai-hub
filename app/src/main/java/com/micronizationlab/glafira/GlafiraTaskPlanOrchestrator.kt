@@ -9,7 +9,7 @@ data class GlafiraCoreTaskPlanRequest(
     val projectId: String,
     val idempotencyKey: String,
     val createdAtMillis: Long,
-    val maxNodes: Int = GlafiraCoreTaskPlanPolicy.MAX_NODES
+    val maxNodes: Int = GlafiraTaskPlanner.MAX_TASKS
 )
 
 /**
