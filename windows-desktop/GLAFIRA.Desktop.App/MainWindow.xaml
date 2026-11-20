@@ -29,6 +29,11 @@
             <TextBlock Text="{Binding BridgeHost.AvailableAddressesText}" FontSize="10" Foreground="#7B6551" Margin="0,2,0,0"/>
             <TextBlock Text="{Binding BridgeHost.EndpointsText}" FontSize="11" Foreground="#52645D" TextWrapping="Wrap" Margin="0,2,0,0"/>
             <TextBlock Text="{Binding BridgeHost.CertificateFingerprintSha256}" FontSize="10" Foreground="#7B6551" TextWrapping="Wrap" Margin="0,3,0,0"/>
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+              <Button Content="Создать билет сопряжения · 5 минут" Height="32" Padding="12,0" Click="CreatePairingTicket_Click" IsEnabled="{Binding BridgeHost.CanCreatePairingTicket}"/>
+              <Button Content="Скопировать" Height="32" Margin="8,0,0,0" Padding="12,0" Click="CopyPairingTicket_Click" IsEnabled="{Binding BridgeHost.CanCopyPairingTicket}"/>
+            </StackPanel>
+            <TextBox Text="{Binding BridgeHost.PairingTicketDescriptor}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="92" Margin="0,8,0,0" FontSize="11"/>
           </StackPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
             <Button Content="Обновить адреса" Height="34" Margin="0,0,8,0" Click="RefreshBridgeAddresses_Click"/>
