@@ -521,8 +521,8 @@ class GlafiraTaskStore(context: Context) :
      * plan: all task rows, plan membership and dependency edges commit together.
      */
     @Synchronized
-    fun enqueuePlan(plan: GlafiraTaskPlan): GlafiraTaskPlanEnqueueResult {
-        GlafiraTaskPlanPolicy.validate(plan)
+    fun enqueuePlan(plan: GlafiraCoreTaskPlan): GlafiraCoreTaskPlanEnqueueResult {
+        GlafiraCoreTaskPlanPolicy.validate(plan)
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -547,7 +547,7 @@ class GlafiraTaskStore(context: Context) :
                     require(actual == node.dependsOnTaskIds) { "TASK_PLAN_DEPENDENCY_CONFLICT" }
                 }
                 db.setTransactionSuccessful()
-                return GlafiraTaskPlanEnqueueResult(existingRecord, false)
+                return GlafiraCoreTaskPlanEnqueueResult(existingRecord, false)
             }
 
             db.insertOrThrow("core_task_plans", null, ContentValues().apply {
@@ -576,7 +576,7 @@ class GlafiraTaskStore(context: Context) :
             db.setTransactionSuccessful()
             val record = readTaskPlan(db, plan.planId, plan.projectId)
                 ?: throw IllegalStateException("Committed task plan could not be read.")
-            return GlafiraTaskPlanEnqueueResult(record, true)
+            return GlafiraCoreTaskPlanEnqueueResult(record, true)
         } finally {
             db.endTransaction()
         }
@@ -584,7 +584,7 @@ class GlafiraTaskStore(context: Context) :
 
     /** Recent orchestration journal for one project, newest plans first. */
     @Synchronized
-    fun taskPlans(projectId: String, limit: Int = 100): List<GlafiraTaskPlanRecord> {
+    fun taskPlans(projectId: String, limit: Int = 100): List<GlafiraCoreTaskPlanRecord> {
         require(projectId.isNotBlank() && limit in 1..500)
         return readableDatabase.query(
             "core_task_plans", arrayOf("plan_id"), "project_id = ?",
@@ -600,23 +600,23 @@ class GlafiraTaskStore(context: Context) :
 
     /** Combined plan/node state history and decrypted result journal, project scoped. */
     @Synchronized
-    fun taskPlanJournal(planId: String, projectId: String): GlafiraTaskPlanJournal? {
+    fun taskPlanJournal(planId: String, projectId: String): GlafiraCoreTaskPlanJournal? {
         val plan = taskPlan(planId, projectId) ?: return null
         val nodes = plan.nodes.map { task ->
             val coreResult = coreTaskResult(task.taskId, projectId)?.result
             val desktopResult = if (coreResult == null) desktopTaskResult(task.taskId) else null
-            GlafiraTaskPlanNodeJournal(
+            GlafiraCoreTaskPlanNodeJournal(
                 task = task,
                 history = taskHistory(task.taskId, projectId, 500),
                 result = coreResult ?: desktopResult
             )
         }
-        return GlafiraTaskPlanJournal(plan, nodes)
+        return GlafiraCoreTaskPlanJournal(plan, nodes)
     }
 
     /** Returns the durable plan graph and current task states, scoped to its project. */
     @Synchronized
-    fun taskPlan(planId: String, projectId: String): GlafiraTaskPlanRecord? {
+    fun taskPlan(planId: String, projectId: String): GlafiraCoreTaskPlanRecord? {
         require(planId.isNotBlank() && projectId.isNotBlank())
         return readTaskPlan(readableDatabase, planId, projectId)
     }
@@ -625,7 +625,7 @@ class GlafiraTaskStore(context: Context) :
         db: SQLiteDatabase,
         planId: String,
         projectId: String
-    ): GlafiraTaskPlanRecord? {
+    ): GlafiraCoreTaskPlanRecord? {
         val header = db.query("core_task_plans", null,
             "plan_id = ? AND project_id = ?", arrayOf(planId, projectId),
             null, null, null, "1").use { cursor ->
@@ -640,7 +640,7 @@ class GlafiraTaskStore(context: Context) :
                 "WHERE n.plan_id = ? ORDER BY n.ordinal ASC",
             arrayOf(planId)
         ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.toTask()) } }
-        return GlafiraTaskPlanRecord(planId, projectId, header.first, header.second, header.third, tasks)
+        return GlafiraCoreTaskPlanRecord(planId, projectId, header.first, header.second, header.third, tasks)
     }
 
     /** Returns direct predecessors for diagnostics and dependency-aware scheduling. */
