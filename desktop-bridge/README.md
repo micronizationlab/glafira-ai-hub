@@ -1,12 +1,13 @@
-# GLAFIRA Desktop Bridge — first Windows Desktop runtime slice
+# GLAFIRA Desktop Bridge — legacy JVM client and task-worker foundation
 
-This is a JVM 17 command-line validation client and task-worker foundation. It is **not** the final Windows Desktop graphical application.
+This is a JVM 17 command-line validation client and task-worker foundation. It is **not** the Windows Desktop application or its authoritative network host. The current client still speaks to the legacy Android-hosted Bridge endpoint for compatibility; the target architecture makes Windows Desktop Hub the authoritative TLS listener and scheduler.
 
 ## Included
 
 - Owner-approved Android pairing and one-time credential-bundle import.
 - Encrypted local Desktop credential vault; passphrases and HMAC secrets are not printed.
-- HTTPS Bridge client with bounded response handling and scope checks.
+- HTTPS Bridge client with bounded response handling, certificate pinning and scope checks.
+- Task lease ID and fencing token are persisted with each remote task and echoed on every progress/result update.
 - Durable Desktop task queue with expiry, idempotency, state transitions and interrupted-task recovery.
 - Bounded worker runtime with an explicit task-handler registry.
 - Local Ollama executor and DRY_RUN preview path.
@@ -14,7 +15,7 @@ This is a JVM 17 command-line validation client and task-worker foundation. It i
 
 ## Safety model
 
-- The Android owner must approve pairing and the actual granted scopes.
+- The current legacy Android endpoint requires owner-approved pairing and granted scopes; Windows Desktop Hub enrollment is the target production flow.
 - A pairing proof does not itself grant scopes.
 - Credentials are not included in task envelopes or model prompts.
 - Unknown task types fail closed; arbitrary shell execution is not exposed.
@@ -34,6 +35,7 @@ From the repository root:
 
 - Replace the validation CLI with the Windows Desktop UI and persistent application host.
 - Integrate the authoritative Core SQLite queue rather than a parallel local queue.
-- Add authenticated Desktop enrollment, task leases, heartbeats, result acknowledgements and owner-visible status.
+- Replace the legacy Android-hosted endpoint with the Windows Desktop HTTPS listener and authenticated enrollment.
+- Add owner-visible lease/heartbeat state and result acknowledgements; reject stale results by lease ID and fencing token.
 - Add Windows packaging/signing, installer/update flow and end-to-end pairing acceptance.
 - Connect the Desktop host to the Windows Agent fleet and Android/iOS peers only after protocol compatibility tests pass.
