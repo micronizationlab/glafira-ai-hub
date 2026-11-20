@@ -11,7 +11,7 @@ class GlafiraBridgeProtocolTest {
     fun desktopTaskResultRequiresLeaseIdentityAndFencingToken() {
         val request = taskResult(
             mapOf(
-                "taskId" to "task-0001",
+                "taskId" to "task_1",
                 "state" to "SUCCEEDED",
                 "progressPercent" to "100",
                 "progressMessage" to "completed",
@@ -30,7 +30,7 @@ class GlafiraBridgeProtocolTest {
     fun desktopTaskResultAcceptsValidLeaseFencing() {
         val request = taskResult(
             mapOf(
-                "taskId" to "task-0001",
+                "taskId" to "task_1",
                 "leaseId" to "lease-0001",
                 "fencingToken" to "42",
                 "state" to "SUCCEEDED",
@@ -64,7 +64,7 @@ class GlafiraBridgeProtocolTest {
     }
 
     private fun validResultPayload(): Map<String, String> = mapOf(
-        "taskId" to "task-0001",
+        "taskId" to "task_1",
         "leaseId" to "lease-0001",
         "fencingToken" to "42",
         "state" to "SUCCEEDED",
