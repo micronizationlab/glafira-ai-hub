@@ -148,7 +148,8 @@ data class HrContactCard(
         require(displayName.isNotBlank())
         require(identityStatus != HrIdentityStatus.VERIFIED ||
             facts.any { it.category == HrFactCategory.NAME &&
-                it.confidence == HrFactConfidence.CONFIRMED }) {
+                it.confidence == HrFactConfidence.CONFIRMED &&
+                it.value.equals(displayName, ignoreCase = true) }) {
             "A verified identity requires a confirmed, source-backed name fact."
         }
     }
