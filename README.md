@@ -40,5 +40,11 @@ Mandatory encrypted backup, free cloud destinations and cross-device recovery ar
 Owner-prioritized delivery order, including Backup & Recovery, GLAFIRA Core, Voice Assistant and all specialist roles: [IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md).
 
 
+## Collaborator handoff
+See [GLAFIRA Collaborator Handoff](docs/GLAFIRA_COLLABORATOR_HANDOFF.md) for the reading order, owner decisions, active PR/issue map and safe collaboration rules.
+
+## Commercial network, Mother, registration, wallet and VPN
+See [GLAFIRA Network — commercial product, registration, token economy and VPN](docs/GLAFIRA_NETWORK_BUSINESS_AND_TOKEN_ECONOMY.md) for the owner-operated Mother control plane, user registration, token issuance and transfers, compute contribution rewards, VPN tariffs, security boundaries and staged rollout.
+
 ## Account identity and connected services
 See [Account Auth and Identity](docs/ACCOUNT_AUTH_AND_IDENTITY.md) for owner-issued onboarding, profiles, Google/Yandex linking, least-privilege Drive/Mail permissions and multi-user isolation.

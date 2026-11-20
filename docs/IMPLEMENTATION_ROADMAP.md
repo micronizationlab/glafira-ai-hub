@@ -4,27 +4,17 @@ This roadmap records the owner's priority order. Features remain on the roadmap 
 
 ## Owner's active execution order — authoritative
 
-This order was explicitly reconfirmed by the owner on 2026-11-20 and supersedes older priority groupings below for sprint planning. The remaining roadmap sections are a capability inventory and dependency reference, not permission to work on lower-priority features ahead of this sequence.
+This order was explicitly reconfirmed by the owner on 2026-11-20 and supersedes older priority groupings for active work. The full mandatory dispatcher policy and rolling 50-item action pool are in `docs/ENGINEERING_DISPATCHER_OPERATING_RULE.md` and `docs/ENGINEERING_ACTION_POOL_A.md`.
 
-### Queue 1 — Core kernels and execution engine
+1. **P0 — Core kernels and execution foundation:** durable ownership/state, SQLite concurrency, bounded workers, dependency scheduling, cancellation, crash recovery, provider/tool boundaries, idempotency, result delivery and audit.
+2. **P1 — Android instrumentation suite and Bridge:** the suite must exist in `main`, run on a managed emulator for relevant changes, publish non-empty JUnit reports and retain older Core/TaskPlan instrumentation coverage. Bridge requires versioned Task/Result/Lease/Agent contracts, authenticated pairing, durable ingress/delivery, fencing, heartbeats, acknowledgements and reconnect recovery.
+3. **P2 — Windows Desktop and Windows Agent:** laptop-first Desktop control center, authoritative Desktop Hub host, enrollment/revocation, multi-agent scheduling, task lifecycle, Windows Agent service and end-to-end Desktop ↔ Agent acceptance.
+4. **P3 — Oldest unfinished work:** revisit the oldest abandoned PRs/issues and release blockers immediately after Core/Bridge/host foundations; port useful work safely, do not discard it because it is old.
+5. **P4 — Android user-facing and voice/platform work:** backup/council/task queue, Google Drive restore, STT/TTS, Android reliability and iOS parity.
+6. **P5 — Specialist agents, connectors, GCU/GLF and production integrations:** preserve existing specifications and resume implementation after the higher priorities.
+7. **External Project Token/Clover research:** proceed in parallel whenever it does not consume a blocking engineering resource; no token-economy feature may displace P0–P3.
 
-The immediate focus is the GLAFIRA Core/kernel architecture: durable task ownership and state, safe SQLite concurrency, bounded parallel workers, dependency scheduling, cancellation, crash recovery, provider/tool execution boundaries, shared results, auditability and reliable restart. Core remains the authority for policy, permissions, approvals and task lifecycle. Stabilize and integrate the existing queue-recovery work in reviewable slices; do not merge the 421-commit recovery branch as one batch.
-
-### Queue 2 — Bridge
-
-Build the cross-device Bridge on top of stable Core contracts. Define and enforce one versioned Task/Result/Lease/Agent protocol for Android, iOS, Windows Desktop and Windows Agent; authenticated pairing/enrollment/revocation; durable ingress and delivery; idempotency; lease/fencing; heartbeats; result acknowledgements; reconnect/offline recovery; and bounded, observable transport. Windows Desktop is the owner-operated control host for its Windows Agent fleet, but Core retains policy and task authority. Bridge is transport and device coordination, not a second Core.
-
-### Queue 3 — Applications
-
-After Core and Bridge contracts are stable, complete the platform applications and host integrations: Android, Windows Desktop control center, Windows Agent service and native iOS client. Each platform must pass shared contract fixtures and end-to-end pairing, dispatch, result, reconnect and recovery tests. Backup/restore, packaging, UI polish and release readiness are addressed as part of making these applications dependable.
-
-### Queue 4 — Agents and agent training
-
-Only after queues 1–3 are established, resume specialist-agent catalog work, Кадровик, agent-specific training models, collective review, knowledge accumulation and role expansion. Keep the existing Кадровик work preserved in its draft PR and training document; do not discard it, but do not let it displace Core or Bridge work.
-
-### Work-selection rule
-
-Every new task and PR must identify its queue and dependency. Active development is limited to the highest unfinished queue. Lower-queue work may be preserved, documented or kept safely in draft, but must not consume implementation capacity unless the owner explicitly reprioritizes it. No completion claim without exact-head tests and acceptance evidence.
+A higher-priority item waiting on CI, hardware, review or a conflicting file is not a reason to idle. Start the highest-priority independent action below it, then rescan from P0 whenever a slot opens. Every GitHub visit requires status refresh, exact-head run/log inspection, test-count verification and immediate dispatch of the next safe action. Never treat a skipped test as a pass.
 
 ## Priority 1 — GLAFIRA Core (the brain and system authority)
 
@@ -206,3 +196,32 @@ Implementation is not complete merely because this roadmap and training contract
 - Restore semantics hardened: selected backup now replaces the app-private file snapshot, including removing files created after that backup; safety snapshot rollback remains in place. Requires device acceptance tests.
 - Latest observed PR #35 validation: Android Unit Tests passed, but Android Emulator Integration Tests failed because the emulator did not finish booting before timeout. This is an infrastructure/test-run failure, not a passing restore acceptance; rerun and investigate before merge.
 - PR #37 WorkManager integration remains draft and unmerged; its latest observed CI runs were still in progress at the time of this roadmap update.
+
+
+## Commercial GLAFIRA Network — business and token-economy track
+
+The product is a commercial distributed AI + VPN ecosystem. The owner-operated GLAFIRA-Mother is the initial authoritative account registry, network control plane and token issuer. Users can earn internal utility tokens through voluntarily contributed, verified compute and spend them on AI services and VPN access; users can also transfer tokens to another member by unique username, including when the recipient is offline.
+
+The detailed design, unresolved owner decisions, threat model, API candidates and acceptance gates are in [GLAFIRA Network — commercial product, registration, token economy and VPN](GLAFIRA_NETWORK_BUSINESS_AND_TOKEN_ECONOMY.md).
+
+This track may proceed **in parallel at the specification, threat-model and contract-definition level**, but implementation must respect the Core → Bridge → Applications dependency order above.
+
+### Tracked work
+- **#114 — Mother registration, account registry and device enrollment (P0):** authoritative account ID, unique username, passkey/password and recovery, device enrollment/revocation, user isolation.
+- **#115 — Wallet and token ledger (P0):** central double-entry journal, audited issuance, atomic/idempotent transfers and offline recipient synchronization.
+- **#116 — Distributed compute contribution (P1):** opt-in resource budgets, signed sandboxed tasks, verification, reputation and evidence-based rewards.
+- **#117 — VPN control plane and tariffs (P1):** Mother-managed entitlement/provisioning and token billing; isolated VPN data plane and per-device keys.
+- **#109 — VPN app and self-hosted infrastructure:** client UX, server BOM, deployment, security and connectivity tests.
+- **#112 — Account-owned replication and encrypted recovery:** required for trustworthy multi-device onboarding.
+- **#113 — Independent GLAFIRA peer network:** mutual trust, scoped task exchange and later external work settlement.
+
+### Delivery order
+1. Continue Core queue and Bridge stabilization; preserve the current Core PR stack.
+2. Define and validate shared identity/device/task/wallet contracts without creating a second task queue.
+3. Implement Mother registration and account/device registry.
+4. Implement the authoritative ledger and offline username-based transfers.
+5. Implement voluntary compute contribution and verified rewards after Core/Bridge leases and recovery are stable.
+6. Implement VPN token tariffs and provisioning after server cost, capacity, security and jurisdiction reviews.
+7. Open the external project marketplace and inter-owner settlement only after the earlier controls pass acceptance.
+
+Token issuance rates, VPN prices, supply policy and any cash/blockchain redemption remain undecided until owner approval, device/server benchmarks and legal/accounting review. Do not promise guaranteed earnings, cash value, unlimited VPN or zero-cost service.
