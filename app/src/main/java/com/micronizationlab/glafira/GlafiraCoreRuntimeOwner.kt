@@ -26,7 +26,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         bridgeCredentialStore
     )
 
-    private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
+    private val bridgeDispatcher by lazy { GlafiraBridgeOperationDispatcher(appContext, this) }
     // Live mode remains unavailable until a separate owner-approved run API is implemented.
     private val executionMode = GlafiraExecutionMode.DRY_RUN
     internal val executionLimiter = GlafiraCoreExecutionLimiter()
