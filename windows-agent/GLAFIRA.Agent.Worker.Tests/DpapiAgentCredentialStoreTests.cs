@@ -24,7 +24,7 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
         await store.SaveAsync(credential, default);
         var diskBytes = await File.ReadAllBytesAsync(_path);
 
-        Assert.DoesNotContain(Convert.FromBase64String(credential.SharedSecretBase64), diskBytes);
+        Assert.False(ContainsSequence(diskBytes, Convert.FromBase64String(credential.SharedSecretBase64)));
         Assert.Equal(credential, await store.LoadAsync(default));
     }
 
@@ -79,6 +79,10 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
         Assert.Throws<ArgumentException>(() =>
             AgentEnrollmentCredentialPolicy.Validate(credential, _now));
     }
+
+    private static bool ContainsSequence(byte[] haystack, byte[] needle) =>
+        needle.Length > 0 && Enumerable.Range(0, Math.Max(0, haystack.Length - needle.Length + 1))
+            .Any(offset => haystack.AsSpan(offset, needle.Length).SequenceEqual(needle));
 
     private AgentEnrollmentCredential CreateCredential() => new(
         "agent-01",
