@@ -1,0 +1,39 @@
+name: GLAFIRA Windows Desktop UI
+
+on:
+  pull_request:
+    paths:
+      - "windows-desktop/**"
+      - ".github/workflows/windows-desktop-ui.yml"
+  push:
+    branches: [main]
+    paths:
+      - "windows-desktop/**"
+      - ".github/workflows/windows-desktop-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Desktop Control Center and verify Hub store
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+      - name: Run Hub Core tests
+        run: dotnet test windows-desktop/GLAFIRA.Desktop.Hub.Tests/GLAFIRA.Desktop.Hub.Tests.csproj --configuration Release --logger "trx;LogFileName=hub-ui.trx" --results-directory windows-desktop/GLAFIRA.Desktop.Hub.Tests/TestResults
+      - name: Build WPF Control Center
+        run: dotnet build windows-desktop/GLAFIRA.Desktop.App/GLAFIRA.Desktop.App.csproj --configuration Release
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-desktop-ui-tests-${{ github.run_id }}
+          path: windows-desktop/GLAFIRA.Desktop.Hub.Tests/TestResults/*.trx
+          if-no-files-found: error
+          retention-days: 7
