@@ -2,6 +2,30 @@
 
 This roadmap records the owner's priority order. Features remain on the roadmap even when they are not in the current sprint. A specification is not considered implemented until code, tests and an end-to-end acceptance check exist.
 
+## Owner's active execution order — authoritative
+
+This order was explicitly reconfirmed by the owner on 2026-11-20 and supersedes older priority groupings below for sprint planning. The remaining roadmap sections are a capability inventory and dependency reference, not permission to work on lower-priority features ahead of this sequence.
+
+### Queue 1 — Core kernels and execution engine
+
+The immediate focus is the GLAFIRA Core/kernel architecture: durable task ownership and state, safe SQLite concurrency, bounded parallel workers, dependency scheduling, cancellation, crash recovery, provider/tool execution boundaries, shared results, auditability and reliable restart. Core remains the authority for policy, permissions, approvals and task lifecycle. Stabilize and integrate the existing queue-recovery work in reviewable slices; do not merge the 421-commit recovery branch as one batch.
+
+### Queue 2 — Bridge
+
+Build the cross-device Bridge on top of stable Core contracts. Define and enforce one versioned Task/Result/Lease/Agent protocol for Android, iOS, Windows Desktop and Windows Agent; authenticated pairing/enrollment/revocation; durable ingress and delivery; idempotency; lease/fencing; heartbeats; result acknowledgements; reconnect/offline recovery; and bounded, observable transport. Windows Desktop is the owner-operated control host for its Windows Agent fleet, but Core retains policy and task authority. Bridge is transport and device coordination, not a second Core.
+
+### Queue 3 — Applications
+
+After Core and Bridge contracts are stable, complete the platform applications and host integrations: Android, Windows Desktop control center, Windows Agent service and native iOS client. Each platform must pass shared contract fixtures and end-to-end pairing, dispatch, result, reconnect and recovery tests. Backup/restore, packaging, UI polish and release readiness are addressed as part of making these applications dependable.
+
+### Queue 4 — Agents and agent training
+
+Only after queues 1–3 are established, resume specialist-agent catalog work, Кадровик, agent-specific training models, collective review, knowledge accumulation and role expansion. Keep the existing Кадровик work preserved in its draft PR and training document; do not discard it, but do not let it displace Core or Bridge work.
+
+### Work-selection rule
+
+Every new task and PR must identify its queue and dependency. Active development is limited to the highest unfinished queue. Lower-queue work may be preserved, documented or kept safely in draft, but must not consume implementation capacity unless the owner explicitly reprioritizes it. No completion claim without exact-head tests and acceptance evidence.
+
 ## Priority 1 — GLAFIRA Core (the brain and system authority)
 
 Goal: make Glafira a reliable coordinator for the entire AI office. Core is the highest engineering priority and the single authority for task execution, permissions and agent coordination.
