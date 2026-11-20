@@ -76,9 +76,9 @@ The following are separate products and must not be mixed in one price column:
 - GLAFIRA internal GCU/GLF: measured compute-work units and a separate settlement/reward system; neither is a model's API token.
 
 Current subscription comparison points:
-- xAI's official pricing page lists SuperGrok at $30/month and SuperGrok Plus at $100/month. The X Subscription page also lists Premium at $30/month, Super at $100/month and Ultra at $200/month, with bundled X/Cursor/Grok features and included usage pools.
-- At the CBR USD rate, $30 is approximately 2,458 RUB before local price differences, taxes and payment fees. This is not directly comparable with GLAFIRA's proposed 500 RUB/month because included usage, availability, model access, service scope and limits differ.
-- Yandex lists the Alice Plus add-on at 199 RUB/month, but it is an add-on to Yandex Plus, not a full multi-model AI workstation. Yandex and GigaChat also offer free consumer access with limits; therefore the competitive set includes free products, not only paid subscriptions.
+- xAI's official X Subscription page lists Premium at $30/month, Super at $100/month and Ultra at $200/month. Premium includes SuperGrok, Cursor Pro and X Premium+; usage pools and eligibility differ by tier.
+- OpenAI's official Help Center lists ChatGPT Plus at $20/month (about 1,639 RUB at the CBR rate); xAI's Premium bundle is $30/month (about 2,458 RUB). These are not directly comparable with GLAFIRA's proposed 500 RUB/month because included usage, availability, model access, service scope and limits differ. Local checkout, payment and regional access can differ.
+- Yandex lists Alice Plus at 199 RUB/month, but it is an add-on to Yandex Plus, not a standalone subscription. GigaChat 3 Ultra is documented as a Freemium model for individuals; GigaChat's commercial terms restrict Freemium use to personal, non-commercial purposes, and new API customers from 1 September 2026 are directed to Cloud.ru for paid model access. Therefore the competitive set includes free consumer products, but those free tiers cannot automatically be reused as commercial backend capacity.
 
 ## 3. VPN + GLAFIRA proposed launch bundle
 
@@ -154,7 +154,7 @@ This is a hypothesis to validate through a competitive feature matrix and user i
 
 ## 6. Next research actions
 
-- Expand the API table to at least ten providers using official price cards and capture input/output/cached/reasoning, image/audio/video, batch, long context, regions, free tiers, effective dates and tax treatment.
+- Validate and normalize the ten initial provider entries, then expand the API table to at least fifteen providers using official price cards; capture input/output/cached/reasoning, image/audio/video, batch, long context, regions, free tiers, effective dates and tax treatment.
 - Compare direct DeepSeek API with DeepSeek hosted through Yandex and other aggregators; record routing/markup differences.
 - Benchmark YandexGPT, Grok, DeepSeek, GigaChat and selected alternatives on the same Russian-language business tasks; calculate cost per accepted deliverable.
 - Verify the exact consumer prices and checkout availability for ChatGPT, Claude, Gemini, DeepSeek, GigaChat, Alice and Grok in Russia.
