@@ -17,7 +17,7 @@ internal data class GlafiraSubtask(
 internal data class GlafiraTaskPlan(val goal: String, val tasks: List<GlafiraSubtask>)
 
 internal object GlafiraTaskPlanner {
-    const val MAX_TASKS = 4
+    const val MAX_TASKS = 16
     const val MAX_PARALLEL_TASKS = 2
     private const val MAX_TEXT_LENGTH = 4_000
 
