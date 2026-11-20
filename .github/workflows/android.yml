@@ -275,3 +275,5 @@ jobs:
                 ;;
             esac
           done
+
+# Validation trigger: run the full stacked Core acceptance suite on this exact head.
