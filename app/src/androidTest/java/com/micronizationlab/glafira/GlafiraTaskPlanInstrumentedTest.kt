@@ -131,7 +131,7 @@ class GlafiraTaskPlanInstrumentedTest {
         queue.recordDesktopNode("desktop-node-01", setOf("cpu", "files"), 2, 20_000L)
         queue.recordDesktopNode("desktop-node-02", setOf("gpu", "browser"), 4, 21_000L)
 
-        val nodes = queue.desktopNodes(60_000L)
+        val nodes = queue.desktopNodes(60_000L, 21_000L)
         assertEquals(listOf("desktop-node-02", "desktop-node-01"), nodes.map { it.nodeId })
         assertEquals(setOf("gpu", "browser"), nodes.first().capabilities)
         assertEquals(4, nodes.first().maxParallelTasks)
