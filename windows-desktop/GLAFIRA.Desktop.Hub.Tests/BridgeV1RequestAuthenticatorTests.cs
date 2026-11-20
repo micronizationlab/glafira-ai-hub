@@ -36,7 +36,10 @@ public sealed class BridgeV1RequestAuthenticatorTests
 
         Assert.True(result.Accepted);
         Assert.Equal(1, replay.Claims);
-        Assert.Equal("idem-0001", replay.LastNonce);
+        Assert.Equal(
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("idem-0001"))).ToLowerInvariant(),
+            replay.LastNonce);
+        Assert.Equal(64, replay.LastNonce!.Length);
     }
 
     [Fact]
