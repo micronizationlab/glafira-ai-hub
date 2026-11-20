@@ -29,9 +29,9 @@ public sealed class BridgeV1TlsCertificateStoreTests : IDisposable
                 second.BindAddresses.OrderBy(x => x.ToString()).Select(x => x.ToString()));
             Assert.True(first.NotAfter > DateTimeOffset.UtcNow.AddDays(150));
 
-            var protectedBytes = File.ReadAllBytes(_identityPath);
-            Assert.DoesNotContain(Encoding.UTF8.GetBytes("hub-test-0001"), protectedBytes);
-            Assert.DoesNotContain(Encoding.UTF8.GetBytes("PfxBase64"), protectedBytes);
+            var protectedText = Encoding.UTF8.GetString(File.ReadAllBytes(_identityPath));
+            Assert.DoesNotContain("hub-test-0001", protectedText);
+            Assert.DoesNotContain("PfxBase64", protectedText);
         }
         finally
         {
