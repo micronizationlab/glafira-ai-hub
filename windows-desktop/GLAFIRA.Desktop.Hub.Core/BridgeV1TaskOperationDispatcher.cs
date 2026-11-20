@@ -95,7 +95,7 @@ public sealed class BridgeV1TaskOperationDispatcher(
             if (payloadBytes is null || payloadBytes.Length is 0 or > 65_536)
             {
                 store.Complete(agent.AgentId, lease.TaskId, lease.LeaseId, lease.FencingToken,
-                    succeeded: false, now, errorCode: "TASK_PAYLOAD_UNAVAILABLE");
+                    succeeded: false, now: now, errorCode: "TASK_PAYLOAD_UNAVAILABLE");
                 return Failure("TASK_PAYLOAD_UNAVAILABLE");
             }
 
