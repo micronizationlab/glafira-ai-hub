@@ -160,6 +160,10 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     fun taskPlan(planId: String, projectId: String): GlafiraCoreTaskPlanRecord? =
         taskStore.taskPlan(planId, projectId)
 
+    /** Rehydrates the existing agent-role plan format from the durable task graph. */
+    fun plannerPlan(planId: String, projectId: String): GlafiraTaskPlan? =
+        taskStore.taskPlan(planId, projectId)?.let(GlafiraCoreTaskPlanAdapter::toPlannerPlan)
+
     /** Project-scoped plan journal, including current node states and outcomes. */
     fun taskPlans(projectId: String, limit: Int = 100): List<GlafiraCoreTaskPlanRecord> =
         taskStore.taskPlans(projectId, limit)
