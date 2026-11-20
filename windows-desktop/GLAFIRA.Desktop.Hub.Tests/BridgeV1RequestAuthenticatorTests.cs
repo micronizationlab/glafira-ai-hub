@@ -140,6 +140,81 @@ public sealed class BridgeV1RequestAuthenticatorTests
     }
 
     [Fact]
+    public async Task AcceptsFencedTaskResultWithShortQueueTaskId()
+    {
+        var replay = new FakeReplayGuard();
+        var authenticator = CreateAuthenticator(replay);
+        var request = Sign(TaskResultRequest(new Dictionary<string, string>
+        {
+            ["taskId"] = "task_1",
+            ["leaseId"] = "lease-0001",
+            ["fencingToken"] = "42",
+            ["state"] = "SUCCEEDED",
+            ["progressPercent"] = "100",
+            ["progressMessage"] = "completed",
+            ["result"] = "done",
+            ["errorCode"] = "none"
+        }));
+
+        var result = await authenticator.AuthenticateAsync(
+            request, DateTimeOffset.FromUnixTimeMilliseconds(request.IssuedAtEpochMs));
+
+        Assert.True(result.Accepted);
+        Assert.Equal(1, replay.Claims);
+    }
+
+    [Fact]
+    public async Task RejectsTaskResultWithoutLeaseFencing()
+    {
+        var replay = new FakeReplayGuard();
+        var authenticator = CreateAuthenticator(replay);
+        var request = TaskResultRequest(new Dictionary<string, string>
+        {
+            ["taskId"] = "task-0001",
+            ["state"] = "SUCCEEDED",
+            ["progressPercent"] = "100",
+            ["progressMessage"] = "completed",
+            ["result"] = "done",
+            ["errorCode"] = "none"
+        });
+
+        var result = await authenticator.AuthenticateAsync(
+            request, DateTimeOffset.FromUnixTimeMilliseconds(request.IssuedAtEpochMs));
+
+        Assert.Equal(BridgeV1AdmissionFailure.InvalidEnvelope, result.Failure);
+        Assert.Equal(0, replay.Claims);
+    }
+
+    [Fact]
+    public async Task RejectsNonPositiveTaskFencingToken()
+    {
+        var replay = new FakeReplayGuard();
+        var authenticator = CreateAuthenticator(replay);
+        var request = TaskResultRequest(new Dictionary<string, string>
+        {
+            ["taskId"] = "task-0001",
+            ["leaseId"] = "lease-0001",
+            ["fencingToken"] = "0",
+            ["state"] = "SUCCEEDED",
+            ["progressPercent"] = "100",
+            ["progressMessage"] = "completed",
+            ["result"] = "done",
+            ["errorCode"] = "none"
+        });
+
+        var result = await authenticator.AuthenticateAsync(
+            request, DateTimeOffset.FromUnixTimeMilliseconds(request.IssuedAtEpochMs));
+
+        Assert.Equal(BridgeV1AdmissionFailure.InvalidEnvelope, result.Failure);
+        Assert.Equal(0, replay.Claims);
+    }
+
+    private static BridgeV1SignedRequest TaskResultRequest(IReadOnlyDictionary<string, string> payload) =>
+        new(1, "request-0002", "idem-0002", "device-0001", "project-0001",
+            BridgeV1Operation.DESKTOP_TASK_RESULT, 1_730_000_000_000, 1_730_000_300_000,
+            payload, new string('0', 64));
+
+    [Fact]
     public async Task RejectsUnknownPayloadFields()
     {
         var replay = new FakeReplayGuard();
