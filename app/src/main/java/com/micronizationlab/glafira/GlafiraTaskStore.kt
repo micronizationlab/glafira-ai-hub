@@ -889,6 +889,20 @@ class GlafiraTaskStore(context: Context) :
         }, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
+    /** Active unexpired Desktop leases by device, used only for advisory placement. */
+    @Synchronized
+    fun activeDesktopLeaseCounts(nowMillis: Long = System.currentTimeMillis()): Map<String, Int> {
+        require(nowMillis > 0L)
+        return readableDatabase.rawQuery(
+            "SELECT device_id, COUNT(*) FROM core_desktop_leases WHERE lease_expires_at > ? GROUP BY device_id",
+            arrayOf(nowMillis.toString())
+        ).use { cursor ->
+            buildMap {
+                while (cursor.moveToNext()) put(cursor.getString(0), cursor.getInt(1))
+            }
+        }
+    }
+
     /** All recently heartbeating Desktop nodes, ordered by freshness for dispatch planning. */
     @Synchronized
     fun desktopNodes(
