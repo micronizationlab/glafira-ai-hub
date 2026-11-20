@@ -44,4 +44,4 @@ Start-Service -Name $serviceName
 Write-Host "GLAFIRA Agent service installed and started as LocalSystem."
 Write-Host "Next, open an elevated console and run:"
 Write-Host ($targetExecutable + " --pair")
-Write-Host "After pairing and owner approval in GLAFIRA Desktop, restart the service."
+Write-Host "After pairing, restart the service to load the credential; then approve the Agent in GLAFIRA Desktop. Heartbeat should connect within 30 seconds after approval."

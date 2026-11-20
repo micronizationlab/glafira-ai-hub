@@ -31,6 +31,7 @@ builder.Services.AddSingleton<AgentRuntimeState>();
 builder.Services.AddSingleton<AgentTaskHandlerRegistry>();
 builder.Services.AddSingleton<IAgentCredentialStore, DpapiAgentCredentialStore>();
 builder.Services.AddSingleton<AgentPairingClient>();
+builder.Services.AddSingleton<BridgeV1AgentClient>();
 builder.Services.AddHostedService<AgentWorker>();
 
 await builder.Build().RunAsync();
