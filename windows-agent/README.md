@@ -12,7 +12,7 @@ From the repository root on a Windows machine with the .NET 8 SDK:
 
 The self-contained x64 publish output is written to `windows-agent\publish\win-x64`.
 
-Copy the published directory to the Agent computer, or copy the repository's `windows-agent` directory and run the scripts there.
+For a ready-to-install build, download the GitHub Actions artifact named `GLAFIRA-Agent-win-x64` from the **GLAFIRA Windows deployment packages** run and extract it on the Agent computer. The ZIP already contains `publish\win-x64` and the `scripts` folder; no .NET SDK is required on the target PC.
 
 ## Install
 
