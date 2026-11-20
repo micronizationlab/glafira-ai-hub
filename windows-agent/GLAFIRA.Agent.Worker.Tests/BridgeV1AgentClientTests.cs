@@ -64,12 +64,12 @@ public sealed class BridgeV1AgentClientTests
     [Fact]
     public async Task PendingOrRevokedAgentReceivesNoProfileAndIsNotTreatedAsConnected()
     {
-        var handler = new StubHandler(_ => JsonResponse(new
+        var handler = new StubHandler(_ => Task.FromResult(JsonResponse(new
         {
             status = "FAILED",
             errorCode = "AGENT_NOT_OWNER_APPROVED",
             result = new Dictionary<string, string>()
-        }, HttpStatusCode.Conflict));
+        }, HttpStatusCode.Conflict)));
         var client = CreateClient(handler);
 
         var heartbeat = await client.SendHeartbeatAsync(Credential());
@@ -108,12 +108,12 @@ public sealed class BridgeV1AgentClientTests
             }
         })
         {
-            var client = CreateClient(new StubHandler(_ => JsonResponse(new
+            var client = CreateClient(new StubHandler(_ => Task.FromResult(JsonResponse(new
             {
                 status = "ACCEPTED",
                 errorCode = (string?)null,
                 result
-            })));
+            }))));
             await Assert.ThrowsAsync<InvalidDataException>(() => client.SendHeartbeatAsync(Credential()));
         }
     }
