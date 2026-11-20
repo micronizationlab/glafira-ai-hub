@@ -27,6 +27,9 @@ public partial class MainWindow : Window
         if (sender is DataGrid grid && grid.SelectedItem is HubTaskSnapshot task)
             _viewModel.LoadTaskHistory(task);
     }
+    private void RefreshBridgeAddresses_Click(object sender, RoutedEventArgs e) =>
+        _bridgeHost.RefreshAvailableAddresses();
+
     private async void StartBridge_Click(object sender, RoutedEventArgs e) =>
         await _bridgeHost.StartAsync();
 
@@ -42,8 +45,18 @@ public partial class MainWindow : Window
         }
 
         e.Cancel = true;
-        await _bridgeHost.DisposeAsync();
-        _allowClose = true;
-        Close();
+        try
+        {
+            await _bridgeHost.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            // Closing the Desktop Control Center must not leave an unhandled async-void failure.
+        }
+        finally
+        {
+            _allowClose = true;
+            Close();
+        }
     }
 }
