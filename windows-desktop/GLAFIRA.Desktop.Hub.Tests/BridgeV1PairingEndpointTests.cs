@@ -20,7 +20,8 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     public async Task ReturnsCanonicalCredentialBundleAndRegistersItOnHub()
     {
         var store = CreateStore();
-        var endpoint = CreateEndpoint(store);
+        var hubStore = CreateHubStore();
+        var endpoint = CreateEndpoint(store, hubStore);
         var ticket = store.Create(
             ["desktop.task.result", "desktop.task.claim"], TimeSpan.FromMinutes(2));
 
@@ -44,13 +45,46 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
         Assert.Equal(secret, credential.HmacSecret);
         CryptographicOperations.ZeroMemory(secret);
         CryptographicOperations.ZeroMemory(credential.HmacSecret);
+
+        // Simulate process death after credential/enrollment commit but before
+        // the pending scheduler row was persisted; dashboard reconciliation repairs it.
+        using (var connection = new SqliteConnection($"Data Source={_databasePath}"))
+        {
+            connection.Open();
+            using var delete = connection.CreateCommand();
+            delete.CommandText = "DELETE FROM Agents WHERE agent_id = 'agent-01';";
+            delete.ExecuteNonQuery();
+        }
+        Assert.Equal(1, hubStore.ReconcilePendingAgents(_clock.GetUtcNow()));
+
+        var pending = Assert.Single(hubStore.GetAgents(_clock.GetUtcNow()));
+        Assert.Equal("agent-01", pending.AgentId);
+        Assert.False(pending.OwnerApproved);
+        Assert.False(pending.IsOnline);
+        Assert.Empty(pending.Capabilities);
+        Assert.Null(hubStore.ClaimNext("agent-01", _clock.GetUtcNow().AddSeconds(1), TimeSpan.FromMinutes(1)));
+
+        Assert.True(hubStore.ConfigureAgentApproval("agent-01", ["web.research"], 1));
+        Assert.Equal(0, hubStore.ReconcilePendingAgents(_clock.GetUtcNow()));
+        var approved = Assert.Single(hubStore.GetAgents(_clock.GetUtcNow()));
+        Assert.True(approved.OwnerApproved);
+        Assert.False(approved.IsOnline);
+        Assert.True(hubStore.Heartbeat("agent-01", ["web.research"], 1, _clock.GetUtcNow().AddSeconds(1)));
+        Assert.True(Assert.Single(hubStore.GetAgents(_clock.GetUtcNow().AddSeconds(2))).IsOnline);
+
+        Assert.True(hubStore.RevokeAgent("agent-01", _clock.GetUtcNow().AddSeconds(3)));
+        Assert.Null(await resolver.ResolveAsync("agent-01", default));
+        var revoked = Assert.Single(hubStore.GetAgents(_clock.GetUtcNow().AddSeconds(4)));
+        Assert.False(revoked.OwnerApproved);
+        Assert.False(revoked.IsOnline);
     }
 
     [Fact]
     public async Task WrongCodeAndReplayHaveTheSameSecretFreeFailureShape()
     {
         var store = CreateStore();
-        var endpoint = CreateEndpoint(store);
+        var hubStore = CreateHubStore();
+        var endpoint = CreateEndpoint(store, hubStore);
         var ticket = store.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
         var wrongCode = ticket.PairingCode[..42] + (ticket.PairingCode[42] == 'a' ? "b" : "a");
 
@@ -75,7 +109,8 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     public async Task InvalidEnvelopeOrLocalEndpointDoesNotConsumeTicket()
     {
         var store = CreateStore();
-        var endpoint = CreateEndpoint(store);
+        var hubStore = CreateHubStore();
+        var endpoint = CreateEndpoint(store, hubStore);
         var ticket = store.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
 
         Assert.Equal("FAILED", (await endpoint.RedeemAsync(
@@ -89,12 +124,37 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task PairingCannotReplaceOwnerApprovedIdentityAndDoesNotConsumeTicket()
+    {
+        var store = CreateStore();
+        var hubStore = CreateHubStore();
+        hubStore.RegisterAgent(
+            new HubAgentRegistration("agent-01", "agent-01", ["code.build"], 1, true),
+            _clock.GetUtcNow());
+        var endpoint = CreateEndpoint(store, hubStore);
+        var ticket = store.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
+
+        var rejected = await endpoint.RedeemAsync(Request(ticket), LocalEndpoint);
+        var acceptedForNewIdentity = await endpoint.RedeemAsync(
+            Request(ticket) with { AgentId = "agent-02" }, LocalEndpoint);
+
+        Assert.Equal("FAILED", rejected.Status);
+        Assert.Equal("ENROLLED", acceptedForNewIdentity.Status);
+        var agents = hubStore.GetAgents(_clock.GetUtcNow());
+        Assert.True(agents.Single(agent => agent.AgentId == "agent-01").OwnerApproved);
+        var pending = agents.Single(agent => agent.AgentId == "agent-02");
+        Assert.False(pending.OwnerApproved);
+        Assert.Empty(pending.Capabilities);
+    }
+
+    [Fact]
     public async Task ConcurrentRedeemersReceiveOnlyOneCredentialBundle()
     {
         var firstStore = CreateStore();
         var secondStore = CreateStore();
-        var firstEndpoint = CreateEndpoint(firstStore);
-        var secondEndpoint = CreateEndpoint(secondStore);
+        var hubStore = CreateHubStore();
+        var firstEndpoint = CreateEndpoint(firstStore, hubStore);
+        var secondEndpoint = CreateEndpoint(secondStore, hubStore);
         var ticket = firstStore.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
 
         var responses = await Task.WhenAll(
@@ -110,8 +170,13 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     private BridgeV1PairingTicketStore CreateStore() =>
         new(_databasePath, _clock, _protector);
 
-    private static BridgeV1PairingEndpoint CreateEndpoint(BridgeV1PairingTicketStore store) =>
-        new(store, HubId, TlsPin, TimeSpan.FromDays(30));
+    private DesktopHubStore CreateHubStore() =>
+        new(_databasePath, _protector);
+
+    private BridgeV1PairingEndpoint CreateEndpoint(
+        BridgeV1PairingTicketStore store,
+        DesktopHubStore hubStore) =>
+        new(store, hubStore, HubId, TlsPin, TimeSpan.FromDays(30), _clock);
 
     private static BridgeV1PairingRequest Request(BridgeV1PairingTicket ticket) =>
         new(1, ticket.TicketId, ticket.PairingCode, "agent-01");

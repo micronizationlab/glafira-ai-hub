@@ -36,6 +36,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         var root = Path.GetFullPath(rootDirectory);
         _databasePath = Path.GetFullPath(databasePath);
         _store = store;
+        _ = new BridgeV1PairingTicketStore(_databasePath);
         _hubIdentityStore = new BridgeV1HubIdentityStore(Path.Combine(root, "hub-id.txt"));
         _tlsCertificateStore = new BridgeV1TlsCertificateStore();
         _payloadStore = new HubTaskPayloadStore(
@@ -146,7 +147,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             var options = new BridgeV1HttpsHostOptions(hubId, addresses, HttpsPort);
             var pairingTickets = new BridgeV1PairingTicketStore(_databasePath);
             var pairingEndpoint = new BridgeV1PairingEndpoint(
-                pairingTickets, hubId, _tlsIdentity.FingerprintSha256);
+                pairingTickets, _store, hubId, _tlsIdentity.FingerprintSha256);
             _host = new BridgeV1HttpsHost(
                 options, _tlsIdentity, authenticator, dispatcher, pairingEndpoint);
             await _host.StartAsync(cancellationToken).ConfigureAwait(true);
@@ -209,6 +210,13 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             Notify(nameof(CanStop));
             Notify(nameof(CanCreatePairingTicket));
         }
+    }
+
+    public bool RevokeAgent(string agentId)
+    {
+        // Ensure enrollment/credential tables exist before the atomic revoke transaction.
+        _ = new BridgeV1PairingTicketStore(_databasePath);
+        return _store.RevokeAgent(agentId, DateTimeOffset.UtcNow);
     }
 
     private void DisposeTlsIdentity()
