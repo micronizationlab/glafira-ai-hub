@@ -891,9 +891,12 @@ class GlafiraTaskStore(context: Context) :
 
     /** All recently heartbeating Desktop nodes, ordered by freshness for dispatch planning. */
     @Synchronized
-    fun desktopNodes(maxAgeMillis: Long = 45_000L): List<GlafiraNodeCapabilities> {
-        require(maxAgeMillis in 1_000L..300_000L)
-        val cutoff = System.currentTimeMillis() - maxAgeMillis
+    fun desktopNodes(
+        maxAgeMillis: Long = 45_000L,
+        nowMillis: Long = System.currentTimeMillis()
+    ): List<GlafiraNodeCapabilities> {
+        require(maxAgeMillis in 1_000L..300_000L && nowMillis > 0L)
+        val cutoff = nowMillis - maxAgeMillis
         return readableDatabase.query(
             "core_desktop_nodes", null, "last_seen_at >= ?",
             arrayOf(cutoff.toString()), null, null, "last_seen_at DESC", "32"
