@@ -29,6 +29,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -89,6 +91,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+// Keep the home-screen entry points accessible to UI Automator and assistive technology.
 fun App() {
     var currentAgent by remember { mutableStateOf<A?>(null) }
     var showSettings by remember { mutableStateOf(false) }
@@ -407,11 +410,11 @@ fun ContactList(
                 }
             }
             Spacer(Modifier.weight(1f))
-            Box(Modifier.size(28.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onTaskQueueClick() }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(28.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onTaskQueueClick() }.semantics { contentDescription = "Открыть очередь задач" }, contentAlignment = Alignment.Center) {
                 Text("☷", color = Gr, fontSize = 16.sp)
             }
             Spacer(Modifier.width(6.dp))
-            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onCouncilClick() }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onCouncilClick() }.semantics { contentDescription = "Открыть совет директоров" }, contentAlignment = Alignment.Center) {
                 Text("🏛", fontSize = 12.sp)
             }
             Spacer(Modifier.width(6.dp))
@@ -419,7 +422,7 @@ fun ContactList(
                 Text("+", color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.width(6.dp))
-            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onSettingsClick() }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable { onSettingsClick() }.semantics { contentDescription = "Открыть настройки" }, contentAlignment = Alignment.Center) {
                 Text("⚙", fontSize = 12.sp)
             }
         }
