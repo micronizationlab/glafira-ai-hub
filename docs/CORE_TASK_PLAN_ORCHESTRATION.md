@@ -2,7 +2,7 @@
 
 ## Implemented contract
 
-A high-level instruction is normalized into `GlafiraCoreTaskPlanRequest` and passed to a trusted `GlafiraCoreTaskPlanDecomposer`. The planner returns typed `GlafiraCoreTaskPlanNode` values; it does not execute tools or receive credentials. `GlafiraCoreTaskPlanOrchestrator` validates project scope, idempotency, timestamps, node limits and the complete acyclic dependency graph before persistence.
+A high-level instruction is normalized into `GlafiraCoreTaskPlanRequest` and passed to `GlafiraAiProviderTaskPlanDecomposer`, which uses GLAFIRA's configured primary AI provider. The model output is parsed by the existing `GlafiraTaskPlanner.parseAndValidate` contract and adapted into typed `GlafiraCoreTaskPlanNode` values; the model does not execute tools or receive credentials. `GlafiraCoreTaskPlanAdapter` is the single bridge between the existing agent-role DAG and the durable Core task graph. `GlafiraCoreTaskPlanOrchestrator` validates project scope, idempotency, timestamps, node limits and the complete acyclic dependency graph before persistence.
 
 The Core owner exposes `submitInstruction`, `enqueuePlan`, project-scoped `taskPlan` / `taskPlans` status, and `taskPlanJournal` with each node's transition history and persisted result. Plan header, node membership and dependency edges are persisted in one SQLite transaction. A crash cannot expose a partially inserted plan. Repeated submissions are idempotent and conflicting reuse is rejected.
 
@@ -12,7 +12,7 @@ Independent nodes become eligible concurrently after their predecessors succeed.
 
 ## Desktop worker coordination
 
-The shared database maintains a live Desktop-node registry with heartbeat timestamps, capabilities and per-node concurrency limits. The Core owner now exposes the full fresh-node inventory, not only the most recently seen node. Desktop claims still validate task capability requirements, dependency readiness, active leases and owner authorization. Expired/unknown external execution outcomes remain quarantined for owner reconciliation.
+The shared database maintains a live Desktop-node registry with heartbeat timestamps, capabilities and per-node concurrency limits. The Core owner exposes the full fresh-node inventory and an advisory least-loaded, capability-aware placement plan across registered nodes. Desktop claims still validate task capability requirements, dependency readiness, active leases and owner authorization. Expired/unknown external execution outcomes remain quarantined for owner reconciliation.
 
 ## Recovery and journal
 
@@ -20,7 +20,7 @@ Task state transitions remain recorded in `core_task_history`. Plan status is de
 
 ## Safety boundary and remaining integration
 
-The current runtime remains `DRY_RUN`; Desktop claim/lease issuance and external LIVE actions are not enabled by this change. The planner interface is implemented, but a production model-provider adapter and its prompt/schema validation still need to be connected and tested. A model provider must implement `GlafiraCoreTaskPlanDecomposer` and return only registered, typed task operations. The provider adapter, owner-facing plan approval UI, end-to-end authenticated multi-device Bridge execution and cross-platform plan-status views require separate integration and validation. No generated plan can grant itself permissions or switch execution mode.
+The current runtime remains `DRY_RUN`; Desktop claim/lease issuance and external LIVE actions are not enabled by this change. The model-provider adapter is now connected to the configured primary provider and reuses the existing strict planner schema. Exact provider response quality, retries and token/cost controls still require runtime validation. The owner-facing plan approval UI, durable task-result callback from the Desktop Bridge, local-agent execution adapter and cross-platform plan-status views require separate integration and validation. No generated plan can grant itself permissions or switch execution mode.
 
 ## Limits
 
