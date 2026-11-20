@@ -149,7 +149,9 @@ object GlafiraBridgeProtocol {
         value == "default" || isIdentifier(value)
 
     private fun isTaskIdentifier(value: String): Boolean =
-        value.length in 1..64 && value.all { it.isLetterOrDigit() || it in "_-" }
+        value.length in 1..64 && value.all {
+            it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '_' || it == '-'
+        }
 
     private fun isIdentifier(value: String): Boolean =
         value.length in 8..128 && value.all { it.isLetterOrDigit() || it in "-_." }
