@@ -22,7 +22,7 @@ data class GlafiraTaskPlan(
 )
 
 enum class GlafiraTaskPlanStatus {
-    QUEUED, RUNNING, WAITING_FOR_OWNER, SUCCEEDED, FAILED, CANCELLED
+    QUEUED, RUNNING, WAITING_FOR_NETWORK, WAITING_FOR_OWNER, RETRY_SCHEDULED, SUCCEEDED, FAILED, CANCELLED
 }
 
 data class GlafiraTaskPlanRecord(
@@ -35,11 +35,17 @@ data class GlafiraTaskPlanRecord(
 ) {
     val status: GlafiraTaskPlanStatus
         get() = when {
-            nodes.any { it.state == GlafiraTaskState.FAILED } -> GlafiraTaskPlanStatus.FAILED
-            nodes.any { it.state == GlafiraTaskState.CANCELLED } -> GlafiraTaskPlanStatus.CANCELLED
+            nodes.all { it.state in setOf(
+                GlafiraTaskState.SUCCEEDED, GlafiraTaskState.FAILED, GlafiraTaskState.CANCELLED
+            ) } && nodes.any { it.state == GlafiraTaskState.FAILED } -> GlafiraTaskPlanStatus.FAILED
+            nodes.all { it.state in setOf(
+                GlafiraTaskState.SUCCEEDED, GlafiraTaskState.FAILED, GlafiraTaskState.CANCELLED
+            ) } && nodes.any { it.state == GlafiraTaskState.CANCELLED } -> GlafiraTaskPlanStatus.CANCELLED
             nodes.all { it.state == GlafiraTaskState.SUCCEEDED } -> GlafiraTaskPlanStatus.SUCCEEDED
             nodes.any { it.state == GlafiraTaskState.RUNNING } -> GlafiraTaskPlanStatus.RUNNING
             nodes.any { it.state == GlafiraTaskState.WAITING_FOR_OWNER } -> GlafiraTaskPlanStatus.WAITING_FOR_OWNER
+            nodes.any { it.state == GlafiraTaskState.WAITING_FOR_NETWORK } -> GlafiraTaskPlanStatus.WAITING_FOR_NETWORK
+            nodes.any { it.state == GlafiraTaskState.RETRY_SCHEDULED } -> GlafiraTaskPlanStatus.RETRY_SCHEDULED
             else -> GlafiraTaskPlanStatus.QUEUED
         }
     val completedCount: Int
