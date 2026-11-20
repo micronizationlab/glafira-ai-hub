@@ -1,5 +1,6 @@
 package com.micronizationlab.glafira
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
@@ -17,7 +18,7 @@ class GlafiraCoreTaskPlanOrchestratorTest {
         idempotencyKey = "idem-$id"
     )
 
-    @Test fun decomposesAnInstructionIntoIndependentBranchesAndAJoinThenPersistsOnce() {
+    @Test fun decomposesAnInstructionIntoIndependentBranchesAndAJoinThenPersistsOnce() = runBlocking {
         val request = GlafiraCoreTaskPlanRequest(
             instruction = "Research sources and prepare a reviewed summary",
             projectId = "project-a",
@@ -58,7 +59,7 @@ class GlafiraCoreTaskPlanOrchestratorTest {
         assertEquals(4, result.plan.nodes.size)
     }
 
-    @Test fun rejectsPlannerOutputThatChangesProjectOrIdempotencyScope() {
+    @Test fun rejectsPlannerOutputThatChangesProjectOrIdempotencyScope() = runBlocking {
         val request = GlafiraCoreTaskPlanRequest(
             instruction = "Do scoped work",
             projectId = "project-a",
