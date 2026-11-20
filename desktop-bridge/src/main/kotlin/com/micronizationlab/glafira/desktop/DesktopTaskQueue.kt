@@ -31,7 +31,9 @@ internal data class DesktopTaskEnvelope(
     val priority: Int,
     val createdAt: Long,
     val expiresAt: Long,
-    val idempotencyKey: String
+    val idempotencyKey: String,
+    val leaseId: String? = null,
+    val fencingToken: Long? = null
 )
 
 internal data class DesktopTaskRecord(
@@ -198,6 +200,23 @@ internal class DesktopTaskQueue(
         updateTerminal(taskId, DesktopTaskState.CANCELLED, null)
     }
 
+    /** Persists the server-issued lease identity used to fence every progress/result update. */
+    fun attachLease(taskId: String, leaseId: String, fencingToken: Long): DesktopTaskRecord =
+        synchronized(lock) {
+            require(leaseId.matches(Regex("[A-Za-z0-9_-]{8,128}")) && fencingToken > 0L)
+            val records = readAll().toMutableList()
+            val index = records.indexOfFirst { it.envelope.taskId == taskId }
+            require(index >= 0) { "Unknown task." }
+            val current = records[index]
+            val updated = current.copy(
+                sequence = current.sequence + 1,
+                envelope = current.envelope.copy(leaseId = leaseId, fencingToken = fencingToken)
+            )
+            records[index] = updated
+            writeAll(records)
+            updated
+        }
+
     fun get(taskId: String): DesktopTaskRecord? = synchronized(lock) {
         readAll().firstOrNull { it.envelope.taskId == taskId }
     }
@@ -241,6 +260,11 @@ internal class DesktopTaskQueue(
         require(task.createdAt <= clock() + MAX_CLOCK_SKEW_MS)
         require(task.expiresAt > task.createdAt && task.expiresAt > clock())
         require(task.idempotencyKey.matches(Regex("[A-Za-z0-9_-]{16,128}")))
+        require((task.leaseId == null) == (task.fencingToken == null))
+        if (task.leaseId != null) {
+            require(task.leaseId.matches(Regex("[A-Za-z0-9_-]{8,128}")))
+            require(task.fencingToken!! > 0L)
+        }
     }
 
     /** Keep durable history bounded without ever evicting work that is not terminal. */
