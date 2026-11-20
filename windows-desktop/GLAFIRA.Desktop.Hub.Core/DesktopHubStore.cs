@@ -397,6 +397,62 @@ public sealed class DesktopHubStore
         return recovered;
     }
 
+
+    /// <summary>Read-only dashboard view of enrolled Agents; never exposes credentials.</summary>
+    public IReadOnlyList<HubAgentSnapshot> GetAgents(DateTimeOffset now)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT agent_id, device_id, capabilities_json, max_parallel,
+                   owner_approved, last_heartbeat_ms
+            FROM Agents ORDER BY agent_id COLLATE BINARY;
+            """;
+        using var reader = command.ExecuteReader();
+        var agents = new List<HubAgentSnapshot>();
+        while (reader.Read())
+        {
+            var heartbeat = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(5));
+            var age = now - heartbeat;
+            agents.Add(new HubAgentSnapshot(
+                reader.GetString(0), reader.GetString(1),
+                JsonSerializer.Deserialize<string[]>(reader.GetString(2)) ?? [],
+                reader.GetInt32(3), reader.GetInt32(4) == 1, heartbeat,
+                age >= TimeSpan.Zero && age <= AgentFreshness));
+        }
+        return agents;
+    }
+
+    /// <summary>Read-only, bounded task list for the Desktop owner dashboard.</summary>
+    public IReadOnlyList<HubTaskSnapshot> GetTasks(int limit = 200)
+    {
+        if (limit is < 1 or > 1_000)
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT task_id, project_id, task_type, state, priority,
+                   effect_risk, attempts, created_at_ms, approval_ref
+            FROM Tasks
+            ORDER BY created_at_ms DESC, task_id COLLATE BINARY
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$limit", limit);
+        using var reader = command.ExecuteReader();
+        var tasks = new List<HubTaskSnapshot>();
+        while (reader.Read())
+        {
+            if (!Enum.TryParse<HubTaskState>(reader.GetString(3), out var state))
+                continue;
+            tasks.Add(new HubTaskSnapshot(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), state,
+                reader.GetInt32(4), (HubTaskEffectRisk)reader.GetInt32(5),
+                reader.GetInt32(6), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
+                reader.IsDBNull(8) ? null : reader.GetString(8)));
+        }
+        return tasks;
+    }
+
     public HubTaskState? GetTaskState(string taskId)
     {
         using var connection = Open();
