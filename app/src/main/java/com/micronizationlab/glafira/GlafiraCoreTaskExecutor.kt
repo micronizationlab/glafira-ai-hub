@@ -49,9 +49,11 @@ class GlafiraCoreTaskExecutor(
     private val runtimeBudget: () -> GlafiraRuntimeBudget = { GlafiraRuntimeBudget() },
     private val costMeter: GlafiraTaskCostMeter? = null,
     private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE },
-    private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null
+    private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null,
+    private val executionLimiter: GlafiraCoreExecutionLimiter = GlafiraCoreExecutionLimiter()
 ) {
-    private val executionMutex = Mutex()
+    private val recoveryMutex = Mutex()
+    @Volatile private var recoveredMaintenanceEpoch = -1L
     private val handlerMap = handlers.toMap()
 
     init {
@@ -64,24 +66,57 @@ class GlafiraCoreTaskExecutor(
         }
     }
 
-    suspend fun executeNext(): GlafiraTaskExecutionResult =
-        GlafiraCoreMaintenanceGate.withExclusive {
-            withContext(dispatcher) {
-                executionMutex.withLock {
-                    val now = clock()
-                    // One budget snapshot governs both orphan recovery and this attempt.
-                    val configuredBudget = runtimeBudget()
-                    val effectiveBudget = configuredBudget.copy(
-                        maxRetries = minOf(configuredBudget.maxRetries, maxAttempts - 1)
-                    )
-                    (queue as? GlafiraInterruptedTaskRecovery)
-                        ?.recoverInterruptedCoreTasks(now, effectiveBudget.maxRetries)
-                    val task = queue.claimNext(now)
-                        ?: return@withLock GlafiraTaskExecutionResult(null, GlafiraTaskExecutionStatus.IDLE)
-                    executeClaimed(task, now, effectiveBudget)
+    suspend fun executeNext(): GlafiraTaskExecutionResult {
+        while (true) {
+            val configuredBudget = runtimeBudget()
+            val effectiveBudget = configuredBudget.copy(
+                maxRetries = minOf(configuredBudget.maxRetries, maxAttempts - 1)
+            )
+            ensureInterruptedTaskRecovery(effectiveBudget.maxRetries)
+
+            // The permit is acquired before the maintenance lease. Waiting workers therefore
+            // do not block a snapshot/restore from draining the handlers already in flight.
+            val result = executionLimiter.withPermit(configuredBudget.maxConcurrentTasks) {
+                GlafiraCoreMaintenanceGate.withExecution {
+                    // A backup/restore may have completed after recovery but before this lease.
+                    // In that case release the lease and run recovery against the new DB epoch.
+                    if (recoveredMaintenanceEpoch != GlafiraCoreMaintenanceGate.maintenanceEpoch) {
+                        null
+                    } else {
+                        withContext(dispatcher) {
+                            val now = clock()
+                            val task = queue.claimNext(now)
+                                ?: return@withContext GlafiraTaskExecutionResult(
+                                    null, GlafiraTaskExecutionStatus.IDLE
+                                )
+                            executeClaimed(task, now, effectiveBudget)
+                        }
+                    }
                 }
             }
+            if (result != null) return result
         }
+    }
+
+    /**
+     * Recovery is performed once per maintenance epoch, before new work can enter.
+     * It is never run beside live handlers, so one worker cannot requeue another worker's task.
+     */
+    private suspend fun ensureInterruptedTaskRecovery(maxRetries: Int) {
+        recoveryMutex.withLock {
+            if (recoveredMaintenanceEpoch == GlafiraCoreMaintenanceGate.maintenanceEpoch) return
+            var recoveryEpoch = -1L
+            GlafiraCoreMaintenanceGate.withExclusive {
+                // withExclusive advances the epoch exactly once when it leaves the gate.
+                recoveryEpoch = GlafiraCoreMaintenanceGate.maintenanceEpoch + 1L
+                withContext(dispatcher) {
+                    (queue as? GlafiraInterruptedTaskRecovery)
+                        ?.recoverInterruptedCoreTasks(clock(), maxRetries)
+                }
+            }
+            recoveredMaintenanceEpoch = recoveryEpoch
+        }
+    }
 
     private suspend fun executeClaimed(
         task: GlafiraTask,
@@ -166,12 +201,14 @@ class GlafiraCoreTaskExecutor(
             // bounds cooperative suspend handlers and cancels them when their allowance ends.
             withTimeout(budgetDecision.timeoutMillis) { handler.execute(task) }
         } catch (timeout: TimeoutCancellationException) {
-            return fail(task, "RUNTIME_TIME_LIMIT_EXCEEDED")
+            return scheduleRetry(task, "RUNTIME_TIME_LIMIT_EXCEEDED", clock(), effectiveBudget.maxRetries)
         } catch (cancelled: CancellationException) {
-            // Persist a bounded retry even while the parent coroutine is cancelling,
+            // Persist a risk-aware recovery state even while the parent coroutine is cancelling,
             // then preserve structured concurrency by propagating cancellation.
             withContext(NonCancellable) {
-                scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+                runCatching {
+                    scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+                }
             }
             throw cancelled
         } catch (failure: Exception) {
@@ -180,15 +217,30 @@ class GlafiraCoreTaskExecutor(
 
         return when (outcome) {
             is GlafiraTaskExecutionOutcome.Succeeded -> {
-                val changed = queue.transition(
-                    task.taskId, setOf(GlafiraTaskState.RUNNING),
-                    GlafiraTaskState.SUCCEEDED, clock()
-                )
+                val rawSummary = outcome.summary.orEmpty()
+                val summary = if (rawSummary.length > GlafiraCoreTaskResultPersistence.MAX_RESULT_CHARS) {
+                    rawSummary.take(GlafiraCoreTaskResultPersistence.MAX_RESULT_CHARS - 14) + "...[TRUNCATED]"
+                } else rawSummary
+                val now = clock()
+                val resultPersistence = queue as? GlafiraCoreTaskResultPersistence
+                val changed = try {
+                    resultPersistence?.persistCoreTaskResult(
+                        task.taskId, setOf(GlafiraTaskState.RUNNING), summary, now
+                    ) ?: queue.transition(
+                        task.taskId, setOf(GlafiraTaskState.RUNNING),
+                        GlafiraTaskState.SUCCEEDED, now
+                    )
+                } catch (_: Exception) {
+                    return reconcileResultPersistenceFailure(task, effectiveBudget.maxRetries, now)
+                }
+                if (!changed && resultPersistence != null) {
+                    return reconcileResultPersistenceFailure(task, effectiveBudget.maxRetries, now)
+                }
                 GlafiraTaskExecutionResult(
                     task.taskId,
                     if (changed) GlafiraTaskExecutionStatus.SUCCEEDED
                     else GlafiraTaskExecutionStatus.FAILED,
-                    outcome.summary
+                    if (changed) summary else "CORE_RESULT_PERSIST_FAILED"
                 )
             }
             is GlafiraTaskExecutionOutcome.RetryableFailure ->
@@ -220,12 +272,62 @@ class GlafiraCoreTaskExecutor(
         }
     }
 
+    /**
+     * If a completed handler cannot commit its result, never blindly replay a possible write.
+     * Read-only work may retry; writes are quarantined for owner reconciliation.
+     */
+    private fun reconcileResultPersistenceFailure(
+        task: GlafiraTask,
+        maxRetries: Int,
+        nowMillis: Long
+    ): GlafiraTaskExecutionResult {
+        val decision = GlafiraTaskRecoveryPolicy.interrupted(task, maxRetries)
+        val changed = runCatching {
+            queue.transition(
+                task.taskId,
+                setOf(GlafiraTaskState.RUNNING),
+                decision.state,
+                nowMillis,
+                retryAtMillis = if (decision.state == GlafiraTaskState.RETRY_SCHEDULED) nowMillis else null,
+                lastError = "CORE_RESULT_PERSIST_FAILED:${decision.reason}"
+            )
+        }.getOrDefault(false)
+        val status = if (!changed) {
+            GlafiraTaskExecutionStatus.FAILED
+        } else {
+            when (decision.state) {
+                GlafiraTaskState.RETRY_SCHEDULED -> GlafiraTaskExecutionStatus.RETRY_SCHEDULED
+                GlafiraTaskState.WAITING_FOR_OWNER -> GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
+                else -> GlafiraTaskExecutionStatus.FAILED
+            }
+        }
+        return GlafiraTaskExecutionResult(task.taskId, status, "CORE_RESULT_PERSIST_FAILED")
+    }
+
+    /** Automatic retries are restricted to registry-classified read-only operations. */
     private fun scheduleRetry(
         task: GlafiraTask,
         reason: String,
         nowMillis: Long,
         configuredMaxRetries: Int
     ): GlafiraTaskExecutionResult {
+        // An exception, timeout or cancellation may happen after an external side effect.
+        // Only registry-classified read-only operations are safe for automatic replay.
+        if (GlafiraToolRegistry.find(task.taskType)?.risk != ToolRiskLevel.READ_ONLY) {
+            val changed = queue.transition(
+                task.taskId,
+                setOf(GlafiraTaskState.RUNNING),
+                GlafiraTaskState.WAITING_FOR_OWNER,
+                nowMillis,
+                lastError = "EXECUTION_OUTCOME_UNCERTAIN"
+            )
+            return GlafiraTaskExecutionResult(
+                task.taskId,
+                if (changed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
+                else GlafiraTaskExecutionStatus.FAILED,
+                "EXECUTION_OUTCOME_UNCERTAIN"
+            )
+        }
         val retryLimit = minOf(maxAttempts - 1, configuredMaxRetries)
         if (task.attemptCount >= retryLimit + 1) return fail(task, "RETRY_LIMIT_REACHED:$reason")
         val exponent = (task.attemptCount - 1).coerceIn(0, 20)
