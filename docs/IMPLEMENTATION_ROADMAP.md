@@ -16,7 +16,7 @@ Build the cross-device Bridge on top of stable Core contracts. Define and enforc
 
 ### Queue 3 — Applications
 
-After Core and Bridge contracts are stable, complete the platform applications and host integrations: Android, Windows Desktop control center, Windows Agent service and native iOS client. Each platform must pass shared contract fixtures and end-to-end pairing, dispatch, result, reconnect and recovery tests. Backup/restore, packaging, UI polish and release readiness are addressed as part of making these applications dependable.
+After Core and Bridge contracts are stable, complete the platform applications and host integrations. **Prioritize a usable Windows Desktop control center and Windows Agent integration ahead of iOS**, because the owner needs a laptop application to test the complete Bridge workflow. Android remains in the platform queue; iOS follows after the Desktop + Bridge workflow is testable. Initial Windows Desktop acceptance is functional rather than visual polish. Each platform must pass shared contract fixtures and end-to-end pairing, dispatch, result, reconnect and recovery tests. Backup/restore, packaging, UI polish and release readiness are addressed as part of making these applications dependable.
 
 ### Queue 4 — Agents and agent training
 
@@ -206,3 +206,10 @@ Implementation is not complete merely because this roadmap and training contract
 - Restore semantics hardened: selected backup now replaces the app-private file snapshot, including removing files created after that backup; safety snapshot rollback remains in place. Requires device acceptance tests.
 - Latest observed PR #35 validation: Android Unit Tests passed, but Android Emulator Integration Tests failed because the emulator did not finish booting before timeout. This is an infrastructure/test-run failure, not a passing restore acceptance; rerun and investigate before merge.
 - PR #37 WorkManager integration remains draft and unmerged; its latest observed CI runs were still in progress at the time of this roadmap update.
+
+
+## Owner-requested Windows Desktop, agent tools, files and GLF economy specification
+
+The owner-approved requirements for the Windows Desktop control center, three Settings tabs (General; Agent APIs & Tools; Wallet), six specialist-agent connector cards with twelve connector slots, secure credential vault and health indicators, archival yellow Кадровик dossier, File Intelligence Engine, and future GLF wallet/compute marketplace/treasury are documented in [Windows Desktop Control Center and GLF Economy Specification](WINDOWS_DESKTOP_CONTROL_CENTER_AND_GLF_ECONOMY_SPEC.md), tracked by [Issue #152](https://github.com/micronizationlab/glafira-ai-hub/issues/152).
+
+This is a specification only. Candidate connectors require individual source/license/terms/security/free-tier validation. The wallet, token issuance, escrow and cross-customer marketplace are future design items, not implemented features. Keep Core → Bridge → Applications priority; within Queue 3, Windows Desktop precedes iOS. Do not begin Queue 4 agent implementation until Queues 1–3 are established unless the owner explicitly reprioritizes.
