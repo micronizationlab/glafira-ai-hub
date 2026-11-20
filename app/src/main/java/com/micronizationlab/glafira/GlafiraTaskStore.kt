@@ -128,6 +128,11 @@ class GlafiraTaskStore(context: Context) :
             PRIMARY KEY(plan_id, task_id)
         )""")
         db.execSQL("CREATE INDEX IF NOT EXISTS index_core_task_plans_project_updated ON core_task_plans(project_id, updated_at DESC)")
+        db.execSQL("""CREATE TRIGGER IF NOT EXISTS core_task_plan_updated AFTER UPDATE OF state ON $TABLE_TASKS
+            WHEN OLD.state != NEW.state BEGIN
+            UPDATE core_task_plans SET updated_at = NEW.updated_at
+            WHERE plan_id IN (SELECT plan_id FROM core_task_plan_nodes WHERE task_id = NEW.task_id);
+        END""")
     }
 
     private fun createCoreTaskResultsSchema(db: SQLiteDatabase) {
