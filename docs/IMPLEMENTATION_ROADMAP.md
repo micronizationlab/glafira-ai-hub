@@ -192,3 +192,32 @@ These are roadmap capabilities, not a claim that they are already implemented. E
 - Restore semantics hardened: selected backup now replaces the app-private file snapshot, including removing files created after that backup; safety snapshot rollback remains in place. Requires device acceptance tests.
 - Latest observed PR #35 validation: Android Unit Tests passed, but Android Emulator Integration Tests failed because the emulator did not finish booting before timeout. This is an infrastructure/test-run failure, not a passing restore acceptance; rerun and investigate before merge.
 - PR #37 WorkManager integration remains draft and unmerged; its latest observed CI runs were still in progress at the time of this roadmap update.
+
+
+## Commercial GLAFIRA Network — business and token-economy track
+
+The product is a commercial distributed AI + VPN ecosystem. The owner-operated GLAFIRA-Mother is the initial authoritative account registry, network control plane and token issuer. Users can earn internal utility tokens through voluntarily contributed, verified compute and spend them on AI services and VPN access; users can also transfer tokens to another member by unique username, including when the recipient is offline.
+
+The detailed design, unresolved owner decisions, threat model, API candidates and acceptance gates are in [GLAFIRA Network — commercial product, registration, token economy and VPN](GLAFIRA_NETWORK_BUSINESS_AND_TOKEN_ECONOMY.md).
+
+This track may proceed **in parallel at the specification, threat-model and contract-definition level**, but implementation must respect the Core → Bridge → Applications dependency order above.
+
+### Tracked work
+- **#114 — Mother registration, account registry and device enrollment (P0):** authoritative account ID, unique username, passkey/password and recovery, device enrollment/revocation, user isolation.
+- **#115 — Wallet and token ledger (P0):** central double-entry journal, audited issuance, atomic/idempotent transfers and offline recipient synchronization.
+- **#116 — Distributed compute contribution (P1):** opt-in resource budgets, signed sandboxed tasks, verification, reputation and evidence-based rewards.
+- **#117 — VPN control plane and tariffs (P1):** Mother-managed entitlement/provisioning and token billing; isolated VPN data plane and per-device keys.
+- **#109 — VPN app and self-hosted infrastructure:** client UX, server BOM, deployment, security and connectivity tests.
+- **#112 — Account-owned replication and encrypted recovery:** required for trustworthy multi-device onboarding.
+- **#113 — Independent GLAFIRA peer network:** mutual trust, scoped task exchange and later external work settlement.
+
+### Delivery order
+1. Continue Core queue and Bridge stabilization; preserve the current Core PR stack.
+2. Define and validate shared identity/device/task/wallet contracts without creating a second task queue.
+3. Implement Mother registration and account/device registry.
+4. Implement the authoritative ledger and offline username-based transfers.
+5. Implement voluntary compute contribution and verified rewards after Core/Bridge leases and recovery are stable.
+6. Implement VPN token tariffs and provisioning after server cost, capacity, security and jurisdiction reviews.
+7. Open the external project marketplace and inter-owner settlement only after the earlier controls pass acceptance.
+
+Token issuance rates, VPN prices, supply policy and any cash/blockchain redemption remain undecided until owner approval, device/server benchmarks and legal/accounting review. Do not promise guaranteed earnings, cash value, unlimited VPN or zero-cost service.
