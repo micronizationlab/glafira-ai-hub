@@ -78,7 +78,8 @@ data class A(
     val prompt: String, val fullDesc: String,
     val providerId: ProviderId = ProviderId.GIGACHAT,
     val group: AgentGroup = AgentGroup.IA,
-    val agentId: String = n
+    val agentId: String = n,
+    val localFeaturesAvailable: Boolean = false
 )
 data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "")
 
@@ -262,11 +263,12 @@ fun GroupHeader(title: String, count: Int, expanded: Boolean, onToggle: () -> Un
 
 @Composable
 fun AgentRow(a: A, onClick: () -> Unit) {
+    val ready = a.on || a.localFeaturesAvailable
     Row(
         Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        StatusFlower(a.on, 14.dp)
+        StatusFlower(ready, 14.dp)
         Spacer(Modifier.width(8.dp))
         Box(
             Modifier.size(24.dp).clip(CircleShape)
@@ -278,13 +280,17 @@ fun AgentRow(a: A, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
-            Text(a.n, color = if (a.on) Color(0xFF202020) else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(a.n, color = if (ready) Color(0xFF202020) else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(
-                if (a.on) "${a.providerId.displayName} · готов" else "Не настроен",
+                when {
+                    a.on -> "${a.providerId.displayName} · готов"
+                    a.localFeaturesAvailable -> "Локальные функции доступны · ИИ не настроен"
+                    else -> "Не настроен"
+                },
                 color = Tx, fontSize = 10.sp
             )
         }
-        StatusFlower(a.on, 12.dp)
+        StatusFlower(ready, 12.dp)
     }
     Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 }
@@ -339,7 +345,7 @@ fun ContactList(
             A(HrIntelligenceAgent.DISPLAY_NAME, "Личные и деловые контакты", isProviderConfigured(context, ProviderId.GIGACHAT), "🗂️",
                 HrIntelligenceAgent.prompt(),
                 "Кадровик GLAFIRA. Организует подтверждённые сведения о людях и организациях, историю взаимодействий, договорённости и связи. Отмечает источники, уверенность и противоречия. Не получает доступ к аккаунтам автоматически и не отправляет сообщения без разрешения.",
-                ProviderId.GIGACHAT, AgentGroup.IA, HrIntelligenceAgent.ROLE_ID),
+                ProviderId.GIGACHAT, AgentGroup.IA, HrIntelligenceAgent.ROLE_ID, localFeaturesAvailable = true),
             A("GigaChat", "GigaChat · модель", isProviderConfigured(context, ProviderId.GIGACHAT), "🟣",
                 "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке.",
                 "Прямой доступ к модели GigaChat без роли агента. Универсальный помощник.",
@@ -492,7 +498,7 @@ fun ContactList(
                         items = iaList,
                         key = { _, a -> a.n }
                     ) { _, a ->
-                        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
+                        AgentRow(a) { if (!a.on && !a.localFeaturesAvailable) notConfiguredAgent = a else onAgentClick(a) }
                     }
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -616,10 +622,13 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         scope.launch {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
-            val reply = if (agent.n == "ГЛАФИРА") {
-                GlafiraCoordinator.respond(context, loadGlafiraPrimaryProvider(context), updatedMessages, fullPrompt, project.id)
-            } else {
-                callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
+            val reply = when {
+                agent.n == "ГЛАФИРА" ->
+                    GlafiraCoordinator.respond(context, loadGlafiraPrimaryProvider(context), updatedMessages, fullPrompt, project.id)
+                agent.agentId == HrIntelligenceAgent.ROLE_ID &&
+                    !isProviderConfigured(context, ProviderId.GIGACHAT) ->
+                    "Локальная база контактов доступна без подключения ИИ. Чтобы вести диалог с кадровиком, подключи GigaChat в настройках."
+                else -> callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
             }
             val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
