@@ -126,8 +126,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertEquals("must-remain", store.getTask("must-remain")?.taskId)
         } finally {
             archive.delete()
-            correctPassphrase.fill('\\u0000')
-            wrongPassphrase.fill('\\u0000')
+            correctPassphrase.fill('\u0000')
+            wrongPassphrase.fill('\u0000')
         }
     }
 
