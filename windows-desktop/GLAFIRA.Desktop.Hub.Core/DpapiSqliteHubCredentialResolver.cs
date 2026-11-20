@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -11,6 +12,7 @@ namespace GLAFIRA.Desktop.Hub.Core;
 /// Run the Hub under a stable dedicated Windows identity; changing that identity
 /// intentionally makes existing credentials unreadable (fail closed).
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
 {
     private static readonly byte[] Entropy =
@@ -51,30 +53,45 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
             throw new ArgumentOutOfRangeException(nameof(secret), "Credential secret must contain 32 to 128 bytes.");
 
         var scopes = NormalizeScopes(allowedScopes);
-        var protectedSecret = ProtectedData.Protect(
-            secret.ToArray(),
-            Entropy,
-            DataProtectionScope.CurrentUser);
-        var scopesJson = JsonSerializer.Serialize(scopes);
+        var secretCopy = secret.ToArray();
+        byte[] protectedSecret;
+        try
+        {
+            protectedSecret = ProtectedData.Protect(
+                secretCopy,
+                Entropy,
+                DataProtectionScope.CurrentUser);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(secretCopy);
+        }
 
-        await using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO HubCredentials(device_id, protected_secret, scopes_json, enabled, updated_at_ms)
-            VALUES($device, $secret, $scopes, 1, $updated)
-            ON CONFLICT(device_id) DO UPDATE SET
-                protected_secret = excluded.protected_secret,
-                scopes_json = excluded.scopes_json,
-                enabled = 1,
-                updated_at_ms = excluded.updated_at_ms;
-            """;
-        command.Parameters.AddWithValue("$device", deviceId);
-        command.Parameters.Add("$secret", SqliteType.Blob).Value = protectedSecret;
-        command.Parameters.AddWithValue("$scopes", scopesJson);
-        command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        CryptographicOperations.ZeroMemory(protectedSecret);
+        var scopesJson = JsonSerializer.Serialize(scopes);
+        try
+        {
+            await using var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO HubCredentials(device_id, protected_secret, scopes_json, enabled, updated_at_ms)
+                VALUES($device, $secret, $scopes, 1, $updated)
+                ON CONFLICT(device_id) DO UPDATE SET
+                    protected_secret = excluded.protected_secret,
+                    scopes_json = excluded.scopes_json,
+                    enabled = 1,
+                    updated_at_ms = excluded.updated_at_ms;
+                """;
+            command.Parameters.AddWithValue("$device", deviceId);
+            command.Parameters.Add("$secret", SqliteType.Blob).Value = protectedSecret;
+            command.Parameters.AddWithValue("$scopes", scopesJson);
+            command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(protectedSecret);
+        }
     }
 
     public async ValueTask<HubRequestCredential?> ResolveAsync(
@@ -113,14 +130,30 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
             }
 
             var scopes = JsonSerializer.Deserialize<string[]>(scopesJson);
-            if (scopes is null || scopes.Length == 0 ||
-                scopes.Distinct(StringComparer.Ordinal).Count() != scopes.Length)
+            if (scopes is null)
             {
                 CryptographicOperations.ZeroMemory(secret);
                 return null;
             }
 
-            return new HubRequestCredential(deviceId, secret, new HashSet<string>(scopes, StringComparer.Ordinal));
+            string[] normalizedScopes;
+            try
+            {
+                normalizedScopes = NormalizeScopes(scopes);
+            }
+            catch (ArgumentException)
+            {
+                CryptographicOperations.ZeroMemory(secret);
+                return null;
+            }
+
+            if (!normalizedScopes.SequenceEqual(scopes, StringComparer.Ordinal))
+            {
+                CryptographicOperations.ZeroMemory(secret);
+                return null;
+            }
+
+            return new HubRequestCredential(deviceId, secret, new HashSet<string>(normalizedScopes, StringComparer.Ordinal));
         }
         catch (CryptographicException)
         {
