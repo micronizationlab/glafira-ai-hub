@@ -47,7 +47,7 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.CONVERSATION_APPEND to setOf("conversationId", "messageText"),
         GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary"),
         GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to setOf("capabilities", "maxParallelTasks"),
-        GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "state", "progressPercent", "progressMessage", "result", "errorCode")
+        GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode")
     )
     private val allowedFields = requiredFields
 
@@ -132,6 +132,16 @@ object GlafiraBridgeProtocol {
             return GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD
         if (request.payload.values.any { it.isBlank() || it.length > MAX_PAYLOAD_CHARS })
             return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
+        if (request.operation == GlafiraBridgeOperation.DESKTOP_TASK_RESULT) {
+            val leaseId = request.payload["leaseId"] ?: return GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD
+            val fencingToken = request.payload["fencingToken"]?.toLongOrNull()
+            val progress = request.payload["progressPercent"]?.toIntOrNull()
+            if (!isIdentifier(request.payload["taskId"].orEmpty()) || !isIdentifier(leaseId) ||
+                fencingToken == null || fencingToken <= 0L ||
+                progress == null || progress !in 0..100 ||
+                request.payload["state"] !in setOf("ACCEPTED", "RUNNING", "SUCCEEDED", "FAILED")
+            ) return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
+        }
         return null
     }
 
