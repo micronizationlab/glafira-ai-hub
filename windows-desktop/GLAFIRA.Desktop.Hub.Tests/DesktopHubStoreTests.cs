@@ -216,6 +216,23 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void RevokedAgentCannotReportProgressOrCompleteAnActiveLease()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-revoked", "device-revoked", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("revoked-task"), now);
+        var lease = _store.ClaimNext("agent-revoked", now.AddSeconds(1), TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+
+        Assert.True(_store.SetAgentOwnerApproval("agent-revoked", false));
+        Assert.False(_store.ReportProgress("agent-revoked", "revoked-task", lease.LeaseId,
+            lease.FencingToken, 10, "should be rejected", now.AddSeconds(2)));
+        Assert.False(_store.Complete("agent-revoked", "revoked-task", lease.LeaseId,
+            lease.FencingToken, succeeded: true, now.AddSeconds(3)));
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState("revoked-task"));
+    }
+
+    [Fact]
     public void DeviceIdResolvesToStableAgentId()
     {
         var now = DateTimeOffset.UtcNow;
