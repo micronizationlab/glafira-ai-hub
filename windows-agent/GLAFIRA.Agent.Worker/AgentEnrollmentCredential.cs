@@ -87,14 +87,26 @@ public static class AgentTlsCertificatePinPolicy
                              SslPolicyErrors.RemoteCertificateNameMismatch)) != 0)
             return false;
 
-        Span<byte> expected = stackalloc byte[32];
-        if (!Convert.TryFromHexString(credential.TlsCertificateSha256, expected, out var written) || written != 32)
+        byte[] expected;
+        try
+        {
+            expected = Convert.FromHexString(credential.TlsCertificateSha256);
+        }
+        catch (FormatException)
+        {
             return false;
+        }
 
-        Span<byte> actual = stackalloc byte[32];
-        if (!SHA256.TryHashData(certificate.RawData, actual, out written) || written != 32)
-            return false;
-
-        return CryptographicOperations.FixedTimeEquals(expected, actual);
+        var actual = SHA256.HashData(certificate.RawData);
+        try
+        {
+            return expected.Length == 32 &&
+                CryptographicOperations.FixedTimeEquals(expected, actual);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(expected);
+            CryptographicOperations.ZeroMemory(actual);
+        }
     }
 }
