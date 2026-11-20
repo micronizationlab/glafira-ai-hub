@@ -110,6 +110,5 @@ suspend fun callAiProviderResult(
     history: List<Msg>,
     systemPrompt: String
 ): AiProviderResult = classifyLegacyProviderResponse(
-    providerId,
     callAiProvider(context, providerId, history, systemPrompt)
 )
