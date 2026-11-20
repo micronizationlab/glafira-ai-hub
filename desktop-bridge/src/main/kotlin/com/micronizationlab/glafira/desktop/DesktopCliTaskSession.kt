@@ -30,8 +30,8 @@ internal class DesktopCliTaskSession(
 private val desktopCliSessionPaths = ConcurrentHashMap.newKeySet<Path>()
 
 /** Startup failures release the lock and propagate; no empty in-memory queue is substituted. */
-internal fun desktopCliTaskSession(vaultPath: Path): DesktopCliTaskSession {
-    val queuePath = desktopCliTaskQueuePath(vaultPath)
+internal fun desktopCliTaskSession(vaultPath: Path, binding: String? = null): DesktopCliTaskSession {
+    val queuePath = desktopCliTaskQueuePath(vaultPath, binding)
     Files.createDirectories(queuePath.parent)
     val lockPath = queuePath.resolveSibling("tasks.lock")
     val reservation = lockPath.toFile().canonicalFile.toPath()
@@ -59,9 +59,19 @@ internal fun desktopCliTaskSession(vaultPath: Path): DesktopCliTaskSession {
     }
 }
 
-internal fun desktopCliTaskQueuePath(vaultPath: Path): Path =
-    requireNotNull(vaultPath.toAbsolutePath().normalize().parent) { "Credential vault needs a parent directory." }
-        .resolve("tasks.json")
+internal fun desktopCliTaskQueuePath(vaultPath: Path, binding: String? = null): Path {
+    require(binding == null || binding.matches(Regex("[0-9a-f]{64}")))
+    return requireNotNull(vaultPath.toAbsolutePath().normalize().parent) { "Credential vault needs a parent directory." }
+        .resolve(if (binding == null) "tasks.json" else "tasks-$binding.json")
+}
+
+/** Public pairing identity only; HMAC secret bytes must never become filesystem identifiers. */
+internal fun desktopCliPairingBinding(origin: String, credentials: DesktopBridgeCredentials): String {
+    val identity = listOf("glafira-desktop-outbox-v1", origin, credentials.deviceId,
+        credentials.serverCertificateSha256.lowercase()).joinToString("\n")
+    return java.security.MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+}
 /**
  * Release the durable queue lock only after the worker confirms that every handler has stopped.
  * If close fails, the session deliberately remains open and retains its OS lock.

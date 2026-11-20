@@ -11,6 +11,33 @@ class DesktopCliQueuePersistenceTest {
     @get:Rule val temp = TemporaryFolder()
     private fun vaultPath() = temp.root.toPath().resolve("bridge/device.vault")
 
+    @Test fun differentPairingCannotReadOrFlushPreviousPairingQueue() {
+        val path = vaultPath()
+        val first = DesktopBridgeCredentials("device-0001", ByteArray(32), setOf("project.read"), "a".repeat(64))
+        val second = DesktopBridgeCredentials("device-0002", ByteArray(32), setOf("project.read"), "b".repeat(64))
+        val bindingA = desktopCliPairingBinding("https://192.168.1.10:9443", first)
+        val bindingB = desktopCliPairingBinding("https://192.168.1.11:9443", second)
+        assertNotEquals(bindingA, bindingB)
+        val now = System.currentTimeMillis()
+        desktopCliTaskSession(path, bindingA).use { session ->
+            session.queue.enqueue(DesktopTaskEnvelope(taskId = "isolated-task", projectId = "project-001",
+                taskType = "analysis.document", instruction = "private context", contextRefs = emptyList(),
+                requiredCapabilities = emptySet(), requiredScopes = emptySet(), priority = 1,
+                createdAt = now, expiresAt = now + 60_000, idempotencyKey = "isolated-operation"))
+            session.queue.claimNext()
+            session.queue.transition("isolated-task", DesktopTaskState.ACCEPTED)
+            session.queue.transition("isolated-task", DesktopTaskState.RUNNING)
+            session.queue.complete("isolated-task", "private result")
+        }
+        desktopCliTaskSession(path, bindingB).use { session ->
+            assertTrue(session.queue.list().isEmpty())
+            assertTrue(session.queue.pendingResults("project-001").isEmpty())
+        }
+        desktopCliTaskSession(path, bindingA).use { session ->
+            assertEquals("private result", session.queue.pendingResults("project-001").single().result)
+        }
+    }
+
     @Test
     fun productionCliFactoryRecoversUnacknowledgedResultAfterSessionRestart() {
         val path = vaultPath()

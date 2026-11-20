@@ -45,7 +45,11 @@ fun main() {
                 println("Desktop task state and unacknowledged results persist beside the credential vault.")
                 println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
                 println("Ollama must be running locally at 127.0.0.1:11434.")
-                val activeSession = desktopCliTaskSession(vaultPath)
+                val binding = desktopCliPairingBinding(entry.origin, credentials)
+                if (java.nio.file.Files.exists(desktopCliTaskQueuePath(vaultPath))) {
+                    println("An unbound legacy tasks.json is preserved; it will not be sent under this pairing.")
+                }
+                val activeSession = desktopCliTaskSession(vaultPath, binding)
                 try {
                     val createdWorker = DesktopBridgeTaskWorker(
                         origin = entry.origin,
