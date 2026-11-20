@@ -33,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -326,7 +328,15 @@ fun BackupSettingsSection() {
                 if (!persistedStatus.isNullOrBlank()) {
                     Text("Последний результат: $persistedStatus", color = Tx, fontSize = 10.sp)
                 }
-                Text(if (busy) "Выполняется операция…" else status, color = if (status.startsWith("Ошибка")) Red else Tx, fontSize = 11.sp)
+                val visibleStatus = if (busy) "Выполняется операция…" else status
+                Text(
+                    visibleStatus,
+                    color = if (status.startsWith("Ошибка")) Red else Tx,
+                    fontSize = 11.sp,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Статус резервного копирования: $visibleStatus"
+                    }
+                )
             }
         }
     }
