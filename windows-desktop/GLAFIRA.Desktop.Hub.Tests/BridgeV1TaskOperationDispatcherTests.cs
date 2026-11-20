@@ -32,6 +32,43 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task HeartbeatReturnsOnlyOwnerApprovedProfileAndRefreshesLiveness()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research", "document.analysis"], 3);
+
+        var response = await CreateDispatcher(_payload).DispatchAsync(HeartbeatRequest(), now.AddSeconds(1));
+
+        Assert.Equal("ACCEPTED", response.Status);
+        Assert.Equal("agent-0001", response.Result["agentId"]);
+        Assert.Equal("true", response.Result["ownerApproved"]);
+        Assert.Equal("3", response.Result["maxParallelTasks"]);
+        Assert.Equal(
+            ["document.analysis", "web.research"],
+            JsonSerializer.Deserialize<string[]>(response.Result["capabilities"]));
+        var agent = Assert.Single(_store.GetAgents(now.AddSeconds(2)));
+        Assert.True(agent.OwnerApproved);
+        Assert.True(agent.IsOnline);
+    }
+
+    [Fact]
+    public async Task UnapprovedAgentHeartbeatDoesNotRefreshLivenessOrRevealProfile()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration(
+            "agent-0001", "device-0001", ["web.research"], 1, false), now);
+
+        var response = await CreateDispatcher(_payload).DispatchAsync(HeartbeatRequest(), now.AddSeconds(1));
+
+        Assert.Equal("FAILED", response.Status);
+        Assert.Equal("AGENT_NOT_OWNER_APPROVED", response.ErrorCode);
+        Assert.Empty(response.Result);
+        var agent = Assert.Single(_store.GetAgents(now.AddSeconds(2)));
+        Assert.False(agent.OwnerApproved);
+        Assert.False(agent.IsOnline);
+    }
+
+    [Fact]
     public async Task ClaimReturnsOnlyOwnerRegisteredCapabilitiesAndServerIssuedFence()
     {
         var now = DateTimeOffset.UtcNow;
@@ -172,6 +209,9 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
             "payload://task-0001", Convert.ToHexString(SHA256.HashData(_payload)).ToLowerInvariant(),
             ["web.research"], [], HubTaskEffectRisk.ReadOnly, null, 5), DateTimeOffset.UtcNow);
     }
+
+    private static BridgeV1SignedRequest HeartbeatRequest() =>
+        Request(BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT, new Dictionary<string, string>());
 
     private static BridgeV1SignedRequest ClaimRequest(IReadOnlyCollection<string> capabilities, int parallel) =>
         Request(BridgeV1Operation.DESKTOP_TASK_CLAIM, new Dictionary<string, string>
