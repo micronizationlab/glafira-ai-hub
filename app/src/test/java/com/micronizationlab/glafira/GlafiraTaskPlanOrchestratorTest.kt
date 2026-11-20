@@ -3,7 +3,6 @@ package com.micronizationlab.glafira
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class GlafiraCoreTaskPlanOrchestratorTest {
@@ -77,6 +76,7 @@ class GlafiraCoreTaskPlanOrchestratorTest {
             GlafiraCoreTaskPlanDecomposer { foreignPlan },
             persist = { throw AssertionError("Invalid plan must not reach persistence.") }
         )
-        assertThrows(IllegalArgumentException::class.java) { orchestrator.submit(request) }
+        val failure = runCatching { orchestrator.submit(request) }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException)
     }
 }
