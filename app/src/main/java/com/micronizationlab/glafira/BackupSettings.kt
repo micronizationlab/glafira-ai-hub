@@ -132,7 +132,7 @@ fun BackupSettingsSection() {
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true
                 )
-                Text("Сохрани пароль отдельно. Для автоматического задания он хранится на этом телефоне в зашифрованном виде, а для нового устройства потребуется ввести его снова.", color = Tx, fontSize = 11.sp)
+                Text("Сохрани пароль отдельно. На этом телефоне он хранится в зашифрованном виде: для повторного ручного запуска поле можно оставить пустым. На новом устройстве потребуется ввести пароль снова.", color = Tx, fontSize = 11.sp)
 
                 OutlinedButton(
                     onClick = { folderPicker.launch(null) },
@@ -203,19 +203,27 @@ fun BackupSettingsSection() {
                     Button(
                         onClick = {
                             val selectedFolder = folderUri?.let { Uri.parse(it) }
+                            val storedPassphrase = EncryptedApiKeyStore.load(
+                                context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY
+                            )
+                            val effectivePassphrase = BackupManualPassphrase.resolve(
+                                entered = passphrase,
+                                stored = storedPassphrase
+                            )
                             when {
                                 selectedFolder == null -> status = "Сначала выбери папку Google Drive или Яндекс Диска."
-                                passphrase.length < 12 -> status = "Для резервной копии нужен пароль не короче 12 символов. Введи пароль выше."
+                                effectivePassphrase.length < 12 -> status = "Введи пароль не короче 12 символов. Если пароль уже сохранялся на этом телефоне, поле можно оставить пустым."
                                 !context.contentResolver.persistedUriPermissions.any {
                                     it.uri == selectedFolder && it.isWritePermission
                                 } -> status = "Нет сохранённого разрешения на запись в выбранную папку. Выбери её повторно и подтверди доступ."
                                 DocumentFile.fromTreeUri(context, selectedFolder)?.canWrite() != true ->
                                     status = "Облачная папка доступна только для чтения или провайдер не поддерживает запись."
-                                !EncryptedApiKeyStore.save(context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY, passphrase) ->
-                                    status = "Не удалось сохранить пароль в Android Keystore."
+                                passphrase.isNotBlank() && !EncryptedApiKeyStore.save(
+                                    context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY, effectivePassphrase
+                                ) -> status = "Не удалось сохранить пароль в Android Keystore."
                                 else -> {
                                     BackupScheduler.runNow(context, wifiOnly)
-                                    status = "Резервная копия поставлена в очередь. Открой статус ниже, чтобы проверить результат загрузки."
+                                    status = "Резервная копия поставлена в очередь. Пароль взят из защищённого хранилища; проверь результат загрузки ниже."
                                 }
                             }
                         },
