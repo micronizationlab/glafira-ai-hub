@@ -5,7 +5,7 @@ namespace GLAFIRA.Agent.Worker.Tests;
 
 public sealed class AgentTaskExecutorTests
 {
-    private static AgentTaskEnvelope Task(string id, string type = "research.search") =>
+    private static AgentTaskEnvelope Envelope(string id, string type = "research.search") =>
         new(id, "project-a", $"idempotency-{id}", type, $"payload://{id}",
             new string('a', 64), new HashSet<string> { "research" }, null);
 
@@ -24,7 +24,7 @@ public sealed class AgentTaskExecutorTests
         var registry = new AgentTaskHandlerRegistry([handler]);
         await using var executor = new AgentTaskExecutor(registry, ReadyState());
 
-        var result = await executor.ExecuteAsync(Task("task-1"), CancellationToken.None);
+        var result = await executor.ExecuteAsync(Envelope("task-1"), CancellationToken.None);
 
         Assert.Equal("SUCCEEDED", result.Outcome);
         Assert.Equal(1, handler.Calls);
@@ -36,7 +36,7 @@ public sealed class AgentTaskExecutorTests
         await using var executor = new AgentTaskExecutor(
             new AgentTaskHandlerRegistry([]), ReadyState());
 
-        var result = await executor.ExecuteAsync(Task("task-2", "process.shell"), CancellationToken.None);
+        var result = await executor.ExecuteAsync(Envelope("task-2", "process.shell"), CancellationToken.None);
 
         Assert.Equal("NO_AGENT_HANDLER", result.ErrorCode);
     }
@@ -50,7 +50,7 @@ public sealed class AgentTaskExecutorTests
         await using var executor = new AgentTaskExecutor(
             new AgentTaskHandlerRegistry([handler]), state);
 
-        var result = await executor.ExecuteAsync(Task("task-3"), CancellationToken.None);
+        var result = await executor.ExecuteAsync(Envelope("task-3"), CancellationToken.None);
 
         Assert.Equal("AGENT_NOT_READY", result.ErrorCode);
         Assert.Equal(0, handler.Calls);
@@ -75,8 +75,8 @@ public sealed class AgentTaskExecutorTests
         await using var executor = new AgentTaskExecutor(
             new AgentTaskHandlerRegistry([handler]), ReadyState(), maxParallelTasks: 2);
 
-        var first = executor.ExecuteAsync(Task("task-a"), CancellationToken.None);
-        var second = executor.ExecuteAsync(Task("task-b"), CancellationToken.None);
+        var first = executor.ExecuteAsync(Envelope("task-a"), CancellationToken.None);
+        var second = executor.ExecuteAsync(Envelope("task-b"), CancellationToken.None);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
         await WaitUntilAsync(() => executor.ActiveTaskCount == 2);
         Assert.Equal(2, executor.ActiveTaskCount);
@@ -96,7 +96,7 @@ public sealed class AgentTaskExecutorTests
         await using var executor = new AgentTaskExecutor(
             new AgentTaskHandlerRegistry([handler]), ReadyState());
 
-        var result = await executor.ExecuteAsync(Task("task-failure"), CancellationToken.None);
+        var result = await executor.ExecuteAsync(Envelope("task-failure"), CancellationToken.None);
 
         Assert.Equal("HANDLER_FAILURE", result.ErrorCode);
         Assert.DoesNotContain("secret", result.ErrorCode);
