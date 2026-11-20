@@ -10,8 +10,18 @@ object TtsHelper {
     private var isReady = false
     private var pendingText: String? = null
     private var onDoneCallback: (() -> Unit)? = null
+    private var enabled = true
+
+    fun setEnabled(context: Context, value: Boolean) {
+        enabled = value
+        context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
+            .edit().putBoolean("voice_output_enabled", value).apply()
+        if (!value) stop()
+    }
 
     fun init(context: Context) {
+        enabled = context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
+            .getBoolean("voice_output_enabled", true)
         if (tts != null) return
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -39,7 +49,7 @@ object TtsHelper {
     fun isLanguageAvailable(): Boolean = isReady
 
     fun speak(text: String, onDone: (() -> Unit)? = null) {
-        if (text.isBlank()) return
+        if (!enabled || text.isBlank()) return
         onDoneCallback = onDone
         if (!isReady) {
             pendingText = text
