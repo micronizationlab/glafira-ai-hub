@@ -30,16 +30,24 @@ Required protocol concepts:
 
 The document `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md` is the accepted architecture contract. It is not proof that all these mechanisms have been implemented.
 
-## 3. Android ↔ Desktop Bridge roles
+## 3. Two distinct Bridge directions — do not conflate them
 
-- Android GLAFIRA is the TLS Bridge host. It creates the server identity in Android Keystore and exposes a LAN endpoint while the owner enables the host.
-- Desktop Bridge CLI is the client. It submits the one-time invitation, waits for owner approval, imports the one-time credential bundle and stores credentials in an encrypted local vault.
+### Android Core ↔ Windows Desktop CLI
+- The existing Android LAN Bridge is an owner-controlled TLS host. It creates its server identity in Android Keystore and exposes a LAN endpoint only while the owner enables it.
+- The Desktop Bridge CLI is its client. It submits a one-time invitation, waits for owner approval, imports the one-time credential bundle and stores credentials in an encrypted local vault.
 - The owner chooses the actual scopes on Android. Requested scopes are hints only and never grant authority.
-- Desktop task polling requires explicit owner-granted `desktop.task.claim` and `desktop.task.result` scopes.
+- Desktop task polling against Android Core requires explicit owner-granted `desktop.task.claim` and `desktop.task.result` scopes.
 - Keep TLS, certificate validation, replay protection, owner approval, revocation and Core authorization intact. Never export Android Keystore private keys or downgrade to insecure transport.
 - The current Desktop CLI is a terminal validation utility, not the final Desktop GUI.
 
-See `docs/GLAFIRA_DESKTOP_BRIDGE_TEST_CLIENT.md` for the current pairing procedure.
+### Windows Desktop Hub ↔ Windows Agent fleet
+- Windows Desktop is the main control/server node for the Windows Agent fleet. Windows Agents are clients that pair with this Hub, heartbeat, advertise capabilities and receive fenced task leases.
+- The Hub owns the authoritative Agent registry, durable scheduling, task/lease state, dependency joins, result journal and recovery. Agents do not coordinate with one another or bypass the Hub.
+- This is a separate transport and authority direction from the Android-hosted Bridge above. Do not describe the Android device as the Windows Agent fleet's central server.
+- The Windows Desktop HTTPS Hub and multi-agent scheduler are tracked by issue #123 and are not yet implemented end-to-end. PR #125 currently adds only the Agent-local typed, bounded execution boundary; it does not implement enrollment, network polling or Hub transport.
+- Enrollment must be owner-approved; TLS certificate pinning, per-device HMAC, scope checks, replay/idempotency protection, lease fencing and explicit approval for external side effects remain mandatory.
+
+See `docs/GLAFIRA_DESKTOP_BRIDGE_TEST_CLIENT.md` for the Android-hosted pairing procedure and issue #123 for the separate Windows Desktop Hub work.
 
 ## 4. ChatGPT / OpenAI integration boundary
 
