@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-class GlafiraTaskPlanOrchestratorTest {
+class GlafiraCoreTaskPlanOrchestratorTest {
     private fun task(id: String) = GlafiraTask(
         taskId = id,
         projectId = "project-a",
@@ -18,34 +18,34 @@ class GlafiraTaskPlanOrchestratorTest {
     )
 
     @Test fun decomposesAnInstructionIntoIndependentBranchesAndAJoinThenPersistsOnce() {
-        val request = GlafiraTaskPlanRequest(
+        val request = GlafiraCoreTaskPlanRequest(
             instruction = "Research sources and prepare a reviewed summary",
             projectId = "project-a",
             idempotencyKey = "instruction-0001",
             createdAtMillis = 1_000L
         )
-        val plan = GlafiraTaskPlan(
+        val plan = GlafiraCoreTaskPlan(
             planId = "plan-00000001",
             projectId = request.projectId,
             idempotencyKey = request.idempotencyKey,
             createdAtMillis = request.createdAtMillis,
             nodes = listOf(
-                GlafiraTaskPlanNode(task("root")),
-                GlafiraTaskPlanNode(task("research"), setOf("root")),
-                GlafiraTaskPlanNode(task("review"), setOf("root")),
-                GlafiraTaskPlanNode(task("summary"), setOf("research", "review"))
+                GlafiraCoreTaskPlanNode(task("root")),
+                GlafiraCoreTaskPlanNode(task("research"), setOf("root")),
+                GlafiraCoreTaskPlanNode(task("review"), setOf("root")),
+                GlafiraCoreTaskPlanNode(task("summary"), setOf("research", "review"))
             )
         )
-        var persisted: GlafiraTaskPlan? = null
-        val orchestrator = GlafiraTaskPlanOrchestrator(
-            GlafiraTaskPlanDecomposer { received ->
+        var persisted: GlafiraCoreTaskPlan? = null
+        val orchestrator = GlafiraCoreTaskPlanOrchestrator(
+            GlafiraCoreTaskPlanDecomposer { received ->
                 assertEquals(request, received)
                 plan
             },
             persist = {
                 persisted = it
-                GlafiraTaskPlanEnqueueResult(
-                    GlafiraTaskPlanRecord(it.planId, it.projectId, it.idempotencyKey,
+                GlafiraCoreTaskPlanEnqueueResult(
+                    GlafiraCoreTaskPlanRecord(it.planId, it.projectId, it.idempotencyKey,
                         it.createdAtMillis, it.createdAtMillis, it.nodes.map { node -> node.task }),
                     true
                 )
@@ -59,21 +59,21 @@ class GlafiraTaskPlanOrchestratorTest {
     }
 
     @Test fun rejectsPlannerOutputThatChangesProjectOrIdempotencyScope() {
-        val request = GlafiraTaskPlanRequest(
+        val request = GlafiraCoreTaskPlanRequest(
             instruction = "Do scoped work",
             projectId = "project-a",
             idempotencyKey = "instruction-0002",
             createdAtMillis = 2_000L
         )
-        val foreignPlan = GlafiraTaskPlan(
+        val foreignPlan = GlafiraCoreTaskPlan(
             planId = "plan-00000002",
             projectId = "project-b",
             idempotencyKey = request.idempotencyKey,
             createdAtMillis = request.createdAtMillis,
-            nodes = listOf(GlafiraTaskPlanNode(task("foreign").copy(projectId = "project-b")))
+            nodes = listOf(GlafiraCoreTaskPlanNode(task("foreign").copy(projectId = "project-b")))
         )
-        val orchestrator = GlafiraTaskPlanOrchestrator(
-            GlafiraTaskPlanDecomposer { foreignPlan },
+        val orchestrator = GlafiraCoreTaskPlanOrchestrator(
+            GlafiraCoreTaskPlanDecomposer { foreignPlan },
             persist = { throw AssertionError("Invalid plan must not reach persistence.") }
         )
         assertThrows(IllegalArgumentException::class.java) { orchestrator.submit(request) }
