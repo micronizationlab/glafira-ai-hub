@@ -204,7 +204,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertEquals(0, File(context.noBackupFilesDir, "glafira-restore-journal").listFiles()?.size ?: 0)
         } finally {
             archive.delete()
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
         }
     }
 
