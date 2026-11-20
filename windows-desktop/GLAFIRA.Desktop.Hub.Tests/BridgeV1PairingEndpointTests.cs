@@ -59,6 +59,12 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
         Assert.False(approved.IsOnline);
         Assert.True(hubStore.Heartbeat("agent-01", ["web.research"], 1, _clock.GetUtcNow().AddSeconds(1)));
         Assert.True(Assert.Single(hubStore.GetAgents(_clock.GetUtcNow().AddSeconds(2))).IsOnline);
+
+        Assert.True(hubStore.RevokeAgent("agent-01", _clock.GetUtcNow().AddSeconds(3)));
+        Assert.Null(await resolver.ResolveAsync("agent-01", default));
+        var revoked = Assert.Single(hubStore.GetAgents(_clock.GetUtcNow().AddSeconds(4)));
+        Assert.False(revoked.OwnerApproved);
+        Assert.False(revoked.IsOnline);
     }
 
     [Fact]
