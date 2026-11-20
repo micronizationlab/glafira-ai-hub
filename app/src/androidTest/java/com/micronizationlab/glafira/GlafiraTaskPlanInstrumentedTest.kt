@@ -14,7 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class GlafiraTaskPlanInstrumentedTest {
+class GlafiraCoreTaskPlanInstrumentedTest {
     private val context: Context
         get() = InstrumentationRegistry.getInstrumentation().targetContext
     private var store: GlafiraTaskStore? = null
@@ -41,7 +41,7 @@ class GlafiraTaskPlanInstrumentedTest {
         idempotencyKey = "idem-$id"
     )
 
-    private fun plan(nodes: List<GlafiraTaskPlanNode>) = GlafiraTaskPlan(
+    private fun plan(nodes: List<GlafiraCoreTaskPlanNode>) = GlafiraCoreTaskPlan(
         planId = "plan-00000001",
         projectId = "hydrogen-active",
         idempotencyKey = "instruction-00000001",
@@ -52,14 +52,14 @@ class GlafiraTaskPlanInstrumentedTest {
     @Test fun planAndForwardDependencyEdgesAreCommittedAtomically() {
         val queue = requireNotNull(store)
         val submitted = plan(listOf(
-            GlafiraTaskPlanNode(task("child"), setOf("parent")),
-            GlafiraTaskPlanNode(task("parent"))
+            GlafiraCoreTaskPlanNode(task("child"), setOf("parent")),
+            GlafiraCoreTaskPlanNode(task("parent"))
         ))
 
         val result = queue.enqueuePlan(submitted)
         assertTrue(result.inserted)
         assertEquals(listOf("child", "parent"), result.plan.nodes.map { it.taskId })
-        assertEquals(GlafiraTaskPlanStatus.QUEUED, result.plan.status)
+        assertEquals(GlafiraCoreTaskPlanStatus.QUEUED, result.plan.status)
         assertEquals(setOf("parent"), queue.taskDependencies("child"))
 
         // Despite appearing second in the plan, the predecessor is the only claimable node.
@@ -73,15 +73,15 @@ class GlafiraTaskPlanInstrumentedTest {
 
         val running = queue.taskPlan("plan-00000001", "hydrogen-active")
         assertNotNull(running)
-        assertEquals(GlafiraTaskPlanStatus.RUNNING, running?.status)
+        assertEquals(GlafiraCoreTaskPlanStatus.RUNNING, running?.status)
         assertTrue(requireNotNull(running).updatedAtMillis >= 12_000L)
     }
 
     @Test fun planSubmissionIsIdempotentAndProjectScoped() {
         val queue = requireNotNull(store)
         val submitted = plan(listOf(
-            GlafiraTaskPlanNode(task("first")),
-            GlafiraTaskPlanNode(task("second"), setOf("first"))
+            GlafiraCoreTaskPlanNode(task("first")),
+            GlafiraCoreTaskPlanNode(task("second"), setOf("first"))
         ))
         assertTrue(queue.enqueuePlan(submitted).inserted)
         val replay = queue.enqueuePlan(submitted)
@@ -93,8 +93,8 @@ class GlafiraTaskPlanInstrumentedTest {
     @Test fun cyclicOrCrossPlanEdgesAreRejectedBeforeAnyRowsAreWritten() {
         val queue = requireNotNull(store)
         val cyclic = plan(listOf(
-            GlafiraTaskPlanNode(task("cycle-a"), setOf("cycle-b")),
-            GlafiraTaskPlanNode(task("cycle-b"), setOf("cycle-a"))
+            GlafiraCoreTaskPlanNode(task("cycle-a"), setOf("cycle-b")),
+            GlafiraCoreTaskPlanNode(task("cycle-b"), setOf("cycle-a"))
         ))
         var rejected = false
         try {
@@ -110,7 +110,7 @@ class GlafiraTaskPlanInstrumentedTest {
 
     @Test fun projectPlanJournalCombinesNodeHistoryAndPersistedResults() {
         val queue = requireNotNull(store)
-        queue.enqueuePlan(plan(listOf(GlafiraTaskPlanNode(task("journal-root")))))
+        queue.enqueuePlan(plan(listOf(GlafiraCoreTaskPlanNode(task("journal-root")))))
         assertEquals("journal-root", queue.claimNext(11_000L)?.taskId)
         assertTrue(queue.persistCoreTaskResult(
             "journal-root", setOf(GlafiraTaskState.RUNNING), """{"summary":"ready"}""", 12_000L
@@ -118,7 +118,7 @@ class GlafiraTaskPlanInstrumentedTest {
 
         val journal = queue.taskPlanJournal("plan-00000001", "hydrogen-active")
         assertNotNull(journal)
-        assertEquals(GlafiraTaskPlanStatus.SUCCEEDED, journal?.plan?.status)
+        assertEquals(GlafiraCoreTaskPlanStatus.SUCCEEDED, journal?.plan?.status)
         val node = requireNotNull(journal).nodes.single()
         assertEquals("""{"summary":"ready"}""", node.result)
         assertTrue(node.history.any { it.toState == GlafiraTaskState.RUNNING })
@@ -140,8 +140,8 @@ class GlafiraTaskPlanInstrumentedTest {
     @Test fun failedNodeMakesPlanTerminalAndPreservesSharedTaskHistory() {
         val queue = requireNotNull(store)
         queue.enqueuePlan(plan(listOf(
-            GlafiraTaskPlanNode(task("root")),
-            GlafiraTaskPlanNode(task("dependent"), setOf("root"))
+            GlafiraCoreTaskPlanNode(task("root")),
+            GlafiraCoreTaskPlanNode(task("dependent"), setOf("root"))
         )))
         assertEquals("root", queue.claimNext(11_000L)?.taskId)
         assertTrue(queue.transition(
@@ -150,7 +150,7 @@ class GlafiraTaskPlanInstrumentedTest {
         ))
         assertNull(queue.claimNext(12_001L))
         val record = queue.taskPlan("plan-00000001", "hydrogen-active")
-        assertEquals(GlafiraTaskPlanStatus.FAILED, record?.status)
+        assertEquals(GlafiraCoreTaskPlanStatus.FAILED, record?.status)
         assertEquals(2, record?.completedCount)
         assertEquals(GlafiraTaskState.FAILED, queue.getTask("dependent")?.state)
         assertTrue(queue.taskHistory("root", "hydrogen-active").isNotEmpty())
