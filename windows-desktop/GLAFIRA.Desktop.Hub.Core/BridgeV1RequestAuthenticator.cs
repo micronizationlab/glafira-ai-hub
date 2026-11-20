@@ -229,7 +229,7 @@ public sealed class BridgeV1RequestAuthenticator(
 
     private static bool IsTaskIdentifier(string value) =>
         value is { Length: >= 1 and <= 64 } &&
-        value.All(character => char.IsLetterOrDigit(character) || character is '-' or '_');
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
 
     private static bool IsIdentifier(string value) =>
         value is { Length: >= 8 and <= 128 } &&
