@@ -196,17 +196,30 @@ fun BackupSettingsSection() {
                     )
                 }
 
+                if (folderUri != null && passphrase.length < 12) {
+                    Text("Для ручного и автоматического копирования задай пароль не короче 12 символов. Кнопка остаётся доступной и объяснит, чего не хватает.", color = Tx, fontSize = 10.sp)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = {
-                            if (EncryptedApiKeyStore.save(context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY, passphrase)) {
-                                BackupScheduler.runNow(context, wifiOnly)
-                                status = "Запрос на внеплановую резервную копию отправлен."
-                            } else {
-                                status = "Не удалось сохранить пароль резервной копии."
+                            val selectedFolder = folderUri?.let { Uri.parse(it) }
+                            when {
+                                selectedFolder == null -> status = "Сначала выбери папку Google Drive или Яндекс Диска."
+                                passphrase.length < 12 -> status = "Для резервной копии нужен пароль не короче 12 символов. Введи пароль выше."
+                                !context.contentResolver.persistedUriPermissions.any {
+                                    it.uri == selectedFolder && it.isWritePermission
+                                } -> status = "Нет сохранённого разрешения на запись в выбранную папку. Выбери её повторно и подтверди доступ."
+                                DocumentFile.fromTreeUri(context, selectedFolder)?.canWrite() != true ->
+                                    status = "Облачная папка доступна только для чтения или провайдер не поддерживает запись."
+                                !EncryptedApiKeyStore.save(context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY, passphrase) ->
+                                    status = "Не удалось сохранить пароль в Android Keystore."
+                                else -> {
+                                    BackupScheduler.runNow(context, wifiOnly)
+                                    status = "Резервная копия поставлена в очередь. Открой статус ниже, чтобы проверить результат загрузки."
+                                }
                             }
                         },
-                        enabled = !busy && folderUri != null && passphrase.length >= 12,
+                        enabled = !busy,
                         modifier = Modifier.weight(1f)
                     ) { Text("Сохранить сейчас") }
                     OutlinedButton(
@@ -229,6 +242,10 @@ fun BackupSettingsSection() {
                 }
                 val lastError = prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)
                 if (!lastError.isNullOrBlank()) Text("Последняя ошибка: $lastError", color = Red, fontSize = 11.sp)
+                val persistedStatus = prefs.getString(GlafiraBackupWorker.KEY_LAST_STATUS, null)
+                if (!persistedStatus.isNullOrBlank()) {
+                    Text("Последний результат: $persistedStatus", color = Tx, fontSize = 10.sp)
+                }
                 Text(if (busy) "Выполняется операция…" else status, color = if (status.startsWith("Ошибка")) Red else Tx, fontSize = 11.sp)
             }
         }
