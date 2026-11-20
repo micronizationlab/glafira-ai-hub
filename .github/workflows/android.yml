@@ -135,19 +135,23 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Set up Android SDK and emulator packages
-        uses: android-actions/setup-android@v4
-        with:
-          cmdline-tools-version: 15859902
-          accept-android-sdk-licenses: true
-          packages: platform-tools emulator platforms;android-35 system-images;android-35;google_apis;x86_64
       - name: Require hardware acceleration
         run: |
           set -Eeuo pipefail
           test -c /dev/kvm || { echo "KVM required; software CPU emulation is not an accepted fallback." >&2; exit 1; }
           sudo chmod a+rw /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
-      - run: bash .github/scripts/run-android-instrumentation.sh
+      - name: Run Android instrumentation tests on a managed emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: bash .github/scripts/run-android-instrumentation.sh
       - name: Upload emulator diagnostics
         if: always()
         uses: actions/upload-artifact@v4
