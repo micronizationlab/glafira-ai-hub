@@ -92,6 +92,27 @@ class GlafiraCoreTaskPlanInstrumentedTest {
         assertNull(queue.taskPlan("plan-00000001", "another-project"))
     }
 
+    @Test fun failedNodeInsertRollsBackTheEntirePlanAndEarlierNodes() {
+        val queue = requireNotNull(store)
+        queue.enqueue(task("preexisting"))
+        val submitted = plan(listOf(
+            GlafiraCoreTaskPlanNode(task("would-be-partial")),
+            GlafiraCoreTaskPlanNode(task("preexisting"))
+        ))
+
+        var rejected = false
+        try {
+            queue.enqueuePlan(submitted)
+        } catch (_: IllegalArgumentException) {
+            rejected = true
+        }
+
+        assertTrue("A node collision must abort the whole plan transaction", rejected)
+        assertNull(queue.getTask("would-be-partial"))
+        assertNull(queue.taskPlan("plan-00000001", "hydrogen-active"))
+        assertEquals(GlafiraTaskState.QUEUED, queue.getTask("preexisting")?.state)
+    }
+
     @Test fun idempotencyKeyCannotReplayDifferentNodePayloadUnderSamePlanId() {
         val queue = requireNotNull(store)
         val submitted = plan(listOf(GlafiraCoreTaskPlanNode(task("stable-node"))))
