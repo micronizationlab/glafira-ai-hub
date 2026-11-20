@@ -39,7 +39,16 @@ The following snapshot expands the comparison beyond Yandex and xAI. USD amounts
 | Mistral Large 4 | $0.70 | $2.10 | 57.35 / 172.05 | Official API price card |
 | Cohere Command A | $2.50 | $10.00 | 204.82 / 819.29 | Official model card; 256k context in the published model card |
 
+| Sber GigaChat 2 Lite / Pro / Max | not separately split in the model card | not separately split in the model card | 65 / 500 / 650 RUB per 1M tokens | Official model card presents an indicative per-million-token cost, but input/output split must be verified in the current tariff package |
+| GroqCloud GPT-OSS 20B / 120B | $0.075 / $0.15 | $0.30 / $0.60 | 6.14 / 24.58 input; 24.58 / 49.16 output | Official Groq model list; rate limits and developer-tier payment requirements matter |
+| Alibaba Cloud Qwen3.5-Plus (Global, ≤128k) | $0.115 | $0.688 | 9.42 / 56.35 | Official Model Studio; international region pricing is higher ($0.40 / $2.40), so region selection is material |
+
 ### What the expanded snapshot changes
+
+- Sber/GigaChat has an indicative official model-page price card of 65 / 500 / 650 RUB per million tokens for Lite / Pro / Max, but the model page does not split the charge into input and output. The commercial tariff package and the current Cloud.ru delivery path must be verified before using it as a cost assumption. GigaChat 3 Ultra is documented as a Freemium model for individuals; this is not a substitute for a paid commercial integration.
+- GroqCloud offers open-weight models such as GPT-OSS 20B/120B at $0.075/$0.30 and $0.15/$0.60 per million input/output tokens. Its free/developer limits and payment onboarding are separate from these list prices.
+- Alibaba Qwen3.5-Plus has region-dependent rates: the official card lists $0.115/$0.688 per million for Global deployment up to 128k, while Singapore international pricing is $0.40/$2.40. This is a useful example of why GLAFIRA must store region/deployment with every price.
+
 
 - Direct DeepSeek V4.1 Flash peak pricing is about $0.30/$1.20 per million input/output tokens, with off-peak rates at half. That is very different from Yandex AI Studio's managed DeepSeek V4.1 Flash listing of 0.3/0.5 RUB per 1,000 tokens (300/500 RUB per million). The apparent difference is large: Yandex-managed input is roughly 12.2× direct DeepSeek peak input after FX; managed output is roughly 5.1× direct peak output. **Do not assume this is pure markup** until exact model revision, token accounting, hosting, VAT, cache treatment and service scope are verified. It is, however, a strong reason to compare direct provider access with managed/aggregated access.
 - DeepSeek's peak/off-peak pricing means scheduling can materially change the cost of batchable work. This is a candidate for GLAFIRA's future task scheduler only when deadline and service terms permit it.
@@ -162,6 +171,8 @@ This is a hypothesis to validate through a competitive feature matrix and user i
 - xAI release notes (official; Grok 4.7 model and dated API rate card): https://docs.x.ai/developers/release-notes
 - xAI Grok 4.7 model page (official; 500k context and token rates): https://docs.x.ai/developers/models/grok-4.7
 - xAI consumer pricing (official): https://x.ai/pricing
+- X Subscription official announcement (Premium $30/month; includes SuperGrok, Cursor Pro and X Premium+): https://x.ai/news/x-subscription
+- OpenAI ChatGPT Plus subscription terms (official; $20/month, API billed separately): https://help.openai.com/en/articles/6950777-what-is-chatgpt-plus
 - X Subscription announcement (official; $30/$100/$200 tiers): https://x.ai/news/x-subscription
 - X Premium plan help (official; regional/local prices vary): https://help.x.com/en/using-x/x-premium
 - DeepSeek direct API pricing (official; peak/off-peak, cache-hit/miss and output prices): https://api-docs.deepseek.com/quick_start/pricing/
@@ -169,6 +180,11 @@ This is a hypothesis to validate through a competitive feature matrix and user i
 - Google Gemini API pricing (official; free/paid, batch/flex/priority and data-use distinctions): https://ai.google.dev/gemini-api/docs/pricing
 - Mistral API pricing (official; current model family price card): https://docs.mistral.ai/inference/pricing
 - Cohere Command A model card (official; input/output prices and model specs): https://docs.cohere.com/v1/docs/command-a
+- GroqCloud supported models (official; model-specific token prices and rate limits): https://console.groq.com/docs/models
+- Alibaba Cloud Qwen3.5-Plus pricing (official; region and context-tier prices): https://www.alibabacloud.com/help/en/model-studio/qwen3-5-plus
+- Sber GigaChat 2 Max model page (official; indicative per-million-token price and model capability): https://developers.sber.ru/docs/ru/gigachat/models/gigachat-2-max
+- Sber GigaChat individuals quickstart (official; new customer API access routed via Cloud.ru from 2026-09-01): https://developers.sber.ru/docs/ru/gigachat/individuals-quickstart
+- Sber GigaChat commercial use terms (official; Freemium is personal/non-commercial): https://developers.sber.ru/docs/ru/gigachat/tariffs/commercial
 - Bank of Russia USD rate for 2026-11-20: https://www.cbr.ru/currency_base/daily/?UniDbQuery.Posted=True&UniDbQuery.To=20.11.2026
 - Amnezia Premium payment page (official): https://pay.amnezia.org/
 - Amnezia official FAQ (plans, 7 devices, locations, 200 Mbps, monthly purchase conditions and payment): https://docs.amnezia.org/ru/faq/
