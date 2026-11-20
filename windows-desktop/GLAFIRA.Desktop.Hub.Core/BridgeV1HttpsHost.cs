@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Hosting;
@@ -41,14 +42,17 @@ public sealed record BridgeV1HttpsHostOptions(
 public sealed class BridgeV1HttpsHost : IAsyncDisposable
 {
     private const long MaxRequestBytes = 64 * 1024;
+    private const long MaxPairingRequestBytes = 8 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     private readonly BridgeV1HttpsHostOptions _options;
     private readonly BridgeV1TlsCertificateIdentity _tlsIdentity;
     private readonly BridgeV1RequestAuthenticator _authenticator;
     private readonly BridgeV1TaskOperationDispatcher _dispatcher;
+    private readonly BridgeV1PairingEndpoint _pairingEndpoint;
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
+    private readonly SemaphoreSlim _pairingRequests = new(4, 4);
     private WebApplication? _application;
     private bool _disposed;
 
@@ -57,12 +61,14 @@ public sealed class BridgeV1HttpsHost : IAsyncDisposable
         BridgeV1TlsCertificateIdentity tlsIdentity,
         BridgeV1RequestAuthenticator authenticator,
         BridgeV1TaskOperationDispatcher dispatcher,
+        BridgeV1PairingEndpoint pairingEndpoint,
         TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(tlsIdentity);
         ArgumentNullException.ThrowIfNull(authenticator);
         ArgumentNullException.ThrowIfNull(dispatcher);
+        ArgumentNullException.ThrowIfNull(pairingEndpoint);
         options.Validate();
 
         var expectedAddresses = options.BindAddresses
@@ -85,6 +91,7 @@ public sealed class BridgeV1HttpsHost : IAsyncDisposable
         _tlsIdentity = tlsIdentity;
         _authenticator = authenticator;
         _dispatcher = dispatcher;
+        _pairingEndpoint = pairingEndpoint;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -124,6 +131,7 @@ public sealed class BridgeV1HttpsHost : IAsyncDisposable
 
             var application = builder.Build();
             application.MapPost("/bridge/v1", HandleRequestAsync);
+            application.MapPost("/bridge/v1/pair", HandlePairingAsync);
             try
             {
                 await application.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -138,6 +146,89 @@ public sealed class BridgeV1HttpsHost : IAsyncDisposable
         finally
         {
             _lifecycle.Release();
+        }
+    }
+
+    private async Task HandlePairingAsync(HttpContext context)
+    {
+        SetNoStoreHeaders(context);
+        if (!HttpMethods.IsPost(context.Request.Method) ||
+            !StringComparer.OrdinalIgnoreCase.Equals(context.Request.ContentType?.Split(';')[0].Trim(), "application/json"))
+        {
+            context.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
+            return;
+        }
+        if (context.Request.ContentLength is > MaxPairingRequestBytes)
+        {
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            return;
+        }
+
+        var bodySize = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (bodySize is { IsReadOnly: false }) bodySize.MaxRequestBodySize = MaxPairingRequestBytes;
+        if (!await _pairingRequests.WaitAsync(0, context.RequestAborted).ConfigureAwait(false))
+        {
+            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            return;
+        }
+
+        try
+        {
+            BridgeV1PairingRequest? request;
+            try
+            {
+                request = await JsonSerializer.DeserializeAsync<BridgeV1PairingRequest>(
+                    context.Request.Body, JsonOptions, context.RequestAborted).ConfigureAwait(false);
+            }
+            catch (BadHttpRequestException error) when (error.StatusCode == StatusCodes.Status413PayloadTooLarge)
+            {
+                context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                return;
+            }
+            catch (JsonException)
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                await context.Response.WriteAsJsonAsync(
+                    BridgeV1PairingResponse.Reject(), JsonOptions, context.RequestAborted).ConfigureAwait(false);
+                return;
+            }
+
+            var localAddress = context.Connection.LocalIpAddress;
+            if (localAddress is null || !BridgeV1LanAddressPolicy.IsPrivateLanAddress(localAddress) ||
+                !_options.BindAddresses.Contains(localAddress))
+            {
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                return;
+            }
+            var localEndpoint = new Uri(
+                $"https://{FormatHost(localAddress)}:{_options.Port}/bridge/v1");
+            BridgeV1PairingResponse response;
+            try
+            {
+                response = await _pairingEndpoint.RedeemAsync(
+                    request, localEndpoint, context.RequestAborted).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                await context.Response.WriteAsJsonAsync(
+                    new { status = "FAILED", errorCode = "PAIRING_SERVICE_FAILURE" },
+                    JsonOptions, context.RequestAborted).ConfigureAwait(false);
+                return;
+            }
+            context.Response.StatusCode = response.Status == "ENROLLED"
+                ? StatusCodes.Status200OK
+                : StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsJsonAsync(response, JsonOptions, context.RequestAborted)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _pairingRequests.Release();
         }
     }
 
@@ -162,8 +253,7 @@ public sealed class BridgeV1HttpsHost : IAsyncDisposable
 
     private async Task HandleRequestAsync(HttpContext context)
     {
-        context.Response.Headers["Cache-Control"] = "no-store";
-        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        SetNoStoreHeaders(context);
         if (!HttpMethods.IsPost(context.Request.Method) ||
             !StringComparer.OrdinalIgnoreCase.Equals(context.Request.ContentType?.Split(';')[0].Trim(), "application/json"))
         {
@@ -239,6 +329,13 @@ public sealed class BridgeV1HttpsHost : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
+    private static void SetNoStoreHeaders(HttpContext context)
+    {
+        context.Response.Headers["Cache-Control"] = "no-store, max-age=0";
+        context.Response.Headers["Pragma"] = "no-cache";
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    }
+
     private static string FormatHost(IPAddress address) =>
         address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
             ? $"[{address}]"
@@ -260,5 +357,6 @@ public sealed class BridgeV1HttpsHost : IAsyncDisposable
         await StopAsync().ConfigureAwait(false);
         _disposed = true;
         _lifecycle.Dispose();
+        _pairingRequests.Dispose();
     }
 }

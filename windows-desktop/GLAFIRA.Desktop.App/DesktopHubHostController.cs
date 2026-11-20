@@ -100,7 +100,11 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             var authenticator = new BridgeV1RequestAuthenticator(credentials, replayGuard);
             var dispatcher = new BridgeV1TaskOperationDispatcher(_store, _payloadStore);
             var options = new BridgeV1HttpsHostOptions(hubId, addresses, HttpsPort);
-            _host = new BridgeV1HttpsHost(options, _tlsIdentity, authenticator, dispatcher);
+            var pairingTickets = new BridgeV1PairingTicketStore(_databasePath);
+            var pairingEndpoint = new BridgeV1PairingEndpoint(
+                pairingTickets, hubId, _tlsIdentity.FingerprintSha256);
+            _host = new BridgeV1HttpsHost(
+                options, _tlsIdentity, authenticator, dispatcher, pairingEndpoint);
             await _host.StartAsync(cancellationToken).ConfigureAwait(true);
 
             EndpointsText = string.Join("  |  ", _host.Endpoints.Select(endpoint => endpoint.ToString()));
