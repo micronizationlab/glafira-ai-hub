@@ -6,7 +6,8 @@ on:
       - glafira/project-dispatcher-v1
   workflow_run:
     workflows:
-      - GLAFIRA AI HUB Android and Desktop Checks
+      - GLAFIRA CI — change-aware platform validation
+      - GLAFIRA Windows Agent
     types: [completed]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
