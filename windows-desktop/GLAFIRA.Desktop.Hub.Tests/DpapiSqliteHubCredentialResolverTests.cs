@@ -34,7 +34,7 @@ public sealed class DpapiSqliteHubCredentialResolverTests : IDisposable
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT protected_secret FROM HubCredentials WHERE device_id = 'agent-01';";
         var stored = (byte[])await command.ExecuteScalarAsync()!;
-        Assert.NotEqual(secret, stored);
+        Assert.NotEqual(Convert.ToHexString(secret), Convert.ToHexString(stored));
     }
 
     [Fact]
