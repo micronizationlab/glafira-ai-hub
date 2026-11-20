@@ -77,7 +77,9 @@ data class A(
     val n: String, val d: String, val on: Boolean, val emoji: String,
     val prompt: String, val fullDesc: String,
     val providerId: ProviderId = ProviderId.GIGACHAT,
-    val group: AgentGroup = AgentGroup.IA
+    val group: AgentGroup = AgentGroup.IA,
+    val agentId: String = n,
+    val localFeaturesAvailable: Boolean = false
 )
 data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "")
 
@@ -152,10 +154,14 @@ fun App() {
                     "ГЛАФИРА" -> "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу."
                     "АНАЛИТИК" -> "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен."
                     "ПРОГРАММИСТ" -> "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение."
+                    HrIntelligenceAgent.DISPLAY_NAME -> HrIntelligenceAgent.prompt()
                     "GigaChat" -> "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке."
                     else -> "Ты — помощник."
                 }
-                val key = "${pm.projectId}_${pm.agentName}"
+                val historyAgentId = if (pm.agentName == HrIntelligenceAgent.DISPLAY_NAME) {
+                    HrIntelligenceAgent.ROLE_ID
+                } else pm.agentName
+                val key = "${pm.projectId}_${historyAgentId}"
                 val history = loadHistory(context, key)
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 val provider = if (pm.agentName == "ГЛАФИРА") {
@@ -257,11 +263,12 @@ fun GroupHeader(title: String, count: Int, expanded: Boolean, onToggle: () -> Un
 
 @Composable
 fun AgentRow(a: A, onClick: () -> Unit) {
+    val ready = a.on || a.localFeaturesAvailable
     Row(
         Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        StatusFlower(a.on, 14.dp)
+        StatusFlower(ready, 14.dp)
         Spacer(Modifier.width(8.dp))
         Box(
             Modifier.size(24.dp).clip(CircleShape)
@@ -273,13 +280,17 @@ fun AgentRow(a: A, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
-            Text(a.n, color = if (a.on) Color(0xFF202020) else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(a.n, color = if (ready) Color(0xFF202020) else Tx, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(
-                if (a.on) "${a.providerId.displayName} · готов" else "Не настроен",
+                when {
+                    a.on -> "${a.providerId.displayName} · готов"
+                    a.localFeaturesAvailable -> "Локальные функции доступны · ИИ не настроен"
+                    else -> "Не настроен"
+                },
                 color = Tx, fontSize = 10.sp
             )
         }
-        StatusFlower(a.on, 12.dp)
+        StatusFlower(ready, 12.dp)
     }
     Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 }
@@ -331,6 +342,10 @@ fun ContactList(
                 "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение.",
                 "Технический специалист. Пишет код на разных языках, проверяет его на ошибки, предлагает архитектуру и помогает с техническими решениями. Отвечает за IT-часть проекта.",
                 ProviderId.GIGACHAT, AgentGroup.IA),
+            A(HrIntelligenceAgent.DISPLAY_NAME, "Личные и деловые контакты", isProviderConfigured(context, ProviderId.GIGACHAT), "🗂️",
+                HrIntelligenceAgent.prompt(),
+                "Кадровик GLAFIRA. Организует подтверждённые сведения о людях и организациях, историю взаимодействий, договорённости и связи. Отмечает источники, уверенность и противоречия. Не получает доступ к аккаунтам автоматически и не отправляет сообщения без разрешения.",
+                ProviderId.GIGACHAT, AgentGroup.IA, HrIntelligenceAgent.ROLE_ID, localFeaturesAvailable = true),
             A("GigaChat", "GigaChat · модель", isProviderConfigured(context, ProviderId.GIGACHAT), "🟣",
                 "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке.",
                 "Прямой доступ к модели GigaChat без роли агента. Универсальный помощник.",
@@ -483,7 +498,7 @@ fun ContactList(
                         items = iaList,
                         key = { _, a -> a.n }
                     ) { _, a ->
-                        AgentRow(a) { if (!a.on) notConfiguredAgent = a else onAgentClick(a) }
+                        AgentRow(a) { if (!a.on && !a.localFeaturesAvailable) notConfiguredAgent = a else onAgentClick(a) }
                     }
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -522,11 +537,12 @@ fun ContactList(
 @Composable
 fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val context = LocalContext.current
-    var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.n)) }
-    val historyKey = "${project.id}_${agent.n}"
+    var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.agentId)) }
+    val historyKey = "${project.id}_${agent.agentId}"
     var messages by remember { mutableStateOf(loadHistory(context, historyKey)) }
     var isLoading by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
+    var showHrContacts by remember { mutableStateOf(false) }
     var isSearching by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showTransferDialog by remember { mutableStateOf(false) }
@@ -553,7 +569,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             val text = spoken?.firstOrNull().orEmpty()
             if (text.isNotBlank()) {
                 inputText = (inputText + " " + text).trim()
-                saveDraft(context, project.id, agent.n, inputText)
+                saveDraft(context, project.id, agent.agentId, inputText)
             }
         }
     }
@@ -600,16 +616,19 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         val updatedMessages = messages + Msg(text, true, timeNow, today)
         messages = updatedMessages
         saveHistory(context, historyKey, updatedMessages)
-        clearDraft(context, project.id, agent.n)
+        clearDraft(context, project.id, agent.agentId)
         isLoading = true
         SoundHelper.playSent()
         scope.launch {
             val projectContext = buildProjectContext(context, project.id, agent.n)
             val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
-            val reply = if (agent.n == "ГЛАФИРА") {
-                GlafiraCoordinator.respond(context, loadGlafiraPrimaryProvider(context), updatedMessages, fullPrompt, project.id)
-            } else {
-                callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
+            val reply = when {
+                agent.n == "ГЛАФИРА" ->
+                    GlafiraCoordinator.respond(context, loadGlafiraPrimaryProvider(context), updatedMessages, fullPrompt, project.id)
+                agent.agentId == HrIntelligenceAgent.ROLE_ID &&
+                    !isProviderConfigured(context, ProviderId.GIGACHAT) ->
+                    "Локальная база контактов доступна без подключения ИИ. Чтобы вести диалог с кадровиком, подключи GigaChat в настройках."
+                else -> callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
             }
             val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
@@ -629,7 +648,9 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         }
     }
 
-    if (showProfile) {
+    if (showHrContacts) {
+        HrContactsScreen(projectId = project.id, onBack = { showHrContacts = false })
+    } else if (showProfile) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
@@ -654,6 +675,10 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace
                             )
                         }
+                    }
+                    if (agent.agentId == HrIntelligenceAgent.ROLE_ID) {
+                        Text("👥", fontSize = 14.sp, color = Gr,
+                            modifier = Modifier.clickable { showHrContacts = true }.padding(end = 8.dp))
                     }
                     Text("⬆", fontSize = 14.sp, color = Gr, modifier = Modifier.clickable { scope.launch { listState.animateScrollToItem(0) } }.padding(end = 8.dp))
                     Text("📌", fontSize = 14.sp, modifier = Modifier.clickable { showPinnedPanel = !showPinnedPanel }.padding(end = 8.dp))
@@ -793,7 +818,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         value = inputText,
                         onValueChange = {
                             inputText = it
-                            saveDraft(context, project.id, agent.n, it)
+                            saveDraft(context, project.id, agent.agentId, it)
                         },
                         placeholder = { Text("Введите сообщение...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f).padding(end = 6.dp),
@@ -874,6 +899,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 "ГЛАФИРА" to "Ты — Глафира, главный координатор проектов.",
                 "АНАЛИТИК" to "Ты — Аналитик.",
                 "ПРОГРАММИСТ" to "Ты — Программист.",
+                HrIntelligenceAgent.DISPLAY_NAME to HrIntelligenceAgent.prompt(),
                 "GigaChat" to "Ты — GigaChat."
             ).filter { it.first != agent.n }
             AlertDialog(
