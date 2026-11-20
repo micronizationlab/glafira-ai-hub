@@ -80,9 +80,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           if grep -Fq ':desktop-bridge' settings.gradle.kts; then
-            ./gradlew :app:testDebugUnitTest :desktop-bridge:test --no-daemon --stacktrace
+            ./gradlew :app:testDebugUnitTest :desktop-bridge:test --no-daemon --no-build-cache --rerun-tasks --stacktrace
           else
-            ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+            ./gradlew :app:testDebugUnitTest --no-daemon --no-build-cache --rerun-tasks --stacktrace
           fi
       - name: Upload JVM reports
         if: always()
@@ -156,7 +156,7 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -camera-back none -camera-front none
           disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-build-cache --rerun-tasks --stacktrace
       - name: Upload emulator diagnostics
         if: always()
         uses: actions/upload-artifact@v4
