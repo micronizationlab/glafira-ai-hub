@@ -59,6 +59,7 @@ dependencies {
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.compose.ui:ui-test")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.work:work-testing:2.10.0")
 }
