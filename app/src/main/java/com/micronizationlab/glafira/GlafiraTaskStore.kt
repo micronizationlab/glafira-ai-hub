@@ -582,6 +582,22 @@ class GlafiraTaskStore(context: Context) :
         }
     }
 
+    /** Recent orchestration journal for one project, newest plans first. */
+    @Synchronized
+    fun taskPlans(projectId: String, limit: Int = 100): List<GlafiraTaskPlanRecord> {
+        require(projectId.isNotBlank() && limit in 1..500)
+        return readableDatabase.query(
+            "core_task_plans", arrayOf("plan_id"), "project_id = ?",
+            arrayOf(projectId), null, null, "updated_at DESC, created_at DESC", limit.toString()
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    readTaskPlan(readableDatabase, cursor.getString(0), projectId)?.let(::add)
+                }
+            }
+        }
+    }
+
     /** Returns the durable plan graph and current task states, scoped to its project. */
     @Synchronized
     fun taskPlan(planId: String, projectId: String): GlafiraTaskPlanRecord? {
