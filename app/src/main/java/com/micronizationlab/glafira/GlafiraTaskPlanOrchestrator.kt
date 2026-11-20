@@ -17,7 +17,7 @@ data class GlafiraCoreTaskPlanRequest(
  * they must not execute tools, access credentials, or perform side effects while decomposing.
  */
 fun interface GlafiraCoreTaskPlanDecomposer {
-    fun decompose(request: GlafiraCoreTaskPlanRequest): GlafiraCoreTaskPlan
+    suspend fun decompose(request: GlafiraCoreTaskPlanRequest): GlafiraCoreTaskPlan
 }
 
 /**
@@ -28,7 +28,7 @@ class GlafiraCoreTaskPlanOrchestrator(
     private val decomposer: GlafiraCoreTaskPlanDecomposer,
     private val persist: (GlafiraCoreTaskPlan) -> GlafiraCoreTaskPlanEnqueueResult
 ) {
-    fun submit(request: GlafiraCoreTaskPlanRequest): GlafiraCoreTaskPlanEnqueueResult {
+    suspend fun submit(request: GlafiraCoreTaskPlanRequest): GlafiraCoreTaskPlanEnqueueResult {
         require(request.instruction.isNotBlank()) { "A non-empty instruction is required." }
         require(request.instruction.length <= 32_000) { "Instruction exceeds the planning limit." }
         require(request.projectId.isNotBlank())
