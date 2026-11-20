@@ -250,3 +250,16 @@ In the prior project discussions, DeepSeek was used as a technical expert/review
 
 ### Evidence discipline
 Every price must carry retrieval date, currency, billing unit, region, tax basis, model/version and source URL. User reports must remain anecdotes, not population averages. Marketing claims, live payout data, and audited measurements must be distinguished. Refresh prices before quoting customers or making financial commitments.
+
+
+## 5B. Grok Bot: the cloud-computer competitor
+
+Grok Bot is a direct competitor to the planned agent-workstation proposition. Its Premium tier is $30/month and advertises its own computer, tool sign-in, scheduled routines, desktop/mobile operation and weekly included usage. Multiple bots share a persistent cloud computer per user, including files, browser and logins.
+
+Therefore GLAFIRA must not claim that "an AI agent with its own computer", scheduled execution or tool sign-in is unique. Its target distinction must be the owner's control over local Windows Desktop/Agent devices, opt-in peer-owned compute, isolated task execution, user-verifiable resource contribution, transparent GLF reward accounting, local/self-hosted execution options and the integrated VPN/service network.
+
+X Subscription Premium/Grok Bot is about 2,458 RUB/month at the 2026-11-20 CBR rate before local tax/payment differences. It includes a weekly shared Grok/Cursor usage pool, not unlimited third-party model API usage. GLAFIRA's 500 RUB launch price must have explicit model/compute limits and must not imply unlimited frontier-agent work.
+
+Official sources:
+- Grok Bot product/pricing: https://x.ai/bot
+- X Subscription announcement: https://x.ai/news/x-subscription
