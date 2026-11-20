@@ -26,7 +26,7 @@ public sealed class BridgeV1RequestAuthenticatorTests
     }
 
     [Fact]
-    public async Task AdmitsGoldenVectorAndClaimsSignedIdempotencyKey()
+    public async Task AdmitsGoldenVectorAndClaimsRequestIdAsTransportNonce()
     {
         var replay = new FakeReplayGuard();
         var authenticator = CreateAuthenticator(replay);
@@ -38,7 +38,7 @@ public sealed class BridgeV1RequestAuthenticatorTests
         Assert.True(result.Accepted);
         Assert.Equal(1, replay.Claims);
         Assert.Equal(
-            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("idem-0001"))).ToLowerInvariant(),
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("request-0001"))).ToLowerInvariant(),
             replay.LastNonce);
         Assert.Equal(64, replay.LastNonce!.Length);
     }
@@ -95,7 +95,7 @@ public sealed class BridgeV1RequestAuthenticatorTests
     }
 
     [Fact]
-    public async Task RejectsReplayedIdempotencyKey()
+    public async Task RejectsExactTransportRequestReplay()
     {
         var replay = new FakeReplayGuard();
         var authenticator = CreateAuthenticator(replay);
@@ -105,6 +105,22 @@ public sealed class BridgeV1RequestAuthenticatorTests
         Assert.True((await authenticator.AuthenticateAsync(request, now)).Accepted);
         Assert.Equal(BridgeV1AdmissionFailure.ReplayDetected,
             (await authenticator.AuthenticateAsync(request, now)).Failure);
+    }
+
+    [Fact]
+    public async Task AllowsFreshTransportRequestForSameIdempotentOperationAfterLostAck()
+    {
+        var replay = new FakeReplayGuard();
+        var authenticator = CreateAuthenticator(replay);
+        var first = Sign(GoldenRequest(signature: new string('0', 64)));
+        var retry = Sign(first with { RequestId = "request-0002" });
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(first.IssuedAtEpochMs);
+
+        Assert.Equal(first.IdempotencyKey, retry.IdempotencyKey);
+        Assert.NotEqual(first.RequestId, retry.RequestId);
+        Assert.True((await authenticator.AuthenticateAsync(first, now)).Accepted);
+        Assert.True((await authenticator.AuthenticateAsync(retry, now)).Accepted);
+        Assert.Equal(2, replay.Claims);
     }
 
     [Fact]
@@ -126,6 +142,8 @@ public sealed class BridgeV1RequestAuthenticatorTests
                 new SqliteHubReplayGuard(databasePath));
 
             Assert.True((await authenticator.AuthenticateAsync(request, now)).Accepted);
+            var retry = Sign(request with { RequestId = "request-0002" });
+            Assert.True((await authenticator.AuthenticateAsync(retry, now)).Accepted);
             Assert.Equal(BridgeV1AdmissionFailure.ReplayDetected,
                 (await authenticator.AuthenticateAsync(request, now)).Failure);
         }
