@@ -27,7 +27,7 @@ public sealed record BridgeV1HttpsHostOptions(
         ArgumentNullException.ThrowIfNull(BindAddresses);
         if (BindAddresses.Count is < 1 or > 8 ||
             BindAddresses.Distinct().Count() != BindAddresses.Count ||
-            BindAddresses.Any(address => !BridgeV1TlsCertificateStore.IsPrivateLanAddress(address)))
+            BindAddresses.Any(address => !BridgeV1LanAddressPolicy.IsPrivateLanAddress(address)))
             throw new ArgumentException("Bridge host must bind only to unique private LAN addresses.", nameof(BindAddresses));
         if (Port is < 1024 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(Port), "Bridge HTTPS port must be between 1024 and 65535.");
