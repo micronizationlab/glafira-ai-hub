@@ -35,11 +35,15 @@ class GlafiraBackupWorker(
         try {
             val recoveryPassphrase = passphrase.toCharArray()
             try {
-                BackupArchive.create(applicationContext, recoveryPassphrase).also { created ->
-                    created.copyTo(archive, overwrite = true)
-                    created.delete()
+                withCoreBackupCoordinator(applicationContext) { coordinator ->
+                    val created = coordinator.create(recoveryPassphrase)
+                    try {
+                        created.copyTo(archive, overwrite = true)
+                    } finally {
+                        created.delete()
+                    }
+                    coordinator.verify(archive, recoveryPassphrase)
                 }
-                BackupArchive.verify(archive, recoveryPassphrase)
 
                 val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                 val uploadName = "GLAFIRA-current-$stamp-${UUID.randomUUID()}.glb"
@@ -51,7 +55,7 @@ class GlafiraBackupWorker(
                 } ?: error("Не удалось загрузить архив в облако.")
 
                 copyRemoteToLocal(applicationContext, uploadedRemote, verifyCopy)
-                BackupArchive.verify(verifyCopy, recoveryPassphrase)
+                withCoreBackupCoordinator(applicationContext) { it.verify(verifyCopy, recoveryPassphrase) }
 
                 val staleCopies = folder.listFiles()
                     .filter { it.name?.startsWith("GLAFIRA-current-") == true && it.uri != uploadedRemote.uri }
