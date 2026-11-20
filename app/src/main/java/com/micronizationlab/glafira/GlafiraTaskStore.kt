@@ -746,20 +746,27 @@ class GlafiraTaskStore(context: Context) :
 
     /** Propagates terminal predecessor failure for both Core and Desktop task lanes. */
     private fun failTasksWithFailedDependencies(db: SQLiteDatabase, nowMillis: Long) {
-        db.execSQL(
-            "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ?, retry_at = NULL " +
-                "WHERE state IN (?, ?) AND task_id IN (" +
-                "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
-                "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
-                "WHERE p.state IN (?, ?))",
-            arrayOf(
-                GlafiraTaskState.FAILED.databaseValue, nowMillis, "DEPENDENCY_FAILED",
-                GlafiraTaskState.QUEUED.databaseValue,
-                GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
-                GlafiraTaskState.FAILED.databaseValue,
-                GlafiraTaskState.CANCELLED.databaseValue
-            )
+        val values = ContentValues().apply {
+            put("state", GlafiraTaskState.FAILED.databaseValue)
+            put("updated_at", nowMillis)
+            put("last_error", "DEPENDENCY_FAILED")
+            putNull("retry_at")
+        }
+        val selection = "state IN (?, ?) AND task_id IN (" +
+            "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
+            "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+            "WHERE p.state IN (?, ?))"
+        val args = arrayOf(
+            GlafiraTaskState.QUEUED.databaseValue,
+            GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
+            GlafiraTaskState.FAILED.databaseValue,
+            GlafiraTaskState.CANCELLED.databaseValue
         )
+        // Iterate until no more descendants are unblocked by a newly failed predecessor.
+        // A single pass would leave grandchildren queued after their parent is failed here.
+        while (db.update(TABLE_TASKS, values, selection, args) > 0) {
+            // Continue propagating through the acyclic dependency graph.
+        }
     }
 
     private fun hasUnresolvedTaskDependencies(db: SQLiteDatabase, taskId: String): Boolean =
