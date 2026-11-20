@@ -53,3 +53,12 @@ public sealed record HubTaskRecovery(
     string TaskId,
     HubTaskState State,
     string Reason);
+
+public sealed record HubAgentSnapshot(
+    string AgentId, string DeviceId, IReadOnlyList<string> Capabilities,
+    int MaxParallelTasks, bool OwnerApproved, DateTimeOffset LastHeartbeat, bool IsOnline);
+
+public sealed record HubTaskSnapshot(
+    string TaskId, string ProjectId, string TaskType, HubTaskState State,
+    int Priority, HubTaskEffectRisk EffectRisk, int Attempts,
+    DateTimeOffset CreatedAt, string? ApprovalRef);
