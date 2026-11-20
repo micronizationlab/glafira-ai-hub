@@ -148,6 +148,24 @@ class GlafiraTaskStoreDependencyInstrumentedTest {
         }
     }
 
+    @Test fun failedPredecessorPropagatesThroughTheEntireDependencyChain() {
+        val store = newStore()
+        enqueue(store, task("root"))
+        enqueue(store, task("middle"))
+        enqueue(store, task("leaf"))
+        assertTrue(store.addTaskDependencies("middle", setOf("root"), 2_000L))
+        assertTrue(store.addTaskDependencies("leaf", setOf("middle"), 2_001L))
+
+        assertEquals("root", store.claimNext(3_000L)?.taskId)
+        assertTrue(store.transition(
+            "root", setOf(GlafiraTaskState.RUNNING), GlafiraTaskState.FAILED,
+            4_000L, null, "root failure"
+        ))
+        assertNull(store.claimNext(4_001L))
+        assertEquals(GlafiraTaskState.FAILED, store.getTask("middle")?.state)
+        assertEquals(GlafiraTaskState.FAILED, store.getTask("leaf")?.state)
+    }
+
     @Test fun desktopClaimLaneHonorsDependenciesAndReleasesTaskAfterSuccess() {
         val store = newStore()
         enqueue(store, task("parent"))
