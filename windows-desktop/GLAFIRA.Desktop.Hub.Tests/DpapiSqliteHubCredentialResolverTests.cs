@@ -1,10 +1,12 @@
 using System.Security.Cryptography;
+using System.Runtime.Versioning;
 using GLAFIRA.Desktop.Hub.Core;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace GLAFIRA.Desktop.Hub.Tests;
 
+[SupportedOSPlatform("windows")]
 public sealed class DpapiSqliteHubCredentialResolverTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(
