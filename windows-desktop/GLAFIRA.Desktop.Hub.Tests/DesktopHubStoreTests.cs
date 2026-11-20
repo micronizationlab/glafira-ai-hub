@@ -105,7 +105,7 @@ public sealed class DesktopHubStoreTests : IDisposable
             System.Threading.Tasks.Task.Run(() => _store.ClaimNext("agent-1", now, TimeSpan.FromMinutes(1))),
             System.Threading.Tasks.Task.Run(() => _store.ClaimNext("agent-2", now, TimeSpan.FromMinutes(1))));
 
-        Assert.Single(claims.Where(lease => lease is not null));
+        Assert.Single(claims, lease => lease is not null);
         Assert.Equal(HubTaskState.Leased, _store.GetTaskState("single-task"));
     }
 
