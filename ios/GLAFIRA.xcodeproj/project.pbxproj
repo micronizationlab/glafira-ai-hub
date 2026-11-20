@@ -161,7 +161,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		AB000000000000000000001 /* XCLocalSwiftPackageReference "../GlafiraBridgeKit" */ = {isa = XCLocalSwiftPackageReference; relativePath = ../GlafiraBridgeKit; };
+		AB000000000000000000001 /* XCLocalSwiftPackageReference "../GlafiraBridgeKit" */ = {isa = XCLocalSwiftPackageReference; relativePath = ios/GlafiraBridgeKit; };
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
