@@ -65,7 +65,7 @@ public sealed class SqliteHubReplayGuardTests : IDisposable
         var results = await Task.WhenAll(guards.Select(guard =>
             guard.TryClaimAsync("device-1", "0123456789abcdef", expiry, default).AsTask()));
 
-        Assert.Single(results.Where(result => result));
+        Assert.Single(results, result => result);
     }
 
     public void Dispose()
