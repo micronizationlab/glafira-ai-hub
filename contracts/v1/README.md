@@ -72,6 +72,12 @@ The generator keeps the seven message families separate instead of flattening th
 Generated artifacts are build outputs at this stage. Platform modules must adopt the DTOs deliberately and run the shared lifecycle fixtures before interoperability is claimed.
 
 
+## Windows Agent heartbeat and owner profile
+
+The Windows Agent uses the signed `DESKTOP_AGENT_HEARTBEAT` Bridge operation with the `desktop.task.claim` scope and an empty payload. The Hub responds only after the credential, device identity and owner approval are validated. An accepted response contains the server-owned Agent ID, allowlisted capabilities and maximum parallelism. A pending or revoked Agent receives a failure response with no capability profile and does not refresh liveness.
+
+Heartbeat is transport/liveness only: it does not claim a task, renew a task lease or grant any permission. The Agent must use the returned owner profile when it later submits a task claim. The Hub still compares claim capabilities and parallelism against its own owner-approved record.
+
 ## Desktop task lease fencing
 
 For the Bridge `DESKTOP_TASK_CLAIM` response, a successful lease must include opaque `leaseId` and positive `fencingToken` alongside the task fields. Every `DESKTOP_TASK_RESULT` update (including progress) must echo both values. The Desktop worker persists the lease identity with its local task record and must not submit a result without it. The Desktop Hub accepts updates only when the device, task, lease ID and fencing token all match the currently active lease; stale workers must be rejected.
