@@ -37,7 +37,9 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         handlers = listOf(
             "project.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
-            "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) }
+            "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
+            // Draft-only content never executes or publishes, even if LIVE mode is enabled later.
+            "content.draft" to GlafiraTaskHandler { GlafiraTaskExecutionOutcome.WaitingForOwner }
         ),
         runtimeBudget = { loadRuntimeBudget() },
         executionMode = { executionMode },
