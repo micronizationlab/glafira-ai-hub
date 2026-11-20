@@ -118,7 +118,12 @@ class HrContactStoreInstrumentedTest {
     @Test
     fun upsertReplacesExistingContactByStableId() {
         val contact = sampleContact()
-        val updated = contact.copy(displayName = "Обновлённое имя")
+        val updated = contact.copy(
+            displayName = "Обновлённое имя",
+            facts = contact.facts.map { fact ->
+                if (fact.category == HrFactCategory.NAME) fact.copy(value = "Обновлённое имя") else fact
+            }
+        )
         HrContactStore.upsert(context, projectId, contact)
         HrContactStore.upsert(context, projectId, updated)
 
