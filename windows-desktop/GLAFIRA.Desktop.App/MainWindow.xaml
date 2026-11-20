@@ -24,7 +24,8 @@
           <StackPanel Grid.Column="0">
             <TextBlock Text="BRIDGE HTTPS · WINDOWS DESKTOP HUB" FontSize="11" FontWeight="Bold" Foreground="#176B55"/>
             <TextBlock Text="{Binding BridgeHost.Status}" FontSize="14" FontWeight="SemiBold" Foreground="#172B25" Margin="0,4,0,2"/>
-            <TextBlock Text="{Binding BridgeHost.AvailableAddressesText}" FontSize="11" Foreground="#52645D" TextWrapping="Wrap"/>
+            <TextBlock Text="Сетевой адрес для подключения агентов:" FontSize="10" Foreground="#52645D" Margin="0,2,0,2"/>
+            <ComboBox ItemsSource="{Binding BridgeHost.AvailableAddresses}" SelectedItem="{Binding BridgeHost.SelectedAddress, Mode=TwoWay}" MinWidth="220" HorizontalAlignment="Left"/>
             <TextBlock Text="{Binding BridgeHost.EndpointsText}" FontSize="11" Foreground="#52645D" TextWrapping="Wrap" Margin="0,2,0,0"/>
             <TextBlock Text="{Binding BridgeHost.CertificateFingerprintSha256}" FontSize="10" Foreground="#7B6551" TextWrapping="Wrap" Margin="0,3,0,0"/>
           </StackPanel>
