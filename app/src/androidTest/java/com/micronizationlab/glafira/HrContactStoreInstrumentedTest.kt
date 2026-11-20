@@ -116,15 +116,12 @@ class HrContactStoreInstrumentedTest {
     }
 
     @Test
-    fun duplicateContactIdsAreRejected() {
+    fun upsertReplacesExistingContactByStableId() {
         val contact = sampleContact()
+        val updated = contact.copy(displayName = "Обновлённое имя")
         HrContactStore.upsert(context, projectId, contact)
-        val error = runCatching {
-            HrContactStore.upsert(context, projectId, contact.copy(displayName = "Подмена"))
-        }.exceptionOrNull()
+        HrContactStore.upsert(context, projectId, updated)
 
-        // Upsert replaces an existing ID by design; the stored record must be exactly one row.
-        assertEquals(listOf(contact.copy(displayName = "Подмена")), HrContactStore.list(context, projectId))
-        assertTrue(error == null)
+        assertEquals(listOf(updated), HrContactStore.list(context, projectId))
     }
 }
