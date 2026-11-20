@@ -4,8 +4,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Desktop-side pull worker. Android remains the TLS server; this node polls its authenticated
- * task inbox, executes only registered task handlers, and posts bounded results back.
+ * Legacy Desktop-side pull worker for the current Android-hosted Bridge v1 endpoint.
+ * The production architecture makes Windows Desktop Hub the authoritative TLS host.
+ * This compatibility worker keeps task execution registry-bound and fences every result
+ * update with the server-issued lease ID and fencing token.
  */
 internal class DesktopBridgeTaskWorker(
     private val origin: String,
@@ -46,7 +48,7 @@ internal class DesktopBridgeTaskWorker(
         }
     )
 
-    /** Polls one Android inbox item and starts available parallel work. */
+    /** Polls one owner-approved Bridge lease and starts available parallel work. */
     fun pollOnce(): Int {
         val response = client.post(
             origin, credentials, projectId,
