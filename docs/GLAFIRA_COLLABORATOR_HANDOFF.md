@@ -178,3 +178,14 @@ Entries are append-only. Statuses are snapshots; always refresh GitHub before re
 - PR #140 emulator UI tests prove: Bridge Settings entry exists and its Start button is enabled; manual backup button is enabled and responds by changing status; Council button is enabled and responds to an empty-question validation; task queue Add Task creates and displays an encrypted local queued task. These tests do NOT prove a real Google Drive upload/read-back, successful council call to configured external models, or real Bridge LAN pairing. Those require a physical-device/provider/network acceptance pass.
 - Backup worker source does create an encrypted archive, uploads it via the selected Storage Access Framework folder, downloads a verification copy and verifies it before marking success. The current emulator test does not execute that full cloud-provider path.
 - PR #178 documentation latest head after model quota corrections: b47385bbbbbeae31c128f1e71efcd7ad2e3eeaa9. Changes after the previous docs-only green run are documentation-only; no new platform tests are required, but check the live PR and dispatcher status before merge.
+
+
+
+
+## 2026-11-20 addendum — token calculator implementation and final CI polling
+
+- PR #178 latest documentation head 83a93600888cc9258d6fab04bcf8b145472c9514. Exact-head docs validation run 44728505286 passed; Project Dispatcher 44728508552 passed. The change-aware workflow correctly skipped platform builds/tests for documentation-only changes. Includes candidate hardware CSV, per-model quota CSV, formula spec, consumer narrative, Mac/onboarding, Telegram Stars, daily billing, donation, handoff and session journal.
+- PR #183 / issue #182 adds the pure non-issuing Kotlin device economics calculator and unit tests. Run 44728252373: Android JVM 135 JUnit cases, 0 failures/errors/skips; shared contract conformance passed; APK packaging was still in progress at this snapshot. No wallet/GLF issuance integration; all prices and shares are inputs, not hardcoded.
+- PR #181 duplicate validation was closed after exact-head run 44727389394 passed: Android JVM 137, emulator 16, Swift 24, Windows Agent 4, all with zero failures/errors/skips. The old iOS Security deprecation warnings are gone. PR #122 records the evidence.
+- Current free-quota corrections: Mistral Free mode is Vibe/Studio only, not general API access; selected Labs endpoints are experimental, not production. Groq Developer-plan limits are not free-plan limits. GigaChat individual Freemium is non-commercial. Amazon Bedrock AWS credits are general account credits, not recurring free model tokens.
+- An Excel workbook was not generated because the data-analysis file-generation capability was unavailable; the repository's formula specification and CSV input templates are intact and are the current source of truth. Do not claim an XLSX exists.
