@@ -136,7 +136,7 @@ object GlafiraBridgeProtocol {
             val leaseId = request.payload["leaseId"] ?: return GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD
             val fencingToken = request.payload["fencingToken"]?.toLongOrNull()
             val progress = request.payload["progressPercent"]?.toIntOrNull()
-            if (!isIdentifier(request.payload["taskId"].orEmpty()) || !isIdentifier(leaseId) ||
+            if (!isTaskIdentifier(request.payload["taskId"].orEmpty()) || !isIdentifier(leaseId) ||
                 fencingToken == null || fencingToken <= 0L ||
                 progress == null || progress !in 0..100 ||
                 request.payload["state"] !in setOf("ACCEPTED", "RUNNING", "SUCCEEDED", "FAILED")
@@ -147,6 +147,9 @@ object GlafiraBridgeProtocol {
 
     private fun isProjectIdentifier(value: String): Boolean =
         value == "default" || isIdentifier(value)
+
+    private fun isTaskIdentifier(value: String): Boolean =
+        value.length in 1..64 && value.all { it.isLetterOrDigit() || it in "_-" }
 
     private fun isIdentifier(value: String): Boolean =
         value.length in 8..128 && value.all { it.isLetterOrDigit() || it in "-_." }
