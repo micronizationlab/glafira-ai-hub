@@ -57,6 +57,7 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
     var website by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var importStatus by remember { mutableStateOf<String?>(null) }
+    var pendingImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
     fun lockVault() {
         session?.lock()
         session = null
@@ -84,26 +85,23 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
             lockVault()
         }
     }
+    fun importSelectedCsv(uri: android.net.Uri, activeSession: VaultSession) {
+        try {
+            val result = importVaultCsv(context, activeSession, uri)
+            entries = result.entries
+            pendingImportUri = null
+            importStatus = "Импортировано: ${result.imported}; пропущено пустых строк: ${result.skippedRows}; дубликатов: ${result.duplicates}."
+            error = null
+        } catch (e: Exception) {
+            importStatus = "Импорт не выполнен: ${e.message ?: "ошибка CSV"}"
+        }
+    }
     val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            try {
-                val activeSession = session ?: error("Сначала открой хранилище.")
-                val result = context.contentResolver.openInputStream(uri)?.use { input ->
-                    GooglePasswordCsvImporter.parse(input)
-                } ?: error("Не удалось прочитать выбранный CSV-файл.")
-                val knownKeys = entries.map {
-                    it.website.trim().lowercase() + "|" + it.username.trim().lowercase()
-                }.toMutableSet()
-                val newEntries = result.entries.filter { entry ->
-                    knownKeys.add(entry.website.trim().lowercase() + "|" + entry.username.trim().lowercase())
-                }
-                activeSession.saveEntries(entries + newEntries)
-                entries = entries + newEntries
-                importStatus = "Импортировано: ${newEntries.size}; пропущено пустых строк: ${result.skippedRows}; дубликатов: ${result.entries.size - newEntries.size}."
-                error = null
-            } catch (e: Exception) {
-                importStatus = "Импорт не выполнен: ${e.message ?: "ошибка CSV"}"
-            }
+            pendingImportUri = uri
+            // The document picker may have stopped the activity and locked the vault.
+            // Keep only its URI; do not read plaintext CSV until the owner unlocks again.
+            session?.let { importSelectedCsv(uri, it) }
         }
     }
     var configured by remember { mutableStateOf(VaultSession.exists(context)) }
@@ -137,6 +135,10 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                 "Пароль не сохраняется. Без него восстановить содержимое хранилища невозможно. Используйте уникальную фразу длиной не менее 12 символов.",
                 color = Tx, fontSize = 12.sp
             )
+            if (pendingImportUri != null) {
+                Spacer(Modifier.height(8.dp))
+                Text("CSV выбран. Откройте хранилище, чтобы продолжить импорт.", color = Gr, fontSize = 12.sp)
+            }
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = masterPassword,
@@ -170,9 +172,13 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                         } else {
                             VaultSession.create(context, chars)
                         }
-                        entries = opened.loadEntries()
+                        entries = try { opened.loadEntries() } catch (failure: Exception) {
+                            opened.lock()
+                            throw failure
+                        }
                         configured = true
                         session = opened
+                        pendingImportUri?.let { importSelectedCsv(it, opened) }
                         masterPassword = ""
                         confirmPassword = ""
                         error = null
