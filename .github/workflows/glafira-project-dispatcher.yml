@@ -36,17 +36,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "# GLAFIRA Project Dispatcher" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| PR | Workstream | Branch | Head SHA | Latest matching CI | Draft |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---:|---|---|---|---|:---:|" >> "$GITHUB_STEP_SUMMARY"
+          {
+          echo "# GLAFIRA Project Dispatcher"
+          echo ""
+          echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          echo "| PR | Workstream | Branch | Head SHA | Latest matching CI | Draft |"
+          echo "|---:|---|---|---|---|:---:|"
 
           prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url)"
           count="$(jq 'length' <<< "$prs")"
           if [[ "$count" -eq 0 ]]; then
-            echo "No open pull requests." >> "$GITHUB_STEP_SUMMARY"
+            echo "No open pull requests."
             exit 0
           fi
 
@@ -66,8 +67,9 @@ jobs:
               ci="$(jq -r '[.[] | "\(.workflowName): \(.status)/\(.conclusion // "pending") ([run](\(.url)))"] | join("<br>")' <<< "$matching")"
             fi
             short_sha="${sha:0:12}"
-            echo "| [#$number]($url) $title | $branch | <code>$short_sha</code> | $ci | $draft |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| [#$number]($url) $title | $branch | <code>$short_sha</code> | $ci | $draft |"
           done < <(jq -c '.[]' <<< "$prs")
 
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Policy: evaluate every open PR on its exact current head SHA; a successful run for an older SHA is not acceptance for the current branch." >> "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo "Policy: evaluate every open PR on its exact current head SHA; a successful run for an older SHA is not acceptance for the current branch."
+          } >> "$GITHUB_STEP_SUMMARY"
