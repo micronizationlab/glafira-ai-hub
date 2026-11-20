@@ -119,3 +119,15 @@ All manual exports, cloud backups and restores must pass through `GlafiraCoreBac
 - DPAPI/Android Keystore keys are not portable backup material; users must re-authenticate/re-enter device-bound credentials after restoring to a new device.
 
 The instrumentation suite covers Core snapshot inclusion, legacy archive rejection, task result recovery, truncated AES-GCM tag rejection, cross-application archive rejection and traversal-path rejection. No backup/restore feature is considered accepted until the managed-emulator suite passes and a real-device Google Drive round trip is checked.
+
+
+## Manual backup controls and observable WorkManager status (2026-11-20)
+
+- The owner-triggered "Сохранить сейчас" action remains enabled when configuration is incomplete. Instead of a disabled button, the UI explains whether the folder, persisted write permission, provider write access or passphrase is missing.
+- A blank passphrase field reuses only a previously protected passphrase. A nonblank but too-short new passphrase is rejected; it never silently falls back to an older stored password.
+- Manual backup WorkManager requests honor Wi-Fi/unmetered network policy but do not inherit the daily job's battery-not-low constraint. The daily schedule retains its battery policy.
+- The Settings UI observes the unique manual and daily WorkManager chains and reports ENQUEUED, RUNNING, SUCCEEDED, FAILED, BLOCKED and CANCELLED, including retry count and persisted worker error/status.
+- Folder selection is persisted only after Android grants durable write permission and the document provider confirms the folder is writable. Picker launch/result failures preserve the previous folder setting.
+- The manual action is idempotently enqueued under one unique-work name; repeated taps do not create parallel duplicate backup jobs.
+
+The managed-emulator smoke test checks that the manual button is visible/enabled before folder/password setup and that clicking it produces actionable missing-folder guidance.
