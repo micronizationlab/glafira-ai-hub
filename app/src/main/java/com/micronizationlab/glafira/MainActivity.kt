@@ -536,6 +536,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var messages by remember { mutableStateOf(loadHistory(context, historyKey)) }
     var isLoading by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
+    var showHrContacts by remember { mutableStateOf(false) }
     var isSearching by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showTransferDialog by remember { mutableStateOf(false) }
@@ -638,7 +639,9 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         }
     }
 
-    if (showProfile) {
+    if (showHrContacts) {
+        HrContactsScreen(projectId = project.id, onBack = { showHrContacts = false })
+    } else if (showProfile) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
@@ -663,6 +666,10 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace
                             )
                         }
+                    }
+                    if (agent.agentId == HrIntelligenceAgent.ROLE_ID) {
+                        Text("👥", fontSize = 14.sp, color = Gr,
+                            modifier = Modifier.clickable { showHrContacts = true }.padding(end = 8.dp))
                     }
                     Text("⬆", fontSize = 14.sp, color = Gr, modifier = Modifier.clickable { scope.launch { listState.animateScrollToItem(0) } }.padding(end = 8.dp))
                     Text("📌", fontSize = 14.sp, modifier = Modifier.clickable { showPinnedPanel = !showPinnedPanel }.padding(end = 8.dp))
