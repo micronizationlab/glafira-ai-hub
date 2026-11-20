@@ -124,6 +124,34 @@ class GlafiraCoreTaskExecutorTest {
     }
 
     @Test
+    fun contentDraftRemainsWaitingForOwnerAndNeverCallsItsHandlerInDryRun() = runBlocking {
+        val draft = task().copy(
+            taskType = "content.draft",
+            payload = """{"title":"Draft","actionSummary":"Prepare a draft only"}""",
+            requiredScopes = emptySet()
+        )
+        val queue = FakeQueue(draft)
+        var handlerCalled = false
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER)
+            },
+            handlers = listOf("content.draft" to GlafiraTaskHandler {
+                handlerCalled = true
+                GlafiraTaskExecutionOutcome.WaitingForOwner
+            }),
+            executionMode = { GlafiraExecutionMode.DRY_RUN }
+        )
+
+        val result = worker.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED, result.status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.task?.state)
+        assertTrue(!handlerCalled)
+    }
+
+    @Test
     fun retryableFailureSchedulesBoundedRetry() = runBlocking {
         val queue = FakeQueue(task())
         val result = executor(
