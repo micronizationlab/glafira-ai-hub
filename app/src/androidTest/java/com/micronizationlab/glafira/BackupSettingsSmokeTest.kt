@@ -25,7 +25,9 @@ class BackupSettingsSmokeTest {
             ).edit().remove(GlafiraBackupWorker.KEY_TREE_URI).commit()
         )
         context.startActivity(
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Intent(context, MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            )
         )
         val device = UiDevice.getInstance(instrumentation)
         assertTrue("GLAFIRA home screen did not open",
