@@ -134,6 +134,13 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         return result
     }
 
+    /** Decomposes a high-level instruction through a trusted planner, then persists its DAG. */
+    fun submitInstruction(
+        request: GlafiraTaskPlanRequest,
+        decomposer: GlafiraTaskPlanDecomposer
+    ): GlafiraTaskPlanEnqueueResult =
+        GlafiraTaskPlanOrchestrator(decomposer, ::enqueuePlan).submit(request)
+
     /** Atomically registers an entire bounded DAG before waking the shared dispatcher. */
     fun enqueuePlan(plan: GlafiraTaskPlan): GlafiraTaskPlanEnqueueResult {
         val result = taskStore.enqueuePlan(plan)
