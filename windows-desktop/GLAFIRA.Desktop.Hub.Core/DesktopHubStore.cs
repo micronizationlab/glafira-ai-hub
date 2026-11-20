@@ -470,7 +470,7 @@ public sealed class DesktopHubStore
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
         using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA foreign_keys = ON;";
+        pragma.CommandText = "PRAGMA foreign_keys = ON; PRAGMA synchronous = FULL;";
         pragma.ExecuteNonQuery();
         return connection;
     }
@@ -479,7 +479,7 @@ public sealed class DesktopHubStore
         values.Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value.Trim())
             .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
+            .OrderBy(value => value, StringComparer.Ordinal)
             .ToArray();
 
     private static void ValidateIdentifier(string value, string name)
