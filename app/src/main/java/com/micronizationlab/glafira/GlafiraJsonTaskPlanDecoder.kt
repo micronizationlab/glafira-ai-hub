@@ -17,6 +17,7 @@ object GlafiraJsonTaskPlanDecoder {
         allowedTaskTypes: Set<String>
     ): GlafiraTaskPlan {
         require(responseJson.length in 2..MAX_RESPONSE_CHARS) { "Planner response size is invalid." }
+        require(request.maxNodes in 1..GlafiraTaskPlanPolicy.MAX_NODES)
         require(allowedTaskTypes.isNotEmpty() && allowedTaskTypes.size <= 64)
         require(allowedTaskTypes.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
 
@@ -31,11 +32,14 @@ object GlafiraJsonTaskPlanDecoder {
                 val taskId = raw.getString("taskId")
                 val taskType = raw.getString("taskType")
                 require(taskType in allowedTaskTypes) { "Planner proposed a task type outside the approved allowlist." }
+                val definition = GlafiraToolRegistry.find(taskType)
+                    ?: throw IllegalArgumentException("Planner proposed an unregistered task type.")
                 val payload = raw.getString("payload")
                 require(payload.length <= 512 * 1024)
+                // Current Core handlers consume typed JSON objects; reject free-form payloads.
+                JSONObject(payload)
                 val priority = raw.optInt("priority", 0)
                 val dependencies = raw.optJSONArray("dependsOnTaskIds").toStringSet()
-                val scopes = raw.optJSONArray("requiredScopes").toStringSet()
                 val task = GlafiraTask(
                     taskId = taskId,
                     projectId = request.projectId,
@@ -46,7 +50,7 @@ object GlafiraJsonTaskPlanDecoder {
                     createdAtMillis = request.createdAtMillis,
                     updatedAtMillis = request.createdAtMillis,
                     idempotencyKey = request.idempotencyKey + ":" + taskId,
-                    requiredScopes = scopes
+                    // Scopes come from the trusted registry, never from model-authored JSON.\n                    requiredScopes = definition.requiredScopes
                 )
                 add(GlafiraTaskPlanNode(task, dependencies))
             }
