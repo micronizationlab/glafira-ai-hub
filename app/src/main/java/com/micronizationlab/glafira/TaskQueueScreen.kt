@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     val context = LocalContext.current
     val owner = remember(context) { GlafiraCoreRuntimeOwner.get(context) }
     var tasks by remember { mutableStateOf(owner.taskStore.listTasks(limit = 200)) }
+    val projectTasks = tasks.filter { it.projectId == currentProject.id }
     var showAddDialog by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var instruction by remember { mutableStateOf("") }
@@ -37,7 +39,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
             Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 9.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("←  НАЗАД", color = Color.White, modifier = Modifier.padding(4.dp))
+            Text("←  НАЗАД", color = Color.White, modifier = Modifier.clickable { onBack() }.padding(4.dp))
             Text("ОЧЕРЕДЬ ЗАДАЧ", color = Color.White, fontWeight = FontWeight.Bold)
             Text("＋", color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 8.dp))
         }
@@ -51,14 +53,14 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         message?.let {
             Text(it, color = Tx, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
         }
-        if (tasks.isEmpty()) {
+        if (projectTasks.isEmpty()) {
             Column(Modifier.fillMaxWidth().padding(24.dp)) {
                 Text("Очередь пока пуста.", color = Tx)
                 Text("Нажми «＋ ЗАДАЧА», чтобы добавить поручение в текущий проект.", color = Tx, fontSize = 11.sp)
             }
         } else {
             LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp)) {
-                items(tasks.filter { it.projectId == currentProject.id }, key = { it.taskId }) { task ->
+                items(projectTasks, key = { it.taskId }) { task ->
                     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Column(Modifier.padding(12.dp)) {
                             val data = runCatching { JSONObject(task.payload) }.getOrNull()
