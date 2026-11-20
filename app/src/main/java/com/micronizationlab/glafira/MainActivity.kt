@@ -558,14 +558,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         }
     }
 
-    fun startVoiceInput() {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!hasPermission) {
-            ToastHelper.short(context, "Нужно разрешение на микрофон")
-            return
-        }
+    fun launchSpeechRecognition() {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             ToastHelper.short(context, "Распознавание речи недоступно")
             return
@@ -582,6 +575,28 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             isListening = false
             ToastHelper.short(context, "Не удалось запустить распознавание")
         }
+    }
+
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            launchSpeechRecognition()
+        } else {
+            isListening = false
+            ToastHelper.short(context, "Без разрешения микрофона голосовой ввод недоступен")
+        }
+    }
+
+    fun startVoiceInput() {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) {
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        launchSpeechRecognition()
     }
 
     val displayedMessages = if (searchQuery.isBlank()) messages else messages.filter { it.text.contains(searchQuery, ignoreCase = true) }
