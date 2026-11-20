@@ -48,6 +48,18 @@ class DesktopTaskQueueTest {
     }
 
     @Test
+    fun serverLeaseIdentityPersistsAcrossQueueRestart() {
+        val first = queue()
+        first.enqueue(task())
+        first.attachLease("task_1", "lease-0001", 42L)
+
+        val reopened = queue()
+        val envelope = reopened.get("task_1")!!.envelope
+        assertEquals("lease-0001", envelope.leaseId)
+        assertEquals(42L, envelope.fencingToken)
+    }
+
+    @Test
     fun claimUsesPriorityAndPreservesFifoForEqualPriority() {
         val q = queue()
         q.enqueue(task(id = "low", priority = 1))
