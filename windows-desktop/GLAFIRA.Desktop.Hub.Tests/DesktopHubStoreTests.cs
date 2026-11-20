@@ -204,6 +204,26 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void AcceptedProgressRenewsLeaseAndKeepsItOutOfExpiredRecovery()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-renew", "device-renew", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("renew-task"), now);
+        var lease = _store.ClaimNext("agent-renew", now.AddSeconds(1), TimeSpan.FromSeconds(30));
+        Assert.NotNull(lease);
+
+        Assert.True(_store.ReportProgress("agent-renew", "renew-task", lease.LeaseId,
+            lease.FencingToken, 50, "still working", now.AddSeconds(20), TimeSpan.FromMinutes(2)));
+
+        var recovered = _store.RecoverExpiredLeases(now.AddSeconds(40));
+        Assert.Empty(recovered);
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState("renew-task"));
+
+        Assert.Single(_store.RecoverExpiredLeases(now.AddMinutes(3)));
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("renew-task"));
+    }
+
+    [Fact]
     public void ProgressHistoryColumnsAreAddedToAnExistingTaskEventJournal()
     {
         var now = DateTimeOffset.UtcNow;
