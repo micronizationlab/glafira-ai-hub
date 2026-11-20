@@ -83,6 +83,12 @@ fun HrContactsScreen(projectId: String, onBack: () -> Unit) {
             Text("НАЗАД", color = Color.White, fontSize = 10.sp, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(Modifier.height(10.dp))
+        Text(
+            "Зашифровано на этом устройстве. Пока не входит в резервную копию и не переносится на новый телефон.",
+            color = Tx,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Проект: $projectId", color = Tx, fontSize = 10.sp)
             Button(
