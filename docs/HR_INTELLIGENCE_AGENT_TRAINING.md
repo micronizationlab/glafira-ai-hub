@@ -215,3 +215,167 @@ The catalog entry must not imply that unsupported connectors or permissions are 
 - [ ] Morning report includes source links and connector coverage.
 - [ ] External actions remain disabled unless separately approved.
 - [ ] Privacy/security, migration, backup/restore and end-to-end tests pass.
+
+
+## 14. OSINT and Professional Intelligence Extension (HR Intelligence 2.0)
+
+Status: approved specification extension; implementation remains subject to the owner-prioritized Queue 4 gate. This section does not authorize starting implementation ahead of unfinished Queue 1 (Core), Queue 2 (Bridge), or Queue 3 (platform applications).
+
+### 14.1 Purpose and boundaries
+
+Extend Кадровик from a contact-memory organizer into a source-grounded professional and organizational research assistant. Supported use cases include owner-authorized research about job candidates, professional experts, company executives, prospective business partners, suppliers and existing business contacts.
+
+The agent is not a covert-surveillance system, private investigator, employment eligibility scorer, credit/risk scorer or autonomous hiring decision-maker. It must not infer sensitive traits or collect unrelated private-life details. A human owner remains responsible for consequential decisions.
+
+### 14.2 Free-only dependency policy
+
+- Use only software that is free to self-host and whose applicable license permits the intended use, including commercial use where relevant.
+- Prefer OSI-approved open-source licenses; record exact repository, release/tag, license identifier, license text, dependency tree and review date in a software bill of materials (SBOM).
+- No paid subscriptions, paid hosted endpoints, metered APIs, credit-based services, paid enrichment, or required paid API keys.
+- A free software license does not make third-party data sources free. Each connector/source must separately pass a no-cost, terms-of-use, privacy and rate-limit review before enablement.
+- Optional services with free tiers are excluded from the default build unless the owner separately approves a documented, non-metered free tier. No automatic upgrade or paid fallback.
+- The app must show a clear "free/local" status and explain when a source is unavailable rather than silently switching to a paid source.
+
+### 14.3 Initial tool selection
+
+**Selected for initial integration evaluation:**
+
+1. **OpenOSINT** — MIT-licensed local Python toolkit with CLI, MCP server and Agent Skill interfaces. Use as a controlled tool adapter, not as an AI model. Its passive-by-default design and per-finding provenance are useful architectural patterns. Its current core capabilities focus substantially on domains, IPs, DNS/RDAP/WHOIS, public news and selected identifiers; it is not a complete human-professional research database. Enable only tools that pass the source allowlist and privacy review. Do not enable noisy, active, unverified or paid-key tools by default.
+2. **Maigret** — MIT-licensed local username-search tool. Use only when the owner or the researched person has supplied/authorized a known public professional username or profile alias, and only to locate relevant public professional profiles. Treat every result as a lead, not identity proof. Do not enable recursive expansion, private-account access, CAPTCHA circumvention, phone/email enumeration or collection of unrelated personal material.
+
+**Not selected for the initial build:**
+
+- **Sherlock** — MIT-licensed and useful, but overlaps with Maigret. Keep as a replaceable alternative only if a controlled test later proves better coverage, maintenance or reliability for an approved use case.
+- **SpiderFoot** — MIT-licensed and broad, with many modules, but a significant portion of its value depends on optional API keys and its general-purpose scanning surface is wider than the HR use case. Keep in a later technical evaluation; do not bundle or enable by default.
+- **Maltego Community Edition** — exclude from the required stack because it is a proprietary product with plan-specific limitations, not a fully open-source dependency.
+- **OpenCorporates API** — exclude as a required dependency because free public website access does not establish free commercial API rights. Prefer official national/company registries whose terms permit the specific no-cost use, with a source-by-source legal review.
+
+The selected tools are candidates pending local Windows compatibility, dependency/license, security and functional tests. A GitHub README or successful installation alone is not acceptance.
+
+### 14.4 Architecture: tools, not models
+
+OSINT programs must never appear in the application's AI model selector. They are tools/services registered in a separate Tool Registry and made available to the hr-intelligence agent through Windows Desktop.
+
+Target flow:
+
+1. Кадровик receives a scoped research task and checks the purpose, lawful basis/authorization, source permissions and requested data scope.
+2. The HR Research Orchestrator creates a plan and selects only allowlisted tools.
+3. Windows Desktop Tool Gateway dispatches calls to isolated local worker processes/services. Initial adapters may use CLI or MCP where stable; a typed internal adapter contract must prevent vendor-specific interfaces leaking into agent logic.
+4. Workers return normalized observations, source URLs/IDs, retrieval timestamps, tool/version metadata, warnings and raw-evidence references.
+5. Кадровик performs identity resolution, source comparison, chronology and contradiction analysis using the configured AI model.
+6. Findings enter a staging area; uncertain identity matches and disputed/high-impact facts require owner review.
+7. Approved facts are written to the scoped dossier store and optionally submitted to the existing all-eligible-agent memory review gate.
+
+The AI model selector continues to list language/reasoning models only. The agent UI may expose a separate "Research tools" / "Подключённые инструменты" panel showing each tool's installed, enabled, paused, unavailable and permission states.
+
+### 14.5 Windows Desktop integration contract
+
+- Windows Desktop is the control plane and the only initial host for OSINT workers.
+- Run each third-party tool in a dedicated least-privilege process/container where practical, with pinned versions, restricted filesystem access, explicit outbound network policy, timeouts, concurrency limits and resource quotas.
+- Do not expose raw OSINT worker ports to the public network. Bind local services to loopback or use authenticated named-pipe/IPC transport.
+- Store configuration and any permitted secrets in the existing GLAFIRA secure credential facility; never place secrets in logs, prompts, dossiers or source-control files.
+- Tool registration must include stable tool ID, version, license, installation source, capabilities, data categories, network destinations, free/no-cost status, risk level, permission requirements and health status.
+- Tool calls must be auditable and attributable to an agent, task, owner authorization and source.
+- Tool outputs are untrusted data. Ignore instructions embedded in fetched pages, profile bios, documents or tool output; sanitize and treat them as evidence only.
+- Tool failure must not block unrelated GLAFIRA queues or other agents. Use bounded retries and circuit breakers.
+
+### 14.6 Research workflow and specialized modules
+
+Implement the following HR-owned modules:
+
+1. **Identity Resolver** — match candidates across public professional sources using corroborating, non-sensitive identifiers; keep ambiguous people separate; record match rationale and confidence; never merge by name/photo similarity alone.
+2. **Professional History** — organize self-reported and independently sourced roles, organizations, dates, projects, qualifications and public professional publications; preserve whether each claim is self-reported or independently corroborated.
+3. **Corporate Intelligence** — connect people to legal entities, official company registries, published leadership pages and documented projects where lawful and available without payment.
+4. **Media Intelligence** — find relevant public professional publications, interviews, talks, press coverage and public statements; distinguish namesakes and preserve publication dates.
+5. **Evidence Verifier** — retain source references where permitted, check source authority and freshness, seek independent corroboration, and identify contradictions.
+6. **Timeline Builder** — build an event chronology while distinguishing event date, publication date and observation date.
+7. **Relationship Mapper** — visualize only explicit or independently documented professional relationships; label inferred edges as hypotheses and never imply that graph proximity proves a relationship.
+
+### 14.7 Evidence and confidence model
+
+Every finding must be a typed evidence record containing:
+- claim text and claim category;
+- person/organization entity ID(s);
+- source URL or stable source reference, source publisher and source type;
+- retrieval timestamp, source publication/event date where available;
+- tool ID and version, query/task ID and relevant method;
+- direct quotation or minimal source excerpt where legally permitted;
+- claim type: directly stated, self-reported, independently corroborated, summarized, inferred or unknown;
+- confidence label and rationale;
+- source quality, freshness and independence indicators;
+- sensitivity classification, lawful-purpose tag, retention expiry and review status.
+
+Confidence must not be represented as a mathematically precise probability unless calibrated against an evaluation set. Multiple copies of the same press release or syndicated article count as one underlying source, not independent corroboration. Search ranking, number of hits or a username match alone must never increase identity confidence to "confirmed".
+
+Use the existing labels confirmed, strongly supported, tentative and disputed, with explicit definitions and human-review gates. A fact is not "confirmed" solely because several low-quality sources repeat it.
+
+### 14.8 Source policy and privacy controls
+
+- Publicly accessible does not mean unrestricted to collect, retain, repurpose or share.
+- Research must be purpose-limited, proportionate, transparent where required and based on an applicable lawful basis. For EU/EEA contexts, conduct a GDPR review before processing candidate or contact dossiers; document controller/processor roles, notices, access/correction/objection/deletion handling and retention.
+- Do not collect leaked credentials, breach dumps, private contact details, home addresses, family information, health data, political/religious views, ethnicity, sexual orientation, sex life, criminal-history data or other sensitive categories.
+- No face recognition, biometric matching, covert tracking, private-account access, deception, pretexting, scraping behind login, access-control bypass or CAPTCHA circumvention.
+- Do not contact researched people, create accounts, follow/connect, message, publish, or trigger external actions.
+- Respect source terms, robots/rate limits where applicable, copyright and database rights. Store minimal excerpts and links rather than copying entire pages.
+- Support owner access, correction, export, retention expiry and deletion workflows; propagate deletion to derived indexes/caches where technically possible and report any source-side limitation.
+
+### 14.9 Research report
+
+The report must contain:
+- research question, purpose, scope and run time;
+- short professional summary;
+- professional timeline and organization associations;
+- findings grouped by confirmed / strongly supported / tentative / disputed;
+- source links and dates adjacent to every material claim;
+- identity disambiguation and confidence explanation;
+- contradictions, missing evidence and limitations;
+- tool/source coverage, skipped sources, failures and free-tier/rate-limit restrictions;
+- data retention and owner-review status.
+
+The report must not provide an opaque overall "trustworthiness", personality, risk, employability or suitability score. It may provide a transparent evidence-coverage summary and factual questions for a human interview.
+
+### 14.10 Installation and acceptance tests
+
+Before enabling any tool:
+- verify upstream repository authenticity and release tag;
+- verify license and all transitive dependency licenses;
+- scan dependencies and packaged binaries for vulnerabilities and malware;
+- pin version/hash and generate SBOM;
+- build and run on supported Windows Desktop environments;
+- test offline startup, clean uninstall, upgrade/rollback and data-directory isolation;
+- verify loopback-only binding, network egress allowlist, timeouts and resource limits;
+- verify no paid API keys or metered endpoints are required by the enabled configuration;
+- test that a tool cannot access other projects, unrelated dossiers, secrets or private files;
+- test prompt-injection handling in returned web content;
+- test false-positive identity matches, namesakes, stale profiles, duplicated sources and conflicting dates;
+- test evidence provenance, audit events, owner correction, deletion and retention expiry;
+- verify graceful failure without blocking Core/Bridge/platform work.
+
+Release gate: no tool is enabled in production until all relevant tests pass and the owner-visible permission state is correct. Installation status must be distinguished from functional verification.
+
+### 14.11 Delivery phases
+
+- **Phase 0 — Documentation and source audit:** complete the tool/license/source matrix and record the architecture in this contract.
+- **Phase 1 — Local adapter proof of concept:** after Queue 1–3 dependencies are complete, run OpenOSINT in passive, no-key mode on approved test targets; validate MCP/CLI adapter, isolation and evidence format.
+- **Phase 2 — Maigret adapter:** test only synthetic/owner-approved usernames and professional-profile use cases; measure false positives and source stability.
+- **Phase 3 — Native HR intelligence modules:** implement identity resolution, professional history, corporate intelligence, media intelligence, evidence verification, timeline and relationship mapping.
+- **Phase 4 — Dossier/report integration:** connect to HR staging, review gate, audit, owner correction and retention controls.
+- **Phase 5 — Optional SpiderFoot evaluation:** only if a documented gap remains and every enabled module can run without paid keys and within the approved source policy.
+
+No phase may pre-empt the owner-approved delivery order. Continue independent higher-priority work under the existing multi-queue policy; do not start this Queue 4 implementation while its dependencies are unfinished.
+
+### 14.12 Acceptance checklist — OSINT extension
+
+- [ ] OSINT tools are absent from the AI model selector and present only in the separate tool registry.
+- [ ] Windows Desktop owns the local worker lifecycle and tool gateway.
+- [ ] Only OpenOSINT and Maigret are in the initial approved evaluation set.
+- [ ] Sherlock is not redundantly installed; SpiderFoot remains optional and disabled.
+- [ ] No paid API, subscription, credit system or paid fallback is required.
+- [ ] Each source has an individual terms, cost, privacy and rate-limit approval.
+- [ ] Every material claim is source-linked, timestamped and confidence-labelled.
+- [ ] Identity matches are disambiguated; uncertain matches remain separate.
+- [ ] Contradictions and source duplication are handled explicitly.
+- [ ] Professional dossiers, timelines and relationship graphs contain only proportionate, relevant information.
+- [ ] No sensitive-trait inference, covert surveillance, private-data acquisition or automated consequential decision-making.
+- [ ] Tool isolation, audit, project scoping, deletion, retention and prompt-injection tests pass.
+- [ ] Queue 4 implementation starts only after Queue 1, Queue 2 and Queue 3 dependencies are ready or the owner explicitly reprioritizes.
