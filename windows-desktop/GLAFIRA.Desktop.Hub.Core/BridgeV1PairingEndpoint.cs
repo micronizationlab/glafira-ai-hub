@@ -59,17 +59,22 @@ public sealed class BridgeV1PairingEndpoint
 {
     private static readonly TimeSpan DefaultCredentialLifetime = TimeSpan.FromDays(90);
     private readonly BridgeV1PairingTicketStore _tickets;
+    private readonly DesktopHubStore _hubStore;
+    private readonly TimeProvider _timeProvider;
     private readonly string _desktopHubId;
     private readonly string _tlsCertificateSha256;
     private readonly TimeSpan _credentialLifetime;
 
     public BridgeV1PairingEndpoint(
         BridgeV1PairingTicketStore tickets,
+        DesktopHubStore hubStore,
         string desktopHubId,
         string tlsCertificateSha256,
-        TimeSpan? credentialLifetime = null)
+        TimeSpan? credentialLifetime = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(tickets);
+        ArgumentNullException.ThrowIfNull(hubStore);
         ArgumentException.ThrowIfNullOrWhiteSpace(desktopHubId);
         ArgumentException.ThrowIfNullOrWhiteSpace(tlsCertificateSha256);
         if (desktopHubId.Length > 128 ||
@@ -82,6 +87,8 @@ public sealed class BridgeV1PairingEndpoint
         if (lifetime < TimeSpan.FromHours(1) || lifetime > TimeSpan.FromDays(365))
             throw new ArgumentOutOfRangeException(nameof(credentialLifetime));
         _tickets = tickets;
+        _hubStore = hubStore;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _desktopHubId = desktopHubId;
         _tlsCertificateSha256 = tlsCertificateSha256;
         _credentialLifetime = lifetime;
@@ -104,6 +111,10 @@ public sealed class BridgeV1PairingEndpoint
 
         try
         {
+            // Do not let a pairing ticket replace an already owner-approved Agent identity.
+            if (_hubStore.IsAgentOwnerApproved(request.AgentId))
+                return BridgeV1PairingResponse.Reject();
+
             var result = await _tickets.EnrollAgentAsync(
                 request.TicketId,
                 request.PairingCode,
@@ -113,9 +124,22 @@ public sealed class BridgeV1PairingEndpoint
                 _tlsCertificateSha256,
                 _credentialLifetime,
                 cancellationToken).ConfigureAwait(false);
-            return result.Accepted && result.Credential is not null
-                ? BridgeV1PairingResponse.Enrolled(result.Credential)
-                : BridgeV1PairingResponse.Reject();
+            if (!result.Accepted || result.Credential is null)
+                return BridgeV1PairingResponse.Reject();
+
+            // Enrollment is deliberately not approval. New devices enter the scheduler
+            // with no capabilities and cannot claim tasks until the owner assigns scopes.
+            try
+            {
+                _hubStore.RegisterPendingAgent(
+                    request.AgentId, request.AgentId, _timeProvider.GetUtcNow());
+            }
+            catch
+            {
+                _hubStore.RevokeAgent(request.AgentId, _timeProvider.GetUtcNow());
+                return BridgeV1PairingResponse.Reject();
+            }
+            return BridgeV1PairingResponse.Enrolled(result.Credential);
         }
         catch (ArgumentException)
         {
