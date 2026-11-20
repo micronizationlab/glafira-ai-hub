@@ -174,7 +174,7 @@ public sealed class BridgeV1TaskOperationDispatcher(
         {
             accepted = store.ReportProgress(
                 agent.AgentId, taskId, leaseId, fencingToken, progress,
-                payload.GetValueOrDefault("progressMessage") ?? "working", now);
+                payload.GetValueOrDefault("progressMessage") ?? "working", now, _leaseDuration);
         }
         else if (state is "SUCCEEDED" or "FAILED")
         {
