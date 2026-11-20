@@ -1,4 +1,5 @@
 using GLAFIRA.Desktop.Hub.Core;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace GLAFIRA.Desktop.Hub.Core.Tests;
@@ -27,7 +28,7 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
-    public void CapabilityMismatchDoesNotClaimCreateTask()
+    public void CapabilityMismatchDoesNotClaimTask()
     {
         var now = DateTimeOffset.UtcNow;
         _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 1, true), now);
