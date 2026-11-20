@@ -50,7 +50,8 @@ object GlafiraJsonTaskPlanDecoder {
                     createdAtMillis = request.createdAtMillis,
                     updatedAtMillis = request.createdAtMillis,
                     idempotencyKey = request.idempotencyKey + ":" + taskId,
-                    // Scopes come from the trusted registry, never from model-authored JSON.\n                    requiredScopes = definition.requiredScopes
+                    // Scopes come from the trusted registry, never from model-authored JSON.
+                    requiredScopes = definition.requiredScopes
                 )
                 add(GlafiraTaskPlanNode(task, dependencies))
             }
