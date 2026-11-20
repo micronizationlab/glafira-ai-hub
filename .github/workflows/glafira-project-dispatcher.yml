@@ -62,11 +62,11 @@ jobs:
             draft="$(jq -r '.isDraft' <<< "$pr")"
             url="$(jq -r '.url' <<< "$pr")"
 
-            checks="$(jq -c '.statusCheckRollup.contexts.nodes // []' <<< "$pr")"
+            checks="$(jq -c '.statusCheckRollup // []' <<< "$pr")"
             if [[ "$(jq 'length' <<< "$checks")" -eq 0 ]]; then
               ci="NO CHECKS REPORTED FOR CURRENT PR HEAD"
             else
-              ci="$(jq -r 'map(if .__typename == "CheckRun" then "\(.name): \(.status)/\(.conclusion // "pending") ([check](\(.detailsUrl)))" elif .__typename == "StatusContext" then "\(.context): \(.state) ([check](\(.targetUrl)))" else "UNKNOWN CHECK STATE" end) | join("<br>")' <<< "$checks")"
+              ci="$(jq -r 'map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")' <<< "$checks")"
             fi
             short_sha="${sha:0:12}"
             echo "| [#$number]($url) $title | $branch | <code>$short_sha</code> | $ci | $draft |"
