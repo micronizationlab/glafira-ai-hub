@@ -45,13 +45,15 @@ jobs:
           echo "| PR | Workstream | Branch | Head SHA | Latest matching CI | Draft |"
           echo "|---:|---|---|---|---|:---:|"
 
-          prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url)"
+          prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup)"
           count="$(jq 'length' <<< "$prs")"
           if [[ "$count" -eq 0 ]]; then
             echo "No open pull requests."
             exit 0
           fi
 
+          # statusCheckRollup is returned with the PR list in one GraphQL query.
+          # Avoid the Actions REST API: per-PR gh run list calls exhausted the installation rate limit.
           while IFS= read -r pr; do
             number="$(jq -r '.number' <<< "$pr")"
             title="$(jq -r '.title' <<< "$pr" | tr '|' '/')"
@@ -60,12 +62,11 @@ jobs:
             draft="$(jq -r '.isDraft' <<< "$pr")"
             url="$(jq -r '.url' <<< "$pr")"
 
-            runs="$(gh run list --repo "$GH_REPO" --branch "$branch" --limit 10 --json databaseId,status,conclusion,headSha,workflowName,url,createdAt)"
-            matching="$(jq --arg sha "$sha" '[.[] | select(.headSha == $sha)] | sort_by(.workflowName, .createdAt) | group_by(.workflowName) | map(sort_by(.createdAt) | last)' <<< "$runs")"
-            if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
-              ci="NO RUN FOR CURRENT SHA"
+            checks="$(jq -c '.statusCheckRollup // []' <<< "$pr")"
+            if [[ "$(jq 'length' <<< "$checks")" -eq 0 ]]; then
+              ci="NO CHECKS REPORTED FOR CURRENT PR HEAD"
             else
-              ci="$(jq -r '[.[] | "\(.workflowName): \(.status)/\(.conclusion // "pending") ([run](\(.url)))"] | join("<br>")' <<< "$matching")"
+              ci="$(jq -r 'map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")' <<< "$checks")"
             fi
             short_sha="${sha:0:12}"
             echo "| [#$number]($url) $title | $branch | <code>$short_sha</code> | $ci | $draft |"
