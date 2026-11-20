@@ -15,7 +15,10 @@ import java.util.Locale
  * Executes only the small, typed, local Core operation set after Bridge admission.
  * It cannot invoke tools, providers, external services, arbitrary paths or shell commands.
  */
-class GlafiraBridgeOperationDispatcher(context: Context) {
+class GlafiraBridgeOperationDispatcher(
+    context: Context,
+    private val coreOwner: GlafiraCoreRuntimeOwner? = null
+) {
     private val appContext = context.applicationContext
     private val filesRoot = appContext.filesDir.canonicalFile
 
@@ -77,12 +80,76 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                 }
                 GlafiraBridgeOperation.APPROVAL_REQUEST ->
                     failed(request, "APPROVAL_QUEUE_NOT_CONNECTED")
-                GlafiraBridgeOperation.DESKTOP_TASK_CLAIM,
-                GlafiraBridgeOperation.DESKTOP_TASK_RESULT ->
-                    failed(request, "DESKTOP_OPERATIONS_REQUIRE_CORE_QUEUE")
+                GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> dispatchDesktopTaskClaim(request)
+                GlafiraBridgeOperation.DESKTOP_TASK_RESULT -> dispatchDesktopTaskResult(request)
             }
         } catch (_: Exception) {
             failed(request, "OPERATION_FAILED")
+        }
+    }
+
+    /**
+     * Called only after Bridge identity, HMAC, replay and scope admission have succeeded.
+     * The Desktop worker receives either a redacted DRY_RUN preview or an authorized lease.
+     */
+    private fun dispatchDesktopTaskClaim(request: GlafiraBridgeRequest): GlafiraBridgeResponse {
+        val owner = coreOwner ?: return failed(request, "CORE_QUEUE_UNAVAILABLE")
+        return try {
+            val capabilitiesJson = JSONArray(request.payload.getValue("capabilities"))
+            val capabilities = buildSet {
+                for (index in 0 until capabilitiesJson.length()) add(capabilitiesJson.getString(index))
+            }
+            val maxParallel = request.payload.getValue("maxParallelTasks").toInt()
+            owner.recordDesktopNode(request.deviceId, capabilities, maxParallel)
+
+            val preview = owner.previewDesktopTask(capabilities)
+            if (preview != null) {
+                return succeeded(request, mapOf(
+                    "dryRunPreview" to "true",
+                    "previewJson" to preview.toSafeJson()
+                ))
+            }
+
+            val task = owner.claimDesktopTask(request.deviceId, capabilities, maxParallel)
+                ?: return succeeded(request, mapOf("available" to "false"))
+            val payload = JSONObject(task.payload)
+            val required = payload.optJSONArray("requiredCapabilities") ?: JSONArray()
+            succeeded(request, mapOf(
+                "available" to "true",
+                "taskId" to task.taskId,
+                "projectId" to task.projectId,
+                "parentTaskId" to payload.getString("parentTaskId"),
+                "subtaskId" to payload.getString("subtaskId"),
+                "title" to payload.getString("title"),
+                "instruction" to payload.getString("instruction"),
+                "executor" to payload.getString("executor"),
+                "requiredCapabilities" to required.toString(),
+                "createdAtEpochMs" to task.createdAtMillis.toString(),
+                "expiresAtEpochMs" to (task.deadlineAtMillis ?: task.createdAtMillis + 60_000L).toString(),
+                "priority" to task.priority.toString()
+            ))
+        } catch (_: Exception) {
+            failed(request, "DESKTOP_TASK_CLAIM_FAILED")
+        }
+    }
+
+    private fun dispatchDesktopTaskResult(request: GlafiraBridgeRequest): GlafiraBridgeResponse {
+        val owner = coreOwner ?: return failed(request, "CORE_QUEUE_UNAVAILABLE")
+        return try {
+            val taskId = request.payload.getValue("taskId")
+            val updated = owner.updateDesktopTask(
+                taskId = taskId,
+                deviceId = request.deviceId,
+                state = request.payload.getValue("state"),
+                progressPercent = request.payload.getValue("progressPercent").toInt(),
+                progressMessage = request.payload["progressMessage"]?.takeUnless { it == "none" },
+                result = request.payload["result"]?.takeUnless { it == "none" },
+                errorCode = request.payload["errorCode"]?.takeUnless { it == "none" }
+            )
+            if (!updated) failed(request, "DESKTOP_TASK_RESULT_REJECTED")
+            else succeeded(request, mapOf("updated" to "true", "taskId" to taskId))
+        } catch (_: Exception) {
+            failed(request, "DESKTOP_TASK_RESULT_FAILED")
         }
     }
 
