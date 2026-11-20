@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using GLAFIRA.Desktop.Hub.Core;
@@ -18,6 +20,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     private BridgeV1TlsCertificateIdentity? _tlsIdentity;
     private string _status = "Остановлен";
     private string _availableAddressesText = "Поиск частных LAN-адресов…";
+    private string _selectedAddress = string.Empty;
     private string _endpointsText = "—";
     private string _certificateFingerprint = "—";
 
@@ -38,6 +41,12 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     }
 
     public string Status { get => _status; private set => Set(ref _status, value); }
+    public ObservableCollection<string> AvailableAddresses { get; } = [];
+    public string SelectedAddress
+    {
+        get => _selectedAddress;
+        set => Set(ref _selectedAddress, value);
+    }
     public string AvailableAddressesText
     {
         get => _availableAddressesText;
@@ -56,9 +65,14 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     public void RefreshAvailableAddresses()
     {
         var addresses = BridgeV1LanAddressDiscovery.GetPrivateAddresses();
+        AvailableAddresses.Clear();
+        foreach (var address in addresses)
+            AvailableAddresses.Add(address.ToString());
+        if (!AvailableAddresses.Contains(SelectedAddress, StringComparer.Ordinal))
+            SelectedAddress = AvailableAddresses.FirstOrDefault() ?? string.Empty;
         AvailableAddressesText = addresses.Count == 0
             ? "Активные частные LAN-адреса не найдены"
-            : string.Join(", ", addresses.Select(address => address.ToString()));
+            : "Выберите адрес, доступный только в вашей локальной сети.";
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -68,12 +82,15 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
 
         try
         {
-            var addresses = BridgeV1LanAddressDiscovery.GetPrivateAddresses();
-            if (addresses.Count == 0)
+            var available = BridgeV1LanAddressDiscovery.GetPrivateAddresses();
+            var selectedAddress = available.FirstOrDefault(address =>
+                StringComparer.Ordinal.Equals(address.ToString(), SelectedAddress));
+            if (selectedAddress is null)
             {
-                Status = "Не запущен: нет активного частного LAN-адреса.";
+                Status = "Не запущен: выберите активный частный LAN-адрес.";
                 return;
             }
+            var addresses = new[] { selectedAddress };
 
             var hubId = _hubIdentityStore.LoadOrCreate();
             _tlsIdentity = _tlsCertificateStore.LoadOrCreate(hubId, addresses);
