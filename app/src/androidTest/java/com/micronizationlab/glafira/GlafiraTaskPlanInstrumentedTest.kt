@@ -108,6 +108,24 @@ class GlafiraTaskPlanInstrumentedTest {
         assertNull(queue.taskPlan("plan-00000001", "hydrogen-active"))
     }
 
+    @Test fun projectPlanJournalCombinesNodeHistoryAndPersistedResults() {
+        val queue = requireNotNull(store)
+        queue.enqueuePlan(plan(listOf(GlafiraTaskPlanNode(task("journal-root")))))
+        assertEquals("journal-root", queue.claimNext(11_000L)?.taskId)
+        assertTrue(queue.persistCoreTaskResult(
+            "journal-root", setOf(GlafiraTaskState.RUNNING), """{"summary":"ready"}""", 12_000L
+        ))
+
+        val journal = queue.taskPlanJournal("plan-00000001", "hydrogen-active")
+        assertNotNull(journal)
+        assertEquals(GlafiraTaskPlanStatus.SUCCEEDED, journal?.plan?.status)
+        val node = requireNotNull(journal).nodes.single()
+        assertEquals("""{"summary":"ready"}""", node.result)
+        assertTrue(node.history.any { it.toState == GlafiraTaskState.RUNNING })
+        assertTrue(node.history.any { it.toState == GlafiraTaskState.SUCCEEDED })
+        assertEquals(1, queue.taskPlans("hydrogen-active").size)
+    }
+
     @Test fun desktopNodeInventoryTracksMultipleLiveWorkersAndTheirCapabilities() {
         val queue = requireNotNull(store)
         queue.recordDesktopNode("desktop-node-01", setOf("cpu", "files"), 2, 20_000L)
