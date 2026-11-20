@@ -64,6 +64,12 @@ Unified operational memory is a Priority 1 GLAFIRA Core responsibility and is sp
 4. Show task ownership, dependencies, handoffs, status and shared project context.
 5. Enforce project boundaries, least privilege and per-agent tool scopes.
 
+## Windows Desktop Bridge implementation baseline
+
+A first JVM 17 Desktop Bridge module is being integrated as a command-line validation client, not as the final Windows Desktop GUI. It includes owner-approved pairing, an encrypted local credential vault, bounded HTTPS transport, a durable task queue, interrupted-task recovery, bounded worker execution, a local Ollama handler and DRY_RUN previews. Its remaining limitations and build commands are documented in [desktop-bridge/README.md](../desktop-bridge/README.md).
+
+The module is not yet the authoritative Core queue and must not be treated as the completed Windows Desktop host. The next stages are shared Core queue integration, Desktop UI/host, enrollment/heartbeats/result acknowledgements, Windows packaging and fleet management. LIVE external actions remain disabled.
+
 ## Priority 6 — Secure Device and Computer Bridge
 
 1. Add an authenticated, paired Bridge for desktop and Android device actions.
