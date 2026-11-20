@@ -36,6 +36,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         var root = Path.GetFullPath(rootDirectory);
         _databasePath = Path.GetFullPath(databasePath);
         _store = store;
+        _ = new BridgeV1PairingTicketStore(_databasePath);
         _hubIdentityStore = new BridgeV1HubIdentityStore(Path.Combine(root, "hub-id.txt"));
         _tlsCertificateStore = new BridgeV1TlsCertificateStore();
         _payloadStore = new HubTaskPayloadStore(
