@@ -19,9 +19,9 @@ jobs:
     name: Windows Desktop Hub durable scheduler tests
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
       - name: Restore
@@ -32,7 +32,7 @@ jobs:
         run: dotnet build windows-desktop/GLAFIRA.Desktop.Hub.Core/GLAFIRA.Desktop.Hub.Core.csproj --configuration Release --no-restore
       - name: Upload TRX report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: windows-desktop-hub-test-results-${{ github.run_id }}
           path: windows-desktop/GLAFIRA.Desktop.Hub.Tests/TestResults/*.trx
