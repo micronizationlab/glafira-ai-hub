@@ -75,6 +75,10 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Text("НАСТРОЙКИ", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
 
+        Spacer(Modifier.height(12.dp))
+        Text("ПОДКЛЮЧЕНИЕ К DESKTOP", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        AndroidBridgeSettingsSection()
+
         Spacer(Modifier.height(24.dp))
 
         Row(
