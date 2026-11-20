@@ -12,7 +12,17 @@ public static class BridgeV1LanAddressDiscovery
     public static IReadOnlyList<IPAddress> GetPrivateAddresses()
     {
         var addresses = new HashSet<IPAddress>();
-        foreach (var network in NetworkInterface.GetAllNetworkInterfaces())
+        NetworkInterface[] networks;
+        try
+        {
+            networks = NetworkInterface.GetAllNetworkInterfaces();
+        }
+        catch (NetworkInformationException)
+        {
+            return [];
+        }
+
+        foreach (var network in networks)
         {
             if (network.OperationalStatus != OperationalStatus.Up ||
                 network.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
