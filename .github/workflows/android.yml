@@ -25,6 +25,7 @@ jobs:
       android_acceptance: ${{ steps.detect.outputs.android_acceptance }}
       ios: ${{ steps.detect.outputs.ios }}
       agent: ${{ steps.detect.outputs.agent }}
+      desktop_hub: ${{ steps.detect.outputs.desktop_hub }}
       contracts: ${{ steps.detect.outputs.contracts }}
       workflow_lint: ${{ steps.detect.outputs.workflow_lint }}
     steps:
@@ -202,6 +203,27 @@ jobs:
       - name: Build native iOS app for simulator
         run: xcodebuild -project ios/GLAFIRA.xcodeproj -scheme GLAFIRA -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 
+  windows-desktop-tests:
+    name: Windows Desktop Hub tests and build
+    needs: changes
+    if: needs.changes.outputs.desktop_hub == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet test windows-desktop/GLAFIRA.Desktop.Hub.Tests/GLAFIRA.Desktop.Hub.Tests.csproj --configuration Release --logger "trx;LogFileName=desktop-hub.trx" --results-directory TestResults/DesktopHub
+      - run: dotnet build windows-desktop/GLAFIRA.Desktop.App/GLAFIRA.Desktop.App.csproj --configuration Release
+      - name: Upload Desktop Hub reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop-reports-${{ github.run_id }}
+          path: TestResults/DesktopHub/
+          if-no-files-found: error
+
   windows-agent-tests:
     name: Windows Agent tests and build
     needs: changes
@@ -240,7 +262,7 @@ jobs:
   ci-summary:
     name: Exact-head CI summary
     if: always()
-    needs: [changes, workflow-lint, android-tests, android-apk, android-emulator, ios-tests, windows-agent-tests, contract-conformance]
+    needs: [changes, workflow-lint, android-tests, android-apk, android-emulator, ios-tests, windows-agent-tests, windows-desktop-tests, contract-conformance]
     runs-on: ubuntu-latest
     steps:
       - name: Publish exact SHA and honest component status
@@ -253,6 +275,7 @@ jobs:
           EMULATOR: ${{ needs.android-emulator.result }}
           IOS: ${{ needs.ios-tests.result }}
           AGENT: ${{ needs.windows-agent-tests.result }}
+          DESKTOP_HUB: ${{ needs.windows-desktop-tests.result }}
           CONTRACTS: ${{ needs.contract-conformance.result }}
         run: |
           {
@@ -269,11 +292,12 @@ jobs:
             echo "| Android emulator | $EMULATOR |"
             echo "| iOS Swift | $IOS |"
             echo "| Windows Agent | $AGENT |"
+            echo "| Windows Desktop Hub | $DESKTOP_HUB |"
             echo "| Contracts | $CONTRACTS |"
             echo
             echo "Skipped means not selected for this commit; it is not a passing test result."
           } >> "$GITHUB_STEP_SUMMARY"
-          for result in "$CHANGES" "$WORKFLOW_LINT" "$ANDROID" "$APK" "$EMULATOR" "$IOS" "$AGENT" "$CONTRACTS"; do
+          for result in "$CHANGES" "$WORKFLOW_LINT" "$ANDROID" "$APK" "$EMULATOR" "$IOS" "$AGENT" "$DESKTOP_HUB" "$CONTRACTS"; do
             case "$result" in
               success|skipped) ;;
               *)

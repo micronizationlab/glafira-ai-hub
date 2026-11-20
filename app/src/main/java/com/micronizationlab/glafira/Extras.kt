@@ -7,19 +7,29 @@ import java.util.Date
 import java.util.Locale
 
 // ===== 10. Черновики сообщений =====
-fun saveDraft(context: Context, projectId: String, agentName: String, text: String) {
-    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    prefs.edit().putString("draft_${projectId}_$agentName", text).apply()
+private fun draftKey(projectId: String, agentName: String): String {
+    val encoder = java.util.Base64.getUrlEncoder().withoutPadding()
+    return "draft_v2_" + encoder.encodeToString(projectId.toByteArray(Charsets.UTF_8)) + "." + encoder.encodeToString(agentName.toByteArray(Charsets.UTF_8))
 }
 
-fun loadDraft(context: Context, projectId: String, agentName: String): String {
+fun saveDraft(context: Context, projectId: String, agentName: String, text: String) = GlafiraFileMaintenance.withExclusive {
     val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    return prefs.getString("draft_${projectId}_$agentName", "") ?: ""
+    if (!prefs.edit().putString(draftKey(projectId, agentName), text).commit()) {
+        recordStorageDiagnostic(context.filesDir, "glafira_prefs", "draft_commit_failed")
+        ToastHelper.short(context, "Не удалось сохранить черновик: проверьте свободное место.")
+    }
+}
+
+fun loadDraft(context: Context, projectId: String, agentName: String): String = GlafiraFileMaintenance.withExclusive {
+    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+    val key = draftKey(projectId, agentName)
+    if (prefs.contains(key)) prefs.getString(key, "") ?: ""
+    else prefs.getString("draft_${projectId}_$agentName", "") ?: ""
 }
 
 fun clearDraft(context: Context, projectId: String, agentName: String) {
-    val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-    prefs.edit().remove("draft_${projectId}_$agentName").apply()
+    // Empty value is a durable tombstone so a legacy key cannot resurrect a sent draft.
+    saveDraft(context, projectId, agentName, "")
 }
 
 // ===== 8. Разделители дат =====
@@ -69,24 +79,25 @@ fun exportProjectToFile(context: Context, project: Project, agentNames: List<Str
 
 // ===== 12. Массовое удаление истории проекта =====
 fun deleteProjectHistory(context: Context, projectId: String): Int {
-    var count = 0
-    val files = context.filesDir.listFiles()
-    files?.forEach { file ->
-        if (file.name.startsWith("chat_${projectId}_") || file.name.startsWith("pinned_${projectId}_")) {
-            if (file.delete()) count++
-        }
-    }
-    return count
+    val files = context.filesDir.listFiles().orEmpty()
+    val historyKeys = files.map { it.name.substringBefore(".json") }
+        .filter { it.startsWith("chat_${projectId}_") }.distinct().map { it.removePrefix("chat_") }
+    historyKeys.forEach { historyStore(context.filesDir, it).delete() }
+    val pinned = files.filter { it.name.startsWith("pinned_${projectId}_") }
+    pinned.forEach { check(!it.exists() || it.delete()) { "Cannot delete ${it.name}" } }
+    return historyKeys.size + pinned.size
 }
 
 // ===== 6. Очистка чата =====
-fun clearChat(context: Context, historyKey: String): Boolean {
-    val chatFile = File(context.filesDir, "chat_$historyKey.json")
-    val pinnedFile = File(context.filesDir, "pinned_$historyKey.json")
-    var ok = true
-    if (chatFile.exists()) ok = chatFile.delete() && ok
-    if (pinnedFile.exists()) ok = pinnedFile.delete() && ok
-    return ok
+fun clearChat(context: Context, historyKey: String): Boolean = try {
+    historyStore(context.filesDir, historyKey).delete()
+    context.filesDir.listFiles().orEmpty().filter { it.name.startsWith("pinned_$historyKey.json") }.forEach {
+        check(!it.exists() || it.delete()) { "Cannot delete ${it.name}" }
+    }
+    true
+} catch (error: Exception) {
+    recordStorageDiagnostic(context.filesDir, "chat_$historyKey.json", "clear_${error.javaClass.simpleName}")
+    false
 }
 
 // ===== 13. Сворачивание длинных сообщений =====

@@ -15,6 +15,8 @@ builder.Services.Configure<HostOptions>(options =>
 
 builder.Services.AddSingleton<AgentRuntimeState>();
 builder.Services.AddSingleton<AgentTaskHandlerRegistry>();
+builder.Services.AddSingleton<IAgentCredentialStore, DpapiAgentCredentialStore>();
+builder.Services.AddSingleton<AgentPairingClient>();
 builder.Services.AddHostedService<AgentWorker>();
 
 await builder.Build().RunAsync();

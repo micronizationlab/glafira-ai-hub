@@ -49,6 +49,7 @@ class GlafiraCoreTaskExecutor(
     private val runtimeBudget: () -> GlafiraRuntimeBudget = { GlafiraRuntimeBudget() },
     private val costMeter: GlafiraTaskCostMeter? = null,
     private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE },
+    private val liveTaskAdmission: GlafiraLiveTaskAdmission = GlafiraLiveTaskAdmission.ALLOW_ALL,
     private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null,
     private val executionLimiter: GlafiraCoreExecutionLimiter = GlafiraCoreExecutionLimiter()
 ) {
@@ -123,7 +124,10 @@ class GlafiraCoreTaskExecutor(
         nowMillis: Long,
         effectiveBudget: GlafiraRuntimeBudget
     ): GlafiraTaskExecutionResult {
-        val mode = executionMode()
+        val configuredMode = executionMode()
+        val mode = if (configuredMode == GlafiraExecutionMode.LIVE &&
+            liveTaskAdmission.allows(task, nowMillis)
+        ) GlafiraExecutionMode.LIVE else GlafiraExecutionMode.DRY_RUN
         val authorization = try {
             if (mode == GlafiraExecutionMode.DRY_RUN) {
                 authorizer.inspectForDryRun(task, nowMillis)

@@ -202,7 +202,7 @@ public sealed class BridgeV1RequestAuthenticator(
                 item.Key.Length > 64 ||
                 string.IsNullOrWhiteSpace(item.Value) ||
                 item.Value.Length > 16_384 ||
-                !allowed.Contains(item.Key)) ||
+                (!allowed.Contains(item.Key) && !(request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT && item.Key == "resultEncoding"))) ||
             request.Payload.Sum(item => (long)item.Key.Length + item.Value.Length) > 16_384)
             return BridgeV1AdmissionFailure.InvalidEnvelope;
 
@@ -211,6 +211,8 @@ public sealed class BridgeV1RequestAuthenticator(
 
         if (request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT)
         {
+            if (request.Payload.TryGetValue("resultEncoding", out var encoding) && encoding != "json")
+                return BridgeV1AdmissionFailure.InvalidEnvelope;
             if (!IsTaskIdentifier(request.Payload["taskId"]) ||
                 !IsIdentifier(request.Payload["leaseId"]) ||
                 !long.TryParse(request.Payload["fencingToken"],

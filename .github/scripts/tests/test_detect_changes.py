@@ -17,6 +17,7 @@ class ChangeSelectionTests(unittest.TestCase):
             "contracts",
             "ios/GlafiraBridgeKit",
             "windows-agent/GLAFIRA.Agent.Worker",
+            "windows-desktop",
             "app/src/androidTest",
         ):
             (self.root / path).mkdir(parents=True, exist_ok=True)
@@ -91,6 +92,28 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["android"])
         self.assertTrue(selected["ios"])
         self.assertTrue(selected["agent"])
+        self.assertTrue(selected["desktop_hub"])
+
+    def test_android_persistence_and_backup_changes_always_select_emulator(self):
+        for name in ("GlafiraTaskStore.kt", "GlafiraTaskPayloadCrypto.kt", "BackupArchive.kt",
+                     "DataManager.kt", "PendingQueue.kt", "PasswordVaultScreen.kt"):
+            with self.subTest(name=name):
+                selected = MODULE.classify_paths(
+                    [f"app/src/main/java/com/micronizationlab/glafira/{name}"],
+                    "pull_request", self.root)
+                self.assertTrue(selected["android_acceptance"])
+
+    def test_desktop_hub_change_selects_its_own_suite(self):
+        selected = MODULE.classify_paths(
+            ["windows-desktop/GLAFIRA.Desktop.Hub.Core/DesktopHubStore.cs"],
+            "pull_request", self.root)
+        self.assertTrue(selected["desktop_hub"])
+        self.assertFalse(selected["agent"])
+
+    def test_dispatch_and_schedule_include_desktop_hub(self):
+        for event in ("workflow_dispatch", "schedule"):
+            with self.subTest(event=event):
+                self.assertTrue(MODULE.classify_paths([], event, self.root)["desktop_hub"])
 
     def test_scheduled_run_selects_full_sweep(self):
         selected = MODULE.classify_paths([], "schedule", self.root)

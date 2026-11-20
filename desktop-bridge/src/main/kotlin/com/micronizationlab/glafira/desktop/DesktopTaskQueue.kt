@@ -31,7 +31,9 @@ internal data class DesktopTaskEnvelope(
     val priority: Int,
     val createdAt: Long,
     val expiresAt: Long,
-    val idempotencyKey: String
+    val idempotencyKey: String,
+    val leaseId: String? = null,
+    val fencingToken: Long? = null
 )
 
 internal data class DesktopTaskRecord(
@@ -41,7 +43,8 @@ internal data class DesktopTaskRecord(
     val progressPercent: Int = 0,
     val progressMessage: String? = null,
     val result: String? = null,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val deliveryAcknowledged: Boolean = false
 )
 
 /** Small durable queue; execution workers and Bridge transport are deliberately separate. */
@@ -57,6 +60,12 @@ internal class DesktopTaskQueue(
     init {
         require(maxQueued in 1..MAX_QUEUE_LIMIT)
         file?.parent?.let { Files.createDirectories(it) }
+    }
+
+    fun hasAdmissionCapacity(): Boolean = synchronized(lock) {
+        val records = readAll()
+        records.count { it.state == DesktopTaskState.QUEUED } < maxQueued &&
+            (records.size < MAX_RETAINED_RECORDS || records.any { isTerminal(it.state) && it.deliveryAcknowledged })
     }
 
     fun enqueue(envelope: DesktopTaskEnvelope): DesktopTaskRecord = synchronized(lock) {
@@ -178,11 +187,12 @@ internal class DesktopTaskQueue(
         require(current.state == DesktopTaskState.RUNNING) { "Task is not running." }
         val expired = current.envelope.expiresAt <= clock()
         val updated = current.copy(
-            state = if (expired) DesktopTaskState.FAILED else DesktopTaskState.SUCCEEDED,
+            state = DesktopTaskState.SUCCEEDED,
             sequence = current.sequence + 1,
-            progressPercent = if (expired) current.progressPercent else 100,
-            result = if (expired) null else result,
-            errorCode = if (expired) "TASK_EXPIRED" else null
+            progressPercent = 100,
+            result = result,
+            progressMessage = if (expired) "Completed after deadline" else current.progressMessage,
+            errorCode = null
         )
         records[index] = updated
         writeAll(records)
@@ -198,11 +208,48 @@ internal class DesktopTaskQueue(
         updateTerminal(taskId, DesktopTaskState.CANCELLED, null)
     }
 
+    /** Persists the server-issued lease identity used to fence every progress/result update. */
+    fun attachLease(taskId: String, leaseId: String, fencingToken: Long): DesktopTaskRecord =
+        synchronized(lock) {
+            require(leaseId.matches(Regex("[A-Za-z0-9_-]{8,128}")) && fencingToken > 0L)
+            val records = readAll().toMutableList()
+            val index = records.indexOfFirst { it.envelope.taskId == taskId }
+            require(index >= 0) { "Unknown task." }
+            val current = records[index]
+            val updated = current.copy(
+                sequence = current.sequence + 1,
+                envelope = current.envelope.copy(leaseId = leaseId, fencingToken = fencingToken)
+            )
+            records[index] = updated
+            writeAll(records)
+            updated
+        }
+
     fun get(taskId: String): DesktopTaskRecord? = synchronized(lock) {
         readAll().firstOrNull { it.envelope.taskId == taskId }
     }
 
     fun list(): List<DesktopTaskRecord> = synchronized(lock) { readAll().toList() }
+
+    /** Terminal records are the outbox: result and pending delivery are saved atomically. */
+    fun pendingResults(projectId: String): List<DesktopTaskRecord> = synchronized(lock) {
+        readAll().filter { it.envelope.projectId == projectId && isTerminal(it.state) && !it.deliveryAcknowledged }
+    }
+
+    fun acknowledgeResult(taskId: String, expectedSequence: Long): Boolean = synchronized(lock) {
+        val records = readAll().toMutableList()
+        val index = records.indexOfFirst { it.envelope.taskId == taskId }
+        if (index < 0) return@synchronized false
+        val record = records[index]
+        if (!isTerminal(record.state) || record.sequence != expectedSequence) return@synchronized false
+        records[index] = record.copy(deliveryAcknowledged = true)
+        writeAll(records)
+        true
+    }
+
+    private fun isTerminal(state: DesktopTaskState): Boolean = state in setOf(
+        DesktopTaskState.SUCCEEDED, DesktopTaskState.FAILED, DesktopTaskState.CANCELLED, DesktopTaskState.EXPIRED
+    )
 
     private fun updateTerminal(
         taskId: String,
@@ -241,6 +288,11 @@ internal class DesktopTaskQueue(
         require(task.createdAt <= clock() + MAX_CLOCK_SKEW_MS)
         require(task.expiresAt > task.createdAt && task.expiresAt > clock())
         require(task.idempotencyKey.matches(Regex("[A-Za-z0-9_-]{16,128}")))
+        require((task.leaseId == null) == (task.fencingToken == null))
+        if (task.leaseId != null) {
+            require(task.leaseId.matches(Regex("[A-Za-z0-9_-]{8,128}")))
+            require(task.fencingToken!! > 0L)
+        }
     }
 
     /** Keep durable history bounded without ever evicting work that is not terminal. */
@@ -248,15 +300,10 @@ internal class DesktopTaskQueue(
         while (records.size >= MAX_RETAINED_RECORDS) {
             val oldestTerminal = records.indices
                 .filter { index ->
-                    records[index].state !in setOf(
-                        DesktopTaskState.QUEUED,
-                        DesktopTaskState.DISPATCHED,
-                        DesktopTaskState.ACCEPTED,
-                        DesktopTaskState.RUNNING
-                    )
+                    isTerminal(records[index].state) && records[index].deliveryAcknowledged
                 }
                 .minByOrNull { records[it].envelope.createdAt }
-                ?: throw IllegalStateException("Desktop task history is full of active work.")
+                ?: throw IllegalStateException("Desktop task history is full of active or unacknowledged work.")
             records.removeAt(oldestTerminal)
         }
     }
@@ -279,7 +326,17 @@ internal class DesktopTaskQueue(
         val size = Files.size(target)
         require(size in 1..MAX_QUEUE_FILE_BYTES.toLong()) { "Desktop task queue file size is invalid." }
         val type = object : TypeToken<List<DesktopTaskRecord>>() {}.type
-        return gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type) ?: emptyList()
+        return requireNotNull(gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type)) {
+            "Desktop task queue is null; preserve the file and recover it before starting the worker."
+        }.also { records ->
+            require(records.size <= MAX_RETAINED_RECORDS)
+            require(records.map { it.envelope.taskId }.distinct().size == records.size)
+            records.forEach { record ->
+                require(record.state in DesktopTaskState.entries && record.sequence >= 0)
+                require(record.envelope.taskId.isNotBlank() && record.envelope.projectId.isNotBlank())
+                require(record.envelope.instruction.isNotBlank())
+            }
+        }
     }
 
     private fun writeAll(records: List<DesktopTaskRecord>) {
@@ -297,7 +354,11 @@ internal class DesktopTaskQueue(
         val temp = Files.createTempFile(parent, ".glafira-task-queue-", ".tmp")
         try {
             setOwnerOnly(temp)
-            Files.writeString(temp, serialized, Charsets.UTF_8)
+            java.nio.channels.FileChannel.open(temp, java.nio.file.StandardOpenOption.WRITE).use { channel ->
+                val bytes = java.nio.ByteBuffer.wrap(serialized.toByteArray(Charsets.UTF_8))
+                while (bytes.hasRemaining()) channel.write(bytes)
+                channel.force(true)
+            }
             try {
                 Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             } catch (_: java.nio.file.AtomicMoveNotSupportedException) {

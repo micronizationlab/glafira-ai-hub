@@ -35,36 +35,55 @@ fun main() {
             val entry = DesktopBridgeCredentialVault.load(vaultPath, passphrase)
             val credentials = entry.toCredentials()
             entry.hmacSecret.fill(0)
+            var worker: DesktopBridgeTaskWorker? = null
+            var shutdownConfirmed = false
             try {
                 val projectId = console.readLine("Project ID: ").trim()
                 require(projectId.isNotBlank())
                 val model = console.readLine("Installed Ollama model name: ").trim()
                 require(model.isNotBlank())
-                println("Desktop worker uses Core SQLite as the only durable task queue.")
+                println("Desktop task state and unacknowledged results persist beside the credential vault.")
                 println("Android must be paired with scopes desktop.task.claim and desktop.task.result.")
                 println("Ollama must be running locally at 127.0.0.1:11434.")
-                DesktopBridgeTaskWorker(
-                    origin = entry.origin,
-                    credentials = credentials,
-                    projectId = projectId,
-                    handlers = DesktopLocalAgentRegistry.ollama(model),
-                    onDryRunPreview = { preview ->
-                        println()
-                        println("=== GLAFIRA DRY RUN — PREVIEW ONLY; NOT EXECUTED ===")
-                        println("Task: ${preview.taskId}")
-                        println("Project: ${preview.projectId}")
-                        println("Tool: ${preview.toolId}")
-                        println("Risk: ${preview.risk}")
-                        println("Simulation: ${preview.simulationStatus}")
-                        println("Plan SHA-256: ${preview.planHash}")
-                        println("Redacted plan: ${preview.safeJson}")
-                        println("No Desktop agent was started for this preview.")
+                val binding = desktopCliPairingBinding(entry.origin, credentials)
+                if (java.nio.file.Files.exists(desktopCliTaskQueuePath(vaultPath))) {
+                    println("An unbound legacy tasks.json is preserved; it will not be sent under this pairing.")
+                }
+                val activeSession = desktopCliTaskSession(vaultPath, binding)
+                try {
+                    val createdWorker = DesktopBridgeTaskWorker(
+                        origin = entry.origin,
+                        credentials = credentials,
+                        projectId = projectId,
+                        queue = activeSession.queue,
+                        handlers = DesktopLocalAgentRegistry.ollama(model),
+                        onDryRunPreview = { preview ->
+                            println()
+                            println("=== GLAFIRA DRY RUN — PREVIEW ONLY; NOT EXECUTED ===")
+                            println("Task: ${preview.taskId}")
+                            println("Project: ${preview.projectId}")
+                            println("Tool: ${preview.toolId}")
+                            println("Risk: ${preview.risk}")
+                            println("Simulation: ${preview.simulationStatus}")
+                            println("Plan SHA-256: ${preview.planHash}")
+                            println("Redacted plan: ${preview.safeJson}")
+                            println("No Desktop agent was started for this preview.")
+                        }
+                    )
+                    worker = createdWorker
+                    try {
+                        createdWorker.runPollingLoop(shouldContinue = { true })
+                    } finally {
+                        // If a handler ignores interruption, worker.close() throws. In that case
+                        // deliberately retain the OS queue lock and HMAC key until the handler stops.
+                        closeDesktopWorkerAndSession(createdWorker, activeSession)
+                        shutdownConfirmed = true
                     }
-                ).use { worker ->
-                    worker.runPollingLoop(shouldContinue = { true })
+                } finally {
+                    if (worker == null) activeSession.close()
                 }
             } finally {
-                credentials.hmacSecret.fill(0)
+                if (worker == null || shutdownConfirmed) credentials.hmacSecret.fill(0)
             }
             return
         }

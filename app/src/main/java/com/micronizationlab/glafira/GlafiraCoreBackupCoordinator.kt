@@ -2,113 +2,156 @@ package com.micronizationlab.glafira
 
 import android.content.Context
 import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 
-/**
- * Coordinates encrypted file backups with the persistent Core task database.
- * All methods pause the shared executor while the database snapshot is taken or restored.
- */
-class GlafiraCoreBackupCoordinator(
-    context: Context,
-    private val taskStore: GlafiraTaskStore
-) {
-    private val appContext = context.applicationContext
+/** Portable logical Core data inside an authenticated archive; raw SQLite is local rollback only. */
+class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: GlafiraTaskStore) {
+    private val app = context.applicationContext
+    private val portable = GlafiraPortableCoreSnapshot(taskStore)
+    private val journal get() = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
+    private val marker get() = File(journal, JOURNAL_MARKER)
+    private val safetyDatabase get() = File(journal, "database.db")
+    private val safetyArchive get() = File(journal, "files.glb")
 
-    suspend fun create(passphrase: CharArray): File =
-        GlafiraCoreMaintenanceGate.withExclusive {
-            createSnapshotArchive(passphrase)
+    suspend fun create(passphrase: CharArray): File = GlafiraCoreMaintenanceGate.withExclusive {
+        PendingDeliveryRuntime.withPaused {
+            GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
+                check(!hasInterruptedRestore(app)) { "Сначала завершите восстановление с прежним паролем." }
+                createArchive(passphrase)
+            } }
         }
+    }
 
     suspend fun verify(archive: File, passphrase: CharArray): BackupVerification =
         GlafiraCoreMaintenanceGate.withExclusive {
-            BackupArchive.verifyContains(appContext, archive, passphrase, CORE_DATABASE_SNAPSHOT_PATH)
-        }
-
-    suspend fun restore(archive: File, passphrase: CharArray): BackupVerification =
-        GlafiraCoreMaintenanceGate.withExclusive {
-            // Reject legacy/incomplete archives before touching the current installation.
-            BackupArchive.verifyContains(appContext, archive, passphrase, CORE_DATABASE_SNAPSHOT_PATH)
-
-            val safetyDatabase = File(
-                appContext.cacheDir,
-                "glafira-core-safety-${System.currentTimeMillis()}.db"
-            )
-            var safetyArchive: File? = null
-            var restoreCompleted = false
-            var rollbackCompleted = false
-
-            try {
-                taskStore.exportConsistentSnapshot(safetyDatabase)
-                val createdSafetyArchive = createSnapshotArchive(passphrase)
-                safetyArchive = createdSafetyArchive
-
-                try {
-                    val verification = BackupArchive.restore(appContext, archive, passphrase)
-                    val restoredDatabase = File(appContext.filesDir, CORE_DATABASE_SNAPSHOT_PATH)
-                    require(restoredDatabase.isFile) {
-                        "Восстановленный архив не содержит базу очереди GLAFIRA Core."
-                    }
-                    taskStore.restoreConsistentSnapshot(restoredDatabase)
-                    restoreCompleted = true
-                    return@withExclusive verification
-                } catch (restoreError: Exception) {
-                    try {
-                        BackupArchive.restore(appContext, createdSafetyArchive, passphrase)
-                        taskStore.restoreConsistentSnapshot(safetyDatabase)
-                        rollbackCompleted = true
-                    } catch (rollbackError: Exception) {
-                        restoreError.addSuppressed(rollbackError)
-                        restoreError.addSuppressed(
-                            IllegalStateException(
-                                "Файлы восстановления сохранены для ручного восстановления: " +
-                                    createdSafetyArchive.absolutePath + " ; " + safetyDatabase.absolutePath
-                            )
-                        )
-                    }
-                    throw restoreError
-                }
-            } finally {
-                if (restoreCompleted || rollbackCompleted || safetyArchive == null) {
-                    File(appContext.filesDir, CORE_DATABASE_SNAPSHOT_DIRECTORY).deleteRecursively()
-                    safetyDatabase.delete()
-                    safetyArchive?.delete()
-                } else if (safetyDatabase.length() == 0L) {
-                    safetyDatabase.delete()
-                }
+            BackupArchive.withVerifiedEntry(app, archive, passphrase, GlafiraPortableCoreSnapshot.PATH) { entry, verification ->
+                portable.readVerified(entry)
+                verification
             }
         }
 
-    private fun createSnapshotArchive(passphrase: CharArray): File {
-        val directory = File(appContext.filesDir, CORE_DATABASE_SNAPSHOT_DIRECTORY)
-        check(directory.exists() || directory.mkdirs()) {
-            "Не удалось создать каталог снимка базы GLAFIRA Core."
+    suspend fun recover(passphrase: CharArray) = GlafiraCoreMaintenanceGate.withExclusive {
+        PendingDeliveryRuntime.withPaused {
+            GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
+                recoverInterruptedRestore(passphrase)
+            } }
         }
-        val snapshot = File(directory, CORE_DATABASE_SNAPSHOT_NAME)
+    }
+
+    suspend fun restore(archive: File, passphrase: CharArray): BackupVerification = GlafiraCoreMaintenanceGate.withExclusive {
+        PendingDeliveryRuntime.withPaused {
+            GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
+                recoverInterruptedRestore(passphrase)
+                val selected = File(app.cacheDir, "glafira-selected-${UUID.randomUUID()}.glb")
+                try {
+                    require(archive.isFile && archive.length() in 1..MAX_ARCHIVE_BYTES)
+                    archive.inputStream().use { input -> selected.outputStream().use { output ->
+                        BackupArchive.copyBounded(input, output)
+                    } }
+                    val snapshot = BackupArchive.withVerifiedEntry(app, selected, passphrase, GlafiraPortableCoreSnapshot.PATH) { entry, _ ->
+                        portable.readVerified(entry).also(portable::checkRestoreSupported)
+                    }
+                    prepareRollback(passphrase)
+                    try {
+                        val verification = BackupArchive.restore(app, selected, passphrase)
+                        portable.restore(snapshot)
+                        recoverPendingAfterRestore(app)
+                        GlafiraCoreRuntimeOwner.pauseForRestore(app)
+                        checkpointDatabase()
+                        clearJournal()
+                        verification
+                    } catch (error: Exception) {
+                        try { recoverInterruptedRestore(passphrase) }
+                        catch (rollback: Exception) { error.addSuppressed(rollback) }
+                        throw error
+                    }
+                } finally {
+                    selected.delete()
+                    File(app.filesDir, ".glafira-core-snapshot").deleteRecursively()
+                }
+            } }
+        }
+    }
+
+    private fun createArchive(passphrase: CharArray): File {
+        val directory = File(app.filesDir, ".glafira-core-snapshot")
+        if (directory.exists()) check(directory.deleteRecursively())
+        check(directory.mkdirs())
+        return try {
+            portable.exportTo(File(app.filesDir, GlafiraPortableCoreSnapshot.PATH))
+            BackupArchive.create(app, passphrase)
+        } finally { directory.deleteRecursively() }
+    }
+
+    private fun prepareRollback(passphrase: CharArray) {
+        check(!marker.exists())
+        if (journal.exists()) check(journal.deleteRecursively())
+        check(journal.mkdirs())
         try {
-            taskStore.exportConsistentSnapshot(snapshot)
-            return BackupArchive.create(appContext, passphrase)
-        } finally {
-            // The encrypted archive owns the snapshot from this point onward.
-            directory.deleteRecursively()
+            taskStore.exportConsistentSnapshot(safetyDatabase)
+            sync(safetyDatabase)
+            val archive = BackupArchive.create(app, passphrase)
+            try { archive.copyTo(safetyArchive, overwrite = false); sync(safetyArchive) }
+            finally { archive.delete() }
+            val pendingMarker = File(journal, "$JOURNAL_MARKER.tmp")
+            FileOutputStream(pendingMarker).use {
+                it.write("GLAFIRA_RESTORE_ROLLBACK_V2".toByteArray(Charsets.UTF_8)); it.fd.sync()
+            }
+            check(pendingMarker.renameTo(marker))
+            syncDirectory(journal)
+            syncDirectory(app.noBackupFilesDir)
+        } catch (error: Exception) {
+            if (!marker.exists()) journal.deleteRecursively()
+            throw error
         }
+    }
+
+    private fun recoverInterruptedRestore(passphrase: CharArray) {
+        if (!marker.exists()) return
+        require(safetyArchive.isFile && safetyDatabase.isFile) { "Повреждён журнал восстановления; Core заблокирован." }
+        try {
+            BackupArchive.verify(app, safetyArchive, passphrase)
+            BackupArchive.restore(app, safetyArchive, passphrase)
+            taskStore.restoreConsistentSnapshot(safetyDatabase)
+            GlafiraCoreRuntimeOwner.pauseForRestore(app)
+            checkpointDatabase()
+            clearJournal()
+        } catch (error: Exception) {
+            throw IllegalStateException("Введите пароль прерванного восстановления. Core остаётся заблокирован до успешного отката.", error)
+        }
+    }
+
+    private fun clearJournal() {
+        check(marker.delete()) { "Не удалось завершить журнал восстановления." }
+        syncDirectory(journal)
+        journal.deleteRecursively()
+    }
+
+    private fun checkpointDatabase() {
+        taskStore.writableDatabase.rawQuery("PRAGMA wal_checkpoint(FULL)", null).use {
+            require(it.moveToFirst() && it.getInt(0) == 0) { "Не удалось зафиксировать базу Core." }
+        }
+        val database = app.getDatabasePath("glafira_core_tasks.db")
+        sync(database)
+        syncDirectory(database.parentFile!!)
+    }
+
+    private fun sync(file: File) { FileOutputStream(file, true).use { it.fd.sync() } }
+    private fun syncDirectory(directory: File) {
+        val fd = android.system.Os.open(directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
+        try { android.system.Os.fsync(fd) } finally { android.system.Os.close(fd) }
     }
 
     companion object {
-        private const val CORE_DATABASE_SNAPSHOT_DIRECTORY = ".glafira-core-snapshot"
-        private const val CORE_DATABASE_SNAPSHOT_NAME = "glafira_core_tasks.db"
-        private const val CORE_DATABASE_SNAPSHOT_PATH =
-            "$CORE_DATABASE_SNAPSHOT_DIRECTORY/$CORE_DATABASE_SNAPSHOT_NAME"
+        private const val MAX_ARCHIVE_BYTES = 512L * 1024L * 1024L
+        private const val JOURNAL_DIRECTORY = "glafira-restore-journal"
+        private const val JOURNAL_MARKER = "restore.pending"
+        fun hasInterruptedRestore(context: Context): Boolean =
+            File(File(context.applicationContext.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER).exists()
     }
 }
 
-/** Opens the shared Core store for the duration of a backup operation and always closes it. */
-internal suspend fun <T> withCoreBackupCoordinator(
-    context: Context,
-    block: suspend (GlafiraCoreBackupCoordinator) -> T
-): T {
-    val store = GlafiraTaskStore(context.applicationContext)
-    try {
-        return block(GlafiraCoreBackupCoordinator(context, store))
-    } finally {
-        store.close()
-    }
-}
+/** Reuse the runtime's store, so maintenance and ordinary queue operations share the same monitor. */
+internal suspend fun <T> withCoreBackupCoordinator(context: Context, block: suspend (GlafiraCoreBackupCoordinator) -> T): T =
+    block(GlafiraCoreBackupCoordinator(context, GlafiraCoreRuntimeOwner.get(context).taskStore))

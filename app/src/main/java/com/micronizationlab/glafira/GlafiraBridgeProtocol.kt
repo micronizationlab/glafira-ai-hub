@@ -47,7 +47,7 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.CONVERSATION_APPEND to setOf("conversationId", "messageText"),
         GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary"),
         GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to setOf("capabilities", "maxParallelTasks"),
-        GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "state", "progressPercent", "progressMessage", "result", "errorCode")
+        GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode")
     )
     private val allowedFields = requiredFields
 
@@ -127,16 +127,33 @@ object GlafiraBridgeProtocol {
         if (request.payload.entries.sumOf { it.key.length.toLong() + it.value.length.toLong() } > MAX_PAYLOAD_CHARS.toLong())
             return GlafiraBridgeValidationError.PAYLOAD_TOO_LARGE
         val allowed = allowedFields.getValue(request.operation)
-        if (request.payload.keys.any { it !in allowed }) return GlafiraBridgeValidationError.UNKNOWN_PAYLOAD_FIELD
+        if (request.payload.keys.any { it !in allowed && !(request.operation == GlafiraBridgeOperation.DESKTOP_TASK_RESULT && it == "resultEncoding") }) return GlafiraBridgeValidationError.UNKNOWN_PAYLOAD_FIELD
         if (!request.payload.keys.containsAll(requiredFields.getValue(request.operation)))
             return GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD
         if (request.payload.values.any { it.isBlank() || it.length > MAX_PAYLOAD_CHARS })
             return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
+        if (request.operation == GlafiraBridgeOperation.DESKTOP_TASK_RESULT) {
+            if (request.payload["resultEncoding"]?.let { it != "json" } == true)
+                return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
+            val leaseId = request.payload["leaseId"] ?: return GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD
+            val fencingToken = request.payload["fencingToken"]?.toLongOrNull()
+            val progress = request.payload["progressPercent"]?.toIntOrNull()
+            if (!isTaskIdentifier(request.payload["taskId"].orEmpty()) || !isIdentifier(leaseId) ||
+                fencingToken == null || fencingToken <= 0L ||
+                progress == null || progress !in 0..100 ||
+                request.payload["state"] !in setOf("ACCEPTED", "RUNNING", "SUCCEEDED", "FAILED")
+            ) return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
+        }
         return null
     }
 
     private fun isProjectIdentifier(value: String): Boolean =
         value == "default" || isIdentifier(value)
+
+    private fun isTaskIdentifier(value: String): Boolean =
+        value.length in 1..64 && value.all {
+            it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '_' || it == '-'
+        }
 
     private fun isIdentifier(value: String): Boolean =
         value.length in 8..128 && value.all { it.isLetterOrDigit() || it in "-_." }

@@ -25,10 +25,13 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         ownerApprovalStore,
         bridgeCredentialStore
     )
+    private val liveRunStore = GlafiraCoreLiveRunStore(taskStore)
 
     private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
-    // Live mode remains unavailable until a separate owner-approved run API is implemented.
-    private val executionMode = GlafiraExecutionMode.DRY_RUN
+    // Core evaluates LIVE per task. Only a fresh, durable, owner-approved read grant can pass;
+    // every other task falls back to a new Dry Run preview without invoking its handler.
+    private val executionMode = GlafiraExecutionMode.LIVE
+    private val desktopExecutionMode = GlafiraExecutionMode.DRY_RUN
     internal val executionLimiter = GlafiraCoreExecutionLimiter()
 
     private val executor = GlafiraCoreTaskExecutor(
@@ -43,6 +46,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         ),
         runtimeBudget = { loadRuntimeBudget() },
         executionMode = { executionMode },
+        liveTaskAdmission = liveRunStore,
         dryRunPreviewPersistence = taskStore,
         executionLimiter = executionLimiter
     )
@@ -73,7 +77,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             )
             val response = bridgeDispatcher.dispatch(request)
             if (response.status == GlafiraBridgeStatus.SUCCEEDED) {
-                GlafiraTaskExecutionOutcome.Succeeded("Bridge operation completed.")
+                GlafiraTaskExecutionOutcome.Succeeded(org.json.JSONObject(response.result).toString())
             } else {
                 GlafiraTaskExecutionOutcome.PermanentFailure(
                     response.errorCode ?: "BRIDGE_OPERATION_FAILED"
@@ -85,7 +89,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     val isEnabled: Boolean
-        get() = preferences.getBoolean(KEY_ENABLED, false)
+        get() = preferences.getBoolean(KEY_ENABLED, false) && !GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
 
     /** Current owner-controlled, persisted Core execution limits. */
     fun runtimeBudget(): GlafiraRuntimeBudget = loadRuntimeBudget()
@@ -120,6 +124,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
+        check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
         val result = taskStore.enqueue(task)
         if (result.inserted && isEnabled) {
             GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
@@ -129,6 +134,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     /** Atomically stores a task and its dependency graph before any worker is woken. */
     fun enqueue(task: GlafiraTask, dependencies: Set<String>): GlafiraTaskEnqueueResult {
+        check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
         val result = taskStore.enqueueWithDependencies(task, dependencies)
         if (result.inserted && isEnabled) {
             GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
@@ -151,6 +157,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     /** Atomically registers an entire bounded DAG before waking the shared dispatcher. */
     fun enqueuePlan(plan: GlafiraCoreTaskPlan): GlafiraCoreTaskPlanEnqueueResult {
+        check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
         val result = taskStore.enqueuePlan(plan)
         if (result.inserted && isEnabled) {
             GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
@@ -185,17 +192,18 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         deviceId: String,
         capabilities: Set<String>,
         maxParallelTasks: Int
-    ): GlafiraTask? {
+    ): GlafiraDesktopTaskLease? {
         // Desktop workers cannot bypass the Core Dry Run gate. Preview plans are delivered
         // through previewDesktopTask; this claim API never issues a lease in DRY_RUN.
-        if (executionMode == GlafiraExecutionMode.DRY_RUN) return null
+        if (desktopExecutionMode == GlafiraExecutionMode.DRY_RUN) return null
         val now = System.currentTimeMillis()
         for (candidate in taskStore.queuedDesktopTasks()) {
             val configuredConcurrency = loadRuntimeBudget().maxConcurrentTasks
-            val leased = taskStore.claimDesktopTask(
+            val claim = taskStore.claimDesktopTask(
                 candidate.taskId, deviceId, capabilities,
                 minOf(maxParallelTasks, configuredConcurrency), now
             ) ?: continue
+            val leased = claim.task
             val budget = loadRuntimeBudget()
             val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
                 task = leased,
@@ -210,15 +218,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
                     GlafiraTaskState.FAILED, now,
                     lastError = budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED"
                 )
-                taskStore.releaseDesktopLease(leased.taskId, deviceId)
+                taskStore.releaseDesktopLease(leased.taskId, deviceId, claim.leaseId, claim.fencingToken)
                 continue
             }
             val decision = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource)
                 .authorize(leased, now)
             when (decision.status) {
-                GlafiraTaskAuthorizationStatus.AUTHORIZED -> return leased
+                GlafiraTaskAuthorizationStatus.AUTHORIZED -> return claim
                 GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER -> {
-                    taskStore.releaseDesktopLease(leased.taskId, deviceId)
+                    taskStore.releaseDesktopLease(leased.taskId, deviceId, claim.leaseId, claim.fencingToken)
                     if (isEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
                 }
                 GlafiraTaskAuthorizationStatus.DENIED -> {
@@ -226,7 +234,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
                         leased.taskId, setOf(GlafiraTaskState.RUNNING),
                         GlafiraTaskState.FAILED, now, lastError = decision.reason ?: "DESKTOP_TASK_DENIED"
                     )
-                    taskStore.releaseDesktopLease(leased.taskId, deviceId)
+                    taskStore.releaseDesktopLease(leased.taskId, deviceId, claim.leaseId, claim.fencingToken)
                 }
             }
         }
@@ -238,7 +246,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
      * the task. Only the plan is returned over Bridge; executable payload values stay in Core.
      */
     fun previewDesktopTask(capabilities: Set<String>): GlafiraDryRunPlan? {
-        if (executionMode != GlafiraExecutionMode.DRY_RUN) return null
+        if (desktopExecutionMode != GlafiraExecutionMode.DRY_RUN) return null
         require(capabilities.size <= 16)
         val authorizer = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource)
         val now = System.currentTimeMillis()
@@ -263,13 +271,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     fun updateDesktopTask(
         taskId: String,
         deviceId: String,
+        leaseId: String,
+        fencingToken: Long,
         state: String,
         progressPercent: Int,
         progressMessage: String?,
         result: String?,
         errorCode: String?
     ): Boolean = taskStore.updateDesktopTask(
-        taskId, deviceId, state, progressPercent, progressMessage, result, errorCode
+        taskId, deviceId, leaseId, fencingToken, state, progressPercent, progressMessage, result, errorCode
     )
 
     fun recordDesktopNode(deviceId: String, capabilities: Set<String>, maxParallelTasks: Int) =
@@ -327,6 +337,22 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         return taskStore.reviewDryRunPreview(taskId, expectedPlanHash, decision)
     }
 
+    /**
+     * Requeues one acknowledged read-only preview for LIVE execution after a second fresh owner
+     * authentication. The exact task and plan remain bound to a short-lived durable grant.
+     */
+    fun approveLiveReadRun(
+        taskId: String,
+        expectedPlanHash: String,
+        ownerSession: GlafiraCoreOwnerSession
+    ): GlafiraLiveRunApprovalMutation {
+        val result = liveRunStore.approveReadOnlyRun(taskId, expectedPlanHash, ownerSession)
+        if (result == GlafiraLiveRunApprovalMutation.APPROVED && isEnabled) {
+            GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+        }
+        return result
+    }
+
     fun pendingOwnerApprovals(): List<GlafiraPendingActionApproval> =
         ownerApprovalStore.pendingApprovals()
 
@@ -349,6 +375,12 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         ownerApprovalStore.reject(taskId, ownerSession)
 
     companion object {
+        internal fun pauseForRestore(context: Context) {
+            check(context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
+                .putBoolean(KEY_ENABLED, false).commit()) { "Не удалось приостановить Core." }
+            GlafiraCoreWorkScheduler.cancel(context)
+        }
+
         private const val DRY_RUN_PREVIEW_PREFIX = "DRY_RUN_PREVIEW:"
         private const val PREFERENCES = "glafira_core_runtime"
         private const val KEY_ENABLED = "runtime_enabled"

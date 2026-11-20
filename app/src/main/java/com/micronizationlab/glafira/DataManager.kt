@@ -11,52 +11,59 @@ data class Project(val id: String, val name: String)
  * Built-in GLAFIRA workspaces. Keep stable IDs so existing chat histories
  * remain attached to their projects across app upgrades.
  */
-private val builtInProjects = listOf(
+internal val builtInProjects = listOf(
     Project("default", "Личное"),
     Project("vodorodaktiv", "ВодородАктив"),
     Project("token", "Токен"),
     Project("chimera", "Химера")
 )
 
-fun saveProjects(context: Context, projects: List<Project>) {
-    val file = File(context.filesDir, "projects.json")
-    val jsonArray = JSONArray()
-    projects.forEach {
-        jsonArray.put(JSONObject().apply {
-            put("id", it.id)
-            put("name", it.name)
-        })
-    }
-    file.writeText(jsonArray.toString())
-}
+internal fun defaultProjects() = builtInProjects
 
-fun loadProjects(context: Context): List<Project> {
-    val file = File(context.filesDir, "projects.json")
-    if (!file.exists()) {
-        // Fresh installs receive all standard workspaces.
-        saveProjects(context, builtInProjects)
-        return builtInProjects
-    }
-
-    val stored = mutableListOf<Project>()
-    try {
-        val jsonArray = JSONArray(file.readText())
-        for (i in 0 until jsonArray.length()) {
-            val obj = jsonArray.getJSONObject(i)
-            stored.add(Project(obj.getString("id"), obj.getString("name")))
+internal fun projectStore(directory: File) = DurableJsonFile(
+    File(directory, "projects.json"),
+    decode = { raw ->
+        val array = JSONArray(raw)
+        List(array.length()) { index ->
+            val item = array.getJSONObject(index)
+            Project(item.getString("id"), item.getString("name")).also {
+                require(it.id.isNotBlank() && it.name.isNotBlank() && it.id.none { ch -> ch == '/' || ch == '\\' || ch.isISOControl() })
+            }
+        }.also { projects ->
+            require(projects.isNotEmpty())
+            require(projects.map { it.id }.distinct().size == projects.size)
         }
-    } catch (e: Exception) {
-        // Preserve the existing recovery behavior: malformed project data
-        // must not prevent the app from opening.
-    }
+    },
+    encode = { projects: List<Project> -> JSONArray().apply {
+        projects.forEach { put(JSONObject().put("id", it.id).put("name", it.name)) }
+    }.toString() }
+)
 
-    // Upgrade existing installations without deleting, renaming or reordering
-    // user projects. Add only missing built-in IDs.
-    val knownIds = stored.mapTo(mutableSetOf()) { it.id }
-    val missingBuiltIns = builtInProjects.filter { it.id !in knownIds }
-    if (missingBuiltIns.isNotEmpty()) {
-        stored.addAll(missingBuiltIns)
-        saveProjects(context, stored)
+internal fun deletedProjectStore(directory: File) = DurableJsonFile(
+    File(directory, "deleted_projects.json"),
+    decode = { raw -> JSONArray(raw).let { array -> (0 until array.length()).map { array.getString(it) }.toSet() } },
+    encode = { ids: Set<String> -> JSONArray(ids.sorted()).toString() }
+)
+
+fun saveProjects(context: Context, projects: List<Project>) =
+    projectStore(context.filesDir).write(projects.ifEmpty { defaultProjects() })
+
+fun loadProjects(context: Context): List<Project> = GlafiraFileMaintenance.withExclusive {
+    val store = projectStore(context.filesDir)
+    val deleted = deletedProjectStore(context.filesDir).read { emptySet() }
+    val fallback = defaultProjects().filterNot { it.id in deleted }.ifEmpty {
+        listOf(Project("recovered-${java.util.UUID.randomUUID()}", "Восстановленный проект"))
     }
-    return stored
+    val stored = store.read { fallback }
+    val projects = stored.filterNot { it.id in deleted }.ifEmpty { fallback }
+    val missing = builtInProjects.filter { candidate -> candidate.id !in deleted && projects.none { it.id == candidate.id } }
+    if (missing.isNotEmpty() || projects != stored || !File(context.filesDir, "projects.json").exists()) {
+        store.update({ fallback }) { current ->
+            val kept = current.filterNot { it.id in deleted }.ifEmpty { fallback }
+            kept + missing.filter { candidate -> kept.none { it.id == candidate.id } }
+        }
+    } else projects
 }
+
+fun updateProjects(context: Context, transform: (List<Project>) -> List<Project>): List<Project> =
+    projectStore(context.filesDir).update(::defaultProjects) { transform(it).ifEmpty { defaultProjects() } }

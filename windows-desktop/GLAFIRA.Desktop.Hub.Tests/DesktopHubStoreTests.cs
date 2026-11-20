@@ -39,6 +39,22 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void CompatibleTaskBeyondFirst128CandidatesIsClaimed()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 1, true), now);
+        for (var index = 0; index < 128; index++)
+            _store.Enqueue(CreateTask($"unsupported-{index}", required: ["coding"]), now.AddMilliseconds(index));
+        _store.Enqueue(CreateTask("eligible-129"), now.AddMilliseconds(129));
+
+        var lease = _store.ClaimNext("agent-1", now.AddSeconds(1), TimeSpan.FromMinutes(1));
+
+        Assert.NotNull(lease);
+        Assert.Equal("eligible-129", lease.TaskId);
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("unsupported-0"));
+    }
+
+    [Fact]
     public void EnforcesPerAgentConcurrencyLimit()
     {
         var now = DateTimeOffset.UtcNow;

@@ -130,6 +130,34 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
         Assert.Equal("TASK_PAYLOAD_HASH_MISMATCH", _store.GetTaskResult("task-0001")!.ErrorCode);
     }
 
+    [Theory]
+    [InlineData("none")]
+    [InlineData("")]
+    [InlineData("null")]
+    [InlineData("Готово: \"проверено\"")]
+    public async Task JsonEncodedResultPreservesLiteralValuesAndAckMatchesCommittedRequest(string text)
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+        var encoded = JsonSerializer.Serialize(text);
+        var request = ResultRequest("SUCCEEDED", claim.Result["leaseId"], long.Parse(claim.Result["fencingToken"]), encoded);
+        var fields = new Dictionary<string, string>(request.Payload) { ["resultEncoding"] = "json" };
+        request = request with { Payload = fields };
+        var completed = await dispatcher.DispatchAsync(request, now.AddSeconds(2));
+        var duplicate = await dispatcher.DispatchAsync(request, now.AddSeconds(3));
+
+        Assert.Equal("SUCCEEDED", completed.Status);
+        Assert.Equal("SUCCEEDED", duplicate.Status);
+        Assert.Equal(text, _store.GetTaskResult("task-0001")!.Result);
+        Assert.Equal("task-0001", completed.Result["taskId"]);
+        Assert.Equal(claim.Result["leaseId"], completed.Result["leaseId"]);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(encoded))).ToLowerInvariant(),
+            completed.Result["resultSha256"]);
+    }
+
     private BridgeV1TaskOperationDispatcher CreateDispatcher(byte[] payload) =>
         new(_store, new FakePayloadResolver(payload));
 

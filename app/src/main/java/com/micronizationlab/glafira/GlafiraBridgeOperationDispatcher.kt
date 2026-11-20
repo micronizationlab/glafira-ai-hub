@@ -20,6 +20,9 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
     private val filesRoot = appContext.filesDir.canonicalFile
 
     fun dispatch(request: GlafiraBridgeRequest): GlafiraBridgeResponse {
+        if (GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) {
+            return failed(request, "RESTORE_RECOVERY_REQUIRED")
+        }
         return try {
             val project = findProject(request.projectId)
                 ?: return failed(request, "PROJECT_NOT_FOUND")

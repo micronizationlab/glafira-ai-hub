@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Net.Security;
 using GLAFIRA.Agent.Worker;
 using Xunit;
 
@@ -30,6 +32,7 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
         Assert.Equal(credential.AgentId, loaded.AgentId);
         Assert.Equal(credential.DesktopHubId, loaded.DesktopHubId);
         Assert.Equal(credential.Endpoint, loaded.Endpoint);
+        Assert.Equal(credential.TlsCertificateSha256, loaded.TlsCertificateSha256);
         Assert.Equal(credential.SharedSecretBase64, loaded.SharedSecretBase64);
         Assert.True(credential.Scopes.SetEquals(loaded.Scopes));
         Assert.Equal(credential.EnrolledAt, loaded.EnrolledAt);
@@ -80,6 +83,51 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
     }
 
     [Fact]
+    public void EnrollmentRejectsSecretLongerThan256Bits()
+    {
+        var credential = CreateCredential() with
+        {
+            SharedSecretBase64 = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64))
+        };
+
+        Assert.Throws<ArgumentException>(() =>
+            AgentEnrollmentCredentialPolicy.Validate(credential, _now));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("abc")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+    [InlineData("gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg")]
+    public void EnrollmentRejectsMissingOrNonCanonicalTlsPin(string pin)
+    {
+        var credential = CreateCredential() with { TlsCertificateSha256 = pin };
+
+        Assert.Throws<ArgumentException>(() =>
+            AgentEnrollmentCredentialPolicy.Validate(credential, _now));
+    }
+
+    [Fact]
+    public void TlsPinAcceptsOnlyTheEnrolledCertificate()
+    {
+        using var enrolled = CreateCertificate("desktop.local");
+        using var different = CreateCertificate("desktop.local");
+        var credential = CreateCredential() with
+        {
+            TlsCertificateSha256 = Convert.ToHexString(SHA256.HashData(enrolled.RawData)).ToLowerInvariant()
+        };
+
+        Assert.True(AgentTlsCertificatePinPolicy.Validate(
+            credential, enrolled, SslPolicyErrors.RemoteCertificateChainErrors));
+        Assert.False(AgentTlsCertificatePinPolicy.Validate(
+            credential, different, SslPolicyErrors.RemoteCertificateChainErrors));
+        Assert.False(AgentTlsCertificatePinPolicy.Validate(
+            credential, enrolled, SslPolicyErrors.RemoteCertificateNameMismatch));
+        Assert.False(AgentTlsCertificatePinPolicy.Validate(
+            credential, null, SslPolicyErrors.RemoteCertificateNotAvailable));
+    }
+
+    [Fact]
     public void EnrollmentRejectsExpiredCredential()
     {
         var credential = CreateCredential() with { ExpiresAt = _now.AddSeconds(-1) };
@@ -96,10 +144,22 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
         "agent-01",
         "desktop-hub-01",
         new Uri("https://desktop.local:8443"),
+        new string('a', 64),
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),
         new HashSet<string>(StringComparer.Ordinal) { "task.claim", "task.result" },
         _now.AddMinutes(-1),
         _now.AddDays(30));
+
+    private static X509Certificate2 CreateCertificate(string dnsName)
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest(
+            $"CN={dnsName}", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var san = new SubjectAlternativeNameBuilder();
+        san.AddDnsName(dnsName);
+        request.CertificateExtensions.Add(san.Build());
+        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+    }
 
     public void Dispose()
     {
