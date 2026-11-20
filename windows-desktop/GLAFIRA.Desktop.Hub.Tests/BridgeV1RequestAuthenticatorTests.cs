@@ -35,7 +35,7 @@ public sealed class BridgeV1RequestAuthenticatorTests
         var result = await authenticator.AuthenticateAsync(
             request, DateTimeOffset.FromUnixTimeMilliseconds(request.IssuedAtEpochMs));
 
-        Assert.True(result.Accepted);
+        Assert.True(result.Accepted, $"Admission failed: {result.Failure}");
         Assert.Equal(1, replay.Claims);
         Assert.Equal(
             Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("idem-0001"))).ToLowerInvariant(),
@@ -143,7 +143,9 @@ public sealed class BridgeV1RequestAuthenticatorTests
     public async Task AcceptsFencedTaskResultWithShortQueueTaskId()
     {
         var replay = new FakeReplayGuard();
-        var authenticator = CreateAuthenticator(replay);
+        var authenticator = new BridgeV1RequestAuthenticator(
+            new FakeCredentialResolver(new HubRequestCredential(
+                "device-0001", Secret, new HashSet<string> { "desktop.task.result" })), replay);
         var request = Sign(TaskResultRequest(new Dictionary<string, string>
         {
             ["taskId"] = "task_1",
