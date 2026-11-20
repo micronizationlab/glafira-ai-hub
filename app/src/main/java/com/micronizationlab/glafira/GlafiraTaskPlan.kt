@@ -72,6 +72,9 @@ internal object GlafiraTaskPlanPolicy {
             "Every task plan node must belong to the plan project."
         }
         val nodeIds = ids.toSet()
+        require(plan.nodes.all { node -> node.dependsOnTaskIds.all { it in nodeIds } }) {
+            "Task plan dependencies must reference nodes in the same plan."
+        }
         plan.nodes.forEach { node ->
             GlafiraTaskPolicy.validate(node.task)
             require(node.dependsOnTaskIds.size <= GlafiraTaskDependencyPolicy.MAX_DEPENDENCIES_PER_TASK)
