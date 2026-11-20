@@ -191,16 +191,19 @@ public sealed class BridgeV1TlsCertificateStore
                 var certificate = new X509Certificate2(
                     pfx, (string?)null, X509KeyStorageFlags.EphemeralKeySet);
                 var fingerprint = Fingerprint(certificate);
-                if (!StringComparer.Ordinal.Equals(fingerprint, persisted.FingerprintSha256) ||
+                if (string.IsNullOrWhiteSpace(persisted.HubId) ||
+                    persisted.BindAddresses is null ||
+                    persisted.BindAddresses.Length is < 1 or > 8 ||
+                    !StringComparer.Ordinal.Equals(fingerprint, persisted.FingerprintSha256) ||
                     !certificate.HasPrivateKey ||
-                    certificate.NotBefore > _timeProvider.GetUtcNow().AddMinutes(5) ||
-                    certificate.NotAfter <= _timeProvider.GetUtcNow())
+                    certificate.NotBefore > _timeProvider.GetUtcNow().AddMinutes(5))
                 {
                     certificate.Dispose();
                     throw new InvalidDataException("Desktop Hub TLS identity integrity or validity check failed.");
                 }
 
                 var addresses = persisted.BindAddresses.Select(IPAddress.Parse).ToArray();
+                ValidateIdentity(persisted.HubId, addresses);
                 return new BridgeV1TlsCertificateIdentity(
                     persisted.HubId, addresses, certificate, fingerprint, certificate.NotAfter);
             }
