@@ -640,7 +640,20 @@ class GlafiraTaskStore(context: Context) :
                 "WHERE n.plan_id = ? ORDER BY n.ordinal ASC",
             arrayOf(planId)
         ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.toTask()) } }
-        return GlafiraCoreTaskPlanRecord(planId, projectId, header.first, header.second, header.third, tasks)
+        val dependencies = db.rawQuery(
+            "SELECT d.task_id, d.depends_on_task_id FROM $TABLE_DEPENDENCIES d " +
+                "JOIN core_task_plan_nodes n ON n.task_id = d.task_id WHERE n.plan_id = ?",
+            arrayOf(planId)
+        ).use { cursor ->
+            buildMap<String, MutableSet<String>> {
+                while (cursor.moveToNext()) {
+                    getOrPut(cursor.getString(0)) { mutableSetOf() }.add(cursor.getString(1))
+                }
+            }.mapValues { it.value.toSet() }
+        }
+        return GlafiraCoreTaskPlanRecord(
+            planId, projectId, header.first, header.second, header.third, tasks, dependencies
+        )
     }
 
     /** Returns direct predecessors for diagnostics and dependency-aware scheduling. */
