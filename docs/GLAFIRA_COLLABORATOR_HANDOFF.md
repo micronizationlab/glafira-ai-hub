@@ -168,3 +168,13 @@ Entries are append-only. Statuses are snapshots; always refresh GitHub before re
 4. Continue #104 → #119 → #122 in order. Do not cherry-pick stale #151 source over current main.
 5. Continue Windows Desktop/Agent HTTPS pairing and real result journal; #170 is lease-fencing validation, not a complete remote fleet.
 6. Implement the token calculator engine and wallet ledger only after the owner approves GLF reference, contributor share/caps, service-day and expiry rules. Keep current docs/CSVs as design inputs, not production prices.
+
+
+
+
+## 2026-11-20 addendum — precise acceptance boundaries
+
+- PR #181 / #122 updated head 60a819f1c476db48571e290de4fb0f8bd60bfcad: run 44727389394. Android JVM 137 JUnit cases, 0 failures/errors/skips; iOS BridgeKit 24 Swift tests, 0 failures, and no occurrences of the two previous Security deprecation warnings; Windows Agent 4 tests, 0 failures; workflow lint passed; shared contract conformance passed; APK packaged. Android emulator acceptance was still running at the time of this entry; wait for final TRX/JUnit count before calling the run complete.
+- PR #140 emulator UI tests prove: Bridge Settings entry exists and its Start button is enabled; manual backup button is enabled and responds by changing status; Council button is enabled and responds to an empty-question validation; task queue Add Task creates and displays an encrypted local queued task. These tests do NOT prove a real Google Drive upload/read-back, successful council call to configured external models, or real Bridge LAN pairing. Those require a physical-device/provider/network acceptance pass.
+- Backup worker source does create an encrypted archive, uploads it via the selected Storage Access Framework folder, downloads a verification copy and verifies it before marking success. The current emulator test does not execute that full cloud-provider path.
+- PR #178 documentation latest head after model quota corrections: b47385bbbbbeae31c128f1e71efcd7ad2e3eeaa9. Changes after the previous docs-only green run are documentation-only; no new platform tests are required, but check the live PR and dispatcher status before merge.
