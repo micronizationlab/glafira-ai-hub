@@ -1,6 +1,20 @@
 using GLAFIRA.Agent.Worker;
 using Microsoft.Extensions.Hosting;
 
+if (args.Length == 1 && StringComparer.Ordinal.Equals(args[0], "--pair"))
+{
+    try
+    {
+        await AgentPairingWizard.RunAsync();
+    }
+    catch (Exception error)
+    {
+        Console.Error.WriteLine($"Сопряжение не выполнено: {error.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddWindowsService(options =>

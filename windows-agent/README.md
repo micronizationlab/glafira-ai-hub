@@ -1,29 +1,67 @@
-# GLAFIRA Windows Agent — W1 foundation
+# GLAFIRA Windows Agent
 
-This is the beginning of a separate Windows background-worker product. It is not a Desktop clone.
+The Windows Agent is a separate background-worker product, not a Desktop clone.
 
-## Included in this increment
+## Build and publish
 
-- .NET 8 Worker Service project that can run under the Windows Service Control Manager.
-- Minimal service lifecycle and bounded graceful-shutdown timeout.
-- Typed task envelope/result contracts with payload references and integrity hashes.
-- Explicit handler registry that rejects unknown task types and duplicate registrations.
-- In-memory service status surface.
+From the repository root on a Windows machine with the .NET 8 SDK:
 
-## Deliberately not enabled yet
+```powershell
+.\windows-agent\scripts\publish-agent.ps1
+```
 
-- No host endpoint, network listener or automatic connection.
-- No Agent enrollment or credentials.
-- No task polling, leasing or execution.
-- No shell, arbitrary process launch, unrestricted filesystem or browser control.
-- No secrets are stored or transferred.
+The self-contained x64 publish output is written to `windows-agent\publish\win-x64`.
 
-The service reports `AwaitingOwnerEnrollment` and does no work until owner-approved enrollment, device identity, capability scopes, revocation and the canonical C1 lease protocol are implemented and tested.
+Copy the published directory to the Agent computer, or copy the repository's `windows-agent` directory and run the scripts there.
 
-## Next increments
+## Install
 
-1. Owner-confirmed enrollment against the Windows Desktop host.
-2. Device-bound protected credential storage and revocation.
-3. Authenticated heartbeat/reconnect with backoff.
-4. Lease/fencing-aware task claim and typed handler execution.
-5. Pause/resume, resource limits, install/upgrade/uninstall and ten-node fault testing.
+Open PowerShell **as Administrator** on the Agent computer:
+
+```powershell
+.\scripts\install-agent.ps1
+```
+
+The installer creates the `GLAFIRA Agent` automatic Windows service under LocalSystem. The installer verifies the service identity because the credential vault uses machine-scoped DPAPI.
+
+## Pair with Desktop
+
+1. On the Desktop computer, start Bridge HTTPS and create a one-time pairing ticket. The ticket expires after five minutes.
+2. On the Agent computer, open an elevated PowerShell window and run:
+
+```powershell
+& "$env:ProgramFiles\GLAFIRA\Agent\GLAFIRA.Agent.Worker.exe" --pair
+```
+
+3. Enter the Desktop HTTPS endpoint, TLS SHA-256 fingerprint, ticket ID, one-time pairing code and Agent ID. The pairing code is masked while typing.
+4. The Agent saves the credential as a DPAPI LocalMachine-protected blob under `%ProgramData%\GLAFIRA\Agent`. The directory and file ACLs grant access only to LocalSystem and local Administrators.
+5. In GLAFIRA Desktop, select the pending Agent, assign only the capabilities it should receive, choose the parallelism limit and explicitly approve it.
+6. Restart the Windows service:
+
+```powershell
+Restart-Service "GLAFIRA Agent"
+```
+
+## Remove
+
+Open elevated PowerShell:
+
+```powershell
+.\scripts\uninstall-agent.ps1
+```
+
+The default uninstall retains the machine-protected enrollment file. To also remove it:
+
+```powershell
+.\scripts\uninstall-agent.ps1 -RemoveCredentials
+```
+
+## Security and implementation boundary
+
+- The Agent uses a pinned HTTPS pairing endpoint and a 256-bit one-time ticket.
+- The shared secret is stored as a DPAPI LocalMachine-protected blob; plaintext is not written to disk.
+- The credential directory and file are ACL-protected for LocalSystem and local Administrators.
+- The Windows service runs as LocalSystem so it can decrypt the machine-scoped credential.
+- Desktop enrollment creates a pending Agent with no capabilities. The owner explicitly assigns capabilities and approves it; revocation disables the credential and enrollment.
+
+This increment implements installation, secure one-time enrollment, machine-protected credential storage, pending registration and owner approval/revocation. The Agent service validates the stored enrollment at startup. **Authenticated task polling, heartbeat/lease renewal, typed task execution and result ACK are not enabled yet.** The service must not be described as a functioning remote task executor until those pieces and two-computer acceptance tests pass.

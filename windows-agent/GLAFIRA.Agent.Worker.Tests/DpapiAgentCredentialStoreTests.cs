@@ -1,5 +1,7 @@
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Security.Principal;
 using System.Net.Security;
 using GLAFIRA.Agent.Worker;
 using Xunit;
@@ -37,6 +39,30 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
         Assert.True(credential.Scopes.SetEquals(loaded.Scopes));
         Assert.Equal(credential.EnrolledAt, loaded.EnrolledAt);
         Assert.Equal(credential.ExpiresAt, loaded.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task CredentialVaultAclIsProtectedAndLimitedToSystemAndAdministrators()
+    {
+        var store = new DpapiAgentCredentialStore(_path, new FixedTimeProvider(_now));
+        await store.SaveAsync(CreateCredential(), default);
+
+        var directorySecurity = new DirectoryInfo(_root).GetAccessControl(AccessControlSections.Access);
+        var fileSecurity = new FileInfo(_path).GetAccessControl(AccessControlSections.Access);
+        var allowed = new HashSet<string>(StringComparer.Ordinal)
+        {
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value,
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value
+        };
+
+        Assert.True(directorySecurity.AreAccessRulesProtected);
+        Assert.True(fileSecurity.AreAccessRulesProtected);
+        Assert.All(directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>(), rule => Assert.Contains(
+                ((SecurityIdentifier)rule.IdentityReference).Value, allowed));
+        Assert.All(fileSecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>(), rule => Assert.Contains(
+                ((SecurityIdentifier)rule.IdentityReference).Value, allowed));
     }
 
     [Fact]
