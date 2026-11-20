@@ -35,7 +35,7 @@ Copy-Item -Path (Join-Path $PublishDirectory "*") -Destination $InstallDirectory
 
 New-Service -Name $serviceName -BinaryPathName ('"' + $targetExecutable + '"') -DisplayName "GLAFIRA Agent" -Description "Owner-approved GLAFIRA background Agent." -StartupType Automatic
 $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
-if ($service.StartName -notin @("LocalSystem", "NT AUTHORITY\\SYSTEM")) {
+if ($service.StartName -notin @("LocalSystem", "NT AUTHORITY\SYSTEM")) {
     throw "GLAFIRA Agent must run as LocalSystem because its credential vault uses LocalMachine DPAPI and a SYSTEM-only service ACL."
 }
 sc.exe sidtype $serviceName unrestricted | Out-Null
