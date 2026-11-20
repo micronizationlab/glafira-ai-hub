@@ -30,10 +30,10 @@ public static class AgentEnrollmentCredentialPolicy
     public static void Validate(AgentEnrollmentCredential credential, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(credential);
-        if (string.IsNullOrWhiteSpace(credential.AgentId) || credential.AgentId.Length > 128)
-            throw new ArgumentException("Agent ID must contain 1–128 characters.", nameof(credential));
-        if (string.IsNullOrWhiteSpace(credential.DesktopHubId) || credential.DesktopHubId.Length > 128)
-            throw new ArgumentException("Desktop Hub ID must contain 1–128 characters.", nameof(credential));
+        if (!IsIdentity(credential.AgentId))
+            throw new ArgumentException("Agent ID must be a bounded ASCII identifier.", nameof(credential));
+        if (!IsIdentity(credential.DesktopHubId))
+            throw new ArgumentException("Desktop Hub ID must be a bounded ASCII identifier.", nameof(credential));
         if (credential.Endpoint is null || !credential.Endpoint.IsAbsoluteUri ||
             credential.Endpoint.Scheme != Uri.UriSchemeHttps ||
             string.IsNullOrWhiteSpace(credential.Endpoint.Host) ||
@@ -52,12 +52,18 @@ public static class AgentEnrollmentCredentialPolicy
         {
             throw new ArgumentException("Enrollment secret must be valid Base64.", nameof(credential), error);
         }
-        if (secret.Length < 32)
-            throw new ArgumentException("Enrollment secret must contain at least 256 bits.", nameof(credential));
-        Array.Clear(secret);
+        try
+        {
+            if (secret.Length != 32)
+                throw new ArgumentException("Enrollment secret must contain exactly 256 bits.", nameof(credential));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(secret);
+        }
 
         if (credential.Scopes is null || credential.Scopes.Count is < 1 or > 32 ||
-            credential.Scopes.Any(scope => string.IsNullOrWhiteSpace(scope) || scope.Length > 128))
+            credential.Scopes.Any(scope => !IsScope(scope)))
             throw new ArgumentException("Enrollment requires 1–32 valid capability scopes.", nameof(credential));
         if (credential.EnrolledAt > now.AddMinutes(5) || credential.ExpiresAt <= now ||
             credential.ExpiresAt <= credential.EnrolledAt)
@@ -67,6 +73,12 @@ public static class AgentEnrollmentCredentialPolicy
     private static bool IsCanonicalSha256(string value) =>
         value is { Length: 64 } && value.All(character =>
             character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    private static bool IsIdentity(string value) => value is { Length: >= 1 and <= 128 } &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+
+    private static bool IsScope(string value) => value is { Length: >= 1 and <= 128 } &&
+        value.All(character => character is >= '!' and <= '~');
 }
 
 /// <summary>
@@ -82,6 +94,14 @@ public static class AgentTlsCertificatePinPolicy
         SslPolicyErrors policyErrors)
     {
         ArgumentNullException.ThrowIfNull(credential);
+        return Validate(credential.TlsCertificateSha256, certificate, policyErrors);
+    }
+
+    public static bool Validate(
+        string expectedSha256,
+        X509Certificate2? certificate,
+        SslPolicyErrors policyErrors)
+    {
         if (certificate is null ||
             (policyErrors & (SslPolicyErrors.RemoteCertificateNotAvailable |
                              SslPolicyErrors.RemoteCertificateNameMismatch)) != 0)
@@ -90,9 +110,9 @@ public static class AgentTlsCertificatePinPolicy
         byte[] expected;
         try
         {
-            expected = Convert.FromHexString(credential.TlsCertificateSha256);
+            expected = Convert.FromHexString(expectedSha256);
         }
-        catch (FormatException)
+        catch (Exception error) when (error is FormatException or ArgumentNullException)
         {
             return false;
         }

@@ -82,6 +82,18 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
             AgentEnrollmentCredentialPolicy.Validate(credential, _now));
     }
 
+    [Fact]
+    public void EnrollmentRejectsSecretLongerThan256Bits()
+    {
+        var credential = CreateCredential() with
+        {
+            SharedSecretBase64 = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64))
+        };
+
+        Assert.Throws<ArgumentException>(() =>
+            AgentEnrollmentCredentialPolicy.Validate(credential, _now));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("abc")]
