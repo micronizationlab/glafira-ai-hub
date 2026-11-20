@@ -135,7 +135,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     /** Decomposes a high-level instruction through a trusted planner, then persists its DAG. */
-    fun submitInstruction(
+    suspend fun submitInstruction(
         request: GlafiraCoreTaskPlanRequest,
         decomposer: GlafiraCoreTaskPlanDecomposer
     ): GlafiraCoreTaskPlanEnqueueResult =
