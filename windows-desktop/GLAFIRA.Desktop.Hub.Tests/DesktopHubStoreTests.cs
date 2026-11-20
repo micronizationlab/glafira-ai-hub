@@ -137,6 +137,33 @@ public sealed class DesktopHubStoreTests : IDisposable
             second.FencingToken, succeeded: true, now.AddSeconds(4)));
     }
 
+    [Fact]
+    public void DashboardQueriesExposeAgentAndTaskStateWithoutPayloadOrSecrets()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-dashboard", "device-dashboard",
+            ["research", "summarize"], 2, true), now);
+        _store.Enqueue(CreateTask("dashboard-task"), now);
+
+        var agent = Assert.Single(_store.GetAgents(now));
+        Assert.Equal("agent-dashboard", agent.AgentId);
+        Assert.True(agent.OwnerApproved);
+        Assert.True(agent.IsOnline);
+        Assert.Equal(2, agent.MaxParallelTasks);
+
+        var task = Assert.Single(_store.GetTasks());
+        Assert.Equal("dashboard-task", task.TaskId);
+        Assert.Equal(HubTaskState.Queued, task.State);
+        Assert.Equal(HubTaskEffectRisk.ReadOnly, task.EffectRisk);
+    }
+
+    [Fact]
+    public void DashboardTaskQueryEnforcesAReasonableLimit()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => _store.GetTasks(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _store.GetTasks(1_001));
+    }
+
     private static HubTaskRequest CreateTask(
         string id,
         IReadOnlyCollection<string>? required = null,
