@@ -57,9 +57,7 @@ def classify_paths(
                 root / "windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj"
             ).is_file()
             selected["contracts"] = (root / "contracts").is_dir()
-            selected["android_acceptance"] = (
-                root / ".github/scripts/run-android-instrumentation.sh"
-            ).is_file()
+            selected["android_acceptance"] = True
 
         if (
             path.startswith("app/src/androidTest/")
@@ -84,10 +82,6 @@ def classify_paths(
         selected["contracts"] = (root / "contracts").is_dir()
         selected["android_acceptance"] = True
 
-    if selected["android_acceptance"] and not (
-        root / ".github/scripts/run-android-instrumentation.sh"
-    ).is_file():
-        selected["android_acceptance"] = False
 
     return selected
 
