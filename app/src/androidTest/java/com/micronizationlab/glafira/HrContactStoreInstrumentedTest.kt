@@ -88,6 +88,7 @@ class HrContactStoreInstrumentedTest {
         val storedFiles = directory.listFiles().orEmpty()
         assertEquals(1, storedFiles.size)
         val ciphertext = storedFiles.single().readText()
+        assertFalse(File(context.filesDir, "hr_contacts").exists())
         assertFalse(ciphertext.contains(contact.displayName))
         assertFalse(ciphertext.contains(contact.organization.orEmpty()))
     }
