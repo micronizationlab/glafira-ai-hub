@@ -146,7 +146,7 @@ public sealed class HubRequestAuthenticator(
                request.DeviceId.Length <= 128 &&
                request.Method.Length is > 0 and <= 12 &&
                request.Method.All(char.IsAsciiLetter) &&
-               request.Path.StartsWith('/', StringComparison.Ordinal) &&
+               request.Path.StartsWith("/", StringComparison.Ordinal) &&
                !request.Path.Contains('\n') &&
                request.Path.Length <= 2048 &&
                request.Nonce.Length is >= 16 and <= 128 &&
