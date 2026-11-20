@@ -83,10 +83,20 @@ public sealed class AgentWorker(
             if (heartbeat.Accepted)
             {
                 runtimeState.SetOwnerProfile(heartbeat.Capabilities, heartbeat.MaxParallelTasks);
+                var wasConnected = runtimeState.Status == AgentServiceStatus.Connected;
                 runtimeState.SetStatus(AgentServiceStatus.Connected);
-                logger.LogDebug(
-                    "GLAFIRA Agent {AgentId} is connected to Desktop; owner approved {CapabilityCount} capabilities with parallelism {MaxParallel}. Task polling remains disabled.",
-                    heartbeat.AgentId, heartbeat.Capabilities.Count, heartbeat.MaxParallelTasks);
+                if (!wasConnected)
+                {
+                    logger.LogInformation(
+                        "GLAFIRA Agent {AgentId} is connected to Desktop; owner approved {CapabilityCount} capabilities with parallelism {MaxParallel}. Task polling remains disabled.",
+                        heartbeat.AgentId, heartbeat.Capabilities.Count, heartbeat.MaxParallelTasks);
+                }
+                else
+                {
+                    logger.LogDebug(
+                        "GLAFIRA Agent {AgentId} heartbeat accepted.",
+                        heartbeat.AgentId);
+                }
                 return;
             }
 
