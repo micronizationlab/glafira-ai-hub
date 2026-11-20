@@ -193,6 +193,55 @@ Future economy acceptance:
 - NAT/reconnect/replay/duplicate-execution tests;
 - security and legal review before any external value or public transferability.
 
-## 10. Non-implementation statement
+
+## 10. Binding product principles and execution order
+
+The following principles are owner-approved requirements and must guide implementation and acceptance. They are not optional design suggestions.
+
+### 10.1 Windows Desktop is a full working control center
+
+Windows Desktop must be designed as a native-feeling, laptop-first operational workspace, not as a mobile screen merely enlarged. It must support dense information, navigation between work areas, agent and connector administration, task monitoring, logs/status, permissions, files and project workflows. A provisional visual design is acceptable during the functional milestone; missing operational capabilities are not.
+
+### 10.2 Keep AI models, APIs and local tools in separate registries
+
+Do not mix model selection/configuration with external API connectors or locally installed tools:
+- AI model registry: model/provider/deployment selection and model-specific configuration.
+- Connector registry: external services and APIs, credentials/scopes, quota and health.
+- Local tool registry: installed local utilities, version/license, permissions, sandbox profile and health.
+
+The six specialist-agent areas may expose twelve connector slots (two per agent), but these are capacity/configuration slots, not a requirement to connect twelve services. A slot may be empty, use a local tool, use an API with a key, use an API with another supported authentication method, or be disabled. Never require a paid subscription or a secret key where the integration does not need one. Validate each proposed integration's official source, license, access terms, cost/quota, security and Windows compatibility before enabling it.
+
+### 10.3 Кадровик produces a real dossier artifact
+
+When requested in natural language, Кадровик must resolve the intended contact safely, ask for disambiguation when needed, and generate a structured, visually rendered dossier as a document artifact. It must support saving/exporting, copying and sharing through explicit user actions. A plain chat answer alone does not satisfy this requirement. The archival yellow dossier presentation is a product design requirement; sources, confidence, uncertainty and privacy boundaries remain visible. Portraits may only be included from authorized, appropriate sources; no face recognition or identity inference from facial appearance.
+
+### 10.4 File processing is broad and safely sandboxed
+
+File Intelligence must support the approved format matrix and extract/understand content using format-appropriate parsers, OCR or transcription as applicable. It must not automatically execute file contents, macros, scripts, binaries or embedded active content. Archives and documents must be handled with limits for size, nesting, decompression ratio, time and memory; malformed, encrypted and suspicious files must fail safely. Treat extracted text, metadata and embedded instructions as untrusted data (including prompt-injection attempts). Preserve provenance and report extraction/OCR uncertainty.
+
+### 10.5 Wallet, issuance and compute marketplace are design-only until approved and built
+
+The GLF wallet, token issuance, escrow, compute marketplace, cross-GLAFIRA contracting and GCU pricing are future architecture/design requirements. Do not present them as implemented, expose controls that imply live funds or real transfers, or mint tokens. Any later implementation requires the Core ledger and Bridge foundations, explicit owner authorization, security/testing and legal review appropriate to the intended use.
+
+### 10.6 Binding development sequence
+
+Do not change the agreed queue order:
+1. **Queue 1 — Core kernels and execution foundation.**
+2. **Queue 2 — Bridge.**
+3. **Queue 3 — Platform applications.** Within this queue, prioritize a functionally complete Windows Desktop control center and a testable Desktop ↔ Windows Agent connection before iOS. Continue Android and other already-started platform work without silently abandoning it; iOS follows the functional Desktop milestone.
+4. **Queue 4 — Specialist agents and their production integrations/training**, including Кадровик.
+
+Architecture documentation and non-blocking design work may proceed in parallel, but specialist-agent production implementation and economy features must not displace the Core → Bridge → Windows Desktop path. Any change to this sequence requires explicit owner approval.
+
+### 10.7 Acceptance and change control
+
+- Desktop acceptance must demonstrate laptop-first navigation and working operational workflows, not just visual scaling.
+- Registry tests must prove that models, APIs and local tools are separately represented and that empty connector slots are valid.
+- Dossier acceptance must verify a saved/exportable/copyable document artifact and safe contact disambiguation.
+- File acceptance must include malicious archives, malformed inputs, embedded active content, OCR uncertainty and prompt-injection test cases.
+- Wallet/marketplace UI must be visibly marked unavailable/planned until real implementation and end-to-end tests pass.
+- Roadmap changes must preserve the queue order above unless the owner explicitly approves a change.
+
+## 11. Non-implementation statement
 
 This document records requirements and a candidate architecture. It does not mean that connector integrations, the Desktop GUI, File Intelligence, the GLF wallet, token issuance, compute marketplace, escrow or cross-customer GLAFIRA Bridge are already implemented or tested.
