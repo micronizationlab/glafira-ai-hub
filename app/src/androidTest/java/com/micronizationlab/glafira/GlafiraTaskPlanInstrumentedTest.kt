@@ -108,6 +108,17 @@ class GlafiraTaskPlanInstrumentedTest {
         assertNull(queue.taskPlan("plan-00000001", "hydrogen-active"))
     }
 
+    @Test fun desktopNodeInventoryTracksMultipleLiveWorkersAndTheirCapabilities() {
+        val queue = requireNotNull(store)
+        queue.recordDesktopNode("desktop-node-01", setOf("cpu", "files"), 2, 20_000L)
+        queue.recordDesktopNode("desktop-node-02", setOf("gpu", "browser"), 4, 21_000L)
+
+        val nodes = queue.desktopNodes(60_000L)
+        assertEquals(listOf("desktop-node-02", "desktop-node-01"), nodes.map { it.nodeId })
+        assertEquals(setOf("gpu", "browser"), nodes.first().capabilities)
+        assertEquals(4, nodes.first().maxParallelTasks)
+    }
+
     @Test fun failedNodeMakesPlanTerminalAndPreservesSharedTaskHistory() {
         val queue = requireNotNull(store)
         queue.enqueuePlan(plan(listOf(
