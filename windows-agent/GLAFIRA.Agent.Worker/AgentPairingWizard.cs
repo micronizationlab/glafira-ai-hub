@@ -45,8 +45,9 @@ public static class AgentPairingWizard
         Console.WriteLine();
         Console.WriteLine($"Сопряжение завершено: Agent {credential.AgentId} → Hub {credential.DesktopHubId}.");
         Console.WriteLine($"Credential сохранён в машинном DPAPI-хранилище; истекает {credential.ExpiresAt.ToLocalTime():dd.MM.yyyy HH:mm}.");
-        Console.WriteLine("Теперь подтвердите Agent и назначьте ему capabilities в GLAFIRA Desktop.");
-        Console.WriteLine("После этого перезапустите службу GLAFIRA Agent. Исполнение задач пока не включено в этой версии.");
+        Console.WriteLine("Перезапустите службу GLAFIRA Agent, чтобы она загрузила новое credential.");
+        Console.WriteLine("Затем подтвердите Agent и назначьте ему capabilities в GLAFIRA Desktop.");
+        Console.WriteLine("После одобрения Desktop подключится автоматически в течение 30 секунд. Исполнение задач пока не включено.");
     }
 
     private static string ReadRequired(string prompt)
