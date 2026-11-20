@@ -184,6 +184,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         store.enqueue(task("must-survive-invalid-snapshot"))
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
+        snapshotDirectory.deleteRecursively()
         assertTrue(snapshotDirectory.mkdirs())
         val snapshot = File(snapshotDirectory, "core-portable-v2.json")
         val archive = try {
