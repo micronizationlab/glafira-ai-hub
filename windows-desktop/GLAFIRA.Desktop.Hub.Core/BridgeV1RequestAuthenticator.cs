@@ -160,7 +160,7 @@ public sealed class BridgeV1RequestAuthenticator(
             !IsIdentifier(request.IdempotencyKey) ||
             !IsIdentifier(request.DeviceId) ||
             !(request.ProjectId == "default" || IsIdentifier(request.ProjectId)) ||
-            request.SignatureHex.Length != 64 ||
+            request.SignatureHex is not { Length: 64 } ||
             request.SignatureHex.Any(character => !Uri.IsHexDigit(character)) ||
             request.Payload is null ||
             !PayloadFields.TryGetValue(request.Operation, out var allowed))
