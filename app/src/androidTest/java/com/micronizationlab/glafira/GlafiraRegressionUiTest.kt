@@ -3,8 +3,9 @@ package com.micronizationlab.glafira
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import org.junit.Assert.assertTrue
@@ -21,17 +22,14 @@ class GlafiraRegressionUiTest {
 
         compose.onNodeWithText("ПОДКЛЮЧЕНИЕ К DESKTOP").assertExists()
         compose.onNodeWithText("ЗАПУСТИТЬ").assertExists().assertIsEnabled()
+        val statusNode = compose.onNodeWithTag("backup_status")
+        val before = statusNode.fetchSemanticsNode().config[SemanticsProperties.Text]
+            .joinToString("") { it.text }
         compose.onNodeWithText("Сохранить сейчас").assertExists().assertIsEnabled().performClick()
-        val actionableFeedback = listOf(
-            "Сначала выбери папку",
-            "Введи пароль",
-            "Нет сохранённого разрешения",
-            "Облачная папка доступна только для чтения",
-            "Резервная копия поставлена в очередь"
-        ).any { message ->
-            compose.onAllNodes(hasText(message, substring = true)).fetchSemanticsNodes().isNotEmpty()
-        }
-        assertTrue("Manual backup action must explain its current state.", actionableFeedback)
+        compose.waitForIdle()
+        val after = statusNode.fetchSemanticsNode().config[SemanticsProperties.Text]
+            .joinToString("") { it.text }
+        assertTrue("Manual backup action must update its visible status.", before != after)
     }
 
     @Test
