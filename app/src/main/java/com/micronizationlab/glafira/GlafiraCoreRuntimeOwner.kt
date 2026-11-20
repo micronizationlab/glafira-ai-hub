@@ -134,6 +134,19 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         return result
     }
 
+    /** Atomically registers an entire bounded DAG before waking the shared dispatcher. */
+    fun enqueuePlan(plan: GlafiraTaskPlan): GlafiraTaskPlanEnqueueResult {
+        val result = taskStore.enqueuePlan(plan)
+        if (result.inserted && isEnabled) {
+            GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+        }
+        return result
+    }
+
+    /** Project-scoped orchestration status and durable node journal. */
+    fun taskPlan(planId: String, projectId: String): GlafiraTaskPlanRecord? =
+        taskStore.taskPlan(planId, projectId)
+
     internal suspend fun executeNext(): GlafiraTaskExecutionResult {
         check(isEnabled) { "GLAFIRA autonomous runtime is paused by owner." }
         return executor.executeNext()
