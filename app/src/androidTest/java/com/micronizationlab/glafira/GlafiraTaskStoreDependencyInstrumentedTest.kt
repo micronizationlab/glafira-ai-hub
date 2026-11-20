@@ -203,6 +203,32 @@ class GlafiraTaskStoreDependencyInstrumentedTest {
         assertEquals(GlafiraTaskState.FAILED, store.getTask("desktop-child")?.state)
     }
 
+    @Test fun coreClaimsRotateAcrossProjectsBeforeDrainingOneProjectsBacklog() {
+        val store = newStore()
+        enqueue(store, task("a-high", "project-a").copy(priority = 100))
+        enqueue(store, task("a-next", "project-a").copy(priority = 90))
+        enqueue(store, task("b-low", "project-b").copy(priority = 0))
+        enqueue(store, task("b-next", "project-b").copy(priority = 0))
+
+        // Project A's higher priority wins its first slot.
+        assertEquals("a-high", store.claimNext(3_000L)?.taskId)
+        // Project B has no active work, so it gets the next slot despite lower priority.
+        assertEquals("b-low", store.claimNext(3_001L)?.taskId)
+
+        assertTrue(store.transition(
+            "a-high", setOf(GlafiraTaskState.RUNNING), GlafiraTaskState.SUCCEEDED,
+            3_002L, null, null
+        ))
+        assertTrue(store.transition(
+            "b-low", setOf(GlafiraTaskState.RUNNING), GlafiraTaskState.SUCCEEDED,
+            3_003L, null, null
+        ))
+
+        // Both projects are idle; the one dispatched least recently gets the next turn.
+        assertEquals("a-next", store.claimNext(3_004L)?.taskId)
+        assertEquals("b-next", store.claimNext(3_005L)?.taskId)
+    }
+
     @Test fun versionFiveDatabaseMigratesDependencyTableWithoutDroppingTasks() {
         val original = newStore()
         enqueue(original, task("preserved"))
