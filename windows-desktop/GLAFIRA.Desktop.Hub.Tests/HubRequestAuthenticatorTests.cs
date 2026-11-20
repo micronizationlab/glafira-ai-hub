@@ -1,3 +1,4 @@
+using Xunit;
 using System.Security.Cryptography;
 using System.Text;
 using GLAFIRA.Desktop.Hub.Core;
