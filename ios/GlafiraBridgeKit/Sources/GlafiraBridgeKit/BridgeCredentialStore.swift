@@ -90,6 +90,7 @@ public final class KeychainBridgeCredentialStore {
             throw BridgeCredentialStoreError.authenticationFailed
         }
 
+        context.localizedReason = reason
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -97,7 +98,6 @@ public final class KeychainBridgeCredentialStore {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationContext as String: context,
-            kSecUseOperationPrompt as String: reason,
             kSecUseDataProtectionKeychain as String: true
         ]
 
