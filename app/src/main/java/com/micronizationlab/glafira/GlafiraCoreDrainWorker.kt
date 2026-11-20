@@ -18,6 +18,9 @@ class GlafiraCoreDrainWorker(
         if (!runtime.isEnabled) return Result.success()
 
         return try {
+            if (inputData.getBoolean(GlafiraCoreWorkScheduler.RESUME_NETWORK, false)) {
+                runtime.taskStore.resumeWaitingForNetwork()
+            }
             val concurrency = runtime.runtimeBudget().maxConcurrentTasks
             if (drainGlafiraCoreParallelBatch(
                     maxParallelTasks = concurrency,
@@ -53,23 +56,3 @@ class GlafiraCoreDrainWorker(
     }
 }
 
-
-/** Delayed jobs wake the drain without replacing or cancelling a running executor. */
-class GlafiraCoreWakeWorker(appContext: Context, params: WorkerParameters) :
-    CoroutineWorker(appContext, params) {
-    override suspend fun doWork(): Result {
-        val runtime = GlafiraCoreRuntimeOwner.get(applicationContext)
-        if (!runtime.isEnabled) return Result.success()
-        return try {
-            if (inputData.getBoolean(GlafiraCoreWorkScheduler.RESUME_NETWORK, false)) {
-                runtime.taskStore.resumeWaitingForNetwork()
-            }
-            GlafiraCoreWorkScheduler.scheduleImmediate(applicationContext)
-            Result.success()
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            if (runAttemptCount >= 4) Result.failure() else Result.retry()
-        }
-    }
-}
