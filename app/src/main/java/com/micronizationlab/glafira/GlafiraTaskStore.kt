@@ -59,6 +59,7 @@ class GlafiraTaskStore(context: Context) :
         createHistorySchema(db)
         createCoreTaskResultsSchema(db)
         createTaskDependenciesSchema(db)
+        createTaskPlansSchema(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -67,7 +68,8 @@ class GlafiraTaskStore(context: Context) :
         if (oldVersion < 4) createHistorySchema(db)
         if (oldVersion < 5) createCoreTaskResultsSchema(db)
         if (oldVersion < 6) createTaskDependenciesSchema(db)
-        if (newVersion > 6) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 7) createTaskPlansSchema(db)
+        if (newVersion > 7) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
     }
 
     private fun createTaskDependenciesSchema(db: SQLiteDatabase) {
@@ -107,6 +109,29 @@ class GlafiraTaskStore(context: Context) :
         db.execSQL("""CREATE TRIGGER IF NOT EXISTS core_task_terminal_guard BEFORE UPDATE OF state ON core_tasks
             WHEN OLD.state IN ('succeeded','failed','cancelled') AND OLD.state != NEW.state BEGIN
             SELECT RAISE(ABORT,'TERMINAL_TASK_IMMUTABLE');
+        END""")
+    }
+
+    private fun createTaskPlansSchema(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS core_task_plans (
+            plan_id TEXT PRIMARY KEY NOT NULL,
+            project_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(project_id, idempotency_key)
+        )""")
+        db.execSQL("""CREATE TABLE IF NOT EXISTS core_task_plan_nodes (
+            plan_id TEXT NOT NULL REFERENCES core_task_plans(plan_id) ON DELETE CASCADE,
+            task_id TEXT NOT NULL UNIQUE REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE,
+            ordinal INTEGER NOT NULL,
+            PRIMARY KEY(plan_id, task_id)
+        )""")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_core_task_plans_project_updated ON core_task_plans(project_id, updated_at DESC)")
+        db.execSQL("""CREATE TRIGGER IF NOT EXISTS core_task_plan_updated AFTER UPDATE OF state ON $TABLE_TASKS
+            WHEN OLD.state != NEW.state BEGIN
+            UPDATE core_task_plans SET updated_at = NEW.updated_at
+            WHERE plan_id IN (SELECT plan_id FROM core_task_plan_nodes WHERE task_id = NEW.task_id);
         END""")
     }
 
@@ -370,6 +395,141 @@ class GlafiraTaskStore(context: Context) :
                 })
             }
         }
+    }
+
+    fun enqueuePlan(plan: GlafiraCoreTaskPlan): GlafiraCoreTaskPlanEnqueueResult {
+        GlafiraCoreTaskPlanPolicy.validate(plan)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val existingPlan = db.query(
+                "core_task_plans", null, "project_id = ? AND idempotency_key = ?",
+                arrayOf(plan.projectId, plan.idempotencyKey), null, null, null, "1"
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null else cursor.getString(cursor.getColumnIndexOrThrow("plan_id"))
+            }
+            if (existingPlan != null) {
+                require(existingPlan == plan.planId) { "TASK_PLAN_IDEMPOTENCY_CONFLICT" }
+                val existingRecord = readTaskPlan(db, plan.planId, plan.projectId)
+                    ?: throw IllegalStateException("Persisted task plan could not be read.")
+                val expectedIds = plan.nodes.map { it.task.taskId }
+                require(existingRecord.nodes.map { it.taskId } == expectedIds) {
+                    "TASK_PLAN_CONTENT_CONFLICT"
+                }
+                plan.nodes.forEach { node ->
+                    val actual = db.query(TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
+                        "task_id = ?", arrayOf(node.task.taskId), null, null, null
+                    ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+                    require(actual == node.dependsOnTaskIds) { "TASK_PLAN_DEPENDENCY_CONFLICT" }
+                }
+                db.setTransactionSuccessful()
+                return GlafiraCoreTaskPlanEnqueueResult(existingRecord, false)
+            }
+
+            db.insertOrThrow("core_task_plans", null, ContentValues().apply {
+                put("plan_id", plan.planId)
+                put("project_id", plan.projectId)
+                put("idempotency_key", plan.idempotencyKey)
+                put("created_at", plan.createdAtMillis)
+                put("updated_at", plan.createdAtMillis)
+            })
+
+            // Insert every node before attaching edges, allowing forward references in a DAG.
+            plan.nodes.forEachIndexed { index, node ->
+                val result = enqueue(node.task)
+                require(result.inserted) { "TASK_PLAN_NODE_ALREADY_EXISTS:" + node.task.taskId }
+                db.insertOrThrow("core_task_plan_nodes", null, ContentValues().apply {
+                    put("plan_id", plan.planId)
+                    put("task_id", node.task.taskId)
+                    put("ordinal", index)
+                })
+            }
+            plan.nodes.forEach { node ->
+                val persisted = queryTask(db, node.task.taskId)
+                    ?: throw IllegalStateException("Task plan node disappeared during insertion.")
+                attachTaskDependencies(db, persisted, node.dependsOnTaskIds, plan.createdAtMillis)
+            }
+            db.setTransactionSuccessful()
+            val record = readTaskPlan(db, plan.planId, plan.projectId)
+                ?: throw IllegalStateException("Committed task plan could not be read.")
+            return GlafiraCoreTaskPlanEnqueueResult(record, true)
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Recent orchestration journal for one project, newest plans first. */
+    @Synchronized
+    fun taskPlans(projectId: String, limit: Int = 100): List<GlafiraCoreTaskPlanRecord> {
+        require(projectId.isNotBlank() && limit in 1..500)
+        return readableDatabase.query(
+            "core_task_plans", arrayOf("plan_id"), "project_id = ?",
+            arrayOf(projectId), null, null, "updated_at DESC, created_at DESC", limit.toString()
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    readTaskPlan(readableDatabase, cursor.getString(0), projectId)?.let(::add)
+                }
+            }
+        }
+    }
+
+    /** Combined plan/node state history and decrypted result journal, project scoped. */
+    @Synchronized
+    fun taskPlanJournal(planId: String, projectId: String): GlafiraCoreTaskPlanJournal? {
+        val plan = taskPlan(planId, projectId) ?: return null
+        val nodes = plan.nodes.map { task ->
+            val coreResult = coreTaskResult(task.taskId, projectId)?.result
+            val desktopResult = if (coreResult == null) desktopTaskResult(task.taskId) else null
+            GlafiraCoreTaskPlanNodeJournal(
+                task = task,
+                history = taskHistory(task.taskId, projectId, 500),
+                result = coreResult ?: desktopResult
+            )
+        }
+        return GlafiraCoreTaskPlanJournal(plan, nodes)
+    }
+
+    /** Returns the durable plan graph and current task states, scoped to its project. */
+    @Synchronized
+    fun taskPlan(planId: String, projectId: String): GlafiraCoreTaskPlanRecord? {
+        require(planId.isNotBlank() && projectId.isNotBlank())
+        return readTaskPlan(readableDatabase, planId, projectId)
+    }
+
+    private fun readTaskPlan(
+        db: SQLiteDatabase,
+        planId: String,
+        projectId: String
+    ): GlafiraCoreTaskPlanRecord? {
+        val header = db.query("core_task_plans", null,
+            "plan_id = ? AND project_id = ?", arrayOf(planId, projectId),
+            null, null, null, "1").use { cursor ->
+            if (!cursor.moveToFirst()) null else Triple(
+                cursor.getString(cursor.getColumnIndexOrThrow("idempotency_key")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("created_at")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("updated_at"))
+            )
+        } ?: return null
+        val tasks = db.rawQuery(
+            "SELECT t.* FROM $TABLE_TASKS t JOIN core_task_plan_nodes n ON n.task_id = t.task_id " +
+                "WHERE n.plan_id = ? ORDER BY n.ordinal ASC",
+            arrayOf(planId)
+        ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.toTask()) } }
+        val dependencies = db.rawQuery(
+            "SELECT d.task_id, d.depends_on_task_id FROM $TABLE_DEPENDENCIES d " +
+                "JOIN core_task_plan_nodes n ON n.task_id = d.task_id WHERE n.plan_id = ?",
+            arrayOf(planId)
+        ).use { cursor ->
+            buildMap<String, MutableSet<String>> {
+                while (cursor.moveToNext()) {
+                    getOrPut(cursor.getString(0)) { mutableSetOf() }.add(cursor.getString(1))
+                }
+            }.mapValues { it.value.toSet() }
+        }
+        return GlafiraCoreTaskPlanRecord(
+            planId, projectId, header.first, header.second, header.third, tasks, dependencies
+        )
     }
 
     /** Returns direct predecessors for diagnostics and dependency-aware scheduling. */
@@ -716,6 +876,47 @@ class GlafiraTaskStore(context: Context) :
             put("capabilities_json", JSONArray(capabilities.sorted()).toString())
             put("max_parallel_tasks", maxParallelTasks)
         }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun activeDesktopLeaseCounts(nowMillis: Long = System.currentTimeMillis()): Map<String, Int> {
+        require(nowMillis > 0L)
+        return readableDatabase.rawQuery(
+            "SELECT device_id, COUNT(*) FROM core_desktop_leases WHERE lease_expires_at > ? GROUP BY device_id",
+            arrayOf(nowMillis.toString())
+        ).use { cursor ->
+            buildMap {
+                while (cursor.moveToNext()) put(cursor.getString(0), cursor.getInt(1))
+            }
+        }
+    }
+
+    /** All recently heartbeating Desktop nodes, ordered by freshness for dispatch planning. */
+    @Synchronized
+    fun desktopNodes(
+        maxAgeMillis: Long = 45_000L,
+        nowMillis: Long = System.currentTimeMillis()
+    ): List<GlafiraNodeCapabilities> {
+        require(maxAgeMillis in 1_000L..300_000L && nowMillis > 0L)
+        val cutoff = nowMillis - maxAgeMillis
+        return readableDatabase.query(
+            "core_desktop_nodes", null, "last_seen_at >= ?",
+            arrayOf(cutoff.toString()), null, null, "last_seen_at DESC", "32"
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    val json = JSONArray(cursor.getString(cursor.getColumnIndexOrThrow("capabilities_json")))
+                    val capabilities = buildSet {
+                        for (index in 0 until json.length()) add(json.getString(index))
+                    }
+                    add(GlafiraNodeCapabilities(
+                        nodeId = cursor.getString(cursor.getColumnIndexOrThrow("device_id")),
+                        available = true,
+                        maxParallelTasks = cursor.getInt(cursor.getColumnIndexOrThrow("max_parallel_tasks")).coerceIn(1, 8),
+                        capabilities = capabilities
+                    ))
+                }
+            }
+        }
     }
 
     @Synchronized
@@ -1121,7 +1322,7 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 6
+        private const val DATABASE_VERSION = 7
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
