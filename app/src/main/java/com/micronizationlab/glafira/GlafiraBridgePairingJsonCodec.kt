@@ -33,7 +33,7 @@ object GlafiraBridgePairingJsonCodec {
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
             .decode(ByteBuffer.wrap(bytes)).toString()
-        val reader = JsonReader(StringReader(text)).apply { isLenient = false }
+        val reader = JsonReader(StringReader(text))
         val root = readValue(reader)
         require(reader.peek() == JsonToken.END_DOCUMENT)
         require(root.isJsonObject && root.asJsonObject.keySet() == requiredKeys)
