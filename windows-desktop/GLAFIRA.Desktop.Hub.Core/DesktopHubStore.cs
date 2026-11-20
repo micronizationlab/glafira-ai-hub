@@ -17,7 +17,7 @@ public sealed class DesktopHubStore
 
     public DesktopHubStore(string databasePath, IHubDataProtector? dataProtector = null)
     {
-        _dataProtector = dataProtector ?? new WindowsDpapiHubDataProtector();
+        _dataProtector = dataProtector ?? CreateDefaultDataProtector();
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         var fullPath = Path.GetFullPath(databasePath);
         var directory = Path.GetDirectoryName(fullPath);
@@ -31,6 +31,13 @@ public sealed class DesktopHubStore
             Pooling = true
         }.ToString();
         Initialize();
+    }
+
+    private static IHubDataProtector CreateDefaultDataProtector()
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("The Windows Desktop Hub requires Windows DPAPI for result-at-rest protection.");
+        return new WindowsDpapiHubDataProtector();
     }
 
     public void RegisterAgent(HubAgentRegistration agent, DateTimeOffset now)
