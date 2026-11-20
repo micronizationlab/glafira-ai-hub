@@ -250,6 +250,9 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     fun desktopNodeCapabilities(): GlafiraNodeCapabilities? = taskStore.desktopNodeCapabilities()
 
+    /** Current authenticated Desktop worker inventory for capability-aware dispatch. */
+    fun desktopNodes(): List<GlafiraNodeCapabilities> = taskStore.desktopNodes()
+
     fun desktopTaskLeaseExpiry(taskId: String): Long? = taskStore.desktopTaskLeaseExpiry(taskId)
 
     /** Project-scoped lookup for a successfully persisted Core handler result. */
