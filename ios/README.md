@@ -17,9 +17,7 @@ Core, memory authority, or privileged device.
   shared with the Kotlin implementation.
 - `.github/workflows/ios.yml`: macOS CI runs `swift test` for the package.
 
-These are buildable Swift package modules, not yet an installable iPhone/iPad application.
-There is no Xcode app target, app icon, signing profile, Apple account setup,
-TestFlight build, or App Store release in this increment.
+The repository now includes an unsigned native Xcode application target at `ios/GLAFIRA.xcodeproj` which launches the existing `GlafiraRootView`. It is configured for iPhone and iPad and can be built for the simulator without signing. App icon assets, signing profile, Apple account setup, TestFlight build and App Store release are not included.
 
 ## Build and test
 
@@ -73,7 +71,7 @@ Requires Swift 5.9 or later and the Apple CryptoKit framework.
 1. Strict JSON codec and cross-platform request/response fixtures.
 2. Keychain credential store and LocalAuthentication adapter.
 3. Pinned HTTPS transport and pairing invitation import.
-4. SwiftUI app target with adaptive iPhone/iPad project and conversation shell.
+4. Bind the native app target to authenticated project/conversation data and add UI tests.
 5. Encrypted local cache, idempotent outbox and conflict handling after the
    shared Core memory/event contract is stable.
 
