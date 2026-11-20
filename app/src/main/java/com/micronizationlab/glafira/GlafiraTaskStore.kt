@@ -598,6 +598,22 @@ class GlafiraTaskStore(context: Context) :
         }
     }
 
+    /** Combined plan/node state history and decrypted result journal, project scoped. */
+    @Synchronized
+    fun taskPlanJournal(planId: String, projectId: String): GlafiraTaskPlanJournal? {
+        val plan = taskPlan(planId, projectId) ?: return null
+        val nodes = plan.nodes.map { task ->
+            val coreResult = coreTaskResult(task.taskId, projectId)?.result
+            val desktopResult = if (coreResult == null) desktopTaskResult(task.taskId) else null
+            GlafiraTaskPlanNodeJournal(
+                task = task,
+                history = taskHistory(task.taskId, projectId, 500),
+                result = coreResult ?: desktopResult
+            )
+        }
+        return GlafiraTaskPlanJournal(plan, nodes)
+    }
+
     /** Returns the durable plan graph and current task states, scoped to its project. */
     @Synchronized
     fun taskPlan(planId: String, projectId: String): GlafiraTaskPlanRecord? {
