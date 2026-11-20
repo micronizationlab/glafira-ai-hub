@@ -153,6 +153,7 @@ public sealed class DesktopHubStore
             command.Parameters.AddWithValue("$dependency", dependency);
             command.ExecuteNonQuery();
         }
+        AppendTaskEvent(connection, transaction, task.TaskId, HubTaskState.Queued, now, null, null, null, "TASK_ENQUEUED");
         transaction.Commit();
     }
 
@@ -286,6 +287,7 @@ public sealed class DesktopHubStore
             insert.Parameters.AddWithValue("$expires", expires.ToUnixTimeMilliseconds());
             insert.ExecuteNonQuery();
         }
+        AppendTaskEvent(connection, transaction, selected.TaskId, HubTaskState.Leased, now, agentId, leaseId, nextFence, "TASK_LEASED");
         transaction.Commit();
 
         return new HubTaskLease(
@@ -308,9 +310,14 @@ public sealed class DesktopHubStore
         {
             validate.Transaction = transaction;
             validate.CommandText = """
-                SELECT COUNT(*) FROM Leases
-                WHERE agent_id = $agent AND task_id = $task AND lease_id = $lease
-                  AND fencing_token = $fence AND expires_at_ms > $now;
+                SELECT COUNT(*)
+                FROM Leases l
+                JOIN Tasks t ON t.task_id = l.task_id
+                JOIN Agents a ON a.agent_id = l.agent_id
+                WHERE l.agent_id = $agent AND l.task_id = $task AND l.lease_id = $lease
+                  AND l.fencing_token = $fence AND l.expires_at_ms > $now
+                  AND t.state = 'Leased' AND t.fencing_token = $fence
+                  AND a.owner_approved = 1;
                 """;
             validate.Parameters.AddWithValue("$agent", agentId);
             validate.Parameters.AddWithValue("$task", taskId);
@@ -343,6 +350,69 @@ public sealed class DesktopHubStore
             delete.Parameters.AddWithValue("$lease", leaseId);
             delete.ExecuteNonQuery();
         }
+        AppendTaskEvent(connection, transaction, taskId, succeeded ? HubTaskState.Succeeded : HubTaskState.Failed, now, agentId, leaseId, fencingToken, succeeded ? "TASK_SUCCEEDED" : "TASK_FAILED");
+        transaction.Commit();
+        return true;
+    }
+
+    /// <summary>
+    /// Appends bounded progress only while the caller owns the current, unexpired fenced lease.
+    /// A stale worker cannot publish progress after lease reassignment.
+    /// </summary>
+    public bool ReportProgress(
+        string agentId,
+        string taskId,
+        string leaseId,
+        long fencingToken,
+        int progressPercent,
+        string progressMessage,
+        DateTimeOffset now)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        ValidateIdentifier(taskId, nameof(taskId));
+        ValidateIdentifier(leaseId, nameof(leaseId));
+        if (fencingToken <= 0)
+            throw new ArgumentOutOfRangeException(nameof(fencingToken));
+        if (progressPercent is < 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(progressPercent));
+        ArgumentException.ThrowIfNullOrWhiteSpace(progressMessage);
+        if (progressMessage.Length > 512)
+            throw new ArgumentException("Progress message exceeds 512 characters.", nameof(progressMessage));
+        var safeProgressMessage = new string(progressMessage
+            .Select(character => char.IsControl(character) ? ' ' : character)
+            .ToArray()).Trim();
+        if (safeProgressMessage.Length == 0)
+            throw new ArgumentException("Progress message must contain visible status text.", nameof(progressMessage));
+
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+        using (var validate = connection.CreateCommand())
+        {
+            validate.Transaction = transaction;
+            validate.CommandText = """
+                SELECT COUNT(*)
+                FROM Leases l
+                JOIN Tasks t ON t.task_id = l.task_id
+                JOIN Agents a ON a.agent_id = l.agent_id
+                WHERE l.agent_id = $agent AND l.task_id = $task AND l.lease_id = $lease
+                  AND l.fencing_token = $fence AND l.expires_at_ms > $now
+                  AND t.state = 'Leased' AND t.fencing_token = $fence
+                  AND a.owner_approved = 1;
+                """;
+            validate.Parameters.AddWithValue("$agent", agentId);
+            validate.Parameters.AddWithValue("$task", taskId);
+            validate.Parameters.AddWithValue("$lease", leaseId);
+            validate.Parameters.AddWithValue("$fence", fencingToken);
+            validate.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            if (Convert.ToInt32(validate.ExecuteScalar()) != 1)
+            {
+                transaction.Commit();
+                return false;
+            }
+        }
+
+        AppendTaskEvent(connection, transaction, taskId, HubTaskState.Leased, now,
+            agentId, leaseId, fencingToken, "TASK_PROGRESS", progressPercent, safeProgressMessage);
         transaction.Commit();
         return true;
     }
@@ -387,6 +457,8 @@ public sealed class DesktopHubStore
                 delete.Parameters.AddWithValue("$task", item.TaskId);
                 delete.ExecuteNonQuery();
             }
+            AppendTaskEvent(connection, transaction, item.TaskId, state, now, null, null, null,
+                state == HubTaskState.Queued ? "LEASE_EXPIRED_READ_ONLY_REQUEUED" : "LEASE_EXPIRED_OUTCOME_UNKNOWN");
             recovered.Add(new HubTaskRecovery(
                 item.TaskId, state,
                 state == HubTaskState.Queued
@@ -421,6 +493,17 @@ public sealed class DesktopHubStore
                 age >= TimeSpan.Zero && age <= AgentFreshness));
         }
         return agents;
+    }
+
+    /// <summary>Resolves an enrolled device to its stable Agent ID without exposing credentials.</summary>
+    public string? GetAgentIdByDeviceId(string deviceId)
+    {
+        ValidateIdentifier(deviceId, nameof(deviceId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT agent_id FROM Agents WHERE device_id = $device;";
+        command.Parameters.AddWithValue("$device", deviceId);
+        return command.ExecuteScalar() as string;
     }
 
     /// <summary>Read-only, bounded task list for the Desktop owner dashboard.</summary>
@@ -461,6 +544,76 @@ public sealed class DesktopHubStore
         command.Parameters.AddWithValue("$task", taskId);
         var value = command.ExecuteScalar() as string;
         return Enum.TryParse<HubTaskState>(value, out var state) ? state : null;
+    }
+
+    /// <summary>Returns the durable, append-only state history for one task without payloads or credentials.</summary>
+    public IReadOnlyList<HubTaskEventSnapshot> GetTaskHistory(string taskId, int limit = 500)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        if (limit is < 1 or > 5_000)
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT event_id, task_id, state, occurred_at_ms, agent_id, lease_id, fencing_token,
+                   event_code, progress_percent, progress_message
+            FROM TaskEvents
+            WHERE task_id = $task
+            ORDER BY event_id ASC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$task", taskId);
+        command.Parameters.AddWithValue("$limit", limit);
+        using var reader = command.ExecuteReader();
+        var events = new List<HubTaskEventSnapshot>();
+        while (reader.Read())
+        {
+            if (!Enum.TryParse<HubTaskState>(reader.GetString(2), out var state))
+                continue;
+            events.Add(new HubTaskEventSnapshot(
+                reader.GetInt64(0), reader.GetString(1), state,
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3)),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetInt64(6),
+                reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9)));
+        }
+        return events;
+    }
+
+    private static void AppendTaskEvent(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string taskId,
+        HubTaskState state,
+        DateTimeOffset occurredAt,
+        string? agentId,
+        string? leaseId,
+        long? fencingToken,
+        string eventCode,
+        int? progressPercent = null,
+        string? progressMessage = null)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO TaskEvents(
+                task_id, state, occurred_at_ms, agent_id, lease_id, fencing_token, event_code,
+                progress_percent, progress_message)
+            VALUES($task, $state, $occurred, $agent, $lease, $fence, $code, $progress, $message);
+            """;
+        command.Parameters.AddWithValue("$task", taskId);
+        command.Parameters.AddWithValue("$state", state.ToString());
+        command.Parameters.AddWithValue("$occurred", occurredAt.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$agent", (object?)agentId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$lease", (object?)leaseId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$fence", (object?)fencingToken ?? DBNull.Value);
+        command.Parameters.AddWithValue("$code", eventCode);
+        command.Parameters.AddWithValue("$progress", (object?)progressPercent ?? DBNull.Value);
+        command.Parameters.AddWithValue("$message", (object?)progressMessage ?? DBNull.Value);
+        command.ExecuteNonQuery();
     }
 
     private void Initialize()
@@ -513,12 +666,51 @@ public sealed class DesktopHubStore
                 expires_at_ms INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS TaskEvents(
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL REFERENCES Tasks(task_id) ON DELETE CASCADE,
+                state TEXT NOT NULL,
+                occurred_at_ms INTEGER NOT NULL,
+                agent_id TEXT NULL,
+                lease_id TEXT NULL,
+                fencing_token INTEGER NULL,
+                event_code TEXT NOT NULL,
+                progress_percent INTEGER NULL,
+                progress_message TEXT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_TaskEvents_Task
+                ON TaskEvents(task_id, event_id);
+
             CREATE INDEX IF NOT EXISTS IX_Tasks_Queue
                 ON Tasks(state, priority DESC, created_at_ms ASC);
             CREATE INDEX IF NOT EXISTS IX_Leases_Agent
                 ON Leases(agent_id, expires_at_ms);
             """;
         command.ExecuteNonQuery();
+        EnsureTaskEventColumn(connection, "progress_percent", "INTEGER NULL");
+        EnsureTaskEventColumn(connection, "progress_message", "TEXT NULL");
+    }
+
+    private static void EnsureTaskEventColumn(SqliteConnection connection, string columnName, string columnDefinition)
+    {
+        using var query = connection.CreateCommand();
+        query.CommandText = "PRAGMA table_info(TaskEvents);";
+        using var reader = query.ExecuteReader();
+        var exists = false;
+        while (reader.Read())
+        {
+            if (StringComparer.Ordinal.Equals(reader.GetString(1), columnName))
+            {
+                exists = true;
+                break;
+            }
+        }
+        reader.Close();
+        if (exists) return;
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE TaskEvents ADD COLUMN {columnName} {columnDefinition};";
+        alter.ExecuteNonQuery();
     }
 
     private SqliteConnection Open()
