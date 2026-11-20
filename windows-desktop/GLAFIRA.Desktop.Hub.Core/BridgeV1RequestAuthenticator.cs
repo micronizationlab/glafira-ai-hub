@@ -120,12 +120,13 @@ public sealed class BridgeV1RequestAuthenticator(
             return BridgeV1AdmissionResult.Deny(BridgeV1AdmissionFailure.SignatureInvalid);
 
         var expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(request.ExpiresAtEpochMs);
-        // The shared Bridge idempotency key may be 8 characters; the legacy generic
-        // replay guard requires a 16+ character nonce. Hash it to a fixed 64-char key.
-        var idempotencyBytes = Encoding.UTF8.GetBytes(request.IdempotencyKey);
-        var replayKeyBytes = SHA256.HashData(idempotencyBytes);
+        // RequestId is the one-shot transport nonce. IdempotencyKey is the stable
+        // operation identity: retries after a lost ACK use a fresh RequestId but retain
+        // the same IdempotencyKey so the durable dispatcher can return the prior commit.
+        var requestIdBytes = Encoding.UTF8.GetBytes(request.RequestId);
+        var replayKeyBytes = SHA256.HashData(requestIdBytes);
         var replayNonce = Convert.ToHexString(replayKeyBytes).ToLowerInvariant();
-        CryptographicOperations.ZeroMemory(idempotencyBytes);
+        CryptographicOperations.ZeroMemory(requestIdBytes);
         CryptographicOperations.ZeroMemory(replayKeyBytes);
         if (!await replayGuard.TryClaimAsync(
                 request.DeviceId, replayNonce, expiresAt, cancellationToken))
