@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+// Keep the home-screen entry points accessible to UI Automator and assistive technology.
 fun App() {
     var currentAgent by remember { mutableStateOf<A?>(null) }
     var showSettings by remember { mutableStateOf(false) }
