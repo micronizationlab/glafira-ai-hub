@@ -104,3 +104,18 @@ Restore applies an exact snapshot of app-private files: it writes verified archi
 
 ## Optional email fallback
 Email delivery is for small encrypted archives only and is not the primary destination. The user chooses the recipient address and explicitly connects a mail account with OAuth. Apply a strict attachment-size cap, verify the archive locally before sending, and never fall back to sending an unencrypted archive. If the archive exceeds the cap or the provider rejects it, keep the last verified cloud/local copy and show a clear warning; do not silently omit the backup.
+
+
+## Core database consistency and archive authentication (2026-11-20)
+
+All manual exports, cloud backups and restores must pass through `GlafiraCoreBackupCoordinator`, not call `BackupArchive` directly.
+
+- The coordinator enters `GlafiraCoreMaintenanceGate.withExclusive` before exporting or restoring the SQLite Core queue. It snapshots the live database using `GlafiraTaskStore.exportConsistentSnapshot` into an app-private `.glafira-core-snapshot/glafira_core_tasks.db` path; the encrypted archive then contains that snapshot.
+- Before restore, `BackupArchive.verifyContains` authenticates the archive, checks the application ID and requires the Core database snapshot path. Legacy/incomplete archives without the Core snapshot are rejected before the current installation is touched.
+- After the archive files are staged and restored, the coordinator imports the database through `restoreConsistentSnapshot`. It first creates a separate safety database and encrypted safety archive. If restore fails, it rolls back both files and SQLite. If rollback itself fails, the safety archive/database are retained and their paths are attached to the error for manual recovery.
+- Decrypted staging is always under app-private `cacheDir`, never beside a user-selected file in Downloads/shared storage.
+- AES-GCM verification drains the cipher stream to EOF after ZIP parsing so the authentication tag is actually checked. The manifest's app ID, file count, total bytes, unique paths, per-file size and SHA-256 values are checked before apply.
+- The restore allowlist is explicit. Only approved non-secret preferences (primary provider and peer-consultation settings) are restored; API keys, OAuth tokens, device-bound Keystore material and arbitrary preference keys are not imported.
+- DPAPI/Android Keystore keys are not portable backup material; users must re-authenticate/re-enter device-bound credentials after restoring to a new device.
+
+The instrumentation suite covers Core snapshot inclusion, legacy archive rejection, task result recovery, truncated AES-GCM tag rejection, cross-application archive rejection and traversal-path rejection. No backup/restore feature is considered accepted until the managed-emulator suite passes and a real-device Google Drive round trip is checked.
