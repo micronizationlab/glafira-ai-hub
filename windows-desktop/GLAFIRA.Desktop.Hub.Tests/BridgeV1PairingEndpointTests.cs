@@ -20,7 +20,8 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     public async Task ReturnsCanonicalCredentialBundleAndRegistersItOnHub()
     {
         var store = CreateStore();
-        var endpoint = CreateEndpoint(store);
+        var hubStore = CreateHubStore();
+        var endpoint = CreateEndpoint(store, hubStore);
         var ticket = store.Create(
             ["desktop.task.result", "desktop.task.claim"], TimeSpan.FromMinutes(2));
 
@@ -44,13 +45,28 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
         Assert.Equal(secret, credential.HmacSecret);
         CryptographicOperations.ZeroMemory(secret);
         CryptographicOperations.ZeroMemory(credential.HmacSecret);
+
+        var pending = Assert.Single(hubStore.GetAgents(_clock.GetUtcNow()));
+        Assert.Equal("agent-01", pending.AgentId);
+        Assert.False(pending.OwnerApproved);
+        Assert.False(pending.IsOnline);
+        Assert.Empty(pending.Capabilities);
+        Assert.Null(hubStore.ClaimNext("agent-01", _clock.GetUtcNow().AddSeconds(1), TimeSpan.FromMinutes(1)));
+
+        Assert.True(hubStore.ConfigureAgentApproval("agent-01", ["web.research"], 1));
+        var approved = Assert.Single(hubStore.GetAgents(_clock.GetUtcNow()));
+        Assert.True(approved.OwnerApproved);
+        Assert.False(approved.IsOnline);
+        Assert.True(hubStore.Heartbeat("agent-01", ["web.research"], 1, _clock.GetUtcNow().AddSeconds(1)));
+        Assert.True(Assert.Single(hubStore.GetAgents(_clock.GetUtcNow().AddSeconds(2))).IsOnline);
     }
 
     [Fact]
     public async Task WrongCodeAndReplayHaveTheSameSecretFreeFailureShape()
     {
         var store = CreateStore();
-        var endpoint = CreateEndpoint(store);
+        var hubStore = CreateHubStore();
+        var endpoint = CreateEndpoint(store, hubStore);
         var ticket = store.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
         var wrongCode = ticket.PairingCode[..42] + (ticket.PairingCode[42] == 'a' ? "b" : "a");
 
@@ -75,7 +91,8 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     public async Task InvalidEnvelopeOrLocalEndpointDoesNotConsumeTicket()
     {
         var store = CreateStore();
-        var endpoint = CreateEndpoint(store);
+        var hubStore = CreateHubStore();
+        var endpoint = CreateEndpoint(store, hubStore);
         var ticket = store.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
 
         Assert.Equal("FAILED", (await endpoint.RedeemAsync(
@@ -93,8 +110,9 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     {
         var firstStore = CreateStore();
         var secondStore = CreateStore();
-        var firstEndpoint = CreateEndpoint(firstStore);
-        var secondEndpoint = CreateEndpoint(secondStore);
+        var hubStore = CreateHubStore();
+        var firstEndpoint = CreateEndpoint(firstStore, hubStore);
+        var secondEndpoint = CreateEndpoint(secondStore, hubStore);
         var ticket = firstStore.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
 
         var responses = await Task.WhenAll(
@@ -110,8 +128,13 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     private BridgeV1PairingTicketStore CreateStore() =>
         new(_databasePath, _clock, _protector);
 
-    private static BridgeV1PairingEndpoint CreateEndpoint(BridgeV1PairingTicketStore store) =>
-        new(store, HubId, TlsPin, TimeSpan.FromDays(30));
+    private DesktopHubStore CreateHubStore() =>
+        new(_databasePath, _protector);
+
+    private BridgeV1PairingEndpoint CreateEndpoint(
+        BridgeV1PairingTicketStore store,
+        DesktopHubStore hubStore) =>
+        new(store, hubStore, HubId, TlsPin, TimeSpan.FromDays(30), _clock);
 
     private static BridgeV1PairingRequest Request(BridgeV1PairingTicket ticket) =>
         new(1, ticket.TicketId, ticket.PairingCode, "agent-01");
