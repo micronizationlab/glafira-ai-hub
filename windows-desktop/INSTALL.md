@@ -12,10 +12,18 @@ The self-contained x64 output is written to \`windows-desktop\publish\win-x64\`.
 
 ## Install on the Desktop/Hub computer
 
-Open PowerShell **as Administrator**:
+Open PowerShell **as Administrator**.
+
+From the repository root:
 
 ~~~powershell
 .\windows-desktop\scripts\install-desktop.ps1
+~~~
+
+From the extracted `GLAFIRA-Desktop-win-x64.zip` package root:
+
+~~~powershell
+.\scripts\install-desktop.ps1
 ~~~
 
 The installer copies the app to \`%ProgramFiles%\GLAFIRA\Desktop\`, creates a Start Menu shortcut and adds an inbound Windows Firewall rule for TCP 8443 restricted to the **Private** network profile and \`LocalSubnet\`. It does not open the port to Public networks or the internet.
