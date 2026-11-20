@@ -91,7 +91,7 @@ public partial class MainWindow : Window
         try
         {
             _pairingTicketTimer.Stop();
-            await _bridgeHost.RevokeAgentAsync();
+            _viewModel.RevokeAgent(_bridgeHost.PairingAgentId);
         }
         catch (Exception)
         {
@@ -105,6 +105,7 @@ public partial class MainWindow : Window
         try
         {
             await _bridgeHost.RevokeAndCreatePairingTicketAsync();
+            _viewModel.Refresh();
             _pairingTicketTimer.Stop();
             _pairingTicketTimer.Start();
         }
@@ -119,6 +120,55 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ApproveSelectedAgent_Click(object sender, RoutedEventArgs e)
+    {
+        if (AgentsGrid.SelectedItem is not HubAgentSnapshot agent)
+        {
+            MessageBox.Show("Сначала выберите сопряжённый Agent.", "GLAFIRA Agent",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (!int.TryParse(AgentParallelInput.Text, out var parallel) || parallel is < 1 or > 16)
+        {
+            MessageBox.Show("Параллельность должна быть числом от 1 до 16.", "GLAFIRA Agent",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var capabilities = AgentCapabilitiesInput.Text.Split(
+                ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            _viewModel.ApproveAgent(agent.AgentId, capabilities, parallel);
+        }
+        catch (ArgumentException error)
+        {
+            MessageBox.Show(error.Message, "GLAFIRA Agent", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (InvalidOperationException error)
+        {
+            MessageBox.Show(error.Message, "GLAFIRA Agent", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void RevokeSelectedAgent_Click(object sender, RoutedEventArgs e)
+    {
+        if (AgentsGrid.SelectedItem is not HubAgentSnapshot agent)
+        {
+            MessageBox.Show("Сначала выберите Agent.", "GLAFIRA Agent",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            $"Отозвать сопряжение и отключить credential для {agent.AgentId}?",
+            "Подтверждение отзыва", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        _pairingTicketTimer.Stop();
+        _bridgeHost.PairingAgentId = agent.AgentId;
+        _viewModel.RevokeAgent(agent.AgentId);
+    }
     protected override async void OnClosing(CancelEventArgs e)
     {
         if (_allowClose)

@@ -205,12 +205,16 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
     [Fact]
     public async Task RePairingAtomicallyRevokesOldCredentialAndCreatesBoundTicket()
     {
+        var hubStore = new DesktopHubStore(_databasePath, _protector);
         var store = CreateStore();
         var firstTicket = store.CreateForAgent(
             "agent-01", ["desktop.task.claim"], TimeSpan.FromMinutes(1));
         var first = await EnrollAsync(store, firstTicket, "agent-01");
         var resolver = new DpapiSqliteHubCredentialResolver(_databasePath, _protector, _clock);
         Assert.NotNull(await resolver.ResolveAsync("agent-01", default));
+        hubStore.RegisterPendingAgent("agent-01", "agent-01", _clock.GetUtcNow());
+        Assert.True(hubStore.ConfigureAgentApproval("agent-01", ["code.build"], 1));
+        Assert.True(hubStore.IsAgentOwnerApproved("agent-01"));
 
         var replacement = await store.RevokeAndCreateForAgentAsync(
             "agent-01", ["desktop.task.result"], TimeSpan.FromMinutes(2));
@@ -218,6 +222,7 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
         Assert.True(replacement.RevokedExistingEnrollment);
         Assert.Equal("agent-01", replacement.Ticket.AgentId);
         Assert.Null(await resolver.ResolveAsync("agent-01", default));
+        Assert.False(hubStore.IsAgentOwnerApproved("agent-01"));
         var second = await EnrollAsync(store, replacement.Ticket, "agent-01");
         Assert.True(second.Accepted);
         Assert.NotEqual(first.Credential!.SharedSecretBase64, second.Credential!.SharedSecretBase64);

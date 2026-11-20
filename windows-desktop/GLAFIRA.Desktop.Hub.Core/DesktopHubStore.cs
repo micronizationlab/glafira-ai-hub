@@ -69,6 +69,158 @@ public sealed class DesktopHubStore
         command.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Creates a paired Agent in a denied-by-default state. Existing owner-approved
+    /// identities cannot be silently replaced by a new pairing ticket.
+    /// </summary>
+    public void RegisterPendingAgent(string agentId, string deviceId, DateTimeOffset now)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        ValidateIdentifier(deviceId, nameof(deviceId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO Agents(agent_id, device_id, capabilities_json, max_parallel, owner_approved, last_heartbeat_ms)
+            VALUES($agent, $device, '[]', 1, 0, 0)
+            ON CONFLICT(agent_id) DO UPDATE SET
+                device_id = excluded.device_id,
+                capabilities_json = '[]',
+                max_parallel = 1,
+                owner_approved = 0,
+                last_heartbeat_ms = 0
+            WHERE Agents.owner_approved = 0;
+            """;
+        command.Parameters.AddWithValue("$agent", agentId);
+        command.Parameters.AddWithValue("$device", deviceId);
+        if (command.ExecuteNonQuery() != 1)
+            throw new InvalidOperationException("AGENT_ALREADY_OWNER_APPROVED");
+    }
+
+    /// <summary>
+    /// Repairs the narrow crash window between durable credential enrollment and
+    /// pending scheduler registration. It never approves an Agent or grants capabilities.
+    /// </summary>
+    public int ReconcilePendingAgents(DateTimeOffset now)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+        var agentIds = new List<string>();
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = """
+                SELECT agent_id FROM HubAgentEnrollments
+                WHERE revoked_at_ms IS NULL AND expires_at_ms > $now
+                ORDER BY agent_id;
+                """;
+            read.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            using var reader = read.ExecuteReader();
+            while (reader.Read()) agentIds.Add(reader.GetString(0));
+        }
+
+        var inserted = 0;
+        foreach (var agentId in agentIds)
+        {
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = """
+                INSERT OR IGNORE INTO Agents(
+                    agent_id, device_id, capabilities_json, max_parallel, owner_approved, last_heartbeat_ms)
+                VALUES($agent, $agent, '[]', 1, 0, 0);
+                """;
+            insert.Parameters.AddWithValue("$agent", agentId);
+            inserted += insert.ExecuteNonQuery();
+        }
+        transaction.Commit();
+        return inserted;
+    }
+
+    /// <summary>Assigns capabilities and enables a paired Agent without fabricating a heartbeat.</summary>
+    public bool ConfigureAgentApproval(
+        string agentId,
+        IReadOnlyCollection<string> capabilities,
+        int maxParallelTasks)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        ArgumentNullException.ThrowIfNull(capabilities);
+        if (maxParallelTasks is < 1 or > 16)
+            throw new ArgumentOutOfRangeException(nameof(maxParallelTasks));
+        var normalized = Normalize(capabilities);
+        if (normalized.Length is < 1 or > 16)
+            throw new ArgumentException("An approved Agent must have 1–16 explicit capabilities.", nameof(capabilities));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE Agents
+            SET capabilities_json = $capabilities,
+                max_parallel = $parallel,
+                owner_approved = 1
+            WHERE agent_id = $agent;
+            """;
+        command.Parameters.AddWithValue("$capabilities", JsonSerializer.Serialize(normalized));
+        command.Parameters.AddWithValue("$parallel", maxParallelTasks);
+        command.Parameters.AddWithValue("$agent", agentId);
+        return command.ExecuteNonQuery() == 1;
+    }
+
+    public bool IsAgentOwnerApproved(string agentId)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT owner_approved FROM Agents WHERE agent_id = $agent;";
+        command.Parameters.AddWithValue("$agent", agentId);
+        return Convert.ToInt32(command.ExecuteScalar() ?? 0) == 1;
+    }
+
+    /// <summary>Revokes Hub credentials, enrollment and scheduler approval in one transaction.</summary>
+    public bool RevokeAgent(string agentId, DateTimeOffset now)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+
+        bool agentRowUpdated;
+        using (var approval = connection.CreateCommand())
+        {
+            approval.Transaction = transaction;
+            approval.CommandText = "UPDATE Agents SET owner_approved = 0, last_heartbeat_ms = 0 WHERE agent_id = $agent;";
+            approval.Parameters.AddWithValue("$agent", agentId);
+            agentRowUpdated = approval.ExecuteNonQuery() == 1;
+        }
+
+        bool credentialUpdated;
+        using (var credential = connection.CreateCommand())
+        {
+            credential.Transaction = transaction;
+            credential.CommandText = """
+                UPDATE HubCredentials
+                SET protected_secret = X'', scopes_json = '[]', enabled = 0, updated_at_ms = $now
+                WHERE device_id = $agent;
+                """;
+            credential.Parameters.AddWithValue("$agent", agentId);
+            credential.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            credentialUpdated = credential.ExecuteNonQuery() > 0;
+        }
+
+        bool enrollmentUpdated;
+        using (var enrollment = connection.CreateCommand())
+        {
+            enrollment.Transaction = transaction;
+            enrollment.CommandText = """
+                UPDATE HubAgentEnrollments
+                SET revoked_at_ms = $now
+                WHERE agent_id = $agent AND revoked_at_ms IS NULL;
+                """;
+            enrollment.Parameters.AddWithValue("$agent", agentId);
+            enrollment.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            enrollmentUpdated = enrollment.ExecuteNonQuery() > 0;
+        }
+
+        transaction.Commit();
+        return agentRowUpdated || credentialUpdated || enrollmentUpdated;
+    }
+
     /// <summary>Called only by the owner-approval UI after an authenticated pairing ceremony.</summary>
     public bool SetAgentOwnerApproval(string agentId, bool approved)
     {

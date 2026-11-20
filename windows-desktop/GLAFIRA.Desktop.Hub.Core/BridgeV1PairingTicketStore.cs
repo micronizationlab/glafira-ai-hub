@@ -218,6 +218,25 @@ public sealed class BridgeV1PairingTicketStore
             enrollment.Parameters.AddWithValue("$now", nowMs);
             var revokedEnrollment = await enrollment.ExecuteNonQueryAsync(cancellationToken) == 1;
 
+            var revokedApproval = false;
+            await using (var table = connection.CreateCommand())
+            {
+                table.Transaction = transaction;
+                table.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'Agents';";
+                if (await table.ExecuteScalarAsync(cancellationToken) is not null)
+                {
+                    await using var approval = connection.CreateCommand();
+                    approval.Transaction = transaction;
+                    approval.CommandText = """
+                        UPDATE Agents
+                        SET owner_approved = 0, last_heartbeat_ms = 0
+                        WHERE agent_id = $agent;
+                        """;
+                    approval.Parameters.AddWithValue("$agent", agentId);
+                    revokedApproval = await approval.ExecuteNonQueryAsync(cancellationToken) == 1;
+                }
+            }
+
             await using var ticket = connection.CreateCommand();
             ticket.Transaction = transaction;
             ticket.CommandText = """
@@ -235,7 +254,7 @@ public sealed class BridgeV1PairingTicketStore
             await transaction.CommitAsync(cancellationToken);
 
             return new BridgeV1RePairingTicketResult(
-                revokedCredential || revokedEnrollment,
+                revokedCredential || revokedEnrollment || revokedApproval,
                 new BridgeV1PairingTicket(
                     ticketId, pairingCode, expiresAt,
                     new HashSet<string>(scopes, StringComparer.Ordinal), agentId));

@@ -1,11 +1,16 @@
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text.Json;
 
 namespace GLAFIRA.Agent.Worker;
 
 /// <summary>
-/// Persists enrollment only as a Windows DPAPI CurrentUser-protected blob.
-/// The Windows service must run under the same service identity on subsequent starts.
+/// Persists enrollment as a Windows DPAPI LocalMachine-protected blob under
+/// ProgramData. The directory and file ACL admit only LocalSystem and local
+/// Administrators; the Agent Windows service runs as LocalSystem. This allows
+/// an elevated pairing wizard and the service to share credentials without
+/// exposing plaintext or depending on the interactive user's DPAPI profile.
 /// </summary>
 public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
 {
@@ -27,9 +32,9 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
 
     public DpapiAgentCredentialStore(string? credentialPath = null, TimeProvider? timeProvider = null)
     {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var root = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
         if (string.IsNullOrWhiteSpace(root))
-            throw new InvalidOperationException("The Windows service profile is not available.");
+            throw new InvalidOperationException("The machine-wide ProgramData directory is not available.");
         _credentialPath = Path.GetFullPath(credentialPath ??
             Path.Combine(root, "GLAFIRA", "Agent", "enrollment.dpapi"));
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -53,7 +58,7 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
         byte[] protectedBytes;
         try
         {
-            protectedBytes = ProtectedData.Protect(clear, Entropy, DataProtectionScope.CurrentUser);
+            protectedBytes = ProtectedData.Protect(clear, Entropy, DataProtectionScope.LocalMachine);
         }
         finally
         {
@@ -63,10 +68,12 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
         var directory = Path.GetDirectoryName(_credentialPath)
             ?? throw new InvalidOperationException("Credential path has no parent directory.");
         Directory.CreateDirectory(directory);
+        RestrictDirectoryAcl(directory);
         var temporaryPath = _credentialPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             await File.WriteAllBytesAsync(temporaryPath, protectedBytes, cancellationToken);
+            RestrictFileAcl(temporaryPath);
             cancellationToken.ThrowIfCancellationRequested();
             File.Move(temporaryPath, _credentialPath, overwrite: true);
         }
@@ -87,12 +94,12 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
         byte[] clear;
         try
         {
-            clear = ProtectedData.Unprotect(protectedBytes, Entropy, DataProtectionScope.CurrentUser);
+            clear = ProtectedData.Unprotect(protectedBytes, Entropy, DataProtectionScope.LocalMachine);
         }
         catch (CryptographicException error)
         {
             throw new InvalidDataException(
-                "Agent enrollment credentials cannot be decrypted for this Windows service identity.", error);
+                "Agent enrollment credentials cannot be decrypted with this Windows machine identity.", error);
         }
         finally
         {
@@ -127,5 +134,32 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
         if (File.Exists(_credentialPath))
             File.Delete(_credentialPath);
         return Task.CompletedTask;
+    }
+
+    private static void RestrictDirectoryAcl(string path)
+    {
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            FileSystemRights.FullControl, inheritance, PropagationFlags.None, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+            FileSystemRights.FullControl, inheritance, PropagationFlags.None, AccessControlType.Allow));
+        new DirectoryInfo(path).SetAccessControl(security);
+    }
+
+    private static void RestrictFileAcl(string path)
+    {
+        var security = new FileSecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            FileSystemRights.FullControl, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+            FileSystemRights.FullControl, AccessControlType.Allow));
+        new FileInfo(path).SetAccessControl(security);
     }
 }

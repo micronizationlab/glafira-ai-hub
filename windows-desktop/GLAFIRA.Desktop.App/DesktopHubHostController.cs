@@ -147,7 +147,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             var dispatcher = new BridgeV1TaskOperationDispatcher(_store, _payloadStore);
             var options = new BridgeV1HttpsHostOptions(hubId, addresses, HttpsPort);
             var pairingEndpoint = new BridgeV1PairingEndpoint(
-                _pairingTickets, hubId, _tlsIdentity.FingerprintSha256);
+                _pairingTickets, _store, hubId, _tlsIdentity.FingerprintSha256);
             _host = new BridgeV1HttpsHost(
                 options, _tlsIdentity, authenticator, dispatcher, pairingEndpoint);
             await _host.StartAsync(cancellationToken).ConfigureAwait(true);
@@ -224,12 +224,12 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         return PairingInvitationText;
     }
 
-    public async Task<bool> RevokeAgentAsync(CancellationToken cancellationToken = default)
+    public bool RevokeAgent(string agentId)
     {
-        var agentId = PairingAgentId;
-        ClearPairingTicket();
-        var revoked = await _credentialResolver.RevokeAsync(
-            agentId, cancellationToken).ConfigureAwait(true);
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
+        if (StringComparer.Ordinal.Equals(agentId, PairingAgentId))
+            ClearPairingTicket();
+        var revoked = _store.RevokeAgent(agentId, DateTimeOffset.UtcNow);
         PairingStatus = revoked
             ? $"Доступ {agentId} отозван. На Agent удалите старый credential."
             : $"Активный credential {agentId} не найден.";
