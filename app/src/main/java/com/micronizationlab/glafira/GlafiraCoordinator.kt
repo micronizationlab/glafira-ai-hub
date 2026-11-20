@@ -118,7 +118,7 @@ object GlafiraCoordinator {
             context,
             primaryProvider,
             safeHistory + Msg(councilContext, true, "", ""),
-            systemPrompt + "\\nТы — главный координатор. Другие модели — твои советники, не начальники."
+            systemPrompt + "\nТы — главный координатор. Другие модели — твои советники, не начальники."
         )
         return if (finalAnswer is AiProviderResult.Failure) {
             // Retrying this composite operation would repeat successful planner/peer calls.
