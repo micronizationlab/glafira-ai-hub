@@ -12,7 +12,8 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 object BackupScheduler {
-    private const val UNIQUE_WORK_NAME = "glafira_daily_backup"
+    const val DAILY_WORK_NAME = "glafira_daily_backup"
+    const val MANUAL_WORK_NAME = "glafira_backup_now"
 
     fun scheduleDaily(context: Context, wifiOnly: Boolean) {
         val constraints = Constraints.Builder()
@@ -26,7 +27,7 @@ object BackupScheduler {
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            UNIQUE_WORK_NAME,
+            DAILY_WORK_NAME,
             ExistingPeriodicWorkPolicy.UPDATE,
             request
         )
@@ -41,13 +42,13 @@ object BackupScheduler {
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
-            "glafira_backup_now",
+            MANUAL_WORK_NAME,
             ExistingWorkPolicy.KEEP,
             request
         )
     }
 
     fun cancel(context: Context) {
-        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK_NAME)
+        WorkManager.getInstance(context).cancelUniqueWork(DAILY_WORK_NAME)
     }
 }
