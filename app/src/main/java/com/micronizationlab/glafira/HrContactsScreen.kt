@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -72,7 +73,7 @@ fun HrContactsScreen(projectId: String, onBack: () -> Unit) {
             Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("←", color = Color.White, fontSize = 22.sp, modifier = Modifier.padding(end = 14.dp))
+            Text("←", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { onBack() }.padding(end = 14.dp))
             Text(
                 "КАРТОЧКИ КОНТАКТОВ",
                 color = Color.White,
