@@ -162,8 +162,8 @@ public sealed class BridgeV1HttpsHost : IAsyncDisposable
 
     private async Task HandleRequestAsync(HttpContext context)
     {
-        context.Response.Headers.CacheControl = "no-store";
-        context.Response.Headers.XContentTypeOptions = "nosniff";
+        context.Response.Headers["Cache-Control"] = "no-store";
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
         if (!HttpMethods.IsPost(context.Request.Method) ||
             !StringComparer.OrdinalIgnoreCase.Equals(context.Request.ContentType?.Split(';')[0].Trim(), "application/json"))
         {
