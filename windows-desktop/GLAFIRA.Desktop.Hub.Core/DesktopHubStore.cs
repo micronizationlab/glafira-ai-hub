@@ -653,8 +653,12 @@ public sealed class DesktopHubStore
         long fencingToken,
         int progressPercent,
         string progressMessage,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        TimeSpan? leaseDuration = null)
     {
+        leaseDuration ??= TimeSpan.FromMinutes(2);
+        if (leaseDuration <= TimeSpan.Zero || leaseDuration > TimeSpan.FromMinutes(15))
+            throw new ArgumentOutOfRangeException(nameof(leaseDuration));
         ValidateIdentifier(agentId, nameof(agentId));
         ValidateIdentifier(taskId, nameof(taskId));
         ValidateIdentifier(leaseId, nameof(leaseId));
@@ -692,6 +696,24 @@ public sealed class DesktopHubStore
             validate.Parameters.AddWithValue("$fence", fencingToken);
             validate.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
             if (Convert.ToInt32(validate.ExecuteScalar()) != 1)
+            {
+                transaction.Commit();
+                return false;
+            }
+        }
+
+        // Progress is also the lease-renewal signal. Extend only after the current
+        // owner-approved lease and fencing token have been validated in this transaction.
+        using (var renew = connection.CreateCommand())
+        {
+            renew.Transaction = transaction;
+            renew.CommandText = "UPDATE Leases SET expires_at_ms = $expires WHERE lease_id = $lease AND agent_id = $agent AND task_id = $task AND fencing_token = $fence;";
+            renew.Parameters.AddWithValue("$expires", now.Add(leaseDuration.Value).ToUnixTimeMilliseconds());
+            renew.Parameters.AddWithValue("$lease", leaseId);
+            renew.Parameters.AddWithValue("$agent", agentId);
+            renew.Parameters.AddWithValue("$task", taskId);
+            renew.Parameters.AddWithValue("$fence", fencingToken);
+            if (renew.ExecuteNonQuery() != 1)
             {
                 transaction.Commit();
                 return false;
