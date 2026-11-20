@@ -87,6 +87,8 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
         Assert.Equal(HubTaskState.Succeeded, _store.GetTaskState("task-0001"));
         Assert.Equal("private result payload", _store.GetTaskResult("task-0001")!.Result);
 
+        // Release pooled SQLite handles before inspecting the database file bytes.
+        SqliteConnection.ClearAllPools();
         var databaseFiles = Directory.GetFiles(Path.GetDirectoryName(_databasePath)!, Path.GetFileName(_databasePath) + "*");
         Assert.DoesNotContain(databaseFiles, file =>
             Encoding.UTF8.GetString(File.ReadAllBytes(file)).Contains("private result payload", StringComparison.Ordinal));
