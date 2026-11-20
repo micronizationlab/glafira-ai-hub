@@ -151,7 +151,9 @@ jobs:
           cores: 2
           ram-size: 2048M
           heap-size: 512M
-          disk-size: 4096M
+          # Hosted runners expose ~6.6 GB free to the AVD. Keep userdata below that budget;
+          # the 4 GB setting caused emulator startup to request 7.3 GB and fail before ADB.
+          disk-size: 2048M
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -camera-back none -camera-front none
           disable-animations: true
