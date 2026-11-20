@@ -31,7 +31,8 @@ data class GlafiraCoreTaskPlanRecord(
     val idempotencyKey: String,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
-    val nodes: List<GlafiraTask>
+    val nodes: List<GlafiraTask>,
+    val dependencies: Map<String, Set<String>> = emptyMap()
 ) {
     val status: GlafiraCoreTaskPlanStatus
         get() = when {
