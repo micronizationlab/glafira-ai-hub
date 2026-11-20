@@ -12,6 +12,15 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
     private static readonly byte[] Entropy =
         "GLAFIRA.Agent.Enrollment.v1"u8.ToArray();
 
+    private sealed record StoredCredential(
+        string AgentId,
+        string DesktopHubId,
+        Uri Endpoint,
+        string SharedSecretBase64,
+        string[] Scopes,
+        DateTimeOffset EnrolledAt,
+        DateTimeOffset ExpiresAt);
+
     private readonly string _credentialPath;
     private readonly TimeProvider _timeProvider;
 
@@ -30,7 +39,15 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
         CancellationToken cancellationToken)
     {
         AgentEnrollmentCredentialPolicy.Validate(credential, _timeProvider.GetUtcNow());
-        var clear = JsonSerializer.SerializeToUtf8Bytes(credential);
+        var stored = new StoredCredential(
+            credential.AgentId,
+            credential.DesktopHubId,
+            credential.Endpoint,
+            credential.SharedSecretBase64,
+            credential.Scopes.Order(StringComparer.Ordinal).ToArray(),
+            credential.EnrolledAt,
+            credential.ExpiresAt);
+        var clear = JsonSerializer.SerializeToUtf8Bytes(stored);
         byte[] protectedBytes;
         try
         {
@@ -82,8 +99,16 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
 
         try
         {
-            var credential = JsonSerializer.Deserialize<AgentEnrollmentCredential>(clear)
+            var stored = JsonSerializer.Deserialize<StoredCredential>(clear)
                 ?? throw new InvalidDataException("Agent enrollment credential file is empty.");
+            var credential = new AgentEnrollmentCredential(
+                stored.AgentId,
+                stored.DesktopHubId,
+                stored.Endpoint,
+                stored.SharedSecretBase64,
+                new HashSet<string>(stored.Scopes, StringComparer.Ordinal),
+                stored.EnrolledAt,
+                stored.ExpiresAt);
             AgentEnrollmentCredentialPolicy.Validate(credential, _timeProvider.GetUtcNow());
             return credential;
         }
