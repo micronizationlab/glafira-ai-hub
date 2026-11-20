@@ -67,3 +67,5 @@ public sealed record HubTaskEventSnapshot(
     long EventId, string TaskId, HubTaskState State, DateTimeOffset OccurredAt,
     string? AgentId, string? LeaseId, long? FencingToken, string EventCode,
     int? ProgressPercent = null, string? ProgressMessage = null);
+
+public sealed record HubTaskResult(string? Result, string? ErrorCode, DateTimeOffset CompletedAt);

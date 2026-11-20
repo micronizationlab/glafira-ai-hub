@@ -76,7 +76,7 @@ public sealed class BridgeV1RequestAuthenticator(
             [BridgeV1Operation.APPROVAL_REQUEST] = new HashSet<string>(["toolId", "actionSummary"], StringComparer.Ordinal),
             [BridgeV1Operation.DESKTOP_TASK_CLAIM] = new HashSet<string>(["capabilities", "maxParallelTasks"], StringComparer.Ordinal),
             [BridgeV1Operation.DESKTOP_TASK_RESULT] = new HashSet<string>(
-                ["taskId", "state", "progressPercent", "progressMessage", "result", "errorCode"],
+                ["taskId", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode"],
                 StringComparer.Ordinal)
         };
 
@@ -120,12 +120,13 @@ public sealed class BridgeV1RequestAuthenticator(
             return BridgeV1AdmissionResult.Deny(BridgeV1AdmissionFailure.SignatureInvalid);
 
         var expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(request.ExpiresAtEpochMs);
-        // The shared Bridge idempotency key may be 8 characters; the legacy generic
-        // replay guard requires a 16+ character nonce. Hash it to a fixed 64-char key.
-        var idempotencyBytes = Encoding.UTF8.GetBytes(request.IdempotencyKey);
-        var replayKeyBytes = SHA256.HashData(idempotencyBytes);
+        // RequestId is the one-shot transport nonce. IdempotencyKey is the stable
+        // operation identity: retries after a lost ACK use a fresh RequestId but retain
+        // the same IdempotencyKey so the durable dispatcher can return the prior commit.
+        var requestIdBytes = Encoding.UTF8.GetBytes(request.RequestId);
+        var replayKeyBytes = SHA256.HashData(requestIdBytes);
         var replayNonce = Convert.ToHexString(replayKeyBytes).ToLowerInvariant();
-        CryptographicOperations.ZeroMemory(idempotencyBytes);
+        CryptographicOperations.ZeroMemory(requestIdBytes);
         CryptographicOperations.ZeroMemory(replayKeyBytes);
         if (!await replayGuard.TryClaimAsync(
                 request.DeviceId, replayNonce, expiresAt, cancellationToken))
@@ -208,8 +209,28 @@ public sealed class BridgeV1RequestAuthenticator(
         if (!allowed.All(request.Payload.ContainsKey))
             return BridgeV1AdmissionFailure.InvalidEnvelope;
 
+        if (request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT)
+        {
+            if (!IsTaskIdentifier(request.Payload["taskId"]) ||
+                !IsIdentifier(request.Payload["leaseId"]) ||
+                !long.TryParse(request.Payload["fencingToken"],
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var fencingToken) ||
+                fencingToken <= 0 ||
+                !int.TryParse(request.Payload["progressPercent"],
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var progress) ||
+                progress is < 0 or > 100 ||
+                request.Payload["state"] is not ("ACCEPTED" or "RUNNING" or "SUCCEEDED" or "FAILED"))
+                return BridgeV1AdmissionFailure.InvalidEnvelope;
+        }
+
         return BridgeV1AdmissionFailure.None;
     }
+
+    private static bool IsTaskIdentifier(string value) =>
+        value is { Length: >= 1 and <= 64 } &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
 
     private static bool IsIdentifier(string value) =>
         value is { Length: >= 8 and <= 128 } &&
