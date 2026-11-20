@@ -96,6 +96,45 @@ public sealed class DesktopHubStore
             throw new InvalidOperationException("AGENT_ALREADY_OWNER_APPROVED");
     }
 
+    /// <summary>
+    /// Repairs the narrow crash window between durable credential enrollment and
+    /// pending scheduler registration. It never approves an Agent or grants capabilities.
+    /// </summary>
+    public int ReconcilePendingAgents(DateTimeOffset now)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+        var agentIds = new List<string>();
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = """
+                SELECT agent_id FROM HubAgentEnrollments
+                WHERE revoked_at_ms IS NULL AND expires_at_ms > $now
+                ORDER BY agent_id;
+                """;
+            read.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            using var reader = read.ExecuteReader();
+            while (reader.Read()) agentIds.Add(reader.GetString(0));
+        }
+
+        var inserted = 0;
+        foreach (var agentId in agentIds)
+        {
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = """
+                INSERT OR IGNORE INTO Agents(
+                    agent_id, device_id, capabilities_json, max_parallel, owner_approved, last_heartbeat_ms)
+                VALUES($agent, $agent, '[]', 1, 0, 0);
+                """;
+            insert.Parameters.AddWithValue("$agent", agentId);
+            inserted += insert.ExecuteNonQuery();
+        }
+        transaction.Commit();
+        return inserted;
+    }
+
     /// <summary>Assigns capabilities and enables a paired Agent without fabricating a heartbeat.</summary>
     public bool ConfigureAgentApproval(
         string agentId,
