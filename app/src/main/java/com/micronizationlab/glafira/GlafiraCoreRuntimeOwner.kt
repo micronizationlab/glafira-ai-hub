@@ -134,6 +134,44 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         return result
     }
 
+    /** Decomposes a high-level instruction through a trusted planner, then persists its DAG. */
+    suspend fun submitInstruction(
+        request: GlafiraCoreTaskPlanRequest,
+        decomposer: GlafiraCoreTaskPlanDecomposer
+    ): GlafiraCoreTaskPlanEnqueueResult =
+        GlafiraCoreTaskPlanOrchestrator(decomposer, ::enqueuePlan).submit(request)
+
+    /** Uses the configured primary AI provider to decompose and persist a durable plan. */
+    suspend fun submitInstruction(
+        request: GlafiraCoreTaskPlanRequest
+    ): GlafiraCoreTaskPlanEnqueueResult =
+        submitInstruction(request, GlafiraAiProviderTaskPlanDecomposer(appContext))
+
+    /** Atomically registers an entire bounded DAG before waking the shared dispatcher. */
+    fun enqueuePlan(plan: GlafiraCoreTaskPlan): GlafiraCoreTaskPlanEnqueueResult {
+        val result = taskStore.enqueuePlan(plan)
+        if (result.inserted && isEnabled) {
+            GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+        }
+        return result
+    }
+
+    /** Project-scoped orchestration status and durable node journal. */
+    fun taskPlan(planId: String, projectId: String): GlafiraCoreTaskPlanRecord? =
+        taskStore.taskPlan(planId, projectId)
+
+    /** Rehydrates the existing agent-role plan format from the durable task graph. */
+    internal fun plannerPlan(planId: String, projectId: String): GlafiraTaskPlan? =
+        taskStore.taskPlan(planId, projectId)?.let(GlafiraCoreTaskPlanAdapter::toPlannerPlan)
+
+    /** Project-scoped plan journal, including current node states and outcomes. */
+    fun taskPlans(projectId: String, limit: Int = 100): List<GlafiraCoreTaskPlanRecord> =
+        taskStore.taskPlans(projectId, limit)
+
+    /** Full project-scoped plan journal with task histories and persisted results. */
+    fun taskPlanJournal(planId: String, projectId: String): GlafiraCoreTaskPlanJournal? =
+        taskStore.taskPlanJournal(planId, projectId)
+
     internal suspend fun executeNext(): GlafiraTaskExecutionResult {
         check(isEnabled) { "GLAFIRA autonomous runtime is paused by owner." }
         return executor.executeNext()
@@ -236,6 +274,21 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         taskStore.recordDesktopNode(deviceId, capabilities, maxParallelTasks)
 
     fun desktopNodeCapabilities(): GlafiraNodeCapabilities? = taskStore.desktopNodeCapabilities()
+
+    /** Current authenticated Desktop worker inventory for capability-aware dispatch. */
+    fun desktopNodes(): List<GlafiraNodeCapabilities> = taskStore.desktopNodes()
+
+    /** Advisory placement across all live Desktop workers; claims still revalidate atomically. */
+    fun desktopDispatchPlan(limit: Int = 100): List<GlafiraDesktopDispatchAssignment> {
+        require(limit in 1..500)
+        val now = System.currentTimeMillis()
+        return GlafiraDesktopDispatchPlanner.plan(
+            tasks = taskStore.queuedDesktopTasks(limit),
+            nodes = taskStore.desktopNodes(nowMillis = now),
+            activeLeasesByNode = taskStore.activeDesktopLeaseCounts(now),
+            nowMillis = now
+        )
+    }
 
     fun desktopTaskLeaseExpiry(taskId: String): Long? = taskStore.desktopTaskLeaseExpiry(taskId)
 
