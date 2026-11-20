@@ -123,6 +123,30 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task PairingCannotReplaceOwnerApprovedIdentityAndDoesNotConsumeTicket()
+    {
+        var store = CreateStore();
+        var hubStore = CreateHubStore();
+        hubStore.RegisterAgent(
+            new HubAgentRegistration("agent-01", "agent-01", ["code.build"], 1, true),
+            _clock.GetUtcNow());
+        var endpoint = CreateEndpoint(store, hubStore);
+        var ticket = store.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
+
+        var rejected = await endpoint.RedeemAsync(Request(ticket), LocalEndpoint);
+        var acceptedForNewIdentity = await endpoint.RedeemAsync(
+            Request(ticket) with { AgentId = "agent-02" }, LocalEndpoint);
+
+        Assert.Equal("FAILED", rejected.Status);
+        Assert.Equal("ENROLLED", acceptedForNewIdentity.Status);
+        var agents = hubStore.GetAgents(_clock.GetUtcNow());
+        Assert.True(agents.Single(agent => agent.AgentId == "agent-01").OwnerApproved);
+        var pending = agents.Single(agent => agent.AgentId == "agent-02");
+        Assert.False(pending.OwnerApproved);
+        Assert.Empty(pending.Capabilities);
+    }
+
+    [Fact]
     public async Task ConcurrentRedeemersReceiveOnlyOneCredentialBundle()
     {
         var firstStore = CreateStore();
