@@ -35,7 +35,7 @@ internal object GlafiraManualTaskFactory {
             createdAtMillis = nowMillis,
             updatedAtMillis = nowMillis,
             idempotencyKey = idempotencyKey,
-            requiredScopes = setOf("content.draft")
+            requiredScopes = emptySet()
         ).also { GlafiraTaskPolicy.validate(it) }
     }
 }
