@@ -43,6 +43,18 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var exportResult by remember { mutableStateOf<String?>(null) }
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
     var showPasswordVault by remember { mutableStateOf(false) }
+    val audioPreferences = remember {
+        context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
+    }
+    var soundEffectsEnabled by remember {
+        mutableStateOf(audioPreferences.getBoolean("sound_effects_enabled", true))
+    }
+    var voiceOutputEnabled by remember {
+        mutableStateOf(audioPreferences.getBoolean("voice_output_enabled", true))
+    }
+    var soundEffectsVolume by remember {
+        mutableFloatStateOf(audioPreferences.getFloat("sound_effects_volume", 1f).coerceIn(0f, 1f))
+    }
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
     var peerConsultationEnabled by remember(peerConsultationKey) {
@@ -318,6 +330,49 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         }
 
         Spacer(Modifier.height(24.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("ЗВУК И ГОЛОС", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Звуки приложения", color = Color(0xFF202020), fontSize = 14.sp)
+                        Text("Уведомления и события чатов", color = Tx, fontSize = 11.sp)
+                    }
+                    Switch(checked = soundEffectsEnabled, onCheckedChange = {
+                        soundEffectsEnabled = it
+                        SoundHelper.setEnabled(context, it)
+                    })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Голосовые ответы", color = Color(0xFF202020), fontSize = 14.sp)
+                        Text("Озвучивание ответов агента по нажатию", color = Tx, fontSize = 11.sp)
+                    }
+                    Switch(checked = voiceOutputEnabled, onCheckedChange = {
+                        voiceOutputEnabled = it
+                        TtsHelper.setEnabled(context, it)
+                    })
+                }
+                Text("ГРОМКОСТЬ ЗВУКОВ", color = Tx, fontSize = 10.sp)
+                Slider(
+                    value = soundEffectsVolume,
+                    onValueChange = {
+                        soundEffectsVolume = it
+                        SoundHelper.setVolume(context, it)
+                    },
+                    enabled = soundEffectsEnabled,
+                    valueRange = 0f..1f
+                )
+                Text("${(soundEffectsVolume * 100).toInt()}%", color = Tx, fontSize = 11.sp)
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
 
         BackupSettingsSection()
 
