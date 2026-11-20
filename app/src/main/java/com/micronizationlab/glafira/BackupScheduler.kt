@@ -35,7 +35,6 @@ object BackupScheduler {
     fun runNow(context: Context, wifiOnly: Boolean) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
-            .setRequiresBatteryNotLow(true)
             .build()
         val request = OneTimeWorkRequestBuilder<GlafiraBackupWorker>()
             .setConstraints(constraints)
