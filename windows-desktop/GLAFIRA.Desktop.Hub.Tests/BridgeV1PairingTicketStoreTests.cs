@@ -103,6 +103,38 @@ public sealed class BridgeV1PairingTicketStoreTests : IDisposable
             store.Create(["task claim"], TimeSpan.FromMinutes(1)));
     }
 
+    [Fact]
+    public async Task ExistingUnboundTicketSchemaMigratesWithoutDataLoss()
+    {
+        await using (var connection = OpenConnection())
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE HubPairingTickets(
+                    ticket_id TEXT NOT NULL PRIMARY KEY,
+                    code_sha256 BLOB NOT NULL CHECK(length(code_sha256) = 32),
+                    scopes_json TEXT NOT NULL,
+                    created_at_ms INTEGER NOT NULL,
+                    expires_at_ms INTEGER NOT NULL,
+                    consumed_at_ms INTEGER NULL
+                );
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var store = new BridgeV1PairingTicketStore(_databasePath, _clock);
+        var ticket = store.CreateForAgent(
+            "agent-01", ["task.claim"], TimeSpan.FromMinutes(1));
+
+        await using var verify = OpenConnection();
+        await verify.OpenAsync();
+        await using var query = verify.CreateCommand();
+        query.CommandText = "SELECT agent_id FROM HubPairingTickets WHERE ticket_id = $ticket;";
+        query.Parameters.AddWithValue("$ticket", ticket.TicketId);
+        Assert.Equal("agent-01", await query.ExecuteScalarAsync());
+    }
+
     private SqliteConnection OpenConnection() => new(
         new SqliteConnectionStringBuilder { DataSource = _databasePath }.ToString());
 

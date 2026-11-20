@@ -39,11 +39,13 @@
               <TextBlock Grid.Row="1" Grid.Column="0" Text="Scopes через запятую" VerticalAlignment="Center" Foreground="#52645D" Margin="0,6,0,0"/>
               <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BridgeHost.PairingScopesText, UpdateSourceTrigger=PropertyChanged}" MinWidth="360" Margin="0,6,0,0"/>
             </Grid>
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <WrapPanel Margin="0,8,0,0">
               <Button Content="Создать код на 2 минуты" Height="32" Padding="10,0" Margin="0,0,8,0" Click="CreatePairingTicket_Click" IsEnabled="{Binding BridgeHost.CanCreatePairingTicket}"/>
+              <Button Content="Скопировать" Height="32" Padding="10,0" Margin="0,0,8,0" Click="CopyPairingTicket_Click" IsEnabled="{Binding BridgeHost.CanCopyPairingTicket}"/>
+              <Button Content="Аннулировать код" Height="32" Padding="10,0" Margin="0,0,8,0" Click="ClearPairingTicket_Click" IsEnabled="{Binding BridgeHost.CanCopyPairingTicket}"/>
               <Button Content="Отозвать Agent" Height="32" Padding="10,0" Margin="0,0,8,0" Click="RevokeAgent_Click" IsEnabled="{Binding BridgeHost.CanRevokeAgent}"/>
               <Button Content="Отозвать и создать новый код" Height="32" Padding="10,0" Click="RePairAgent_Click" IsEnabled="{Binding BridgeHost.CanRePairAgent}"/>
-            </StackPanel>
+            </WrapPanel>
             <TextBlock Text="{Binding BridgeHost.PairingStatus}" FontSize="10" Foreground="#7B6551" TextWrapping="Wrap" Margin="0,6,0,3"/>
             <TextBox Text="{Binding BridgeHost.PairingInvitationText}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="52" MaxHeight="90" VerticalScrollBarVisibility="Auto"/>
           </StackPanel>

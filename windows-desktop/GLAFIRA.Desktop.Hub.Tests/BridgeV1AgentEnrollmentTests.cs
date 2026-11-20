@@ -188,6 +188,21 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
     }
 
     [Fact]
+    public async Task HiddenOwnerTicketIsCancelledAndCannotEnroll()
+    {
+        var store = CreateStore();
+        var ticket = store.CreateForAgent(
+            "agent-01", ["desktop.task.claim"], TimeSpan.FromMinutes(1));
+
+        Assert.True(store.Cancel(ticket.TicketId));
+        Assert.False(store.Cancel(ticket.TicketId));
+        var result = await EnrollAsync(store, ticket, "agent-01");
+
+        Assert.False(result.Accepted);
+        Assert.Equal(BridgeV1AgentEnrollmentFailure.AlreadyConsumed, result.Failure);
+    }
+
+    [Fact]
     public async Task RePairingAtomicallyRevokesOldCredentialAndCreatesBoundTicket()
     {
         var store = CreateStore();

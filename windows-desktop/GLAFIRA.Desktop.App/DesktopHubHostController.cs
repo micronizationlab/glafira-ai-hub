@@ -31,6 +31,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     private string _pairingScopesText = "desktop.task.claim, desktop.task.result";
     private string _pairingInvitationText = "—";
     private string _pairingStatus = "Укажите Agent ID, затем создайте краткоживущий код.";
+    private string? _visiblePairingTicketId;
 
     public DesktopHubHostController(string rootDirectory, string databasePath, DesktopHubStore store)
     {
@@ -93,7 +94,9 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     public bool IsRunning => _host?.IsRunning == true;
     public bool CanStart => !IsRunning;
     public bool CanStop => IsRunning;
-    public bool CanCreatePairingTicket => IsRunning && IsValidAgentId(PairingAgentId);
+    public bool CanCreatePairingTicket =>
+        IsRunning && IsValidAgentId(PairingAgentId) && _visiblePairingTicketId is null;
+    public bool CanCopyPairingTicket => IsRunning && _visiblePairingTicketId is not null;
     public bool CanRevokeAgent => IsValidAgentId(PairingAgentId);
     public bool CanRePairAgent => CanCreatePairingTicket;
 
@@ -108,6 +111,16 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         AvailableAddressesText = addresses.Count == 0
             ? "Активные частные LAN-адреса не найдены"
             : "Выберите адрес, доступный только в вашей локальной сети.";
+    }
+
+    public void ClearPairingTicket()
+    {
+        if (_visiblePairingTicketId is not null)
+            _pairingTickets.Cancel(_visiblePairingTicketId);
+        _visiblePairingTicketId = null;
+        PairingInvitationText = "—";
+        PairingStatus = "Код скрыт и аннулирован. Для сопряжения создайте новый одноразовый код.";
+        NotifyPairingAvailability();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -188,11 +201,11 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         }
         finally
         {
+            ClearPairingTicket();
             DisposeTlsIdentity();
             EndpointsText = "—";
             Status = "Остановлен";
-            PairingInvitationText = "—";
-            PairingStatus = "HTTPS остановлен; показанный ранее код больше не следует использовать.";
+            PairingStatus = "HTTPS остановлен; показанный ранее код аннулирован.";
             Notify(nameof(IsRunning));
             Notify(nameof(CanStart));
             Notify(nameof(CanStop));
@@ -200,59 +213,44 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         }
     }
 
-    public void CreatePairingTicket()
+    public string CreatePairingTicket()
     {
-        try
-        {
-            var endpoint = GetRunningEndpoint();
-            var ticket = _pairingTickets.CreateForAgent(
-                PairingAgentId, ParseScopes(), TimeSpan.FromMinutes(2));
-            PublishInvitation(ticket, endpoint, "Создан новый одноразовый код.");
-        }
-        catch (Exception)
-        {
-            PairingInvitationText = "—";
-            PairingStatus = "Не удалось создать код: проверьте Agent ID, scopes и запущенный HTTPS.";
-        }
+        if (!CanCreatePairingTicket)
+            throw new InvalidOperationException("Запустите HTTPS, укажите Agent ID и аннулируйте прежний код.");
+        var endpoint = GetRunningEndpoint();
+        var ticket = _pairingTickets.CreateForAgent(
+            PairingAgentId, ParseScopes(), TimeSpan.FromMinutes(2));
+        PublishInvitation(ticket, endpoint, "Создан новый одноразовый код.");
+        return PairingInvitationText;
     }
 
-    public async Task RevokeAgentAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> RevokeAgentAsync(CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var revoked = await _credentialResolver.RevokeAsync(
-                PairingAgentId, cancellationToken).ConfigureAwait(true);
-            PairingInvitationText = "—";
-            PairingStatus = revoked
-                ? $"Доступ {PairingAgentId} отозван. На Agent удалите старый credential."
-                : $"Активный credential {PairingAgentId} не найден.";
-        }
-        catch (Exception)
-        {
-            PairingStatus = "Не удалось отозвать Agent: проверьте идентификатор и состояние хранилища.";
-        }
+        var agentId = PairingAgentId;
+        ClearPairingTicket();
+        var revoked = await _credentialResolver.RevokeAsync(
+            agentId, cancellationToken).ConfigureAwait(true);
+        PairingStatus = revoked
+            ? $"Доступ {agentId} отозван. На Agent удалите старый credential."
+            : $"Активный credential {agentId} не найден.";
+        return revoked;
     }
 
-    public async Task RevokeAndCreatePairingTicketAsync(CancellationToken cancellationToken = default)
+    public async Task<string> RevokeAndCreatePairingTicketAsync(CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var endpoint = GetRunningEndpoint();
-            var result = await _pairingTickets.RevokeAndCreateForAgentAsync(
-                PairingAgentId, ParseScopes(), TimeSpan.FromMinutes(2), cancellationToken)
-                .ConfigureAwait(true);
-            PublishInvitation(
-                result.Ticket,
-                endpoint,
-                result.RevokedExistingEnrollment
-                    ? "Старый credential отозван; создан новый одноразовый код."
-                    : "Активный credential не найден; создан новый одноразовый код.");
-        }
-        catch (Exception)
-        {
-            PairingInvitationText = "—";
-            PairingStatus = "Повторное сопряжение не выполнено; состояние credential не изменено частично.";
-        }
+        if (!CanRePairAgent)
+            throw new InvalidOperationException("Запустите HTTPS, укажите Agent ID и аннулируйте прежний код.");
+        var endpoint = GetRunningEndpoint();
+        var result = await _pairingTickets.RevokeAndCreateForAgentAsync(
+            PairingAgentId, ParseScopes(), TimeSpan.FromMinutes(2), cancellationToken)
+            .ConfigureAwait(true);
+        PublishInvitation(
+            result.Ticket,
+            endpoint,
+            result.RevokedExistingEnrollment
+                ? "Старый credential отозван; создан новый одноразовый код."
+                : "Активный credential не найден; создан новый одноразовый код.");
+        return PairingInvitationText;
     }
 
     private Uri GetRunningEndpoint()
@@ -267,6 +265,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
 
     private void PublishInvitation(BridgeV1PairingTicket ticket, Uri endpoint, string status)
     {
+        _visiblePairingTicketId = ticket.TicketId;
         PairingInvitationText = JsonSerializer.Serialize(new
         {
             version = 1,
@@ -279,6 +278,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             expiresAtEpochMs = ticket.ExpiresAt.ToUnixTimeMilliseconds()
         });
         PairingStatus = $"{status} Действует до {ticket.ExpiresAt.ToLocalTime():HH:mm:ss}. Передайте bundle только выбранному Agent.";
+        NotifyPairingAvailability();
     }
 
     private static bool IsValidAgentId(string value) => value is { Length: >= 1 and <= 128 } &&
@@ -287,6 +287,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     private void NotifyPairingAvailability()
     {
         Notify(nameof(CanCreatePairingTicket));
+        Notify(nameof(CanCopyPairingTicket));
         Notify(nameof(CanRevokeAgent));
         Notify(nameof(CanRePairAgent));
     }

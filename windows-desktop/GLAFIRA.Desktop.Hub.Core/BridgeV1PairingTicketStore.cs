@@ -154,6 +154,22 @@ public sealed class BridgeV1PairingTicketStore
             new HashSet<string>(scopes, StringComparer.Ordinal), agentId);
     }
 
+    public bool Cancel(string ticketId)
+    {
+        if (!IsTicketId(ticketId)) return false;
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE HubPairingTickets
+            SET consumed_at_ms = $now
+            WHERE ticket_id = $ticket AND consumed_at_ms IS NULL;
+            """;
+        command.Parameters.AddWithValue("$now", _timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$ticket", ticketId);
+        return command.ExecuteNonQuery() == 1;
+    }
+
     public async ValueTask<BridgeV1RePairingTicketResult> RevokeAndCreateForAgentAsync(
         string agentId,
         IEnumerable<string> requestedScopes,
