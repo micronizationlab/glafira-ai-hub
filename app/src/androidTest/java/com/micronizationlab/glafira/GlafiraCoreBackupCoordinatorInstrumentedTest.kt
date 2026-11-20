@@ -113,6 +113,25 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun wrongPassphraseLeavesCurrentCoreQueueUntouched() = runBlocking {
+        store.enqueue(task("must-remain"))
+        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val correctPassphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
+        val wrongPassphrase = "GLAFIRA-wrong-passphrase-2026".toCharArray()
+        val archive = coordinator.create(correctPassphrase)
+        try {
+            assertThrows(Exception::class.java) {
+                runBlocking { coordinator.restore(archive, wrongPassphrase) }
+            }
+            assertEquals("must-remain", store.getTask("must-remain")?.taskId)
+        } finally {
+            archive.delete()
+            correctPassphrase.fill('\\u0000')
+            wrongPassphrase.fill('\\u0000')
+        }
+    }
+
+    @Test
     fun truncatedAesGcmTagIsRejectedDuringVerification() {
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = BackupArchive.create(context, passphrase)
