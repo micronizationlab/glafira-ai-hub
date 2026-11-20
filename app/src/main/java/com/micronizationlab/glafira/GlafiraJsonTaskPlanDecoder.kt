@@ -12,12 +12,12 @@ object GlafiraJsonTaskPlanDecoder {
     const val MAX_RESPONSE_CHARS = 96 * 1024
 
     fun decode(
-        request: GlafiraTaskPlanRequest,
+        request: GlafiraCoreTaskPlanRequest,
         responseJson: String,
         allowedTaskTypes: Set<String>
-    ): GlafiraTaskPlan {
+    ): GlafiraCoreTaskPlan {
         require(responseJson.length in 2..MAX_RESPONSE_CHARS) { "Planner response size is invalid." }
-        require(request.maxNodes in 1..GlafiraTaskPlanPolicy.MAX_NODES)
+        require(request.maxNodes in 1..GlafiraCoreTaskPlanPolicy.MAX_NODES)
         require(allowedTaskTypes.isNotEmpty() && allowedTaskTypes.size <= 64)
         require(allowedTaskTypes.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
 
@@ -53,17 +53,17 @@ object GlafiraJsonTaskPlanDecoder {
                     // Scopes come from the trusted registry, never from model-authored JSON.
                     requiredScopes = definition.requiredScopes
                 )
-                add(GlafiraTaskPlanNode(task, dependencies))
+                add(GlafiraCoreTaskPlanNode(task, dependencies))
             }
         }
 
-        return GlafiraTaskPlan(
+        return GlafiraCoreTaskPlan(
             planId = planId,
             projectId = request.projectId,
             idempotencyKey = request.idempotencyKey,
             nodes = nodes,
             createdAtMillis = request.createdAtMillis
-        ).also(GlafiraTaskPlanPolicy::validate)
+        ).also(GlafiraCoreTaskPlanPolicy::validate)
     }
 
     private fun JSONArray?.toStringSet(): Set<String> {
@@ -81,9 +81,9 @@ object GlafiraJsonTaskPlanDecoder {
  */
 class GlafiraStructuredTaskPlanDecomposer(
     private val allowedTaskTypes: Set<String>,
-    private val generateStructuredPlan: (GlafiraTaskPlanRequest) -> String
-) : GlafiraTaskPlanDecomposer {
-    override fun decompose(request: GlafiraTaskPlanRequest): GlafiraTaskPlan =
+    private val generateStructuredPlan: (GlafiraCoreTaskPlanRequest) -> String
+) : GlafiraCoreTaskPlanDecomposer {
+    override fun decompose(request: GlafiraCoreTaskPlanRequest): GlafiraCoreTaskPlan =
         GlafiraJsonTaskPlanDecoder.decode(
             request,
             generateStructuredPlan(request),
