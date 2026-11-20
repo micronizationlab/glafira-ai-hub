@@ -115,6 +115,46 @@ object BackupArchive {
         }
     }
 
+    fun verify(context: Context, file: File, passphrase: CharArray): BackupVerification {
+        val extracted = decryptToStaging(file, passphrase)
+        try {
+            require(extracted.appId == context.packageName) {
+                "Резервная копия создана для другого приложения."
+            }
+            return extracted.verification
+        } finally {
+            extracted.directory.deleteRecursively()
+        }
+    }
+
+    /** Verifies that an authenticated archive belongs to this app and contains a required path. */
+    fun verifyContains(
+        context: Context,
+        file: File,
+        passphrase: CharArray,
+        relativePath: String
+    ): BackupVerification {
+        require(
+            relativePath.isNotBlank() &&
+                !relativePath.startsWith("/") &&
+                relativePath.split("/").none { it == ".." || it.isBlank() }
+        ) {
+            "Недопустимый путь обязательного файла архива."
+        }
+        val extracted = decryptToStaging(file, passphrase)
+        try {
+            require(extracted.appId == context.packageName) {
+                "Резервная копия создана для другого приложения."
+            }
+            require(extracted.files.any { it.relativePath == relativePath }) {
+                "Архив не содержит обязательную базу GLAFIRA Core."
+            }
+            return extracted.verification
+        } finally {
+            extracted.directory.deleteRecursively()
+        }
+    }
+
     fun restore(context: Context, file: File, passphrase: CharArray): BackupVerification {
         // Keep a verified snapshot of the current state so a partial restore can be rolled back.
         val safetySnapshot = create(context, passphrase)
@@ -189,7 +229,8 @@ object BackupArchive {
         val directory: File,
         val files: List<StagedFile>,
         val verification: BackupVerification,
-        val safePreferences: JSONObject
+        val safePreferences: JSONObject,
+        val appId: String
     )
 
     private fun decryptToStaging(file: File, passphrase: CharArray): StagedArchive {
@@ -280,7 +321,8 @@ object BackupArchive {
                         stagedFiles.size,
                         totalBytes
                     ),
-                    parsed.optJSONObject("safePreferences") ?: JSONObject()
+                    parsed.optJSONObject("safePreferences") ?: JSONObject(),
+                    parsed.optString("appId")
                 )
             }
         } catch (error: Exception) {
