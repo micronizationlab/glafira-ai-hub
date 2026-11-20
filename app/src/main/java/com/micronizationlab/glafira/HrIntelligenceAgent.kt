@@ -184,21 +184,25 @@ object HrMemoryReviewPolicy {
         requiresOwnerApproval: Boolean,
         ownerApproved: Boolean
     ): HrMemoryReviewOutcome {
-        val byAgent = reviews.associateBy { it.agentId }
+        val groupedReviews = reviews.groupBy { it.agentId }
         val notReviewed = eligibleAgentIds.filterTo(mutableSetOf()) { id ->
-            byAgent[id]?.decision == null ||
-                byAgent[id]?.decision == HrReviewDecision.NOT_REVIEWED
+            val entries = groupedReviews[id].orEmpty()
+            entries.size != 1 || entries.singleOrNull()?.decision == HrReviewDecision.NOT_REVIEWED
         }
         val allReviewed = notReviewed.isEmpty()
-        val hasConflict = eligibleAgentIds.any { id ->
-            byAgent[id]?.decision in setOf(
+        val duplicateReviews = groupedReviews.any { (id, entries) ->
+            id in eligibleAgentIds && entries.size != 1
+        }
+        val hasConflict = duplicateReviews || eligibleAgentIds.any { id ->
+            groupedReviews[id]?.singleOrNull()?.decision in setOf(
                 HrReviewDecision.CONFLICT,
                 HrReviewDecision.INSUFFICIENT_EVIDENCE,
                 HrReviewDecision.ABSTAIN
             )
         }
         val unanimousEnough = eligibleAgentIds.all { id ->
-            byAgent[id]?.decision in setOf(HrReviewDecision.ACCEPT, HrReviewDecision.CORRECT)
+            groupedReviews[id]?.singleOrNull()?.decision in
+                setOf(HrReviewDecision.ACCEPT, HrReviewDecision.CORRECT)
         }
         val ownerGatePassed = !requiresOwnerApproval || ownerApproved
         return HrMemoryReviewOutcome(
