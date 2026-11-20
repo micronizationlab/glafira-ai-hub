@@ -68,7 +68,7 @@ fun BackupSettingsSection() {
     val workManager = remember { WorkManager.getInstance(context) }
 
     DisposableEffect(workManager) {
-        val manualWork = workManager.getWorkInfosForUniqueWorkLiveData("glafira_backup_now")
+        val manualWork = workManager.getWorkInfosForUniqueWorkLiveData(BackupScheduler.MANUAL_WORK_NAME)
         val manualObserver = Observer<List<WorkInfo>> { infos ->
             val work = infos?.lastOrNull() ?: return@Observer
             status = BackupWorkStatus.message(work.state, work.runAttemptCount)
@@ -76,7 +76,7 @@ fun BackupSettingsSection() {
             lastError = prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)
             lastSuccess = prefs.getLong(GlafiraBackupWorker.KEY_LAST_SUCCESS, 0L)
         }
-        val dailyWork = workManager.getWorkInfosForUniqueWorkLiveData("glafira_daily_backup")
+        val dailyWork = workManager.getWorkInfosForUniqueWorkLiveData(BackupScheduler.DAILY_WORK_NAME)
         val dailyObserver = Observer<List<WorkInfo>> { infos ->
             val work = infos?.lastOrNull() ?: return@Observer
             if (work.state == WorkInfo.State.FAILED || work.state == WorkInfo.State.CANCELLED) {
