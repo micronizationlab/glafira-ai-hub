@@ -161,7 +161,8 @@ class DesktopTaskRuntimeTest {
 
         finish.countDown()
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
-        while (queue.get("task_unresponsive_close")?.state != DesktopTaskState.SUCCEEDED &&
+        while ((queue.get("task_unresponsive_close")?.state != DesktopTaskState.SUCCEEDED ||
+                runtime.activeTaskIds().isNotEmpty()) &&
             System.nanoTime() < deadline
         ) Thread.sleep(10)
         assertEquals(DesktopTaskState.SUCCEEDED, queue.get("task_unresponsive_close")?.state)
