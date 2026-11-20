@@ -20,9 +20,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 data class CouncilAgent(
     val name: String,
@@ -36,31 +33,16 @@ fun CouncilScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var question by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var activeAgents by remember { mutableStateOf<List<CouncilAgent>>(emptyList()) }
     var answers by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var summary by remember { mutableStateOf("") }
+    var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-
-    val agents = listOf(
-        CouncilAgent(
-            "ГЛАФИРА", "🤖",
-            "Ты — Глафира, главный координатор. Смотри на вопрос стратегически, выделяй главное, предлагай план действий. Отвечай чётко и по делу.",
-            loadGlafiraPrimaryProvider(context)
-        ),
-        CouncilAgent(
-            "АНАЛИТИК", "📊",
-            "Ты — Аналитик. Анализируй факты, риски, цифры. Отвечай объективно, без эмоций. Будь точен.",
-            ProviderId.OPENAI
-        ),
-        CouncilAgent(
-            "ПРОГРАММИСТ", "💻",
-            "Ты — Программист. Оценивай техническую реализуемость, предлагай конкретные решения. Отвечай кодом и кратким объяснением.",
-            ProviderId.DEEPSEEK
-        )
-    )
 
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
-            Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("←", color = Gr, fontSize = 18.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
@@ -72,9 +54,9 @@ fun CouncilScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             TextField(
                 value = question,
-                onValueChange = { question = it },
+                onValueChange = { question = it; notice = null },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Что обсудить?", color = Tx, fontSize = 12.sp) },
+                placeholder = { Text("Что обсудить?") },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.White, unfocusedContainerColor = Color.White,
                     focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020),
@@ -82,68 +64,116 @@ fun CouncilScreen(onBack: () -> Unit) {
                 ),
                 maxLines = 4
             )
-
             Spacer(Modifier.height(8.dp))
 
             Button(
                 onClick = {
-                    if (question.isBlank() || isLoading) return@Button
+                    if (isLoading) return@Button
+                    if (question.isBlank()) {
+                        notice = "Сначала напиши вопрос для совета. Кнопка доступна — поле вопроса пока пустое."
+                        return@Button
+                    }
+                    val configured = configuredGlafiraProviders(context)
+                    val primary = loadGlafiraPrimaryProvider(context).takeIf { it in configured }
+                        ?: configured.firstOrNull()
+                    if (primary == null) {
+                        notice = "Не подключена ни одна ИИ-модель. Открой Настройки и сохрани хотя бы один API-ключ."
+                        return@Button
+                    }
+
+                    val advisors = buildList {
+                        add(CouncilAgent(
+                            "ГЛАФИРА · председатель", "🤖",
+                            "Ты — Глафира, председатель совета директоров. Оцени вопрос стратегически, выдели риски и предложи конкретное решение.",
+                            primary
+                        ))
+                        configured.filter { it != primary }.forEach { provider ->
+                            add(CouncilAgent(
+                                provider.displayName, "🧠",
+                                "Ты — независимый советник совета директоров. Дай самостоятельную оценку вопроса, факты, риски, альтернативы и конкретную рекомендацию. Не повторяй чужие мнения.",
+                                provider
+                            ))
+                        }
+                    }
+
+                    activeAgents = advisors
                     isLoading = true
                     answers = emptyMap()
                     summary = ""
+                    notice = if (advisors.size == 1) {
+                        "Подключена одна модель. Совет проведёт анализ одним участником; подключи дополнительные модели для независимых мнений."
+                    } else {
+                        "Совет запущен: участников ${advisors.size}."
+                    }
+                    val submittedQuestion = question.trim()
                     scope.launch {
-                        val results = coroutineScope {
-                            agents.map { agent ->
-                                async {
-                                    val history = listOf(Msg(question, true, "", ""))
-                                    val reply = if (isProviderConfigured(context, agent.providerId)) {
-                                        callAiProvider(context, agent.providerId, history, agent.prompt)
-                                    } else {
-                                        "Модель ${agent.providerId.displayName} не подключена. Добавь её API-ключ в Настройках."
+                        try {
+                            val results = coroutineScope {
+                                advisors.map { agent ->
+                                    async {
+                                        val reply = runCatching {
+                                            callAiProvider(
+                                                context,
+                                                agent.providerId,
+                                                listOf(Msg(submittedQuestion, true, "", "")),
+                                                agent.prompt
+                                            )
+                                        }.getOrElse { "Ошибка ${agent.providerId.displayName}: ${it.message ?: "не удалось получить ответ"}" }
+                                        agent.name to reply
                                     }
-                                    agent.name to reply
-                                }
-                            }.map { it.await() }.toMap()
-                        }
-                        answers = results
-                        val councilInput = buildString {
-                            appendLine("Вопрос: $question")
-                            appendLine()
-                            results.forEach { (name, answer) ->
-                                appendLine("--- $name ---")
-                                appendLine(answer.take(1000))
-                                appendLine()
+                                }.map { it.await() }.toMap()
                             }
-                            appendLine("Сформируй итоговое решение на основе мнений совета. Выдели главное, предложи конкретные шаги.")
+                            answers = results
+                            val successful = results.filterValues {
+                                !it.startsWith("Ошибка") && !it.startsWith("Не удалось")
+                            }
+                            if (successful.isEmpty()) {
+                                summary = "Совет не получил ни одного ответа. Проверь подключение моделей и повтори попытку."
+                                notice = "Все участники завершились с ошибкой. Подробности показаны в карточках ниже."
+                            } else {
+                                val synthesisInput = buildString {
+                                    appendLine("Вопрос: $submittedQuestion")
+                                    appendLine()
+                                    successful.forEach { (name, answer) ->
+                                        appendLine("--- $name ---")
+                                        appendLine(answer.take(1500))
+                                        appendLine()
+                                    }
+                                    appendLine("Сформируй итоговое решение. Отдели подтверждённые факты от предположений, обозначь разногласия и предложи следующие шаги.")
+                                }
+                                summary = runCatching {
+                                    callAiProvider(
+                                        context,
+                                        primary,
+                                        listOf(Msg(synthesisInput, true, "", "")),
+                                        "Ты — Глафира, председатель совета директоров. Синтезируй мнения советников в одно взвешенное решение."
+                                    )
+                                }.getOrElse { "Не удалось собрать итог: ${it.message ?: "ошибка синтеза"}" }
+                                val failedCount = advisors.size - successful.size
+                                notice = if (failedCount == 0) "Все участники ответили."
+                                    else "Получены частичные результаты: ошибок участников — $failedCount."
+                            }
+                        } finally {
+                            isLoading = false
                         }
-                        val synthesisProvider = loadGlafiraPrimaryProvider(context)
-                            .takeIf { isProviderConfigured(context, it) }
-                        val finalAnswer = if (synthesisProvider == null) {
-                            "Не подключена ни одна модель. Добавь API-ключ в Настройках."
-                        } else {
-                            callAiProvider(
-                                context,
-                                synthesisProvider,
-                                listOf(Msg(councilInput, true, "", "")),
-                                "Ты — Глафира, председатель совета. Собери мнения специалистов в единое решение. Будь краток и конкретен. Другие модели — советники, последнее слово за тобой."
-                            )
-                        }
-                        summary = finalAnswer
-                        isLoading = false
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White),
-                enabled = question.isNotBlank() && !isLoading
+                enabled = !isLoading,
+                colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White)
             ) {
-                Text(if (isLoading) "СОВЕТ РАБОТАЕТ..." else "СОЗВАТЬ СОВЕТ", fontWeight = FontWeight.Bold)
+                Text(if (isLoading) "СОВЕТ РАБОТАЕТ..." else "СОБРАТЬ СОВЕТ", fontWeight = FontWeight.Bold)
+            }
+
+            notice?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, color = Tx, fontSize = 11.sp)
             }
 
             Spacer(Modifier.height(16.dp))
-
-            agents.forEach { agent ->
+            activeAgents.forEach { agent ->
                 val answer = answers[agent.name]
-                if (answer != null) {
+                if (answer != null || isLoading) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = GrD),
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
@@ -155,18 +185,11 @@ fun CouncilScreen(onBack: () -> Unit) {
                                 Text(agent.name, color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                             }
                             Spacer(Modifier.height(6.dp))
-                            Text(answer, color = Color(0xFF202020), fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 16.sp)
-                        }
-                    }
-                } else if (isLoading) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = GrD),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    ) {
-                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(agent.emoji, fontSize = 16.sp)
-                            Spacer(Modifier.width(6.dp))
-                            Text("${agent.name} думает...", color = Tx, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                            Text(
+                                answer ?: "Ожидаем ответ…",
+                                color = Color(0xFF202020), fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace, lineHeight = 16.sp
+                            )
                         }
                     }
                 }
