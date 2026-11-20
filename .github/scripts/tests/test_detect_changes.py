@@ -17,6 +17,7 @@ class ChangeSelectionTests(unittest.TestCase):
             "contracts",
             "ios/GlafiraBridgeKit",
             "windows-agent/GLAFIRA.Agent.Worker",
+            "app/src/androidTest",
         ):
             (self.root / path).mkdir(parents=True, exist_ok=True)
         (self.root / "settings.gradle.kts").write_text(
@@ -27,6 +28,10 @@ class ChangeSelectionTests(unittest.TestCase):
         )
         (self.root / "windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj").write_text(
             "<Project />\n", encoding="utf-8"
+        )
+
+        (self.root / "app/build.gradle.kts").write_text(
+            "plugins { id('com.android.application') }\\n", encoding="utf-8"
         )
 
     def tearDown(self):
@@ -45,7 +50,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["ios"])
         self.assertTrue(selected["agent"])
         self.assertTrue(selected["contracts"])
-        self.assertFalse(selected["android_acceptance"])
+        self.assertTrue(selected["android_acceptance"])
 
     def test_ci_script_change_runs_linter_and_all_present_platform_suites(self):
         selected = MODULE.classify_paths(
@@ -56,7 +61,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["ios"])
         self.assertTrue(selected["agent"])
         self.assertTrue(selected["contracts"])
-        self.assertFalse(selected["android_acceptance"])
+        self.assertTrue(selected["android_acceptance"])
 
     def test_android_core_change_selects_android_and_contracts(self):
         selected = MODULE.classify_paths(
@@ -70,15 +75,10 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertFalse(selected["agent"])
         self.assertFalse(selected["android_acceptance"])
 
-    def test_bridge_change_requires_instrumentation_harness(self):
+    def test_bridge_change_selects_instrumentation_when_android_test_suite_exists(self):
         path = "app/src/main/java/com/micronizationlab/glafira/GlafiraBridgeHostService.kt"
         selected = MODULE.classify_paths([path], "pull_request", self.root)
         self.assertTrue(selected["android"])
-        self.assertFalse(selected["android_acceptance"])
-        harness = self.root / ".github/scripts/run-android-instrumentation.sh"
-        harness.parent.mkdir(parents=True, exist_ok=True)
-        harness.write_text("#!/usr/bin/env bash\\n", encoding="utf-8")
-        selected = MODULE.classify_paths([path], "pull_request", self.root)
         self.assertTrue(selected["android_acceptance"])
 
     def test_contract_change_selects_every_present_platform(self):
@@ -98,7 +98,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["ios"])
         self.assertTrue(selected["agent"])
         self.assertTrue(selected["contracts"])
-        self.assertFalse(selected["android_acceptance"])
+        self.assertTrue(selected["android_acceptance"])
 
 
 if __name__ == "__main__":
