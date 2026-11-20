@@ -24,6 +24,40 @@ Derived comparisons:
 
 **Important:** token prices alone do not establish which model is cheaper per accepted task. Different tokenizers, reasoning effort, context, retries, tool calls, image/audio units, output length, model quality and correction effort matter. The comparison must be repeated on identical benchmark tasks and cost per accepted deliverable.
 
+
+
+## 1A. Extended provider-price snapshot (additional official tariffs)
+
+The following snapshot expands the comparison beyond Yandex and xAI. USD amounts are converted using 81.929 RUB/USD solely for orientation; the original USD rates remain authoritative. These are list rates for different model versions, not a quality ranking.
+
+| Provider / model | Input per 1M | Output per 1M | Approx. RUB input/output | Notes |
+|---|---:|---:|---:|---|
+| DeepSeek V4.1 Flash direct API (peak) | $0.30 | $1.20 | 24.58 / 98.31 | Peak period; off-peak is half; cached input is $0.006/M peak and $0.003/M off-peak |
+| OpenAI GPT-6.1-Sol | $1.00 | $5.00 | 81.93 / 409.65 | Official price page; cached input $0.05/M; context tier and service tier affect cost |
+| Google Gemini 3.1 Flash-Lite Preview | $0.25 | $1.50 | 20.48 / 122.89 | Free tier exists with limits; free-tier data-use terms differ from paid |
+| Mistral Small 4 | $0.15 | $0.60 | 12.29 / 49.16 | Official API price card |
+| Mistral Large 4 | $0.70 | $2.10 | 57.35 / 172.05 | Official API price card |
+| Cohere Command A | $2.50 | $10.00 | 204.82 / 819.29 | Official model card; 256k context in the published model card |
+
+### What the expanded snapshot changes
+
+- Direct DeepSeek V4.1 Flash peak pricing is about $0.30/$1.20 per million input/output tokens, with off-peak rates at half. That is very different from Yandex AI Studio's managed DeepSeek V4.1 Flash listing of 0.3/0.5 RUB per 1,000 tokens (300/500 RUB per million). The apparent difference is large: Yandex-managed input is roughly 12.2× direct DeepSeek peak input after FX; managed output is roughly 5.1× direct peak output. **Do not assume this is pure markup** until exact model revision, token accounting, hosting, VAT, cache treatment and service scope are verified. It is, however, a strong reason to compare direct provider access with managed/aggregated access.
+- DeepSeek's peak/off-peak pricing means scheduling can materially change the cost of batchable work. This is a candidate for GLAFIRA's future task scheduler only when deadline and service terms permit it.
+- Gemini's free API tier is not equivalent to paid production use: it has limited model access/rate limits and its terms say submitted content may be used to improve products; paid usage has higher limits and states content is not used to improve products. Free is not necessarily suitable for confidential GLAFIRA project data.
+- Mistral Small 4 / Large 4 show why model routing by task matters: the price spread between fast/small and large models is substantial.
+- Cohere's Command A is much more expensive per token than low-cost Flash models, but is marketed for agentic/RAG/enterprise workflows. Compare accepted task quality, not just price.
+
+### Updated simple-workload comparison
+
+For 1M input + 250k output tokens:
+- YandexGPT Pro 5.1: about 1,000 RUB (0.8 + 0.8×0.25 RUB per 1,000 tokens).
+- Grok 4.7 below 200k prompt context: about $3.50, or 286.75 RUB at the CBR rate.
+- Direct DeepSeek V4.1 Flash peak: about $0.60, or 49.16 RUB; off-peak about $0.30, or 24.58 RUB.
+- Yandex-hosted DeepSeek V4.1 Flash: about 425 RUB at its listed managed tariff.
+
+These numbers are deliberately presented as a tariff illustration only. A real GLAFIRA comparison must include task quality, output size, reasoning tokens, retries, cache hit, tool/search calls, image/audio/video charges, latency, rate limits, regional availability, payment costs, tax and the cost of correcting a failed answer.
+
+
 ## 2. API usage is not the same thing as a consumer subscription
 
 The following are separate products and must not be mixed in one price column:
@@ -125,10 +159,16 @@ This is a hypothesis to validate through a competitive feature matrix and user i
 ### Primary pricing / product sources
 - Yandex AI Studio pricing (official; Russian ruble prices, VAT included, cache/tool/async distinctions): https://aistudio.yandex.ru/ru/docs/ai-studio/pricing
 - xAI API pricing (official; Grok model token rates, long-context, cached, priority and regional pricing): https://docs.x.ai/developers/pricing
+- xAI release notes (official; Grok 4.7 model and dated API rate card): https://docs.x.ai/developers/release-notes
 - xAI Grok 4.7 model page (official; 500k context and token rates): https://docs.x.ai/developers/models/grok-4.7
 - xAI consumer pricing (official): https://x.ai/pricing
 - X Subscription announcement (official; $30/$100/$200 tiers): https://x.ai/news/x-subscription
 - X Premium plan help (official; regional/local prices vary): https://help.x.com/en/using-x/x-premium
+- DeepSeek direct API pricing (official; peak/off-peak, cache-hit/miss and output prices): https://api-docs.deepseek.com/quick_start/pricing/
+- OpenAI API pricing (official; per-model input/output/cache and service tiers): https://platform.openai.com/pricing/
+- Google Gemini API pricing (official; free/paid, batch/flex/priority and data-use distinctions): https://ai.google.dev/gemini-api/docs/pricing
+- Mistral API pricing (official; current model family price card): https://docs.mistral.ai/inference/pricing
+- Cohere Command A model card (official; input/output prices and model specs): https://docs.cohere.com/v1/docs/command-a
 - Bank of Russia USD rate for 2026-11-20: https://www.cbr.ru/currency_base/daily/?UniDbQuery.Posted=True&UniDbQuery.To=20.11.2026
 - Amnezia Premium payment page (official): https://pay.amnezia.org/
 - Amnezia official FAQ (plans, 7 devices, locations, 200 Mbps, monthly purchase conditions and payment): https://docs.amnezia.org/ru/faq/
