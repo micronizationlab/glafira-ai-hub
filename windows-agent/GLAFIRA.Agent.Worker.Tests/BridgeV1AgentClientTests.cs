@@ -14,6 +14,7 @@ public sealed class BridgeV1AgentClientTests
     private static readonly Uri Endpoint = new("https://192.168.10.5:8443/bridge/v1");
     private readonly DateTimeOffset _now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
     private readonly byte[] _secret = RandomNumberGenerator.GetBytes(32);
+    private string? _capturedTlsPin;
 
     [Fact]
     public async Task HeartbeatSignsCanonicalBridgeEnvelopeAndReturnsOwnerProfile()
@@ -54,6 +55,7 @@ public sealed class BridgeV1AgentClientTests
         Assert.Equal(32, captured.IdempotencyKey.Length);
         Assert.True(captured.ExpiresAtEpochMs - captured.IssuedAtEpochMs <= 60_000);
         Assert.Equal("/bridge/v1", handler.LastRequestUri?.AbsolutePath);
+        Assert.Equal(Pin, _capturedTlsPin);
 
         var canonical = BuildCanonical(captured);
         var expected = HMACSHA256.HashData(_secret, Encoding.UTF8.GetBytes(canonical));
@@ -134,7 +136,11 @@ public sealed class BridgeV1AgentClientTests
     }
 
     private BridgeV1AgentClient CreateClient(StubHandler handler) =>
-        new(new FixedTimeProvider(_now), _ => handler);
+        new(new FixedTimeProvider(_now), pin =>
+        {
+            _capturedTlsPin = pin;
+            return handler;
+        });
 
     private AgentEnrollmentCredential Credential() => new(
         "agent-01",
