@@ -113,7 +113,7 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               challenge.protectionSpace.host.caseInsensitiveCompare(host) == .orderedSame,
               let trust = challenge.protectionSpace.serverTrust,
-              let certificate = SecTrustGetCertificateAtIndex(trust, 0),
+              let certificate = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first,
               let policy = SecPolicyCreateSSL(true, host as CFString) as SecPolicy?,
               SecTrustSetPolicies(trust, policy) == errSecSuccess,
               SecTrustSetAnchorCertificates(trust, [certificate] as CFArray) == errSecSuccess,
