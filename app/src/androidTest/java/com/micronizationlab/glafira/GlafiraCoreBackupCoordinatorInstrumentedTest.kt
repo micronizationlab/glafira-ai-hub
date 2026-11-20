@@ -179,6 +179,35 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
+    @Test
+    fun authenticatedArchiveWithMalformedPortableCoreIsRejectedBeforeRollbackOrMutation() = runBlocking {
+        store.enqueue(task("must-survive-invalid-snapshot"))
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
+        val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
+        assertTrue(snapshotDirectory.mkdirs())
+        val snapshot = File(snapshotDirectory, "core-portable-v2.json")
+        val archive = try {
+            snapshot.writeText("""{"format":"GLAFIRA_PORTABLE_CORE","version":2,"tables":{}}""")
+            BackupArchive.create(context, passphrase)
+        } finally {
+            snapshotDirectory.deleteRecursively()
+        }
+
+        try {
+            assertThrows(Exception::class.java) {
+                runBlocking {
+                    GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
+                }
+            }
+            assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
+            assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertEquals(0, File(context.noBackupFilesDir, "glafira-restore-journal").listFiles()?.size ?: 0)
+        } finally {
+            archive.delete()
+            passphrase.fill('\\u0000')
+        }
+    }
+
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
     }
