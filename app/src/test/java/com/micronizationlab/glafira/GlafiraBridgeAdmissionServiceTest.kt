@@ -1,8 +1,6 @@
 package com.micronizationlab.glafira
 
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -89,8 +87,9 @@ class GlafiraBridgeAdmissionServiceTest {
         val replay = FakeReplayStore(BridgeReplayClaim.ACCEPTED)
         var dispatchCalls = 0
         val service = GlafiraBridgeAdmissionService(
-            credentialProvider = GlafiraBridgeCredentialProvider {
-                GlafiraBridgeDeviceCredential("desktop-01", secret.copyOf(), setOf("project.read"))
+            credentialProvider = object : GlafiraBridgeCredentialProvider {
+                override fun load(deviceId: String) =
+                    GlafiraBridgeDeviceCredential("desktop-01", secret.copyOf(), setOf("project.read"))
             },
             replayStore = replay,
             dispatch = {
