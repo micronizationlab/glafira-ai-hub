@@ -4,18 +4,39 @@ using Microsoft.Extensions.Logging;
 namespace GLAFIRA.Agent.Worker;
 
 /// <summary>
-/// Windows background-service shell. This first increment intentionally does not
-/// connect to a host or claim work before owner-approved enrollment is implemented.
+/// Windows background-service shell. It validates the machine-protected enrollment
+/// at startup but does not claim work until the authenticated Agent runtime is implemented.
 /// </summary>
 public sealed class AgentWorker(
     ILogger<AgentWorker> logger,
-    AgentRuntimeState runtimeState) : BackgroundService
+    AgentRuntimeState runtimeState,
+    IAgentCredentialStore credentialStore) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        runtimeState.SetStatus(AgentServiceStatus.AwaitingOwnerEnrollment);
-        logger.LogInformation(
-            "GLAFIRA Agent service started; awaiting owner-approved enrollment.");
+        try
+        {
+            var credential = await credentialStore.LoadAsync(stoppingToken).ConfigureAwait(false);
+            if (credential is null)
+            {
+                runtimeState.SetStatus(AgentServiceStatus.AwaitingOwnerEnrollment);
+                logger.LogInformation(
+                    "GLAFIRA Agent service started; no machine-protected enrollment is present.");
+            }
+            else
+            {
+                runtimeState.SetStatus(AgentServiceStatus.Enrolled);
+                logger.LogInformation(
+                    "GLAFIRA Agent {AgentId} has a valid machine-protected enrollment for Hub {HubId}; task polling remains disabled in this build.",
+                    credential.AgentId, credential.DesktopHubId);
+            }
+        }
+        catch (Exception error) when (error is InvalidDataException or CryptographicException or IOException)
+        {
+            runtimeState.SetStatus(AgentServiceStatus.Faulted);
+            logger.LogError(error, "GLAFIRA Agent enrollment could not be loaded; failing closed.");
+            return;
+        }
 
         try
         {
