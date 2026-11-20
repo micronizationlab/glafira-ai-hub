@@ -35,8 +35,7 @@ The installer creates the `GLAFIRA Agent` automatic Windows service under LocalS
 
 3. Enter the Desktop HTTPS endpoint, TLS SHA-256 fingerprint, ticket ID, one-time pairing code and Agent ID. The pairing code is masked while typing.
 4. The Agent saves the credential as a DPAPI LocalMachine-protected blob under `%ProgramData%\GLAFIRA\Agent`. The directory and file ACLs grant access only to LocalSystem and local Administrators.
-5. In GLAFIRA Desktop, select the pending Agent, assign only the capabilities it should receive, choose the parallelism limit and explicitly approve it.
-6. Restart the Windows service:
+5. Restart the Windows service so it loads the new credential:
 
 ```powershell
 Restart-Service "GLAFIRA Agent"
