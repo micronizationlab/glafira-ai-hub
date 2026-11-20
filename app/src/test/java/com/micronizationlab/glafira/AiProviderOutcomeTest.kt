@@ -7,11 +7,11 @@ import org.junit.Test
 
 class AiProviderOutcomeTest {
     @Test fun missingCredentialsAndUnsupportedProviderAreDefinitelyNotSent() {
-        val missing = classifyLegacyProviderResponse("Ошибка: API-ключ не задан.")
-        val unsupported = classifyLegacyProviderResponse("Ошибка: подключение YandexGPT пока не реализовано.")
-        assertEquals(AiRequestOutcome.NOT_SENT, (missing as AiProviderResult.Failure).error.outcome)
+        val missing = classifyLegacyProviderResponse("Ошибка: API-ключ не задан.") as AiProviderResult.Failure
+        val unsupported = classifyLegacyProviderResponse("Ошибка: подключение YandexGPT пока не реализовано.") as AiProviderResult.Failure
+        assertEquals(AiRequestOutcome.NOT_SENT, missing.error.outcome)
         assertEquals(AiProviderErrorCategory.NOT_CONFIGURED, missing.error.category)
-        assertEquals(AiRequestOutcome.NOT_SENT, (unsupported as AiProviderResult.Failure).error.outcome)
+        assertEquals(AiRequestOutcome.NOT_SENT, unsupported.error.outcome)
         assertEquals(AiProviderErrorCategory.UNSUPPORTED, unsupported.error.category)
     }
 
