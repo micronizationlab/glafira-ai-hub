@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-class GlafiraTaskPlanPolicyTest {
+class GlafiraCoreTaskPlanPolicyTest {
     private fun task(id: String) = GlafiraTask(
         taskId = id,
         projectId = "project-a",
@@ -16,7 +16,7 @@ class GlafiraTaskPlanPolicyTest {
         idempotencyKey = "idem-$id"
     )
 
-    private fun plan(nodes: List<GlafiraTaskPlanNode>) = GlafiraTaskPlan(
+    private fun plan(nodes: List<GlafiraCoreTaskPlanNode>) = GlafiraCoreTaskPlan(
         planId = "plan-policy-0001",
         projectId = "project-a",
         idempotencyKey = "instruction-0001",
@@ -26,50 +26,50 @@ class GlafiraTaskPlanPolicyTest {
 
     @Test fun acceptsIndependentBranchesAndAJoinNode() {
         val plan = plan(listOf(
-            GlafiraTaskPlanNode(task("root")),
-            GlafiraTaskPlanNode(task("branch-a"), setOf("root")),
-            GlafiraTaskPlanNode(task("branch-b"), setOf("root")),
-            GlafiraTaskPlanNode(task("join"), setOf("branch-a", "branch-b"))
+            GlafiraCoreTaskPlanNode(task("root")),
+            GlafiraCoreTaskPlanNode(task("branch-a"), setOf("root")),
+            GlafiraCoreTaskPlanNode(task("branch-b"), setOf("root")),
+            GlafiraCoreTaskPlanNode(task("join"), setOf("branch-a", "branch-b"))
         ))
-        GlafiraTaskPlanPolicy.validate(plan)
+        GlafiraCoreTaskPlanPolicy.validate(plan)
         assertEquals(4, plan.nodes.size)
     }
 
     @Test fun rejectsCyclesAndDependenciesOutsideThePlan() {
         assertThrows(IllegalArgumentException::class.java) {
-            GlafiraTaskPlanPolicy.validate(plan(listOf(
-                GlafiraTaskPlanNode(task("a"), setOf("b")),
-                GlafiraTaskPlanNode(task("b"), setOf("a"))
+            GlafiraCoreTaskPlanPolicy.validate(plan(listOf(
+                GlafiraCoreTaskPlanNode(task("a"), setOf("b")),
+                GlafiraCoreTaskPlanNode(task("b"), setOf("a"))
             )))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            GlafiraTaskPlanPolicy.validate(plan(listOf(
-                GlafiraTaskPlanNode(task("a"), setOf("external-task"))
+            GlafiraCoreTaskPlanPolicy.validate(plan(listOf(
+                GlafiraCoreTaskPlanNode(task("a"), setOf("external-task"))
             )))
         }
     }
 
     @Test fun rejectsDuplicateNodeIdsAndCrossProjectNodes() {
         assertThrows(IllegalArgumentException::class.java) {
-            GlafiraTaskPlanPolicy.validate(plan(listOf(
-                GlafiraTaskPlanNode(task("duplicate")),
-                GlafiraTaskPlanNode(task("duplicate"))
+            GlafiraCoreTaskPlanPolicy.validate(plan(listOf(
+                GlafiraCoreTaskPlanNode(task("duplicate")),
+                GlafiraCoreTaskPlanNode(task("duplicate"))
             )))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            GlafiraTaskPlanPolicy.validate(plan(listOf(
-                GlafiraTaskPlanNode(task("local")),
-                GlafiraTaskPlanNode(task("foreign").copy(projectId = "project-b"))
+            GlafiraCoreTaskPlanPolicy.validate(plan(listOf(
+                GlafiraCoreTaskPlanNode(task("local")),
+                GlafiraCoreTaskPlanNode(task("foreign").copy(projectId = "project-b"))
             )))
         }
     }
 
     @Test fun enforcesThePlanNodeBudget() {
-        val nodes = (0..GlafiraTaskPlanPolicy.MAX_NODES).map {
-            GlafiraTaskPlanNode(task("node-$it"))
+        val nodes = (0..GlafiraCoreTaskPlanPolicy.MAX_NODES).map {
+            GlafiraCoreTaskPlanNode(task("node-$it"))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            GlafiraTaskPlanPolicy.validate(plan(nodes))
+            GlafiraCoreTaskPlanPolicy.validate(plan(nodes))
         }
     }
 }
