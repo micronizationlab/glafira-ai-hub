@@ -11,7 +11,8 @@ This checklist validates Desktop ↔ Agent pairing, owner approval, authenticate
 - [ ] Desktop computer's Windows network profile is Private.
 - [ ] Both computers have automatic time synchronization enabled.
 - [ ] Desktop HTTPS port TCP 8443 is reachable from the Agent computer on the local subnet.
-- [ ] Downloaded ZIPs are the same tested CI run: `GLAFIRA-Desktop-win-x64` and `GLAFIRA-Agent-win-x64`.
+- [ ] Download the two artifacts from the same successful **GLAFIRA Windows deployment packages** GitHub Actions run: `GLAFIRA-Desktop-win-x64` and `GLAFIRA-Agent-win-x64`. Open the run page and use its **Artifacts** section.
+- [ ] Extract each ZIP on its target computer; both include the publish output and the matching install/uninstall scripts, so no .NET SDK is needed on the target PCs.
 
 ## Desktop/Hub computer
 
