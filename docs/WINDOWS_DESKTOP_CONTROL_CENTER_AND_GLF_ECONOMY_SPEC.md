@@ -358,3 +358,85 @@ Before production pricing:
 - complete security, privacy, provider-terms and legal review.
 
 This engine is a future module. It must not delay Core, Bridge or the functional Windows Desktop milestone. Begin detailed implementation only after usage telemetry, provider catalogue, wallet ledger and contract lifecycle dependencies are stable and the owner reprioritizes or approves the relevant phase.
+
+## 13. Consumer onboarding, account-bound downloads and paired-device identity
+
+### 13.1 Website registration and download sequence
+
+The public website is the consumer entry point. A visitor creates one GLAFIRA account through a short registration flow, verifies the account, accepts applicable terms and lands on a personal download center. Each download has a one-sentence explanation and a short installation guide beside it.
+
+The download center offers:
+1. GLAFIRA Desktop for Windows — primary Windows control center and local task coordinator.
+2. GLAFIRA Desktop for macOS — first-class native Mac control center, not a web-only substitute.
+3. GLAFIRA for Android / iOS — mobile client that can operate independently when no Desktop is installed.
+4. GLAFIRA Windows Agent — optional background worker for additional Windows computers.
+
+The site guides a new customer through first device → second device. The user may choose either Desktop or smartphone as the first device. Once enrolled, the next download is prepared to join that account and pair with the already enrolled device. Later downloads remain available from the account page. Prevent conflicting simultaneous bootstrap claims.
+
+A client-specific download must not contain a reusable password, private key, long-lived bearer token or owner/issuer secret. Prefer a standard vendor-signed installer plus a server-generated, short-lived, one-time signed enrollment bundle. It may contain public account/device ID, intended coordinator ID, allowed platform/role, expiry and nonce. The app redeems it over authenticated HTTPS, proves possession of its newly generated device key, and receives a revocable device credential. The site marks the ticket consumed atomically. Re-download/recovery requires a new owner-authorized ticket.
+
+### 13.2 Pairing in either order
+
+- Desktop first: Desktop becomes the preferred local coordinator. The subsequent phone and Windows Agent enroll against the same account and receive a signed pairing descriptor identifying this Desktop.
+- Phone first: the phone becomes the initial coordinator and usable standalone client. A later Desktop receives a signed descriptor to join the account; after successful health checks, the owner may promote Desktop to preferred coordinator.
+- Windows Agent: enroll only after the user selects an account coordinator. It sends outbound authenticated requests and accepts tasks only from the pinned logical coordinator identity. If Desktop is present, Desktop is preferred. If Desktop is absent and the user explicitly enables phone-coordinated mode, the Agent may use the account's authenticated Mother rendezvous/relay path to deliver work to the phone. It must never guess a destination or accept a coordinator supplied by an unauthenticated LAN peer.
+
+"Hard-wired Desktop address" means a pinned coordinator identity and owner-approved endpoint configuration, not a literal IP compiled into the executable. Local IP addresses can change. Bind the endpoint to a verified TLS/public-key identity and signed account enrollment descriptor; support authenticated endpoint rotation and revocation. A DNS change, network attacker or arbitrary LAN peer must not redirect the Agent.
+
+### 13.3 Windows Agent tray and background behavior
+
+The Windows Agent is a small background service/worker, not a second desktop workspace. Its tray icon has exactly three primary states:
+- green — enrolled, authenticated and connected/healthy;
+- red — explicit error, revoked credential, authentication failure or task failure requiring attention;
+- gray — stopped, paused, not enrolled, disconnected or not yet checked.
+
+The tray menu exposes status, current task summary, pause/resume, contribution limit, coordinator identity, redacted logs and uninstall/revoke. It does not expose a general-purpose remote shell. The worker requests work from its pinned coordinator, runs only registered typed handlers in bounded sandboxes, returns signed results and yields to owner activity. No hidden compute, file harvesting or unrestricted command execution.
+
+### 13.4 macOS Desktop scope
+
+Add a native GLAFIRA Desktop for macOS target to the product and release plan. It shares versioned Task/Result/Lease/Agent contracts and Core policies with Windows Desktop, but uses macOS-native packaging, signing/notarization, Keychain credential storage, permissions and update lifecycle. Initial parity: account/device enrollment, project workspace, Bridge status/pairing, task queue/results, agent coordination, backup controls, wallet visibility (read-only until ledger exists) and diagnostics. Do not imply that Windows Agent runs on macOS; a separate Mac worker is a future decision.
+
+### 13.5 Acceptance
+
+Test both enrollment orders, duplicate/expired/replayed ticket redemption, wrong-account pairing, device revocation, endpoint rotation, Desktop offline fallback, phone-only operation, Agent reconnect and tray-state transitions. Inspect installer contents to prove no long-lived secret is embedded. Test signed/notarized macOS distribution separately.
+
+## 14. GLF device contribution, reward and customer break-even model
+
+The companion specification TOKEN_DEVICE_ECONOMICS_AND_CONSUMER_PRICING.md defines the editable device benchmark table, formulas, model/provider free-quota catalogue and initial pricing policy. It is normative together with this section.
+
+Rewards are based on verified accepted work, not device uptime, advertised FLOPS or theoretical token throughput. For each device/model/workload profile, record measured throughput, accepted-task rate, failure/retry rate, energy, actually available hours, thermal/owner-contention limits and uncertainty. Separate measured facts from estimates.
+
+A device is attractive only if accepted-work value exceeds incremental electricity, bandwidth, depreciation, operations, failures and support/security reserve. Show both platform margin and contributor reward; classify devices with zero/negative net value as unsuitable. Android contribution remains opt-in and tightly limited (Wi-Fi only, battery/thermal/charging/OS constraints and no more than the already approved mobile cap). Desktop contribution yields to owner activity.
+
+The displayed GLF/RUB reference is an accounting reference, not a promise of cash redemption or public exchange rate. GCU measures work; GLF settles service value. Do not automatically mint GLF to match GCU.
+
+## 15. Consumer service allowances, daily billing and free usage
+
+Separate: (1) local inference/tools on the customer's device; (2) third-party API usage paid by the customer with an authorized BYOK key; (3) GLAFIRA-hosted/network inference, VPN bandwidth and shared compute paid by GLAFIRA. Do not describe BYOK or local power use as a free GLAFIRA subsidy.
+
+The product may offer free local mode and a limited network allowance. Calculate network caps from actual provider cost, quotas, quality and risk, with separate daily/monthly caps per account and model family. When included allowance is exhausted, show the next cost and ask permission to spend GLF or stop/route to a compatible local model. No silent paid fallback, API-key substitution, paid-tier activation or negative balance.
+
+Illustrative example: a 300 RUB 30-day package represented by 10,000 GLF implies a display reference of 0.03 RUB/GLF. Nominal daily allocation is 10,000/30 = 333.33 GLF. Credit the wallet only after verified payment. If active-day billing is selected, debit only a verified VPN active day; no daily VPN debit when the client is offline, VPN was not used, or our outage prevented service. AI is charged by measured successful usage or a separately disclosed active-day package. Do not charge an AI day merely because the app is installed. Define expiry, pause, rollover, refunds, outages and timezone boundaries before launch. Never debit the whole package upfront and then debit it again daily.
+
+## 16. Telegram storefront and payment boundary
+
+A Telegram bot plus Mini App can present five initial catalogue entries: free application download, VPN plan, AI plan, combined VPN+AI plan, and GLF top-up/contribution information (not an investment or promise of monetary return).
+
+Critical constraint: AI/VPN access sold inside a Telegram bot or Mini App is a digital service. Telegram's current developer terms require in-Telegram digital purchases to use Telegram Stars (XTR); direct RUB or TON/cryptocurrency payment inside the Telegram app is not a compliant substitute. Telegram Stars are not our GLF wallet and are not a general wallet-to-wallet rail. Reconcile a verified Stars payment server-side, then grant the service/GLF allowance in our separate ledger. An external website checkout is a separate channel and requires app-store/jurisdiction review. Do not promise direct TON Wallet payment inside the Mini App unless Telegram's rules explicitly permit it.
+
+Implement idempotent invoice payloads, signed update validation, payment reconciliation, duplicate/refund handling, support via /paysupport, audit and delivery confirmation. No activation before verified successful payment. Keep bot secrets server-side.
+
+Official references: https://core.telegram.org/bots/payments-stars ; https://telegram.org/tos/bot-developers ; https://telegram.org/tos/stars ; https://core.telegram.org/bots/api#sendinvoice
+
+## 17. Consumer presentation positioning
+
+Lead with user outcomes, not architecture:
+- a personal AI agent that can complete multi-step tasks, use approved tools and continue work within user-defined permissions;
+- a VPN with a clear on/off state and transparent service status;
+- phone-only use for customers who do not want home/work installation;
+- optional Desktop + Windows Agent cooperation for spare approved capacity;
+- a path to cover some or all service costs through accepted contribution rather than cash.
+
+Approved wording direction: "Use a capable AI agent and VPN without necessarily paying from your bank card: choose local use, bring your own provider key, or earn GLF credits by voluntarily contributing verified spare device capacity." For a combined plan: "With enough accepted contribution, you may cover the base service package in GLF credits instead of paying cash."
+
+Do not promise that the minimum tariff is always free, every device earns a fixed daily amount, VPN has zero operating cost, or AI usage is unlimited. Show an individual estimate only after benchmarking, with assumptions and ranges. Rewards depend on accepted work and network demand.
