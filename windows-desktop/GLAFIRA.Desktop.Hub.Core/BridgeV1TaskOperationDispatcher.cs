@@ -168,7 +168,20 @@ public sealed class BridgeV1TaskOperationDispatcher(
         else if (state is "SUCCEEDED" or "FAILED")
         {
             var succeeded = state == "SUCCEEDED";
-            var result = NormalizeNone(payload.GetValueOrDefault("result"));
+            string? result;
+            if (payload.GetValueOrDefault("resultEncoding") == "json")
+            {
+                try
+                {
+                    using var encoded = JsonDocument.Parse(payload.GetValueOrDefault("result") ?? "null",
+                        new JsonDocumentOptions { MaxDepth = 2 });
+                    if (encoded.RootElement.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                        return Failure("INVALID_TASK_RESULT");
+                    result = encoded.RootElement.ValueKind == JsonValueKind.Null ? null : encoded.RootElement.GetString();
+                }
+                catch (JsonException) { return Failure("INVALID_TASK_RESULT"); }
+            }
+            else result = NormalizeNone(payload.GetValueOrDefault("result"));
             var errorCode = NormalizeNone(payload.GetValueOrDefault("errorCode"));
             if (!succeeded && errorCode is null) errorCode = "TASK_FAILED";
             accepted = store.Complete(agent.AgentId, taskId, leaseId, fencingToken,
@@ -180,7 +193,13 @@ public sealed class BridgeV1TaskOperationDispatcher(
         }
 
         return accepted
-            ? new BridgeV1DispatchResponse("SUCCEEDED", new Dictionary<string, string> { ["accepted"] = "true" })
+            ? new BridgeV1DispatchResponse("SUCCEEDED", new Dictionary<string, string>
+            {
+                ["accepted"] = "true", ["taskId"] = taskId, ["leaseId"] = leaseId,
+                ["fencingToken"] = fencingToken.ToString(CultureInfo.InvariantCulture), ["state"] = state,
+                ["resultSha256"] = Convert.ToHexString(SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(payload.GetValueOrDefault("result") ?? "none"))).ToLowerInvariant()
+            })
             : Failure("LEASE_FENCING_REJECTED");
     }
 

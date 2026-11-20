@@ -48,6 +48,30 @@ class DesktopTaskQueueTest {
     }
 
     @Test
+    fun serverLeaseIdentityPersistsAcrossQueueRestart() {
+        val first = queue()
+        first.enqueue(task())
+        first.attachLease("task_1", "lease-0001", 42L)
+
+        val reopened = queue()
+        val envelope = reopened.get("task_1")!!.envelope
+        assertEquals("lease-0001", envelope.leaseId)
+        assertEquals(42L, envelope.fencingToken)
+    }
+
+    @Test
+    fun leaseAttachmentRejectsInvalidFenceAndLeaseIdentifier() {
+        val q = queue()
+        q.enqueue(task())
+        assertThrows(IllegalArgumentException::class.java) {
+            q.attachLease("task_1", "lease-0001", 0L)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            q.attachLease("task_1", "short", 1L)
+        }
+    }
+
+    @Test
     fun claimUsesPriorityAndPreservesFifoForEqualPriority() {
         val q = queue()
         q.enqueue(task(id = "low", priority = 1))
@@ -85,7 +109,7 @@ class DesktopTaskQueueTest {
     }
 
     @Test
-    fun taskExpiredDuringExecutionCannotBeMarkedSuccessful() {
+    fun completedOperationPreservesItsActualResultAfterDeadline() {
         val q = queue()
         q.enqueue(task(expiresAt = now + 10))
         q.claimNext()
@@ -94,9 +118,9 @@ class DesktopTaskQueueTest {
         now += 11
 
         val completed = q.complete("task_1", "late result")
-        assertEquals(DesktopTaskState.FAILED, completed.state)
-        assertEquals("TASK_EXPIRED", completed.errorCode)
-        assertNull(completed.result)
+        assertEquals(DesktopTaskState.SUCCEEDED, completed.state)
+        assertNull(completed.errorCode)
+        assertEquals("late result", completed.result)
     }
 
     @Test
@@ -119,12 +143,47 @@ class DesktopTaskQueueTest {
             q.claimNext()
             q.transition(id, DesktopTaskState.ACCEPTED)
             q.transition(id, DesktopTaskState.RUNNING)
-            q.complete(id, "result-$index")
+            val completed = q.complete(id, "result-$index")
+            q.acknowledgeResult(id, completed.sequence)
         }
 
         assertEquals(DesktopTaskQueue.MAX_RETAINED_RECORDS, q.list().size)
         assertNull(q.get("task_0"))
         assertNotNull(q.get("task_${DesktopTaskQueue.MAX_RETAINED_RECORDS + 1}"))
+    }
+
+    @Test
+    fun terminalResultSurvivesRestartUntilMatchingAcknowledgement() {
+        val q = queue()
+        q.enqueue(task())
+        q.claimNext()
+        q.transition("task_1", DesktopTaskState.ACCEPTED)
+        q.transition("task_1", DesktopTaskState.RUNNING)
+        val terminal = q.complete("task_1", "actual output")
+        val reopened = queue()
+        assertEquals("actual output", reopened.pendingResults("project-a").single().result)
+        assertEquals(0, reopened.pendingResults("other-project").size)
+        assertEquals(false, reopened.acknowledgeResult("task_1", terminal.sequence - 1))
+        assertEquals(1, reopened.pendingResults("project-a").size)
+        assertEquals(true, reopened.acknowledgeResult("task_1", terminal.sequence))
+        assertEquals(0, queue().pendingResults("project-a").size)
+        assertNull(reopened.claimNext())
+    }
+
+    @Test
+    fun unacknowledgedResultsAreNeverPrunedWhenHistoryIsFull() {
+        val q = queue()
+        repeat(DesktopTaskQueue.MAX_RETAINED_RECORDS) { index ->
+            val id = "task_$index"
+            q.enqueue(task(id = id))
+            q.claimNext()
+            q.transition(id, DesktopTaskState.ACCEPTED)
+            q.transition(id, DesktopTaskState.RUNNING)
+            q.complete(id, "result-$index")
+        }
+        assertThrows(IllegalStateException::class.java) { q.enqueue(task(id = "overflow")) }
+        assertEquals(DesktopTaskQueue.MAX_RETAINED_RECORDS, queue().pendingResults("project-a").size)
+        assertEquals("result-0", queue().get("task_0")?.result)
     }
 
     @Test

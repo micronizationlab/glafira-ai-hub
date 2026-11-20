@@ -118,4 +118,53 @@ class DesktopTaskRuntimeTest {
         assertEquals("finished:task_close", queue.get("task_close")?.result)
     }
 
+    @Test fun closeFailsClosedWhenHandlerIgnoresInterruptAndKeepsWorkerAlive() {
+        val queue = DesktopTaskQueue(temp.root.toPath().resolve("tasks-unresponsive-close.json")) { now }
+        queue.enqueue(task("task_unresponsive_close"))
+        val started = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val interruptObserved = java.util.concurrent.atomic.AtomicBoolean(false)
+        val runtime = DesktopTaskRuntime(
+            queue,
+            mapOf("analysis.document" to DesktopAgentExecutor {
+                started.countDown()
+                while (finish.count > 0) {
+                    try {
+                        finish.await(20, TimeUnit.MILLISECONDS)
+                    } catch (_: InterruptedException) {
+                        interruptObserved.set(true)
+                    }
+                }
+                "finished:" + it.taskId
+            }),
+            gracefulShutdownTimeoutMs = 25,
+            forcedShutdownTimeoutMs = 25
+        )
+        assertEquals(1, runtime.dispatchAvailable())
+        assertTrue(started.await(3, TimeUnit.SECONDS))
+
+        val closeFailure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+        val closer = Thread {
+            try {
+                runtime.close()
+            } catch (error: Throwable) {
+                closeFailure.set(error)
+            }
+        }
+        closer.start()
+        closer.join(2_000)
+
+        assertFalse("bounded close attempt should return with an explicit failure", closer.isAlive)
+        assertTrue("handler should have observed the forced interrupt", interruptObserved.get())
+        assertTrue("close must not report success while a handler is alive", closeFailure.get() is IllegalStateException)
+        assertEquals(setOf("task_unresponsive_close"), runtime.activeTaskIds())
+
+        finish.countDown()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+        while (queue.get("task_unresponsive_close")?.state != DesktopTaskState.SUCCEEDED &&
+            System.nanoTime() < deadline
+        ) Thread.sleep(10)
+        assertEquals(DesktopTaskState.SUCCEEDED, queue.get("task_unresponsive_close")?.state)
+        assertTrue(runtime.activeTaskIds().isEmpty())
+    }
 }

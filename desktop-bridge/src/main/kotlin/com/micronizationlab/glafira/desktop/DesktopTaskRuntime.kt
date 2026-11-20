@@ -30,7 +30,9 @@ internal class DesktopTaskRuntime(
     private val handlers: Map<String, DesktopAgentExecutor>,
     maxParallelTasks: Int = DEFAULT_PARALLELISM,
     private val onResult: (DesktopAgentResult) -> Unit = {},
-    private val onProgress: (String, Int, String) -> Unit = { _, _, _ -> }
+    private val onProgress: (String, Int, String) -> Unit = { _, _, _ -> },
+    private val gracefulShutdownTimeoutMs: Long = DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_MS,
+    private val forcedShutdownTimeoutMs: Long = DEFAULT_FORCED_SHUTDOWN_TIMEOUT_MS
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val slots = Semaphore(maxParallelTasks.also { require(it in 1..MAX_PARALLELISM) })
@@ -38,6 +40,8 @@ internal class DesktopTaskRuntime(
     private val active = java.util.concurrent.ConcurrentHashMap<String, CompletableFuture<DesktopAgentResult>>()
 
     init {
+        require(gracefulShutdownTimeoutMs > 0)
+        require(forcedShutdownTimeoutMs > 0)
         // Recover only at runtime construction, before this worker can own any active tasks.
         queue.recoverInterruptedTasks()
     }
@@ -135,23 +139,52 @@ internal class DesktopTaskRuntime(
     fun activeTaskIds(): Set<String> = active.keys.toSet()
 
     override fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        // Let already-claimed work finish and persist its result before interrupting workers.
-        workers.shutdown()
-        try {
-            if (!workers.awaitTermination(5, TimeUnit.SECONDS)) {
-                workers.shutdownNow()
-                workers.awaitTermination(5, TimeUnit.SECONDS)
+        if (!closed.compareAndSet(false, true)) {
+            check(workers.isTerminated) {
+                "Desktop workers are still active; keep the instance lock and credentials until they stop."
             }
-        } catch (_: InterruptedException) {
+            return
+        }
+
+        // Never report a clean shutdown while a handler may still perform external effects.
+        // First drain naturally; then interrupt cooperatively. If a handler ignores interruption,
+        // fail close so the caller cannot safely erase credentials or release the process lock.
+        workers.shutdown()
+        var interrupted = false
+        try {
+            var terminated = workers.awaitTermination(gracefulShutdownTimeoutMs, TimeUnit.MILLISECONDS)
+            if (!terminated) {
+                workers.shutdownNow()
+                terminated = workers.awaitTermination(forcedShutdownTimeoutMs, TimeUnit.MILLISECONDS)
+            }
+            check(terminated) {
+                "Desktop workers did not terminate; keep the instance lock and credentials until they stop."
+            }
+        } catch (error: InterruptedException) {
+            interrupted = true
             workers.shutdownNow()
-            Thread.currentThread().interrupt()
+            val terminated = try {
+                workers.awaitTermination(forcedShutdownTimeoutMs, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+                interrupted = true
+                false
+            }
+            if (!terminated) {
+                throw IllegalStateException(
+                    "Desktop workers remain active after interrupted shutdown; keep the instance lock and credentials.",
+                    error
+                )
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
         }
     }
 
     companion object {
         const val DEFAULT_PARALLELISM = 2
         const val MAX_PARALLELISM = 8
+        const val DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5_000L
+        const val DEFAULT_FORCED_SHUTDOWN_TIMEOUT_MS = 5_000L
         private const val MAX_RESULT_CHARS = 12_000
     }
 }
