@@ -182,7 +182,7 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
             UPDATE HubCredentials
             SET protected_secret = X'', scopes_json = '[]', enabled = 0,
                 updated_at_ms = $updated
-            WHERE device_id = $device;
+            WHERE device_id = $device AND enabled = 1;
             """;
         command.Parameters.AddWithValue("$device", deviceId);
         command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
