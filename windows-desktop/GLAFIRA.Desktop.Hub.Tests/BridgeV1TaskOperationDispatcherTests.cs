@@ -55,8 +55,7 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     public async Task UnapprovedAgentHeartbeatDoesNotRefreshLivenessOrRevealProfile()
     {
         var now = DateTimeOffset.UtcNow;
-        _store.RegisterAgent(new HubAgentRegistration(
-            "agent-0001", "device-0001", ["web.research"], 1, false), now);
+        _store.RegisterPendingAgent("agent-0001", "device-0001", now);
 
         var response = await CreateDispatcher(_payload).DispatchAsync(HeartbeatRequest(), now.AddSeconds(1));
 
