@@ -151,7 +151,8 @@ jobs:
           cores: 2
           ram-size: 2048M
           heap-size: 512M
-          disk-size: 4096M
+          # Keep userdata below the runner's available disk budget; 4 GB caused a 7.3 GB allocation request.
+          disk-size: 2048M
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -camera-back none -camera-front none
           disable-animations: true
