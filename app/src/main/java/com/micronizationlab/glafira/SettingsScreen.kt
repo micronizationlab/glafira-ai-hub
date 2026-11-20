@@ -52,6 +52,9 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var voiceOutputEnabled by remember {
         mutableStateOf(audioPreferences.getBoolean("voice_output_enabled", true))
     }
+    var voiceSpeechRate by remember {
+        mutableFloatStateOf(audioPreferences.getFloat("voice_speech_rate", 1f).coerceIn(0.5f, 2f))
+    }
     var soundEffectsVolume by remember {
         mutableFloatStateOf(audioPreferences.getFloat("sound_effects_volume", 1f).coerceIn(0f, 1f))
     }
@@ -358,6 +361,24 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         TtsHelper.setEnabled(context, it)
                     })
                 }
+                Text("СКОРОСТЬ ГОЛОСОВОГО ОТВЕТА", color = Tx, fontSize = 10.sp)
+                Slider(
+                    value = voiceSpeechRate,
+                    onValueChange = {
+                        voiceSpeechRate = it
+                        TtsHelper.setSpeechRate(context, it)
+                    },
+                    enabled = voiceOutputEnabled,
+                    valueRange = 0.5f..2f
+                )
+                Text("${String.format(java.util.Locale.ROOT, "%.1f", voiceSpeechRate)}×", color = Tx, fontSize = 11.sp)
+                TextButton(
+                    enabled = voiceOutputEnabled,
+                    onClick = {
+                        TtsHelper.init(context)
+                        TtsHelper.speak("Проверка голосового ответа GLAFIRA.")
+                    }
+                ) { Text("ПРОВЕРИТЬ ГОЛОС") }
                 Text("ГРОМКОСТЬ ЗВУКОВ", color = Tx, fontSize = 10.sp)
                 Slider(
                     value = soundEffectsVolume,
