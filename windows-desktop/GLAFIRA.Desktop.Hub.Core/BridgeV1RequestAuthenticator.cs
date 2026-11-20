@@ -120,8 +120,15 @@ public sealed class BridgeV1RequestAuthenticator(
             return BridgeV1AdmissionResult.Deny(BridgeV1AdmissionFailure.SignatureInvalid);
 
         var expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(request.ExpiresAtEpochMs);
+        // The shared Bridge idempotency key may be 8 characters; the legacy generic
+        // replay guard requires a 16+ character nonce. Hash it to a fixed 64-char key.
+        var idempotencyBytes = Encoding.UTF8.GetBytes(request.IdempotencyKey);
+        var replayKeyBytes = SHA256.HashData(idempotencyBytes);
+        var replayNonce = Convert.ToHexString(replayKeyBytes).ToLowerInvariant();
+        CryptographicOperations.ZeroMemory(idempotencyBytes);
+        CryptographicOperations.ZeroMemory(replayKeyBytes);
         if (!await replayGuard.TryClaimAsync(
-                request.DeviceId, request.IdempotencyKey, expiresAt, cancellationToken))
+                request.DeviceId, replayNonce, expiresAt, cancellationToken))
             return BridgeV1AdmissionResult.Deny(BridgeV1AdmissionFailure.ReplayDetected);
 
         return BridgeV1AdmissionResult.Allow();
