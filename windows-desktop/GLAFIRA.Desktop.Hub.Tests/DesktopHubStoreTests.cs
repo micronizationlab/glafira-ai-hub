@@ -158,6 +158,53 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void TaskStateHistoryIsDurableAndOrderedAcrossStoreRestart()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-history", "device-history", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("history-task"), now);
+
+        var lease = _store.ClaimNext("agent-history", now.AddSeconds(1), TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+        Assert.True(_store.Complete("agent-history", lease.TaskId, lease.LeaseId,
+            lease.FencingToken, succeeded: true, now.AddSeconds(2)));
+
+        var reopened = new DesktopHubStore(_databasePath);
+        var history = reopened.GetTaskHistory("history-task");
+
+        Assert.Collection(history,
+            item => { Assert.Equal(HubTaskState.Queued, item.State); Assert.Equal("TASK_ENQUEUED", item.EventCode); },
+            item => { Assert.Equal(HubTaskState.Leased, item.State); Assert.Equal("TASK_LEASED", item.EventCode); Assert.Equal("agent-history", item.AgentId); },
+            item => { Assert.Equal(HubTaskState.Succeeded, item.State); Assert.Equal("TASK_SUCCEEDED", item.EventCode); });
+        Assert.True(history[0].EventId < history[1].EventId && history[1].EventId < history[2].EventId);
+        Assert.All(history, item => Assert.Equal("history-task", item.TaskId));
+    }
+
+    [Fact]
+    public void ExpiredLeaseRecoveryIsRecordedInTaskHistory()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-recover", "device-recover", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("recover-task"), now);
+        Assert.NotNull(_store.ClaimNext("agent-recover", now, TimeSpan.FromSeconds(1)));
+
+        _store.RecoverExpiredLeases(now.AddSeconds(2));
+
+        var history = _store.GetTaskHistory("recover-task");
+        Assert.NotEmpty(history);
+        var last = history[^1];
+        Assert.Equal(HubTaskState.Queued, last.State);
+        Assert.Equal("LEASE_EXPIRED_READ_ONLY_REQUEUED", last.EventCode);
+    }
+
+    [Fact]
+    public void TaskHistoryLimitIsValidated()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => _store.GetTaskHistory("task-1", 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _store.GetTaskHistory("task-1", 5_001));
+    }
+
+    [Fact]
     public void DashboardTaskQueryEnforcesAReasonableLimit()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => _store.GetTasks(0));

@@ -62,3 +62,7 @@ public sealed record HubTaskSnapshot(
     string TaskId, string ProjectId, string TaskType, HubTaskState State,
     int Priority, HubTaskEffectRisk EffectRisk, int Attempts,
     DateTimeOffset CreatedAt, string? ApprovalRef);
+
+public sealed record HubTaskEventSnapshot(
+    long EventId, string TaskId, HubTaskState State, DateTimeOffset OccurredAt,
+    string? AgentId, string? LeaseId, long? FencingToken, string EventCode);

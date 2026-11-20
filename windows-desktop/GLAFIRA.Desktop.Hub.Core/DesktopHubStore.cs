@@ -153,6 +153,7 @@ public sealed class DesktopHubStore
             command.Parameters.AddWithValue("$dependency", dependency);
             command.ExecuteNonQuery();
         }
+        AppendTaskEvent(connection, transaction, task.TaskId, HubTaskState.Queued, now, null, null, null, "TASK_ENQUEUED");
         transaction.Commit();
     }
 
@@ -286,6 +287,7 @@ public sealed class DesktopHubStore
             insert.Parameters.AddWithValue("$expires", expires.ToUnixTimeMilliseconds());
             insert.ExecuteNonQuery();
         }
+        AppendTaskEvent(connection, transaction, selected.TaskId, HubTaskState.Leased, now, agentId, leaseId, nextFence, "TASK_LEASED");
         transaction.Commit();
 
         return new HubTaskLease(
@@ -343,6 +345,7 @@ public sealed class DesktopHubStore
             delete.Parameters.AddWithValue("$lease", leaseId);
             delete.ExecuteNonQuery();
         }
+        AppendTaskEvent(connection, transaction, taskId, succeeded ? HubTaskState.Succeeded : HubTaskState.Failed, now, agentId, leaseId, fencingToken, succeeded ? "TASK_SUCCEEDED" : "TASK_FAILED");
         transaction.Commit();
         return true;
     }
@@ -387,6 +390,8 @@ public sealed class DesktopHubStore
                 delete.Parameters.AddWithValue("$task", item.TaskId);
                 delete.ExecuteNonQuery();
             }
+            AppendTaskEvent(connection, transaction, item.TaskId, state, now, null, null, null,
+                state == HubTaskState.Queued ? "LEASE_EXPIRED_READ_ONLY_REQUEUED" : "LEASE_EXPIRED_OUTCOME_UNKNOWN");
             recovered.Add(new HubTaskRecovery(
                 item.TaskId, state,
                 state == HubTaskState.Queued
@@ -463,6 +468,67 @@ public sealed class DesktopHubStore
         return Enum.TryParse<HubTaskState>(value, out var state) ? state : null;
     }
 
+    /// <summary>Returns the durable, append-only state history for one task without payloads or credentials.</summary>
+    public IReadOnlyList<HubTaskEventSnapshot> GetTaskHistory(string taskId, int limit = 500)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        if (limit is < 1 or > 5_000)
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT event_id, task_id, state, occurred_at_ms, agent_id, lease_id, fencing_token, event_code
+            FROM TaskEvents
+            WHERE task_id = $task
+            ORDER BY event_id ASC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$task", taskId);
+        command.Parameters.AddWithValue("$limit", limit);
+        using var reader = command.ExecuteReader();
+        var events = new List<HubTaskEventSnapshot>();
+        while (reader.Read())
+        {
+            if (!Enum.TryParse<HubTaskState>(reader.GetString(2), out var state))
+                continue;
+            events.Add(new HubTaskEventSnapshot(
+                reader.GetInt64(0), reader.GetString(1), state,
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3)),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetInt64(6),
+                reader.GetString(7)));
+        }
+        return events;
+    }
+
+    private static void AppendTaskEvent(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string taskId,
+        HubTaskState state,
+        DateTimeOffset occurredAt,
+        string? agentId,
+        string? leaseId,
+        long? fencingToken,
+        string eventCode)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO TaskEvents(task_id, state, occurred_at_ms, agent_id, lease_id, fencing_token, event_code)
+            VALUES($task, $state, $occurred, $agent, $lease, $fence, $code);
+            """;
+        command.Parameters.AddWithValue("$task", taskId);
+        command.Parameters.AddWithValue("$state", state.ToString());
+        command.Parameters.AddWithValue("$occurred", occurredAt.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$agent", (object?)agentId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$lease", (object?)leaseId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$fence", (object?)fencingToken ?? DBNull.Value);
+        command.Parameters.AddWithValue("$code", eventCode);
+        command.ExecuteNonQuery();
+    }
+
     private void Initialize()
     {
         using var connection = Open();
@@ -512,6 +578,20 @@ public sealed class DesktopHubStore
                 fencing_token INTEGER NOT NULL,
                 expires_at_ms INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS TaskEvents(
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL REFERENCES Tasks(task_id) ON DELETE CASCADE,
+                state TEXT NOT NULL,
+                occurred_at_ms INTEGER NOT NULL,
+                agent_id TEXT NULL,
+                lease_id TEXT NULL,
+                fencing_token INTEGER NULL,
+                event_code TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_TaskEvents_Task
+                ON TaskEvents(task_id, event_id);
 
             CREATE INDEX IF NOT EXISTS IX_Tasks_Queue
                 ON Tasks(state, priority DESC, created_at_ms ASC);
