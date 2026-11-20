@@ -70,3 +70,5 @@ class GlafiraTaskDependencyPolicyTest {
         }
     }
 }
+
+// CI freshness trigger: execute dependency-policy tests against this exact PR head.
