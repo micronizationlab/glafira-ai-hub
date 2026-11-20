@@ -169,7 +169,7 @@ public sealed class DesktopHubStoreTests : IDisposable
         Assert.True(_store.ReportProgress("agent-progress", "progress-task", lease.LeaseId,
             lease.FencingToken, 45, "Downloaded 45 percent", now.AddSeconds(2)));
         Assert.False(_store.ReportProgress("agent-progress", "progress-task", lease.LeaseId,
-            lease.FencingToken - 1, 46, "Stale worker", now.AddSeconds(3)));
+            lease.FencingToken + 1, 46, "Wrong fencing token", now.AddSeconds(3)));
         Assert.False(_store.ReportProgress("other-agent", "progress-task", lease.LeaseId,
             lease.FencingToken, 47, "Wrong agent", now.AddSeconds(3)));
 
