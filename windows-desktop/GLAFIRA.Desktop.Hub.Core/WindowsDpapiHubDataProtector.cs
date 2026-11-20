@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Runtime.Versioning;
 
 namespace GLAFIRA.Desktop.Hub.Core;
 
@@ -13,6 +14,7 @@ public interface IHubDataProtector
 /// The Desktop Hub must run under a stable Windows identity; ciphertext is not
 /// portable to another Windows account or machine.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class WindowsDpapiHubDataProtector : IHubDataProtector
 {
     public byte[] Protect(ReadOnlySpan<byte> plaintext, ReadOnlySpan<byte> entropy)
