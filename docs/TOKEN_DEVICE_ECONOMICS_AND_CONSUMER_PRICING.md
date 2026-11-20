@@ -126,3 +126,26 @@ xAI: https://docs.x.ai/console/billing
 Telegram: https://core.telegram.org/bots/payments-stars and https://telegram.org/tos/bot-developers
 
 Refresh official pages and actual account console before changing any allowance or price.
+
+
+## 11. First candidate devices to benchmark (not performance rankings)
+
+The following profiles are a practical starting list for collecting comparable measurements. Every row is initially E — unmeasured. Exact laptop/desktop SKU, installed memory, GPU VRAM, BIOS/power profile, driver, runtime, model and quantization must be recorded before comparing. The list is not a claim that these devices will be profitable.
+
+| Candidate profile | Workloads to test | Main economic risk |
+|---|---|---|
+| Intel Core i5-8250U / UHD 620 laptop, 8/16 GB | orchestration, CPU-only small quantized model, embeddings | Low throughput; power/depreciation may exceed task value |
+| Intel Core i5-1135G7 / Iris Xe laptop, 16 GB | CPU/iGPU small inference, embeddings | Memory bandwidth and runtime compatibility |
+| AMD Ryzen 5 5600U / Vega laptop, 16 GB | CPU/iGPU small inference, embeddings | Thermal throttling and shared memory |
+| AMD Ryzen 7 7840U / Radeon 780M laptop, 32 GB | local inference, embeddings, transcription | NPU/GPU runtime support must be proven |
+| MacBook Air M1 16 GB / M2 16 GB | coordinator, local inference benchmark | Mac compute worker is not yet in scope; measure only when supported runtime exists |
+| NVIDIA RTX 2060 6 GB desktop | small quantized inference, image tasks | VRAM cap and power consumption |
+| NVIDIA RTX 3060 12 GB desktop | local LLM, embeddings, image tasks | Exact VRAM SKU, power and host bottlenecks |
+| NVIDIA RTX 4060 Ti 16 GB desktop | local LLM, embeddings, image tasks | Price/depreciation versus throughput |
+| NVIDIA RTX 4070 Super 12 GB desktop | local LLM, embeddings, image tasks | VRAM limit for larger models |
+| NVIDIA RTX 3090 24 GB workstation | larger local LLM, batch/image tasks | High power draw, heat and depreciation |
+| AMD Radeon RX 6800 XT 16 GB | local inference if runtime supports it | ROCm/driver/model compatibility |
+| Intel Arc A770 16 GB | local inference if runtime supports it | Runtime maturity and driver variance |
+| Snapdragon 8 Gen 2 / Gen 3 Android phone | small local model, embeddings | Strict Wi-Fi/charging/thermal/mobile contribution cap |
+
+The accompanying TOKEN_DEVICE_BENCHMARK_CANDIDATES.csv is a starter backlog, not a benchmark result. Populate the calculator only from repeated measured runs and verified accepted-task outcomes.
