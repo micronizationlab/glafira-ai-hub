@@ -30,6 +30,21 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Validate Agent PowerShell scripts
+        shell: pwsh
+        run: |
+          $paths = @(
+            "windows-agent/scripts/publish-agent.ps1",
+            "windows-agent/scripts/install-agent.ps1",
+            "windows-agent/scripts/uninstall-agent.ps1"
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
+          }
+
       - name: Publish self-contained Agent
         shell: pwsh
         run: |
@@ -63,6 +78,21 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Validate Desktop PowerShell scripts
+        shell: pwsh
+        run: |
+          $paths = @(
+            "windows-desktop/scripts/publish-desktop.ps1",
+            "windows-desktop/scripts/install-desktop.ps1",
+            "windows-desktop/scripts/uninstall-desktop.ps1"
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
+          }
 
       - name: Publish self-contained Desktop
         shell: pwsh
