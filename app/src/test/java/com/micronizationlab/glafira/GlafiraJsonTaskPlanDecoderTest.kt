@@ -32,13 +32,13 @@ class GlafiraJsonTaskPlanDecoderTest {
 
     @Test fun rejectsTaskTypesOutsideAllowlistOrRegistry() {
         val json = """{"planId":"plan-00000002","nodes":[
-            {"taskId":"root","taskType":"message.send","payload":"{}"}
+            {"taskId":"root","taskType":"system.shell","payload":"{}"}
         ]}"""
         assertThrows(IllegalArgumentException::class.java) {
             GlafiraJsonTaskPlanDecoder.decode(request, json, setOf("project.read"))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            GlafiraJsonTaskPlanDecoder.decode(request, json, setOf("message.send"))
+            GlafiraJsonTaskPlanDecoder.decode(request, json, setOf("system.shell"))
         }
     }
 
