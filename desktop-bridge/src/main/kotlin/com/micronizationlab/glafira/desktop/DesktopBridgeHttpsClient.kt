@@ -65,11 +65,12 @@ data class DesktopBridgeResponse(
 )
 
 /**
- * Standalone JVM Desktop transport for the Android LAN Bridge.
+ * Legacy JVM Desktop client for the current Android-hosted Bridge v1 endpoint.
  *
- * TLS is HTTPS-only, hostname verification remains enabled, and the leaf SHA-256 pin
- * must be delivered through the owner-authenticated pairing channel. This class does
- * not implement credential storage, UI, or arbitrary command execution.
+ * This remains a compatibility transport while the authoritative TLS listener moves
+ * into the Windows Desktop Hub. TLS is HTTPS-only, hostname verification remains
+ * enabled, and the leaf SHA-256 pin must arrive through owner-authenticated pairing.
+ * This class does not implement credential storage, UI, or arbitrary command execution.
  */
 class DesktopBridgeHttpsClient(
     private val connectTimeout: Duration = Duration.ofSeconds(10),
