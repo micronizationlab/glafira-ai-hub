@@ -250,3 +250,61 @@ In the prior project discussions, DeepSeek was used as a technical expert/review
 
 ### Evidence discipline
 Every price must carry retrieval date, currency, billing unit, region, tax basis, model/version and source URL. User reports must remain anecdotes, not population averages. Marketing claims, live payout data, and audited measurements must be distinguished. Refresh prices before quoting customers or making financial commitments.
+
+
+## 7A. Dated tariff comparison: YandexGPT Pro 5.1 vs Grok 4.7 (checked 2026-11-20)
+
+This comparison resolves an important ambiguity: **there is no single Yandex price**. Yandex AI Studio publishes separate synchronous and asynchronous tariffs. Compare like with like and preserve the latency/service mode.
+
+### Public API price card
+
+All Yandex RUB values below include VAT according to the official tariff page. xAI prices are USD, before any currency conversion or bank/foreign-exchange fees.
+
+| Model / mode | Input per 1K | Cached input per 1K | Tool tokens per 1K | Output per 1K | Billing basis |
+|---|---:|---:|---:|---:|---|
+| YandexGPT Pro 5.1 synchronous | 0.80 RUB | 0.80 RUB | 0.20 RUB | 0.80 RUB | Live synchronous request; VAT included |
+| YandexGPT Pro 5.1 asynchronous | 0.41 RUB | Not separately listed | Not separately listed | 0.41 RUB | Async mode; VAT included |
+| Grok 4.7 standard | $0.002 | $0.0005 | Tool billing depends on the tool | $0.006 | Public xAI API, short context below 200K |
+| Grok 4.7 long context | $0.004 | $0.001 | Tool billing depends on the tool | $0.012 | Applies to all tokens once prompt crosses 200K |
+| Grok 4.7 priority | 2× standard | 2× cached | 2× applicable token rate | 2× standard | Only when response confirms priority service tier |
+| Grok 4.7 batch | 20% below standard | 20% below standard | 20% where applicable | 20% below standard | Async batch; most jobs typically finish within 24 hours |
+
+### RUB normalization using the official 20-Nov-2026 USD rate
+
+Reference FX: **1 USD = 81.9290 RUB** on 2026-11-20. This is an analytical normalization, not a guaranteed settlement rate.
+
+| Model / mode | Input per 1K | Cached input per 1K | Output per 1K |
+|---|---:|---:|---:|
+| YandexGPT Pro 5.1 synchronous | 0.800 RUB | 0.800 RUB | 0.800 RUB |
+| YandexGPT Pro 5.1 asynchronous | 0.410 RUB | — | 0.410 RUB |
+| Grok 4.7 standard | 0.164 RUB | 0.041 RUB | 0.492 RUB |
+| Grok 4.7 long context ≥200K | 0.328 RUB | 0.082 RUB | 0.983 RUB |
+
+### Which is more expensive?
+
+- **Synchronous YandexGPT Pro 5.1 vs standard Grok 4.7:** Yandex is about **4.88× more expensive for input** and **1.63× for output** at the published rates. Yandex's listed cached-input price is about 19.5× Grok's cached-input price.
+- **Asynchronous YandexGPT Pro 5.1 vs standard Grok 4.7:** Yandex is about **2.50× more expensive for input**, but its 0.41 RUB output token is about **16.6% cheaper** than Grok's normalized 0.492 RUB output token.
+- For a simple illustrative workload of 10,000 input + 2,000 output tokens, before tools/retries/FX fees: synchronous Yandex ≈ 9.60 RUB; asynchronous Yandex ≈ 4.92 RUB; Grok 4.7 ≈ 2.62 RUB. This is price arithmetic only—not an equal-latency or equal-quality benchmark.
+- Long-context, priority, batch, cached tokens, tool calls and reasoning accounting can change the comparison materially. Never multiply only the visible input/output rates if the task uses additional modalities or services.
+
+**Conclusion:** for the published standard synchronous API tariffs, YandexGPT Pro 5.1 costs more than Grok 4.7 on both input and output. If comparing Yandex's cheaper asynchronous tariff, Yandex still costs more on input, but Grok costs more on output. The statement "Yandex is always more expensive" is therefore too broad.
+
+### Consumer offer and VPN price context
+
+- Amnezia Premium's official Russian page currently advertises one subscription for up to 7 devices, speeds up to 200 Mbps, a 14-day refund window and an advertised starting point from 325 RUB/month. Its displayed multi-month effective prices are 448 RUB/month for 6 months, 365 RUB/month for 1 year and 290 RUB/month for 2 years.
+- A proposed GLAFIRA VPN price of 300 RUB/month is below Amnezia's displayed 6-month and annual effective monthly rates, close to (but 10 RUB above) its 2-year effective rate, and below its 325 RUB headline starting point. That is competitive on price, but GLAFIRA must match or clearly explain differences in reliability, protocol resilience, locations, devices, support and refunds.
+- Poe's official help page states that multi-model subscriptions start at $4.99/month and include usage-limited compute points; unused points generally do not roll over unless a plan says otherwise. At the 20-Nov-2026 FX reference this is approximately 409 RUB before regional pricing/tax/payment friction. Therefore the proposed 500 RUB GLAFIRA AI tier is not the cheapest multi-model entry point; its premium needs to be justified by a persistent AI office and actual workflows, not simply access to several models.
+- Yandex AI Studio's Go subscription is a business/employee product priced at 2,490 RUB per employee/month including VAT (with larger Go X5/X15 plans). Do not compare this B2B per-seat plan directly with consumer chatbot subscriptions without explaining the difference.
+- Regional availability, accepted payment methods, account eligibility and local checkout prices must be checked separately before any Russian consumer launch. API pricing is not the same thing as consumer subscription pricing.
+
+### Source snapshots
+
+- Yandex AI Studio official tariff page, including sync/async tables and VAT statement: https://aistudio.yandex.ru/ru/docs/ai-studio/pricing
+- xAI official Grok 4.7 model card (input $2/M, cached $0.50/M, output $6/M, 500K context): https://docs.x.ai/developers/models/grok-4.7
+- xAI official API pricing, including long context, priority, batch and tool/media pricing: https://docs.x.ai/developers/pricing
+- xAI official Grok 4.7 announcement: https://x.ai/news/grok-4-7
+- Bank of Russia USD historical rate: https://www.cbr.ru/currency_base/daily/?UniDbQuery.Posted=True&UniDbQuery.To=20.11.2026
+- Amnezia Premium official Russian tariff page: https://amnezia.org/ru/premium
+- Poe official purchase FAQ (subscription from $4.99 and compute-point conditions): https://help.poe.com/hc/en-us/articles/19945140063636-Poe-Purchases-FAQs
+
+**Confidence:** high for the published source prices and FX arithmetic as of the stated snapshot; medium for Russian consumer competitiveness because checkout availability, regional pricing and payment acceptance vary. No quality equivalence is implied.
