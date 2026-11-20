@@ -1,0 +1,87 @@
+name: GLAFIRA Windows deployment packages
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "windows-agent/**"
+      - "windows-desktop/**"
+      - ".github/workflows/windows-deployment-package.yml"
+  push:
+    branches: [main]
+    paths:
+      - "windows-agent/**"
+      - "windows-desktop/**"
+      - ".github/workflows/windows-deployment-package.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  publish-agent:
+    name: Publish Windows Agent x64 package
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish self-contained Agent
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP "glafira-agent-package"
+          $publish = Join-Path $output "publish\win-x64"
+          New-Item -ItemType Directory -Path $publish -Force | Out-Null
+          dotnet publish windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj -c Release -r win-x64 --self-contained true -o $publish
+          if ($LASTEXITCODE -ne 0) { throw "Agent publish failed." }
+          New-Item -ItemType Directory -Path (Join-Path $output "scripts") -Force | Out-Null
+          Copy-Item windows-agent/scripts/install-agent.ps1 (Join-Path $output "scripts")
+          Copy-Item windows-agent/scripts/uninstall-agent.ps1 (Join-Path $output "scripts")
+          Copy-Item windows-agent/README.md (Join-Path $output "README.md")
+          Compress-Archive -Path (Join-Path $output "*") -DestinationPath (Join-Path $env:RUNNER_TEMP "GLAFIRA-Agent-win-x64.zip") -Force
+
+      - name: Upload Agent package
+        uses: actions/upload-artifact@v4
+        with:
+          name: GLAFIRA-Agent-win-x64
+          path: ${{ runner.temp }}/GLAFIRA-Agent-win-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-desktop:
+    name: Publish Windows Desktop x64 package
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish self-contained Desktop
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP "glafira-desktop-package"
+          $publish = Join-Path $output "publish\win-x64"
+          New-Item -ItemType Directory -Path $publish -Force | Out-Null
+          dotnet publish windows-desktop/GLAFIRA.Desktop.App/GLAFIRA.Desktop.App.csproj -c Release -r win-x64 --self-contained true -o $publish
+          if ($LASTEXITCODE -ne 0) { throw "Desktop publish failed." }
+          New-Item -ItemType Directory -Path (Join-Path $output "scripts") -Force | Out-Null
+          Copy-Item windows-desktop/scripts/install-desktop.ps1 (Join-Path $output "scripts")
+          Copy-Item windows-desktop/scripts/uninstall-desktop.ps1 (Join-Path $output "scripts")
+          Copy-Item windows-desktop/INSTALL.md (Join-Path $output "INSTALL.md")
+          Compress-Archive -Path (Join-Path $output "*") -DestinationPath (Join-Path $env:RUNNER_TEMP "GLAFIRA-Desktop-win-x64.zip") -Force
+
+      - name: Upload Desktop package
+        uses: actions/upload-artifact@v4
+        with:
+          name: GLAFIRA-Desktop-win-x64
+          path: ${{ runner.temp }}/GLAFIRA-Desktop-win-x64.zip
+          if-no-files-found: error
+          retention-days: 14
