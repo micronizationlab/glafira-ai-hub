@@ -67,28 +67,16 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertFalse(selected["agent"])
         self.assertFalse(selected["android_acceptance"])
 
-    def test_bridge_change_selects_android_emulator_only_when_harness_exists(self):
+    def test_bridge_change_selects_android_emulator_acceptance(self):
         selected = MODULE.classify_paths(
             ["app/src/main/java/com/micronizationlab/glafira/GlafiraBridgeHostService.kt"],
             "pull_request",
             self.root,
         )
         self.assertTrue(selected["android"])
-        self.assertFalse(selected["android_acceptance"])
-        harness = self.root / ".github/scripts/run-android-instrumentation.sh"
-        harness.parent.mkdir(parents=True, exist_ok=True)
-        harness.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
-        selected = MODULE.classify_paths(
-            ["app/src/main/java/com/micronizationlab/glafira/GlafiraBridgeHostService.kt"],
-            "pull_request",
-            self.root,
-        )
         self.assertTrue(selected["android_acceptance"])
 
     def test_project_registry_change_selects_emulator_acceptance(self):
-        harness = self.root / ".github/scripts/run-android-instrumentation.sh"
-        harness.parent.mkdir(parents=True, exist_ok=True)
-        harness.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
         selected = MODULE.classify_paths(
             ["app/src/main/java/com/micronizationlab/glafira/DataManager.kt"],
             "pull_request",
@@ -110,9 +98,6 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["agent"])
 
     def test_scheduled_run_selects_full_sweep(self):
-        harness = self.root / ".github/scripts/run-android-instrumentation.sh"
-        harness.parent.mkdir(parents=True, exist_ok=True)
-        harness.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
         selected = MODULE.classify_paths([], "schedule", self.root)
         self.assertTrue(selected["android"])
         self.assertTrue(selected["ios"])
