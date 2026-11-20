@@ -20,7 +20,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     // Pairing approval writes device credentials into this same encrypted approval DB.
     // Reading from the legacy SharedPreferences store would make newly paired devices
     // invisible to Core authorization even though HTTPS admission accepts them.
-    private val bridgeCredentialStore = AndroidKeystoreBridgePairingApprovalStore(appContext)
+    private val bridgeCredentialStore = AndroidKeystoreBridgeCredentialStore(appContext)
     private val taskGrantSource = GlafiraCompositeTaskGrantSource(
         ownerApprovalStore,
         bridgeCredentialStore
