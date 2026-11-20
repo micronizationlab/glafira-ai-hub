@@ -404,43 +404,90 @@ class GlafiraTaskStore(context: Context) :
         nowMillis: Long = System.currentTimeMillis()
     ): Boolean {
         require(taskId.isNotBlank() && nowMillis > 0L)
-        require(dependencyTaskIds.size <= GlafiraTaskDependencyPolicy.MAX_DEPENDENCIES_PER_TASK)
         val db = writableDatabase
         db.beginTransaction()
         try {
             val task = queryTask(db, taskId) ?: return false
             if (task.state != GlafiraTaskState.QUEUED) return false
-            val existing = db.query(
-                TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
-                "task_id = ?", arrayOf(taskId), null, null, null
-            ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
-            val merged = existing + dependencyTaskIds
-            val graph = mutableMapOf<String, MutableSet<String>>()
-            db.query(TABLE_DEPENDENCIES, arrayOf("task_id", "depends_on_task_id"),
-                null, null, null, null, null).use { cursor ->
-                while (cursor.moveToNext()) {
-                    graph.getOrPut(cursor.getString(0)) { mutableSetOf() }.add(cursor.getString(1))
-                }
-            }
-            GlafiraTaskDependencyPolicy.validate(taskId, merged, graph)
-            for (dependencyId in dependencyTaskIds) {
-                val predecessor = queryTask(db, dependencyId)
-                    ?: throw IllegalArgumentException("A task dependency must reference an existing task.")
-                require(predecessor.projectId == task.projectId) {
-                    "Task dependencies cannot cross project boundaries."
-                }
-                if (dependencyId !in existing) {
-                    db.insertOrThrow(TABLE_DEPENDENCIES, null, ContentValues().apply {
-                        put("task_id", taskId)
-                        put("depends_on_task_id", dependencyId)
-                        put("created_at", nowMillis)
-                    })
-                }
-            }
+            attachTaskDependencies(db, task, dependencyTaskIds, nowMillis)
             db.setTransactionSuccessful()
             return true
         } finally {
             db.endTransaction()
+        }
+    }
+
+    /**
+     * Inserts a task and all predecessor edges in one SQLite transaction. This is the safe
+     * creation path for a live queue: no concurrent drain worker can claim the task between
+     * insertion and dependency registration.
+     */
+    @Synchronized
+    fun enqueueWithDependencies(
+        task: GlafiraTask,
+        dependencyTaskIds: Set<String>,
+        nowMillis: Long = System.currentTimeMillis()
+    ): GlafiraTaskEnqueueResult {
+        GlafiraTaskPolicy.validate(task)
+        require(nowMillis > 0L)
+        require(dependencyTaskIds.size <= GlafiraTaskDependencyPolicy.MAX_DEPENDENCIES_PER_TASK)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val result = enqueue(task)
+            if (result.inserted) {
+                val insertedTask = queryTask(db, task.taskId)
+                    ?: throw IllegalStateException("Inserted Core task could not be read back.")
+                attachTaskDependencies(db, insertedTask, dependencyTaskIds, nowMillis)
+            } else {
+                val existing = db.query(
+                    TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
+                    "task_id = ?", arrayOf(result.task.taskId), null, null, null
+                ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+                require(existing == dependencyTaskIds) {
+                    "IDEMPOTENCY_DEPENDENCY_CONFLICT"
+                }
+            }
+            db.setTransactionSuccessful()
+            return result
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun attachTaskDependencies(
+        db: SQLiteDatabase,
+        task: GlafiraTask,
+        dependencyTaskIds: Set<String>,
+        nowMillis: Long
+    ) {
+        require(dependencyTaskIds.size <= GlafiraTaskDependencyPolicy.MAX_DEPENDENCIES_PER_TASK)
+        val existing = db.query(
+            TABLE_DEPENDENCIES, arrayOf("depends_on_task_id"),
+            "task_id = ?", arrayOf(task.taskId), null, null, null
+        ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+        val merged = existing + dependencyTaskIds
+        val graph = mutableMapOf<String, MutableSet<String>>()
+        db.query(TABLE_DEPENDENCIES, arrayOf("task_id", "depends_on_task_id"),
+            null, null, null, null, null).use { cursor ->
+            while (cursor.moveToNext()) {
+                graph.getOrPut(cursor.getString(0)) { mutableSetOf() }.add(cursor.getString(1))
+            }
+        }
+        GlafiraTaskDependencyPolicy.validate(task.taskId, merged, graph)
+        for (dependencyId in dependencyTaskIds) {
+            val predecessor = queryTask(db, dependencyId)
+                ?: throw IllegalArgumentException("A task dependency must reference an existing task.")
+            require(predecessor.projectId == task.projectId) {
+                "Task dependencies cannot cross project boundaries."
+            }
+            if (dependencyId !in existing) {
+                db.insertOrThrow(TABLE_DEPENDENCIES, null, ContentValues().apply {
+                    put("task_id", task.taskId)
+                    put("depends_on_task_id", dependencyId)
+                    put("created_at", nowMillis)
+                })
+            }
         }
     }
 
