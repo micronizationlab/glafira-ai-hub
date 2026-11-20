@@ -188,17 +188,18 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         deviceId: String,
         capabilities: Set<String>,
         maxParallelTasks: Int
-    ): GlafiraTask? {
+    ): GlafiraDesktopTaskLease? {
         // Desktop workers cannot bypass the Core Dry Run gate. Preview plans are delivered
         // through previewDesktopTask; this claim API never issues a lease in DRY_RUN.
         if (executionMode == GlafiraExecutionMode.DRY_RUN) return null
         val now = System.currentTimeMillis()
         for (candidate in taskStore.queuedDesktopTasks()) {
             val configuredConcurrency = loadRuntimeBudget().maxConcurrentTasks
-            val leased = taskStore.claimDesktopTask(
+            val claim = taskStore.claimDesktopTask(
                 candidate.taskId, deviceId, capabilities,
                 minOf(maxParallelTasks, configuredConcurrency), now
             ) ?: continue
+            val leased = claim.task
             val budget = loadRuntimeBudget()
             val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
                 task = leased,
@@ -213,15 +214,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
                     GlafiraTaskState.FAILED, now,
                     lastError = budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED"
                 )
-                taskStore.releaseDesktopLease(leased.taskId, deviceId)
+                taskStore.releaseDesktopLease(leased.taskId, deviceId, claim.leaseId, claim.fencingToken)
                 continue
             }
             val decision = RegistryBackedGlafiraTaskAuthorizer(taskGrantSource)
                 .authorize(leased, now)
             when (decision.status) {
-                GlafiraTaskAuthorizationStatus.AUTHORIZED -> return leased
+                GlafiraTaskAuthorizationStatus.AUTHORIZED -> return claim
                 GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER -> {
-                    taskStore.releaseDesktopLease(leased.taskId, deviceId)
+                    taskStore.releaseDesktopLease(leased.taskId, deviceId, claim.leaseId, claim.fencingToken)
                     if (isEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
                 }
                 GlafiraTaskAuthorizationStatus.DENIED -> {
@@ -229,7 +230,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
                         leased.taskId, setOf(GlafiraTaskState.RUNNING),
                         GlafiraTaskState.FAILED, now, lastError = decision.reason ?: "DESKTOP_TASK_DENIED"
                     )
-                    taskStore.releaseDesktopLease(leased.taskId, deviceId)
+                    taskStore.releaseDesktopLease(leased.taskId, deviceId, claim.leaseId, claim.fencingToken)
                 }
             }
         }
@@ -266,13 +267,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     fun updateDesktopTask(
         taskId: String,
         deviceId: String,
+        leaseId: String,
+        fencingToken: Long,
         state: String,
         progressPercent: Int,
         progressMessage: String?,
         result: String?,
         errorCode: String?
     ): Boolean = taskStore.updateDesktopTask(
-        taskId, deviceId, state, progressPercent, progressMessage, result, errorCode
+        taskId, deviceId, leaseId, fencingToken, state, progressPercent, progressMessage, result, errorCode
     )
 
     fun recordDesktopNode(deviceId: String, capabilities: Set<String>, maxParallelTasks: Int) =

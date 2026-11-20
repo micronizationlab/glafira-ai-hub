@@ -8,6 +8,20 @@ import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.UUID
+
+data class GlafiraDesktopTaskLease(
+    val task: GlafiraTask,
+    val leaseId: String,
+    val fencingToken: Long
+)
+
+private data class StoredDesktopLease(
+    val deviceId: String,
+    val leaseId: String,
+    val fencingToken: Long,
+    val expiresAtMillis: Long
+)
 
 /**
  * Transactional, process-death-safe queue storage for GLAFIRA Core.
@@ -88,7 +102,8 @@ class GlafiraTaskStore(context: Context) :
         if (oldVersion < 5) createCoreTaskResultsSchema(db)
         if (oldVersion < 6) createTaskDependenciesSchema(db)
         if (oldVersion < 7) createTaskPlansSchema(db)
-        if (newVersion > 7) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 8) migrateDesktopLeaseFencing(db)
+        if (newVersion > 8) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
     }
 
     private fun createTaskDependenciesSchema(db: SQLiteDatabase) {
@@ -165,10 +180,31 @@ class GlafiraTaskStore(context: Context) :
     }
 
     private fun createDesktopTables(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_leases (task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE, device_id TEXT NOT NULL, lease_expires_at INTEGER NOT NULL, attempt_count INTEGER NOT NULL, progress_percent INTEGER NOT NULL DEFAULT 0, progress_message TEXT, updated_at INTEGER NOT NULL)")
-        db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_results (task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE, result_ciphertext TEXT, error_code TEXT, completed_at INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_leases (task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE, device_id TEXT NOT NULL, lease_id TEXT NOT NULL, fencing_token INTEGER NOT NULL CHECK(fencing_token > 0), lease_expires_at INTEGER NOT NULL, attempt_count INTEGER NOT NULL, progress_percent INTEGER NOT NULL DEFAULT 0, progress_message TEXT, updated_at INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_results (task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE, result_ciphertext TEXT, error_code TEXT, completed_at INTEGER NOT NULL, device_id TEXT, lease_id TEXT, fencing_token INTEGER, terminal_state TEXT)")
         db.execSQL("CREATE INDEX IF NOT EXISTS index_core_desktop_lease_device ON core_desktop_leases(device_id, lease_expires_at)")
         db.execSQL("CREATE TABLE IF NOT EXISTS core_desktop_nodes (device_id TEXT PRIMARY KEY NOT NULL, last_seen_at INTEGER NOT NULL, capabilities_json TEXT NOT NULL, max_parallel_tasks INTEGER NOT NULL)")
+    }
+
+    private fun migrateDesktopLeaseFencing(db: SQLiteDatabase) {
+        fun addColumn(table: String, column: String, declaration: String) {
+            val present = db.rawQuery("PRAGMA table_info($table)", null).use { cursor ->
+                var found = false
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(cursor.getColumnIndexOrThrow("name")) == column) found = true
+                }
+                found
+            }
+            if (!present) db.execSQL("ALTER TABLE $table ADD COLUMN $column $declaration")
+        }
+        addColumn("core_desktop_leases", "lease_id", "TEXT")
+        addColumn("core_desktop_leases", "fencing_token", "INTEGER")
+        db.execSQL("UPDATE core_desktop_leases SET lease_id = 'legacy-' || lower(hex(randomblob(16))) WHERE lease_id IS NULL")
+        db.execSQL("UPDATE core_desktop_leases SET fencing_token = CASE WHEN attempt_count > 0 THEN attempt_count ELSE 1 END WHERE fencing_token IS NULL")
+        addColumn("core_desktop_results", "device_id", "TEXT")
+        addColumn("core_desktop_results", "lease_id", "TEXT")
+        addColumn("core_desktop_results", "fencing_token", "INTEGER")
+        addColumn("core_desktop_results", "terminal_state", "TEXT")
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -1055,7 +1091,7 @@ class GlafiraTaskStore(context: Context) :
 
     @Synchronized
     fun claimDesktopTask(taskId: String, deviceId: String, supportedCapabilities: Set<String>,
-                         maxParallelTasks: Int, nowMillis: Long = System.currentTimeMillis()): GlafiraTask? {
+                         maxParallelTasks: Int, nowMillis: Long = System.currentTimeMillis()): GlafiraDesktopTaskLease? {
         require(deviceId.matches(Regex("[A-Za-z0-9_.-]{8,128}")))
         require(supportedCapabilities.size <= 16 && supportedCapabilities.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
         require(maxParallelTasks in 1..8)
@@ -1094,25 +1130,36 @@ class GlafiraTaskStore(context: Context) :
                 put("attempt_count", task.attemptCount + 1)
             }, "task_id = ? AND state = ?", arrayOf(taskId, GlafiraTaskState.QUEUED.databaseValue))
             if (changed != 1) { db.setTransactionSuccessful(); return null }
+            val leaseId = UUID.randomUUID().toString()
+            val fencingToken = (task.attemptCount + 1).toLong()
             db.insertWithOnConflict("core_desktop_leases", null, ContentValues().apply {
                 put("task_id", taskId); put("device_id", deviceId)
+                put("lease_id", leaseId); put("fencing_token", fencingToken)
                 put("lease_expires_at", nowMillis + DESKTOP_LEASE_MS)
                 put("attempt_count", task.attemptCount + 1); put("progress_percent", 0); put("updated_at", nowMillis)
             }, SQLiteDatabase.CONFLICT_REPLACE)
             db.setTransactionSuccessful()
-            return queryTask(db, taskId)
+            return GlafiraDesktopTaskLease(queryTask(db, taskId)!!, leaseId, fencingToken)
         } finally { db.endTransaction() }
     }
 
     @Synchronized
-    fun releaseDesktopLease(taskId: String, deviceId: String): Boolean =
-        writableDatabase.delete("core_desktop_leases", "task_id = ? AND device_id = ?",
-            arrayOf(taskId, deviceId)) == 1
+    fun releaseDesktopLease(taskId: String, deviceId: String, leaseId: String, fencingToken: Long): Boolean {
+        require(leaseId.matches(Regex("[A-Za-z0-9_-]{8,128}")) && fencingToken > 0)
+        return writableDatabase.delete(
+            "core_desktop_leases",
+            "task_id = ? AND device_id = ? AND lease_id = ? AND fencing_token = ?",
+            arrayOf(taskId, deviceId, leaseId, fencingToken.toString())
+        ) == 1
+    }
 
     @Synchronized
-    fun updateDesktopTask(taskId: String, deviceId: String, state: String, progressPercent: Int,
+    fun updateDesktopTask(taskId: String, deviceId: String, leaseId: String, fencingToken: Long,
+                          state: String, progressPercent: Int,
                           progressMessage: String?, result: String?, errorCode: String?,
                           nowMillis: Long = System.currentTimeMillis()): Boolean {
+        require(leaseId.matches(Regex("[A-Za-z0-9_-]{8,128}")))
+        require(fencingToken > 0)
         require(progressPercent in 0..100)
         require(progressMessage == null || progressMessage.length <= 500)
         require(result == null || result.length <= 24_000)
@@ -1121,11 +1168,36 @@ class GlafiraTaskStore(context: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val lease = db.query("core_desktop_leases", arrayOf("device_id", "lease_expires_at"),
+            if (state in setOf("SUCCEEDED", "FAILED", "CANCELLED")) {
+                val duplicate = db.query(
+                    "core_desktop_results",
+                    arrayOf("result_ciphertext", "error_code", "device_id", "lease_id", "fencing_token", "terminal_state"),
+                    "task_id = ?", arrayOf(taskId), null, null, null, "1"
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else {
+                        val storedResult = if (cursor.isNull(0)) null else runCatching {
+                            GlafiraTaskPayloadCrypto.decrypt(cursor.getString(0), taskId + "|desktop-result")
+                        }.getOrNull()
+                        val storedError = if (cursor.isNull(1)) null else cursor.getString(1)
+                        cursor.getString(2) == deviceId && cursor.getString(3) == leaseId &&
+                            cursor.getLong(4) == fencingToken && cursor.getString(5) == state &&
+                            storedResult == result && storedError == errorCode
+                    }
+                }
+                if (duplicate != null) {
+                    if (duplicate) db.setTransactionSuccessful()
+                    return duplicate
+                }
+            }
+            val lease = db.query("core_desktop_leases", arrayOf("device_id", "lease_id", "fencing_token", "lease_expires_at"),
                 "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) to cursor.getLong(1) else null
+                if (cursor.moveToFirst()) StoredDesktopLease(
+                    cursor.getString(0), cursor.getString(1), cursor.getLong(2), cursor.getLong(3)
+                ) else null
             } ?: return false
-            if (lease.first != deviceId) return false
+            if (lease.deviceId != deviceId || lease.leaseId != leaseId ||
+                lease.fencingToken != fencingToken
+            ) return false
             val task = queryTask(db, taskId) ?: return false
             val reconcilingUnknown = task.state == GlafiraTaskState.WAITING_FOR_OWNER &&
                 task.lastError == "DESKTOP_EXECUTION_OUTCOME_UNKNOWN"
@@ -1149,16 +1221,24 @@ class GlafiraTaskStore(context: Context) :
                     else put("result_ciphertext", GlafiraTaskPayloadCrypto.encrypt(result, taskId + "|desktop-result"))
                     if (errorCode == null) putNull("error_code") else put("error_code", errorCode)
                     put("completed_at", nowMillis)
+                    put("device_id", deviceId); put("lease_id", leaseId)
+                    put("fencing_token", fencingToken); put("terminal_state", state)
                 }, SQLiteDatabase.CONFLICT_REPLACE)
-                db.delete("core_desktop_leases", "task_id = ?", arrayOf(taskId))
+                db.delete(
+                    "core_desktop_leases",
+                    "task_id = ? AND device_id = ? AND lease_id = ? AND fencing_token = ?",
+                    arrayOf(taskId, deviceId, leaseId, fencingToken.toString())
+                )
             } else {
-                if (lease.second <= nowMillis || task.state != GlafiraTaskState.RUNNING) return false
-                db.update("core_desktop_leases", ContentValues().apply {
+                if (lease.expiresAtMillis <= nowMillis || task.state != GlafiraTaskState.RUNNING) return false
+                val changed = db.update("core_desktop_leases", ContentValues().apply {
                     put("lease_expires_at", nowMillis + DESKTOP_LEASE_MS)
                     put("progress_percent", progressPercent)
                     if (progressMessage != null) put("progress_message", progressMessage)
                     put("updated_at", nowMillis)
-                }, "task_id = ? AND device_id = ?", arrayOf(taskId, deviceId))
+                }, "task_id = ? AND device_id = ? AND lease_id = ? AND fencing_token = ?",
+                    arrayOf(taskId, deviceId, leaseId, fencingToken.toString()))
+                if (changed != 1) return false
             }
             db.setTransactionSuccessful()
             return true
@@ -1368,7 +1448,7 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 7
+        private const val DATABASE_VERSION = 8
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"

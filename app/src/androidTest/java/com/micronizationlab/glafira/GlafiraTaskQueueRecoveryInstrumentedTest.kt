@@ -135,16 +135,53 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
     @Test fun expiredDesktopLeaseDoesNotReplayOperationAndAcceptsLateBoundResult() {
         val now = System.currentTimeMillis()
         store.enqueue(task("desktop", "desktop.execute").copy(payload = """{"requiredCapabilities":["code.build"]}"""))
-        assertNotNull(store.claimDesktopTask("desktop", "desktop-node-1", setOf("code.build"), 1, now - 700_000))
+        val claim = store.claimDesktopTask("desktop", "desktop-node-1", setOf("code.build"), 1, now - 700_000)
+        assertNotNull(claim)
         assertTrue(store.queuedDesktopTasks().isEmpty())
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("desktop")?.state)
         assertNotNull(store.desktopTaskLeaseExpiry("desktop"))
         assertNull(store.claimDesktopTask("desktop", "desktop-node-2", setOf("code.build"), 1, now))
-        assertFalse(store.updateDesktopTask("desktop", "desktop-node-1", "RUNNING", 50, null, null, null, now))
-        assertFalse(store.updateDesktopTask("desktop", "desktop-node-2", "SUCCEEDED", 100, null, "wrong", null, now))
-        assertTrue(store.updateDesktopTask("desktop", "desktop-node-1", "SUCCEEDED", 100, null, "actual result", null, now))
+        assertFalse(store.updateDesktopTask("desktop", "desktop-node-1", claim!!.leaseId, claim.fencingToken, "RUNNING", 50, null, null, null, now))
+        assertFalse(store.updateDesktopTask("desktop", "desktop-node-2", claim.leaseId, claim.fencingToken, "SUCCEEDED", 100, null, "wrong", null, now))
+        assertTrue(store.updateDesktopTask("desktop", "desktop-node-1", claim.leaseId, claim.fencingToken, "SUCCEEDED", 100, null, "actual result", null, now))
+        assertTrue(store.updateDesktopTask("desktop", "desktop-node-1", claim.leaseId, claim.fencingToken, "SUCCEEDED", 100, null, "actual result", null, now))
+        assertFalse(store.updateDesktopTask("desktop", "desktop-node-1", claim.leaseId, claim.fencingToken, "SUCCEEDED", 100, null, "conflict", null, now))
         assertEquals("actual result", store.desktopTaskResult("desktop"))
         assertEquals(GlafiraTaskState.SUCCEEDED, store.getTask("desktop")?.state)
+    }
+
+    @Test fun staleDesktopLeaseGenerationCannotReleaseOrUpdateReplacementLease() {
+        val now = System.currentTimeMillis()
+        store.enqueue(task("desktop-fenced", "desktop.execute").copy(
+            payload = """{"requiredCapabilities":["code.build"]}"""
+        ))
+        val first = requireNotNull(store.claimDesktopTask(
+            "desktop-fenced", "desktop-node-1", setOf("code.build"), 1, now
+        ))
+        assertTrue(store.releaseDesktopLease(
+            "desktop-fenced", "desktop-node-1", first.leaseId, first.fencingToken
+        ))
+        store.writableDatabase.update("core_tasks", android.content.ContentValues().apply {
+            put("state", "queued")
+            put("updated_at", now + 1)
+        }, "task_id = ?", arrayOf("desktop-fenced"))
+        val second = requireNotNull(store.claimDesktopTask(
+            "desktop-fenced", "desktop-node-1", setOf("code.build"), 1, now + 2
+        ))
+
+        assertTrue(first.leaseId != second.leaseId)
+        assertTrue(first.fencingToken < second.fencingToken)
+        assertFalse(store.releaseDesktopLease(
+            "desktop-fenced", "desktop-node-1", first.leaseId, first.fencingToken
+        ))
+        assertFalse(store.updateDesktopTask(
+            "desktop-fenced", "desktop-node-1", first.leaseId, first.fencingToken,
+            "RUNNING", 50, "stale", null, null, now + 3
+        ))
+        assertTrue(store.updateDesktopTask(
+            "desktop-fenced", "desktop-node-1", second.leaseId, second.fencingToken,
+            "RUNNING", 50, "current", null, null, now + 3
+        ))
     }
 
     @Test fun versionThreeUpgradePreservesTasksAndStartsHonestHistoryBaseline() {
@@ -157,7 +194,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         db.version = 3
         store.close()
         store = GlafiraTaskStore(context)
-        assertEquals(7, store.writableDatabase.version)
+        assertEquals(8, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy")?.state)
         assertEquals("HISTORY_BASELINE", store.taskHistory("legacy", "project").single().reason)
         store.claimNext(2_000)
@@ -171,7 +208,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         store.close()
         store = GlafiraTaskStore(context)
 
-        assertEquals(7, store.writableDatabase.version)
+        assertEquals(8, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy-v4")?.state)
         assertTrue(store.readableDatabase.rawQuery(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'core_task_results'",
