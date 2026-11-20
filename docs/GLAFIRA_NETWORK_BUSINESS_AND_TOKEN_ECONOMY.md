@@ -576,3 +576,12 @@ The target differentiation is the combination of persistent owner-controlled pro
 This is a target-state description, not a current feature claim. The current build was characterized in a 2026-11-18 external technical review as an Android LLM-orchestration client with nascent multi-agent logic; Web/Browser Agent, Desktop Bridge and CRM were still planned. Every public claim must be gated by implementation and end-to-end acceptance.
 
 The proposed 500 RUB GLAFIRA subscription must be compared directly with multi-model aggregators such as Poe, whose published entry subscription starts at $4.99/month (about 409 RUB at the 2026-11-20 CBR rate before local tax/pricing) and uses capped compute points. GLAFIRA's premium over that entry price must be justified by operational workspaces, agents, local/desktop execution, service network value and transparent optional contribution rewards.
+
+
+### 16.8 Grok Bot and cloud-computer competitor
+
+Grok Bot is a direct agentic-work competitor. Its Premium tier is $30/month and advertises an agent computer, tool sign-in, scheduled routines, desktop/mobile operation and weekly included usage. Multiple bots share a persistent cloud computer per user, including files, browser and logins.
+
+Do not claim that generic agent computers, scheduled execution or tool sign-in are unique to GLAFIRA. The target distinction must be owner-controlled local Windows Desktop/Agent devices, opt-in peer-owned compute, isolated task execution, user-verifiable resource contribution, transparent GLF reward accounting, local/self-hosted execution options and the integrated VPN/service network.
+
+The proposed 500 RUB GLAFIRA tier must have explicit model/compute limits. It cannot imply unlimited frontier-agent work or be positioned as a price-only alternative to a $30 cloud-agent subscription.
