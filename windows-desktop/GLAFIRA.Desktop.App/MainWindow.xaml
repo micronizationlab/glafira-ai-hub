@@ -1,5 +1,5 @@
 <Window x:Class="GLAFIRA.Desktop.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="GLAFIRA Desktop Control Center" Height="760" Width="1180" MinHeight="600" MinWidth="900" Background="#F4F7F6">
+        Title="GLAFIRA Desktop Control Center" Height="900" Width="1180" MinHeight="700" MinWidth="900" Background="#F4F7F6">
   <DockPanel Margin="22">
     <StackPanel DockPanel.Dock="Top">
       <DockPanel>
@@ -29,6 +29,23 @@
             <TextBlock Text="{Binding BridgeHost.AvailableAddressesText}" FontSize="10" Foreground="#7B6551" Margin="0,2,0,0"/>
             <TextBlock Text="{Binding BridgeHost.EndpointsText}" FontSize="11" Foreground="#52645D" TextWrapping="Wrap" Margin="0,2,0,0"/>
             <TextBlock Text="{Binding BridgeHost.CertificateFingerprintSha256}" FontSize="10" Foreground="#7B6551" TextWrapping="Wrap" Margin="0,3,0,0"/>
+            <Separator Margin="0,12,0,9"/>
+            <TextBlock Text="СОПРЯЖЕНИЕ WINDOWS AGENT" FontSize="11" FontWeight="Bold" Foreground="#176B55"/>
+            <Grid Margin="0,6,0,0">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Agent ID" VerticalAlignment="Center" Foreground="#52645D"/>
+              <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding BridgeHost.PairingAgentId, UpdateSourceTrigger=PropertyChanged}" MaxLength="128" MinWidth="360"/>
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Scopes через запятую" VerticalAlignment="Center" Foreground="#52645D" Margin="0,6,0,0"/>
+              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BridgeHost.PairingScopesText, UpdateSourceTrigger=PropertyChanged}" MinWidth="360" Margin="0,6,0,0"/>
+            </Grid>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+              <Button Content="Создать код на 2 минуты" Height="32" Padding="10,0" Margin="0,0,8,0" Click="CreatePairingTicket_Click" IsEnabled="{Binding BridgeHost.CanCreatePairingTicket}"/>
+              <Button Content="Отозвать Agent" Height="32" Padding="10,0" Margin="0,0,8,0" Click="RevokeAgent_Click" IsEnabled="{Binding BridgeHost.CanRevokeAgent}"/>
+              <Button Content="Отозвать и создать новый код" Height="32" Padding="10,0" Click="RePairAgent_Click" IsEnabled="{Binding BridgeHost.CanRePairAgent}"/>
+            </StackPanel>
+            <TextBlock Text="{Binding BridgeHost.PairingStatus}" FontSize="10" Foreground="#7B6551" TextWrapping="Wrap" Margin="0,6,0,3"/>
+            <TextBox Text="{Binding BridgeHost.PairingInvitationText}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="52" MaxHeight="90" VerticalScrollBarVisibility="Auto"/>
           </StackPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
             <Button Content="Обновить адреса" Height="34" Margin="0,0,8,0" Click="RefreshBridgeAddresses_Click"/>
@@ -40,7 +57,7 @@
     </StackPanel>
     <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" Foreground="#52645D" FontSize="11" Margin="0,8,0,0"/>
     <TabControl Background="White">
-      <TabItem Header="АГЕНТЫ"><DataGrid ItemsSource="{Binding Agents}">
+      <TabItem Header="АГЕНТЫ"><DataGrid ItemsSource="{Binding Agents}" SelectionChanged="Agents_SelectionChanged">
         <DataGrid.Columns>
           <DataGridTextColumn Header="Agent ID" Binding="{Binding AgentId}" Width="*"/>
           <DataGridTextColumn Header="Устройство" Binding="{Binding DeviceId}" Width="*"/>
@@ -77,6 +94,6 @@
         </DataGrid>
       </TabItem>
     </TabControl>
-    <TextBlock DockPanel.Dock="Bottom" Text="Режим мониторинга: только чтение. Сопряжение, выдача разрешений и LIVE-действия здесь пока не включены." Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0"/>
+    <TextBlock DockPanel.Dock="Bottom" Text="Сопряжение и отзыв выполняются только явным действием владельца. LIVE-действия и произвольное выполнение здесь не включены." Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0"/>
   </DockPanel>
 </Window>

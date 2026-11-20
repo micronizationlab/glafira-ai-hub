@@ -9,7 +9,12 @@ public sealed record BridgeV1PairingTicket(
     string TicketId,
     string PairingCode,
     DateTimeOffset ExpiresAt,
-    IReadOnlySet<string> Scopes);
+    IReadOnlySet<string> Scopes,
+    string? AgentId = null);
+
+public sealed record BridgeV1RePairingTicketResult(
+    bool RevokedExistingEnrollment,
+    BridgeV1PairingTicket Ticket);
 
 public enum BridgeV1PairingTicketFailure
 {
@@ -94,6 +99,20 @@ public sealed class BridgeV1PairingTicketStore
 
     public BridgeV1PairingTicket Create(
         IEnumerable<string> requestedScopes,
+        TimeSpan lifetime) => CreateInternal(null, requestedScopes, lifetime);
+
+    public BridgeV1PairingTicket CreateForAgent(
+        string agentId,
+        IEnumerable<string> requestedScopes,
+        TimeSpan lifetime)
+    {
+        ValidateIdentity(agentId, nameof(agentId));
+        return CreateInternal(agentId, requestedScopes, lifetime);
+    }
+
+    private BridgeV1PairingTicket CreateInternal(
+        string? agentId,
+        IEnumerable<string> requestedScopes,
         TimeSpan lifetime)
     {
         if (lifetime < MinimumLifetime || lifetime > MaximumLifetime)
@@ -115,10 +134,11 @@ public sealed class BridgeV1PairingTicketStore
             using var command = connection.CreateCommand();
             command.CommandText = """
                 INSERT INTO HubPairingTickets(
-                    ticket_id, code_sha256, scopes_json, created_at_ms, expires_at_ms, consumed_at_ms)
-                VALUES($ticket, $digest, $scopes, $created, $expires, NULL);
+                    ticket_id, agent_id, code_sha256, scopes_json, created_at_ms, expires_at_ms, consumed_at_ms)
+                VALUES($ticket, $agent, $digest, $scopes, $created, $expires, NULL);
                 """;
             command.Parameters.AddWithValue("$ticket", ticketId);
+            command.Parameters.AddWithValue("$agent", (object?)agentId ?? DBNull.Value);
             command.Parameters.Add("$digest", SqliteType.Blob).Value = digest;
             command.Parameters.AddWithValue("$scopes", JsonSerializer.Serialize(scopes));
             command.Parameters.AddWithValue("$created", now.ToUnixTimeMilliseconds());
@@ -131,7 +151,83 @@ public sealed class BridgeV1PairingTicketStore
         }
         return new BridgeV1PairingTicket(
             ticketId, pairingCode, expiresAt,
-            new HashSet<string>(scopes, StringComparer.Ordinal));
+            new HashSet<string>(scopes, StringComparer.Ordinal), agentId);
+    }
+
+    public async ValueTask<BridgeV1RePairingTicketResult> RevokeAndCreateForAgentAsync(
+        string agentId,
+        IEnumerable<string> requestedScopes,
+        TimeSpan lifetime,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateIdentity(agentId, nameof(agentId));
+        if (lifetime < MinimumLifetime || lifetime > MaximumLifetime)
+            throw new ArgumentOutOfRangeException(nameof(lifetime),
+                "Pairing tickets must live for 30 seconds to 10 minutes.");
+        var scopes = NormalizeScopes(requestedScopes);
+        var now = _timeProvider.GetUtcNow();
+        var expiresAt = now.Add(lifetime);
+        var ticketId = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        var codeBytes = RandomNumberGenerator.GetBytes(32);
+        string pairingCode;
+        try { pairingCode = Base64Url(codeBytes); }
+        finally { CryptographicOperations.ZeroMemory(codeBytes); }
+        var digest = Digest(ticketId, pairingCode);
+        try
+        {
+            await using var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync(cancellationToken);
+            using var transaction = connection.BeginTransaction(deferred: false);
+            var nowMs = now.ToUnixTimeMilliseconds();
+
+            await using var credential = connection.CreateCommand();
+            credential.Transaction = transaction;
+            credential.CommandText = """
+                UPDATE HubCredentials
+                SET protected_secret = X'', scopes_json = '[]', enabled = 0, updated_at_ms = $now
+                WHERE device_id = $agent AND enabled = 1;
+                """;
+            credential.Parameters.AddWithValue("$agent", agentId);
+            credential.Parameters.AddWithValue("$now", nowMs);
+            var revokedCredential = await credential.ExecuteNonQueryAsync(cancellationToken) == 1;
+
+            await using var enrollment = connection.CreateCommand();
+            enrollment.Transaction = transaction;
+            enrollment.CommandText = """
+                UPDATE HubAgentEnrollments
+                SET revoked_at_ms = $now
+                WHERE agent_id = $agent AND revoked_at_ms IS NULL;
+                """;
+            enrollment.Parameters.AddWithValue("$agent", agentId);
+            enrollment.Parameters.AddWithValue("$now", nowMs);
+            var revokedEnrollment = await enrollment.ExecuteNonQueryAsync(cancellationToken) == 1;
+
+            await using var ticket = connection.CreateCommand();
+            ticket.Transaction = transaction;
+            ticket.CommandText = """
+                INSERT INTO HubPairingTickets(
+                    ticket_id, agent_id, code_sha256, scopes_json, created_at_ms, expires_at_ms, consumed_at_ms)
+                VALUES($ticket, $agent, $digest, $scopes, $created, $expires, NULL);
+                """;
+            ticket.Parameters.AddWithValue("$ticket", ticketId);
+            ticket.Parameters.AddWithValue("$agent", agentId);
+            ticket.Parameters.Add("$digest", SqliteType.Blob).Value = digest;
+            ticket.Parameters.AddWithValue("$scopes", JsonSerializer.Serialize(scopes));
+            ticket.Parameters.AddWithValue("$created", nowMs);
+            ticket.Parameters.AddWithValue("$expires", expiresAt.ToUnixTimeMilliseconds());
+            await ticket.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return new BridgeV1RePairingTicketResult(
+                revokedCredential || revokedEnrollment,
+                new BridgeV1PairingTicket(
+                    ticketId, pairingCode, expiresAt,
+                    new HashSet<string>(scopes, StringComparer.Ordinal), agentId));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(digest);
+        }
     }
 
     public async ValueTask<BridgeV1PairingTicketConsumeResult> ConsumeAsync(
@@ -157,6 +253,7 @@ public sealed class BridgeV1PairingTicketStore
                     WHERE ticket_id = $ticket
                       AND consumed_at_ms IS NULL
                       AND expires_at_ms > $now
+                      AND agent_id IS NULL
                       AND code_sha256 = $digest;
                     """;
                 consume.Parameters.AddWithValue("$now", nowMs);
@@ -240,10 +337,12 @@ public sealed class BridgeV1PairingTicketStore
                     WHERE ticket_id = $ticket
                       AND consumed_at_ms IS NULL
                       AND expires_at_ms > $now
+                      AND (agent_id IS NULL OR agent_id = $agent)
                       AND code_sha256 = $digest;
                     """;
                 consume.Parameters.AddWithValue("$now", nowMs);
                 consume.Parameters.AddWithValue("$ticket", ticketId);
+                consume.Parameters.AddWithValue("$agent", agentId);
                 consume.Parameters.Add("$digest", SqliteType.Blob).Value = digest;
                 if (await consume.ExecuteNonQueryAsync(cancellationToken) != 1)
                     return BridgeV1AgentEnrollmentResult.Reject(
@@ -399,6 +498,7 @@ public sealed class BridgeV1PairingTicketStore
             PRAGMA busy_timeout = 5000;
             CREATE TABLE IF NOT EXISTS HubPairingTickets(
                 ticket_id TEXT NOT NULL PRIMARY KEY,
+                agent_id TEXT NULL,
                 code_sha256 BLOB NOT NULL CHECK(length(code_sha256) = 32),
                 scopes_json TEXT NOT NULL,
                 created_at_ms INTEGER NOT NULL,
@@ -433,6 +533,20 @@ public sealed class BridgeV1PairingTicketStore
                 ON HubAgentEnrollments(expires_at_ms, revoked_at_ms);
             """;
         command.ExecuteNonQuery();
+
+        using var columns = connection.CreateCommand();
+        columns.CommandText = "PRAGMA table_info(HubPairingTickets);";
+        using var reader = columns.ExecuteReader();
+        var hasAgentId = false;
+        while (reader.Read())
+            hasAgentId |= StringComparer.Ordinal.Equals(reader.GetString(1), "agent_id");
+        reader.Close();
+        if (!hasAgentId)
+        {
+            using var migration = connection.CreateCommand();
+            migration.CommandText = "ALTER TABLE HubPairingTickets ADD COLUMN agent_id TEXT NULL;";
+            migration.ExecuteNonQuery();
+        }
     }
 
     private static byte[] Digest(string ticketId, string pairingCode)

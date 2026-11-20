@@ -27,6 +27,11 @@ public partial class MainWindow : Window
         if (sender is DataGrid grid && grid.SelectedItem is HubTaskSnapshot task)
             _viewModel.LoadTaskHistory(task);
     }
+    private void Agents_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is DataGrid grid && grid.SelectedItem is HubAgentSnapshot agent)
+            _bridgeHost.PairingAgentId = agent.AgentId;
+    }
     private void RefreshBridgeAddresses_Click(object sender, RoutedEventArgs e) =>
         _bridgeHost.RefreshAvailableAddresses();
 
@@ -35,6 +40,15 @@ public partial class MainWindow : Window
 
     private async void StopBridge_Click(object sender, RoutedEventArgs e) =>
         await _bridgeHost.StopAsync();
+
+    private void CreatePairingTicket_Click(object sender, RoutedEventArgs e) =>
+        _bridgeHost.CreatePairingTicket();
+
+    private async void RevokeAgent_Click(object sender, RoutedEventArgs e) =>
+        await _bridgeHost.RevokeAgentAsync();
+
+    private async void RePairAgent_Click(object sender, RoutedEventArgs e) =>
+        await _bridgeHost.RevokeAndCreatePairingTicketAsync();
 
     protected override async void OnClosing(CancelEventArgs e)
     {

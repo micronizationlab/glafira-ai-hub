@@ -171,6 +171,60 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
         Assert.True((await EnrollAsync(store, ticket, "agent-01")).Accepted);
     }
 
+    [Fact]
+    public async Task AgentBoundTicketCannotBeStolenByAnotherAgent()
+    {
+        var store = CreateStore();
+        var ticket = store.CreateForAgent(
+            "agent-01", ["desktop.task.claim"], TimeSpan.FromMinutes(1));
+
+        var wrongAgent = await EnrollAsync(store, ticket, "agent-02");
+        var intendedAgent = await EnrollAsync(store, ticket, "agent-01");
+
+        Assert.Equal("agent-01", ticket.AgentId);
+        Assert.False(wrongAgent.Accepted);
+        Assert.Equal(BridgeV1AgentEnrollmentFailure.Rejected, wrongAgent.Failure);
+        Assert.True(intendedAgent.Accepted);
+    }
+
+    [Fact]
+    public async Task RePairingAtomicallyRevokesOldCredentialAndCreatesBoundTicket()
+    {
+        var store = CreateStore();
+        var firstTicket = store.CreateForAgent(
+            "agent-01", ["desktop.task.claim"], TimeSpan.FromMinutes(1));
+        var first = await EnrollAsync(store, firstTicket, "agent-01");
+        var resolver = new DpapiSqliteHubCredentialResolver(_databasePath, _protector, _clock);
+        Assert.NotNull(await resolver.ResolveAsync("agent-01", default));
+
+        var replacement = await store.RevokeAndCreateForAgentAsync(
+            "agent-01", ["desktop.task.result"], TimeSpan.FromMinutes(2));
+
+        Assert.True(replacement.RevokedExistingEnrollment);
+        Assert.Equal("agent-01", replacement.Ticket.AgentId);
+        Assert.Null(await resolver.ResolveAsync("agent-01", default));
+        var second = await EnrollAsync(store, replacement.Ticket, "agent-01");
+        Assert.True(second.Accepted);
+        Assert.NotEqual(first.Credential!.SharedSecretBase64, second.Credential!.SharedSecretBase64);
+        Assert.NotNull(await resolver.ResolveAsync("agent-01", default));
+    }
+
+    [Fact]
+    public async Task InvalidRePairingRequestDoesNotRevokeExistingCredential()
+    {
+        var store = CreateStore();
+        var firstTicket = store.CreateForAgent(
+            "agent-01", ["desktop.task.claim"], TimeSpan.FromMinutes(1));
+        Assert.True((await EnrollAsync(store, firstTicket, "agent-01")).Accepted);
+        var resolver = new DpapiSqliteHubCredentialResolver(_databasePath, _protector, _clock);
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await store.RevokeAndCreateForAgentAsync(
+                "agent-01", ["desktop.task.claim", "desktop.task.claim"], TimeSpan.FromMinutes(2)));
+
+        Assert.NotNull(await resolver.ResolveAsync("agent-01", default));
+    }
+
     private BridgeV1PairingTicketStore CreateStore() =>
         new(_databasePath, _clock, _protector);
 
