@@ -210,7 +210,7 @@ public sealed class BridgeV1RequestAuthenticator(
 
         if (request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT)
         {
-            if (!IsIdentifier(request.Payload["taskId"]) ||
+            if (!IsTaskIdentifier(request.Payload["taskId"]) ||
                 !IsIdentifier(request.Payload["leaseId"]) ||
                 !long.TryParse(request.Payload["fencingToken"],
                     System.Globalization.NumberStyles.None,
@@ -226,6 +226,10 @@ public sealed class BridgeV1RequestAuthenticator(
 
         return BridgeV1AdmissionFailure.None;
     }
+
+    private static bool IsTaskIdentifier(string value) =>
+        value is { Length: >= 1 and <= 64 } &&
+        value.All(character => char.IsLetterOrDigit(character) || character is '-' or '_');
 
     private static bool IsIdentifier(string value) =>
         value is { Length: >= 8 and <= 128 } &&
