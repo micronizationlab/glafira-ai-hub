@@ -24,7 +24,9 @@ class GlafiraBridgeAdmissionService(
                 grantedScopes = credential.scopes,
                 nowEpochMs = nowEpochMs
             )
-            if (authorization.error != null) return authorization.response
+            if (authorization.error != null || authorization.response.status != GlafiraBridgeStatus.ACCEPTED) {
+                return authorization.response
+            }
 
             return when (replayStore.claim(
                 authenticatedDeviceId = credential.deviceId,
@@ -32,7 +34,8 @@ class GlafiraBridgeAdmissionService(
                 expiresAtEpochMs = request.expiresAtEpochMs,
                 nowEpochMs = nowEpochMs
             )) {
-                BridgeReplayClaim.ACCEPTED -> dispatch(request)
+                BridgeReplayClaim.ACCEPTED -> runCatching { dispatch(request) }
+                    .getOrElse { failed(request, "OPERATION_FAILED") }
                 BridgeReplayClaim.DUPLICATE -> failed(request, "DUPLICATE_REQUEST")
                 BridgeReplayClaim.INVALID_EXPIRY -> failed(request, "INVALID_REQUEST_EXPIRY")
                 BridgeReplayClaim.CAPACITY_EXCEEDED -> failed(request, "REPLAY_CAPACITY_EXCEEDED")
