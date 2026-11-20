@@ -508,22 +508,7 @@ class GlafiraTaskStore(context: Context) :
         db.beginTransaction()
         try {
             expirePendingTasks(db, nowMillis)
-            // A terminally failed predecessor makes the dependent task permanently un-runnable.
-            // Record that outcome instead of leaving the task queued forever.
-            db.execSQL(
-                "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
-                    "WHERE state IN (?, ?) AND task_id IN (" +
-                    "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
-                    "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
-                    "WHERE p.state IN (?, ?))",
-                arrayOf(
-                    GlafiraTaskState.FAILED.databaseValue, nowMillis, "DEPENDENCY_FAILED",
-                    GlafiraTaskState.QUEUED.databaseValue,
-                    GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
-                    GlafiraTaskState.FAILED.databaseValue,
-                    GlafiraTaskState.CANCELLED.databaseValue
-                )
-            )
+            failTasksWithFailedDependencies(db, nowMillis)
             val taskId = db.rawQuery(
                 "SELECT task_id FROM $TABLE_TASKS t " +
                     "WHERE state IN (?, ?) AND task_type != ? " +
@@ -759,6 +744,32 @@ class GlafiraTaskStore(context: Context) :
         }
     }
 
+    /** Propagates terminal predecessor failure for both Core and Desktop task lanes. */
+    private fun failTasksWithFailedDependencies(db: SQLiteDatabase, nowMillis: Long) {
+        db.execSQL(
+            "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+                "WHERE state IN (?, ?) AND task_id IN (" +
+                "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
+                "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+                "WHERE p.state IN (?, ?))",
+            arrayOf(
+                GlafiraTaskState.FAILED.databaseValue, nowMillis, "DEPENDENCY_FAILED",
+                GlafiraTaskState.QUEUED.databaseValue,
+                GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
+                GlafiraTaskState.FAILED.databaseValue,
+                GlafiraTaskState.CANCELLED.databaseValue
+            )
+        )
+    }
+
+    private fun hasUnresolvedTaskDependencies(db: SQLiteDatabase, taskId: String): Boolean =
+        db.rawQuery(
+            "SELECT 1 FROM $TABLE_DEPENDENCIES d " +
+                "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+                "WHERE d.task_id = ? AND p.state != ? LIMIT 1",
+            arrayOf(taskId, GlafiraTaskState.SUCCEEDED.databaseValue)
+        ).use { it.moveToFirst() }
+
     /** Expiration proves loss of contact, never that an external operation did not happen. */
     private fun quarantineExpiredDesktopLeases(db: SQLiteDatabase, nowMillis: Long) {
         db.execSQL(
@@ -781,8 +792,14 @@ class GlafiraTaskStore(context: Context) :
         db.beginTransaction()
         try {
             quarantineExpiredDesktopLeases(db, now)
-            val selection = "task_type = ? AND state = ?" + if (projectId == null) "" else " AND project_id = ?"
-            val args = arrayOf(DESKTOP_TASK_TYPE, GlafiraTaskState.QUEUED.databaseValue) +
+            failTasksWithFailedDependencies(db, now)
+            val selection = "task_type = ? AND state = ?" +
+                " AND NOT EXISTS (SELECT 1 FROM $TABLE_DEPENDENCIES d " +
+                "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+                "WHERE d.task_id = $TABLE_TASKS.task_id AND p.state != ?)" +
+                if (projectId == null) "" else " AND project_id = ?"
+            val args = arrayOf(DESKTOP_TASK_TYPE, GlafiraTaskState.QUEUED.databaseValue,
+                GlafiraTaskState.SUCCEEDED.databaseValue) +
                 if (projectId == null) emptyArray() else arrayOf(projectId)
             val tasks = db.query(TABLE_TASKS, null, selection, args,
                 null, null, "priority DESC, created_at ASC", limit.toString()).use { cursor ->
@@ -803,11 +820,15 @@ class GlafiraTaskStore(context: Context) :
         db.beginTransaction()
         try {
             quarantineExpiredDesktopLeases(db, nowMillis)
+            failTasksWithFailedDependencies(db, nowMillis)
             val active = db.rawQuery("SELECT COUNT(*) FROM core_desktop_leases WHERE device_id = ? AND lease_expires_at > ?",
                 arrayOf(deviceId, nowMillis.toString())).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
             if (active >= maxParallelTasks) { db.setTransactionSuccessful(); return null }
             val task = queryTask(db, taskId) ?: run { db.setTransactionSuccessful(); return null }
             if (task.taskType != DESKTOP_TASK_TYPE || task.state != GlafiraTaskState.QUEUED) {
+                db.setTransactionSuccessful(); return null
+            }
+            if (hasUnresolvedTaskDependencies(db, taskId)) {
                 db.setTransactionSuccessful(); return null
             }
             if (task.deadlineAtMillis != null && task.deadlineAtMillis <= nowMillis) {
