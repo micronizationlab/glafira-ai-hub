@@ -1,4 +1,4 @@
-using System.Net;
+using System.Security.Cryptography;
 using System.Runtime.Versioning;
 using System.Text;
 using GLAFIRA.Desktop.Hub.Core;
@@ -21,13 +21,13 @@ public sealed class HubTaskPayloadStoreTests : IDisposable
         var reference = await store.StoreAsync(payload);
         var resolved = await store.ResolveAsync(reference.PayloadRef, CancellationToken.None);
 
-        Assert.NotNull(resolved);
+        var resolvedBytes = Assert.IsType<byte[]>(resolved);
         Assert.Equal(reference.PayloadRef, reference.PayloadSha256);
-        Assert.Equal(payload, resolved);
+        Assert.Equal(payload, resolvedBytes);
         var encryptedText = Encoding.UTF8.GetString(
             File.ReadAllBytes(Path.Combine(_root, reference.PayloadRef + ".dpapi")));
         Assert.DoesNotContain("private task content", encryptedText);
-        CryptographicOperations.ZeroMemory(resolved);
+        CryptographicOperations.ZeroMemory(resolvedBytes);
     }
 
     [Fact]
@@ -64,9 +64,13 @@ public sealed class HubTaskPayloadStoreTests : IDisposable
         var store = new HubTaskPayloadStore(_root);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
-            await store.StoreAsync(ReadOnlyMemory<byte>.Empty));
+        {
+            await store.StoreAsync(ReadOnlyMemory<byte>.Empty);
+        });
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
-            await store.StoreAsync(new byte[65_537]));
+        {
+            await store.StoreAsync(new byte[65_537]);
+        });
     }
 
     public void Dispose()
