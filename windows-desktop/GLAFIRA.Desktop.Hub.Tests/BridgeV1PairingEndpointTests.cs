@@ -65,6 +65,7 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
         Assert.Null(hubStore.ClaimNext("agent-01", _clock.GetUtcNow().AddSeconds(1), TimeSpan.FromMinutes(1)));
 
         Assert.True(hubStore.ConfigureAgentApproval("agent-01", ["web.research"], 1));
+        Assert.Equal(0, hubStore.ReconcilePendingAgents(_clock.GetUtcNow()));
         var approved = Assert.Single(hubStore.GetAgents(_clock.GetUtcNow()));
         Assert.True(approved.OwnerApproved);
         Assert.False(approved.IsOnline);
