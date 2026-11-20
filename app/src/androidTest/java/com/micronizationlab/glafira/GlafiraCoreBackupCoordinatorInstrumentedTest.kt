@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,7 +56,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         artifacts += archive
         val verification = coordinator.verify(archive, passphrase)
 
-        assertEquals(1, verification.fileCount.coerceAtLeast(1))
+        assertTrue(verification.fileCount >= 1)
         assertNotNull(store.getTask("preserve-me"))
     }
 
