@@ -86,12 +86,7 @@ jobs:
           fi
       - name: Verify JVM JUnit reports contain executed tests
         if: success()
-        run: |
-          if [[ -d desktop-bridge/build/test-results ]]; then
-            python3 .github/scripts/verify-junit-reports.py app/build/test-results desktop-bridge/build/test-results
-          else
-            python3 .github/scripts/verify-junit-reports.py app/build/test-results
-          fi
+        run: python3 .github/scripts/verify-junit-reports.py app/build/test-results desktop-bridge/build/test-results
       - name: Upload JVM reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -159,7 +154,6 @@ jobs:
           cores: 2
           ram-size: 2048M
           heap-size: 512M
-          # Hosted runner has ~6.6 GB available; 4 GB AVD userdata required 7.3 GB and failed before ADB.
           disk-size: 2048M
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -camera-back none -camera-front none

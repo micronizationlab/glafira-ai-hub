@@ -47,12 +47,19 @@ def classify_paths(
             selected["agent"] |= (
                 root / "windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj"
             ).is_file()
-        elif path.startswith(".github/workflows/"):
+        elif path.startswith(".github/workflows/") or path.startswith(".github/scripts/"):
+            # CI control-plane changes must exercise the suites whose selection/execution
+            # they can affect. A green linter alone is not validation of a changed pipeline.
             selected["workflow_lint"] = True
-        elif path.startswith(".github/scripts/"):
-            selected["workflow_lint"] = True
-            if path == ".github/scripts/run-android-instrumentation.sh":
-                selected["android"] = True
+            selected["android"] = True
+            selected["ios"] = (root / "ios/GlafiraBridgeKit/Package.swift").is_file()
+            selected["agent"] = (
+                root / "windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj"
+            ).is_file()
+            selected["contracts"] = (root / "contracts").is_dir()
+            selected["android_acceptance"] = (
+                root / ".github/scripts/run-android-instrumentation.sh"
+            ).is_file()
 
         if (
             path.startswith("app/src/androidTest/")
@@ -76,6 +83,11 @@ def classify_paths(
         selected["agent"] = (root / "windows-agent").is_dir()
         selected["contracts"] = (root / "contracts").is_dir()
         selected["android_acceptance"] = True
+
+    if selected["android_acceptance"] and not (
+        root / ".github/scripts/run-android-instrumentation.sh"
+    ).is_file():
+        selected["android_acceptance"] = False
 
     return selected
 
