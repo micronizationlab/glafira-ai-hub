@@ -268,7 +268,7 @@ public sealed class BridgeV1TlsCertificateStore
         {
             return bytes[0] == 10 ||
                 (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) ||
-                (bytes[0] == 192 && bytes[1] == 168;
+                (bytes[0] == 192 && bytes[1] == 168)
         }
 
         return address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 &&
