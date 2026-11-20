@@ -173,8 +173,8 @@ public sealed class DesktopHubStoreTests : IDisposable
         Assert.False(_store.ReportProgress("other-agent", "progress-task", lease.LeaseId,
             lease.FencingToken, 47, "Wrong agent", now.AddSeconds(3)));
 
-        var progress = Assert.Single(_store.GetTaskHistory("progress-task")
-            .Where(item => item.EventCode == "TASK_PROGRESS"));
+        var progress = Assert.Single(_store.GetTaskHistory("progress-task"),
+            item => item.EventCode == "TASK_PROGRESS");
         Assert.Equal(45, progress.ProgressPercent);
         Assert.Equal("Downloaded 45 percent", progress.ProgressMessage);
         Assert.Equal("agent-progress", progress.AgentId);
