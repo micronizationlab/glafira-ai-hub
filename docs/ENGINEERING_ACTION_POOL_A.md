@@ -17,7 +17,7 @@
 | 10 | P0 | Verify Core maintenance lock is separate from per-task locks; crash/restart and data-integrity matrix | PR #71, #159 | Tests and code audit pending |
 | 11 | P1 | Land Android instrumentation runner and initial AndroidJUnit4 suite in main | PR #159 | Exact-head CI pending |
 | 12 | P1 | Land corrected change-aware selector so relevant Android/Core/Bridge changes run emulator acceptance | PR #161, #159 | Selector fix exists on PR branches |
-| 13 | P1 | Verify exact-head emulator reports contain non-zero tests and no skipped/failures | PR #159 | Wait for current runner slot |
+| 13 | P1 | Verify exact-head emulator reports for the 9-test initial suite; reconcile and port the older 16-test TaskPlan instrumentation suite from PR #122 after its Core dependencies are integrated | PR #159, #122 | Initial 9 tests pass on emulator; older 16-test suite remains stacked/unmerged |
 | 14 | P1 | Finish Bridge settings UI, owner approval and emulator regression | PR #140 | Android JVM passed; APK/emulator running |
 | 15 | P1 | Complete backup manual action and user-visible failure/precondition states | Issue #137, PR #139/#148 | Emulator regression active |
 | 16 | P1 | Make Council action clickable when idle and show actionable validation/partial-failure states | Issue #137 | Await UI regression |
