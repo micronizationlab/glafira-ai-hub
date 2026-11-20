@@ -58,8 +58,9 @@ def classify_paths(
             ).is_file()
             selected["contracts"] = (root / "contracts").is_dir()
             selected["android_acceptance"] = (
-                root / ".github/scripts/run-android-instrumentation.sh"
-            ).is_file()
+                (root / "app/build.gradle.kts").is_file()
+                and (root / "app/src/androidTest").is_dir()
+            )
 
         if (
             path.startswith("app/src/androidTest/")
@@ -84,9 +85,12 @@ def classify_paths(
         selected["contracts"] = (root / "contracts").is_dir()
         selected["android_acceptance"] = True
 
+    # The active android.yml invokes Gradle directly; do not gate emulator tests
+    # on a legacy shell helper that no longer exists in the current main branch.
     if selected["android_acceptance"] and not (
-        root / ".github/scripts/run-android-instrumentation.sh"
-    ).is_file():
+        (root / "app/build.gradle.kts").is_file()
+        and (root / "app/src/androidTest").is_dir()
+    ):
         selected["android_acceptance"] = False
 
     return selected
