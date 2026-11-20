@@ -56,6 +56,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["ios"])
         self.assertTrue(selected["agent"])
         self.assertTrue(selected["contracts"])
+        self.assertTrue(selected["android_acceptance"])
 
     def test_android_core_change_selects_android_and_contracts(self):
         selected = MODULE.classify_paths(
@@ -67,7 +68,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["contracts"])
         self.assertFalse(selected["ios"])
         self.assertFalse(selected["agent"])
-        self.assertFalse(selected["android_acceptance"])
+        self.assertTrue(selected["android_acceptance"])
 
     def test_bridge_change_selects_android_emulator_acceptance_without_external_harness(self):
         selected = MODULE.classify_paths(
