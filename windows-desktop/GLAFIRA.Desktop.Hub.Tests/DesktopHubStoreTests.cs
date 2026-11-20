@@ -190,7 +190,9 @@ public sealed class DesktopHubStoreTests : IDisposable
 
         _store.RecoverExpiredLeases(now.AddSeconds(2));
 
-        var last = Assert.Last(_store.GetTaskHistory("recover-task"));
+        var history = _store.GetTaskHistory("recover-task");
+        Assert.NotEmpty(history);
+        var last = history[^1];
         Assert.Equal(HubTaskState.Queued, last.State);
         Assert.Equal("LEASE_EXPIRED_READ_ONLY_REQUEUED", last.EventCode);
     }
