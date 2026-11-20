@@ -25,11 +25,11 @@ class GlafiraRegressionUiTest {
         val statusNode = compose.onNodeWithTag("backup_status")
         val before = statusNode.fetchSemanticsNode().config[SemanticsProperties.Text]
             .joinToString("") { it.text }
-        compose.onNodeWithText("Сохранить сейчас").assertExists().assertIsEnabled().performClick()
+        compose.onNodeWithTag("backup_manual_save").assertExists().assertIsEnabled().performClick()
         compose.waitForIdle()
-        val after = statusNode.fetchSemanticsNode().config[SemanticsProperties.Text]
+        val after = compose.onNodeWithTag("backup_status").fetchSemanticsNode().config[SemanticsProperties.Text]
             .joinToString("") { it.text }
-        assertTrue("Manual backup action must update its visible status.", before != after)
+        assertTrue("Manual backup action must update its visible status. Before: '$before'; after: '$after'.", before != after)
     }
 
     @Test
