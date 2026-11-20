@@ -111,6 +111,14 @@ AI/VPN sold inside Telegram are digital services. Current Telegram Developer Ter
 
 Official sources: https://core.telegram.org/bots/payments-stars ; https://telegram.org/tos/bot-developers ; https://telegram.org/tos/stars ; https://core.telegram.org/bots/api#sendinvoice
 
+
+
+### Reward allocation order
+By default, earned GLF is applied to the customer's base VPN package first, then to the AI package/allowance. The wallet must show the priority and the projected number of active days covered for each service. The customer may change the order before authorizing the allocation. Never auto-convert credits to cash or silently spend them on paid API providers.
+
+### Project contribution / donation
+The wallet may include an explicit voluntary GLF donation to the verified GLAFIRA project treasury. The recipient must come from Mother’s authoritative treasury registry. Donation is a normal auditable transfer with an explicit confirmation and is not an investment or purchase of ownership.
+
 ## 9. Decisions requiring owner approval
 
 GLF reference value; contributor share/caps/issuance budget; package expiry/rollover/inactive-day pause; free local/hosted AI allowances; per-model AI caps; VPN active-day/outage rules; Stars prices/net revenue; legal disclosures. GLF is not a security, investment, yield or guaranteed cash-equivalent.
