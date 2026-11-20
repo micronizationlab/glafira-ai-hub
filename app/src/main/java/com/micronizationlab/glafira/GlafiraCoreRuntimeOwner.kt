@@ -268,6 +268,18 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     /** Current authenticated Desktop worker inventory for capability-aware dispatch. */
     fun desktopNodes(): List<GlafiraNodeCapabilities> = taskStore.desktopNodes()
 
+    /** Advisory placement across all live Desktop workers; claims still revalidate atomically. */
+    fun desktopDispatchPlan(limit: Int = 100): List<GlafiraDesktopDispatchAssignment> {
+        require(limit in 1..500)
+        val now = System.currentTimeMillis()
+        return GlafiraDesktopDispatchPlanner.plan(
+            tasks = taskStore.queuedDesktopTasks(limit),
+            nodes = taskStore.desktopNodes(nowMillis = now),
+            activeLeasesByNode = taskStore.activeDesktopLeaseCounts(now),
+            nowMillis = now
+        )
+    }
+
     fun desktopTaskLeaseExpiry(taskId: String): Long? = taskStore.desktopTaskLeaseExpiry(taskId)
 
     /** Project-scoped lookup for a successfully persisted Core handler result. */
