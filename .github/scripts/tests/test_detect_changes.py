@@ -65,7 +65,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["contracts"])
         self.assertFalse(selected["ios"])
         self.assertFalse(selected["agent"])
-        self.assertFalse(selected["android_acceptance"])
+        self.assertTrue(selected["android_acceptance"])
 
     def test_bridge_change_selects_android_emulator_acceptance(self):
         selected = MODULE.classify_paths(
