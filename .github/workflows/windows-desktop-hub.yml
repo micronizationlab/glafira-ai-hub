@@ -1,0 +1,40 @@
+name: GLAFIRA Windows Desktop Hub
+
+on:
+  pull_request:
+    paths:
+      - "windows-desktop/**"
+      - ".github/workflows/windows-desktop-hub.yml"
+  push:
+    branches: [main]
+    paths:
+      - "windows-desktop/**"
+      - ".github/workflows/windows-desktop-hub.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  hub-tests:
+    name: Windows Desktop Hub durable scheduler tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore windows-desktop/GLAFIRA.Desktop.Hub.Tests/GLAFIRA.Desktop.Hub.Tests.csproj
+      - name: Test and write TRX report
+        run: dotnet test windows-desktop/GLAFIRA.Desktop.Hub.Tests/GLAFIRA.Desktop.Hub.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=desktop-hub-tests.trx" --results-directory windows-desktop/GLAFIRA.Desktop.Hub.Tests/TestResults
+      - name: Build Hub core
+        run: dotnet build windows-desktop/GLAFIRA.Desktop.Hub.Core/GLAFIRA.Desktop.Hub.Core.csproj --configuration Release --no-restore
+      - name: Upload TRX report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop-hub-test-results-${{ github.run_id }}
+          path: windows-desktop/GLAFIRA.Desktop.Hub.Tests/TestResults/*.trx
+          if-no-files-found: error
+          retention-days: 7
