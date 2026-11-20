@@ -97,3 +97,18 @@ suspend fun callAiProvider(
         }
     }
 }
+
+
+/**
+ * Typed provider boundary for Core scheduling. Legacy String callers remain compatible.
+ * The adapter deliberately treats transport failures as UNKNOWN because the legacy
+ * transport does not expose the exact point at which request bytes reached the provider.
+ */
+suspend fun callAiProviderResult(
+    context: Context,
+    providerId: ProviderId,
+    history: List<Msg>,
+    systemPrompt: String
+): AiProviderResult = classifyLegacyProviderResponse(
+    callAiProvider(context, providerId, history, systemPrompt)
+)
