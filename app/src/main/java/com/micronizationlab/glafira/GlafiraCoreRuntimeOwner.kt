@@ -21,12 +21,16 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     // Reading from the legacy SharedPreferences store would make newly paired devices
     // invisible to Core authorization even though HTTPS admission accepts them.
     private val bridgeCredentialStore = AndroidKeystoreBridgeCredentialStore(appContext)
+    private val bridgeReplayGuard = GlafiraBridgeReplayGuard(appContext)
     private val taskGrantSource = GlafiraCompositeTaskGrantSource(
         ownerApprovalStore,
         bridgeCredentialStore
     )
 
     private val bridgeDispatcher by lazy { GlafiraBridgeOperationDispatcher(appContext, this) }
+    private val bridgeAdmissionService by lazy {
+        GlafiraBridgeAdmissionService(bridgeCredentialStore, bridgeReplayGuard, bridgeDispatcher::dispatch)
+    }
     // Live mode remains unavailable until a separate owner-approved run API is implemented.
     private val executionMode = GlafiraExecutionMode.DRY_RUN
     internal val executionLimiter = GlafiraCoreExecutionLimiter()
@@ -81,6 +85,10 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             GlafiraTaskExecutionOutcome.PermanentFailure("BRIDGE_TASK_INVALID")
         }
     }
+
+    /** Single authenticated entry point for Android/Desktop Bridge transports. */
+    fun handleBridgeRequest(request: GlafiraBridgeRequest): GlafiraBridgeResponse =
+        bridgeAdmissionService.handle(request)
 
     val isEnabled: Boolean
         get() = preferences.getBoolean(KEY_ENABLED, false)
