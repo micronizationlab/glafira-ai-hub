@@ -120,7 +120,7 @@ def main() -> None:
     output_path = os.environ["GITHUB_OUTPUT"]
     with open(output_path, "a", encoding="utf-8") as output:
         for name, value in selected.items():
-            output.write(f"{name}={str(value).lower()}\\n")
+            output.write(f"{name}={str(value).lower()}\n")
     print("Changed paths:")
     for path in changed:
         print(f"  {path}")
