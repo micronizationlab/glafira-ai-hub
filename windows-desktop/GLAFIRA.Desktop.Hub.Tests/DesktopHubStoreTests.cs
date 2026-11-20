@@ -158,6 +158,73 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void ProgressUpdatesRequireTheCurrentApprovedLeaseAndAreRecorded()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-progress", "device-progress", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("progress-task"), now);
+        var lease = _store.ClaimNext("agent-progress", now.AddSeconds(1), TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+
+        Assert.True(_store.ReportProgress("agent-progress", "progress-task", lease.LeaseId,
+            lease.FencingToken, 45, "Downloaded 45 percent", now.AddSeconds(2)));
+        Assert.False(_store.ReportProgress("agent-progress", "progress-task", lease.LeaseId,
+            lease.FencingToken - 1, 46, "Stale worker", now.AddSeconds(3)));
+        Assert.False(_store.ReportProgress("other-agent", "progress-task", lease.LeaseId,
+            lease.FencingToken, 47, "Wrong agent", now.AddSeconds(3)));
+
+        var progress = Assert.Single(_store.GetTaskHistory("progress-task")
+            .Where(item => item.EventCode == "TASK_PROGRESS"));
+        Assert.Equal(45, progress.ProgressPercent);
+        Assert.Equal("Downloaded 45 percent", progress.ProgressMessage);
+        Assert.Equal("agent-progress", progress.AgentId);
+        Assert.Equal(lease.LeaseId, progress.LeaseId);
+        Assert.Equal(lease.FencingToken, progress.FencingToken);
+
+        Assert.True(_store.Complete("agent-progress", "progress-task", lease.LeaseId,
+            lease.FencingToken, succeeded: true, now.AddSeconds(4)));
+        Assert.False(_store.ReportProgress("agent-progress", "progress-task", lease.LeaseId,
+            lease.FencingToken, 90, "Late progress", now.AddSeconds(5)));
+    }
+
+    [Fact]
+    public void ProgressHistoryColumnsAreAddedToAnExistingTaskEventJournal()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.Enqueue(CreateTask("progress-migration"), now);
+        using (var connection = new SqliteConnection($"Data Source={_databasePath};Foreign Keys=True;"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "ALTER TABLE TaskEvents DROP COLUMN progress_percent; ALTER TABLE TaskEvents DROP COLUMN progress_message;";
+            command.ExecuteNonQuery();
+        }
+
+        var migrated = new DesktopHubStore(_databasePath);
+        var columns = new HashSet<string>(StringComparer.Ordinal);
+        using (var connection = new SqliteConnection($"Data Source={_databasePath};Foreign Keys=True;"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA table_info(TaskEvents);";
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) columns.Add(reader.GetString(1));
+        }
+        Assert.Contains("progress_percent", columns);
+        Assert.Contains("progress_message", columns);
+        Assert.NotNull(migrated.GetTaskState("progress-migration"));
+    }
+
+    [Fact]
+    public void DeviceIdResolvesToStableAgentId()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-lookup", "device-lookup", ["research"], 1, true), now);
+        Assert.Equal("agent-lookup", _store.GetAgentIdByDeviceId("device-lookup"));
+        Assert.Null(_store.GetAgentIdByDeviceId("missing-device"));
+    }
+
+    [Fact]
     public void TaskStateHistoryIsDurableAndOrderedAcrossStoreRestart()
     {
         var now = DateTimeOffset.UtcNow;
