@@ -61,6 +61,7 @@ class GlafiraCoreTaskPlanInstrumentedTest {
         assertEquals(listOf("child", "parent"), result.plan.nodes.map { it.taskId })
         assertEquals(GlafiraCoreTaskPlanStatus.QUEUED, result.plan.status)
         assertEquals(setOf("parent"), queue.taskDependencies("child"))
+        assertEquals(setOf("parent"), result.plan.dependencies["child"])
 
         // Despite appearing second in the plan, the predecessor is the only claimable node.
         assertEquals("parent", queue.claimNext(11_000L)?.taskId)
