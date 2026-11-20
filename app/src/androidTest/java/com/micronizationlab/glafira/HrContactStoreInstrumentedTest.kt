@@ -26,7 +26,7 @@ class HrContactStoreInstrumentedTest {
 
     @After
     fun tearDown() {
-        File(context.filesDir, "hr_contacts").listFiles()?.forEach { it.delete() }
+        File(context.noBackupFilesDir, "hr_contacts").listFiles()?.forEach { it.delete() }
     }
 
     private fun sampleContact(name: String = "Алексей Проверочный"): HrContactCard {
@@ -84,7 +84,7 @@ class HrContactStoreInstrumentedTest {
         assertEquals(listOf(contact), HrContactStore.list(context, projectId))
         assertTrue(HrContactStore.list(context, "another-project-${UUID.randomUUID()}").isEmpty())
 
-        val directory = File(context.filesDir, "hr_contacts")
+        val directory = File(context.noBackupFilesDir, "hr_contacts")
         val storedFiles = directory.listFiles().orEmpty()
         assertEquals(1, storedFiles.size)
         val ciphertext = storedFiles.single().readText()
@@ -107,7 +107,7 @@ class HrContactStoreInstrumentedTest {
     @Test
     fun tamperedEnvelopeFailsClosedWithoutReplacingTheFile() {
         HrContactStore.upsert(context, projectId, sampleContact())
-        val file = File(context.filesDir, "hr_contacts").listFiles().orEmpty().single()
+        val file = File(context.noBackupFilesDir, "hr_contacts").listFiles().orEmpty().single()
         file.writeText("{tampered")
 
         val error = runCatching { HrContactStore.list(context, projectId) }.exceptionOrNull()
