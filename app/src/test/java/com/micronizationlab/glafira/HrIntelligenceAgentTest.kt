@@ -76,6 +76,41 @@ class HrIntelligenceAgentTest {
         assertFalse(outcome.canPromote)
     }
 
+
+    @Test
+    fun duplicateReviewerResponsesBlockPromotion() {
+        val outcome = HrMemoryReviewPolicy.evaluate(
+            eligibleAgentIds = setOf("analyst", "accountant"),
+            reviews = listOf(
+                review("analyst", HrReviewDecision.ACCEPT),
+                review("analyst", HrReviewDecision.ACCEPT),
+                review("accountant", HrReviewDecision.ACCEPT)
+            ),
+            requiresOwnerApproval = false,
+            ownerApproved = false
+        )
+
+        assertFalse(outcome.allEligibleAgentsReviewed)
+        assertTrue(outcome.hasConflict)
+        assertFalse(outcome.canPromote)
+    }
+
+    @Test
+    fun factsWithoutSourceReferencesAreRejected() {
+        val error = runCatching {
+            HrContactFact(
+                category = HrFactCategory.NAME,
+                value = "Имя без источника",
+                confidence = HrFactConfidence.CONFIRMED,
+                sensitivity = HrFactSensitivity.PERSONAL,
+                sources = emptyList(),
+                isDirectlyStated = true
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+    }
+
     @Test
     fun verifiedContactRequiresSourceBackedConfirmedName() {
         val source = HrSourceReference(
