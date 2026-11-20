@@ -3,6 +3,23 @@
 **Purpose:** provide a reliable entry point for any collaborating engineer or AI assistant, including Костя.  
 **Important:** this is a handoff and navigation document, not proof that listed features are implemented.
 
+
+## Mandatory first-session repository audit and reciprocal handoff (Костя and every collaborator)
+
+At the beginning of every session, before implementation:
+1. Fetch current main, all open PRs and issues; do not trust prior snapshots.
+2. Read this handoff, IMPLEMENTATION_ROADMAP.md, ENGINEERING_DISPATCHER_OPERATING_RULE.md, ENGINEERING_ACTION_POOL_A.md, relevant specifications and active PR descriptions.
+3. Inspect repository tree and real entry points: modules, UI screens, feature flags, manifest/permissions, build targets, tests and release workflows. Read actual source and PR diffs for the active task.
+4. Audit all collaborator actions, including your own: commits, diffs, PR bases/heads, workflow runs, artifacts, skipped jobs, warnings and failures. Read actual logs and test reports; green checkmarks alone are insufficient.
+5. Build a feature-presence/acceptance matrix. Source files do not prove a feature is reachable, wired, permitted, clickable, persisted or end-to-end functional.
+6. Refresh GitHub frequently. On run completion, inspect logs and counts, fix failures and dispatch the next independent action. Parallelize independent workstreams; serialize conflicting files and stacked dependency chains.
+7. Compare every build with the previous acceptance matrix; never silently drop requirements or regress Bridge, backup, council, task queue, voice or settings.
+8. Before ending, append a dated session journal entry: exact commit/PR/head SHA, work, test counts, skipped checks, artifact links, risks, next safe action and file/branch ownership. Never overwrite collaborator notes.
+9. Leave exact next-session instructions for ChatGPT/GLAFIRA; ChatGPT leaves instructions for Костя and Костя leaves instructions for ChatGPT. Reconcile both against live GitHub state before acting.
+10. No unsupported pass claims. No merge, force-push, spending, token issuance or LIVE side effect without required owner approval.
+
+GitHub Actions may continue between sessions; code changes are not silently performed in the background. The next session must inspect results before assuming completion.
+
 ## 1. Read these documents first
 
 1. [Engineering Roadmap](IMPLEMENTATION_ROADMAP.md) — owner priority order and dependency rules.
