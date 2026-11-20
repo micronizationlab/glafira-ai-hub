@@ -6,8 +6,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiScrollable
-import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -49,15 +47,19 @@ class BackupSettingsSmokeTest {
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
             assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
             saveButton!!.click()
-            val settings = UiScrollable(UiSelector().scrollable(true)).setAsVerticalList()
-            assertTrue(
-                "Missing-folder guidance could not be scrolled into view",
-                settings.scrollIntoView(
-                    UiSelector().descriptionContains("Сначала выбери папку")
-                )
-            )
-            assertTrue("Missing-folder guidance was not shown",
-                device.wait(Until.hasObject(By.descContains("Сначала выбери папку")), 5_000))
+            var guidance = device.wait(
+                Until.findObject(By.descContains("Сначала выбери папку")), 1_000)
+            repeat(8) {
+                if (guidance == null) {
+                    device.swipe(
+                        device.displayWidth / 2, device.displayHeight * 3 / 4,
+                        device.displayWidth / 2, device.displayHeight / 4, 12
+                    )
+                    guidance = device.wait(
+                        Until.findObject(By.descContains("Сначала выбери папку")), 1_000)
+                }
+            }
+            assertNotNull("Missing-folder guidance was not shown after scrolling", guidance)
         } finally {
             scenario.close()
         }
