@@ -56,7 +56,8 @@ public sealed class BridgeV1TlsCertificateStore
 
         var existing = LoadPersisted();
         if (!StringComparer.Ordinal.Equals(existing.HubId, hubId) ||
-            !existing.BindAddresses.SequenceEqual(normalized.Select(address => address.ToString()), StringComparer.Ordinal))
+            !existing.BindAddresses.Select(address => address.ToString())
+                .SequenceEqual(normalized.Select(address => address.ToString()), StringComparer.Ordinal))
         {
             existing.Certificate.Dispose();
             throw new InvalidOperationException("BRIDGE_TLS_ROTATION_REQUIRED");
@@ -255,27 +256,8 @@ public sealed class BridgeV1TlsCertificateStore
         ArgumentNullException.ThrowIfNull(addresses);
         if (addresses.Count is < 1 or > 8)
             throw new ArgumentOutOfRangeException(nameof(addresses), "One to eight private LAN addresses are required.");
-        if (addresses.Distinct().Count() != addresses.Count || addresses.Any(address => !IsPrivateLanAddress(address)))
+        if (addresses.Distinct().Count() != addresses.Count || addresses.Any(address => !BridgeV1LanAddressPolicy.IsPrivateLanAddress(address)))
             throw new ArgumentException("TLS identity may include only unique private LAN addresses.", nameof(addresses));
-    }
-
-    internal static bool IsPrivateLanAddress(IPAddress address)
-    {
-        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) ||
-            address.Equals(IPAddress.IPv6Any) || address.IsIPv6Multicast ||
-            address.IsIPv4MappedToIPv6)
-            return false;
-
-        var bytes = address.GetAddressBytes();
-        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-        {
-            return bytes[0] == 10 ||
-                (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) ||
-                (bytes[0] == 192 && bytes[1] == 168);
-        }
-
-        return address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 &&
-            (bytes[0] & 0xFE) == 0xFC;
     }
 
     private static IReadOnlyList<IPAddress> NormalizeAddresses(IReadOnlyCollection<IPAddress> addresses) =>
