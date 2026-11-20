@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -83,6 +84,22 @@ class MainActivity : FragmentActivity() {
 
 @Composable
 fun App() {
+    val context = LocalContext.current
+    var needsRecovery by remember { mutableStateOf(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) }
+    if (needsRecovery) {
+        Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+            Text("Восстановление было прервано", color = Red, fontSize = 20.sp)
+            Text("Введите пароль прерванного восстановления и выполните откат ниже. Рабочие данные и отправка задач заблокированы до завершения отката.", color = Tx)
+            BackupSettingsSection()
+            Button(onClick = { needsRecovery = GlafiraCoreBackupCoordinator.hasInterruptedRestore(context) }) {
+                Text("ПРОВЕРИТЬ И ПРОДОЛЖИТЬ")
+            }
+        }
+    } else WorkspaceApp()
+}
+
+@Composable
+private fun WorkspaceApp() {
     var currentAgent by remember { mutableStateOf<A?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var showCouncil by remember { mutableStateOf(false) }

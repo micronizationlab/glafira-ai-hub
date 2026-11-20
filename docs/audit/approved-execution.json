@@ -1,0 +1,3071 @@
+{
+  "source_filename": "GLAFIRA_Audit_Register_2026-11-20.xlsx",
+  "source_sha256": "1fa8031b1c2cebb928b08afa1f0d2d73a6fab934998331482903c09520677e34",
+  "baseline": "c2d4ca36efd3a52a5cc3bde97969b2fb0a03e1cc",
+  "approved_count": 40,
+  "register": [
+    {
+      "id": "F01",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Android / вход",
+      "title": "Биометрическая блокировка не может открыть главный экран",
+      "approved": true,
+      "status": "implemented_pending_acceptance",
+      "evidence": "#203; FragmentActivity; emulator passed for c3f7d5f, real biometrics not run"
+    },
+    {
+      "id": "F02",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Android / бэкап",
+      "title": "Архив основной ветки не включает базу задач Core",
+      "approved": true,
+      "status": "partial",
+      "evidence": "main includes SQLite snapshot; F23 portability remains open"
+    },
+    {
+      "id": "F03",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Android / восстановление",
+      "title": "Прерванное восстановление оставляет смесь поколений файлов",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "F04",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Android / хранение",
+      "title": "JSON-файлы пишутся неатомарно, повреждения скрываются",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#204; atomic generations and corruption quarantine"
+    },
+    {
+      "id": "F05",
+      "category": "Исправление",
+      "priority": "P2",
+      "module": "Android / очередь",
+      "title": "Повтор очереди добавляет пользовательское сообщение второй раз",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#204; operation IDs and separate queue status"
+    },
+    {
+      "id": "F06",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Android / провайдеры",
+      "title": "Неизвестный результат POST автоматически повторяется",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#204; typed transport outcomes and explicit unknown retry"
+    },
+    {
+      "id": "F07",
+      "category": "Исправление",
+      "priority": "P2",
+      "module": "Android / очередь",
+      "title": "Восстановление сети само по себе не запускает очередь",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#204; foreground reconnection polling; background scheduling remains follow-up"
+    },
+    {
+      "id": "F08",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Android / жизненный цикл",
+      "title": "Долгий запрос принадлежит экрану, а не долговечной задаче",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#204; application coroutine scope and process-death outbox recovery"
+    },
+    {
+      "id": "F09",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Core / результат",
+      "title": "Обработчик Core отбрасывает фактический результат Bridge",
+      "approved": true,
+      "status": "implemented_pending_acceptance",
+      "evidence": "#203; actual Bridge result retained"
+    },
+    {
+      "id": "F10",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Desktop JVM / очередь",
+      "title": "CLI выбирает очередь в памяти при наличии долговечного класса",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "F11",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Desktop JVM / доставка",
+      "title": "После трёх неудачных отправок результат теряется для Core",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "F12",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Desktop JVM / остановка",
+      "title": "close может завершиться при ещё работающем обработчике",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "F13",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Bridge / поколения lease",
+      "title": "Legacy-обновления не привязаны к конкретной аренде задачи",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "F14",
+      "category": "Исправление",
+      "priority": "P2",
+      "module": "Android / настройки бэкапа",
+      "title": "Restore стирает список разрешённых моделей-консультантов",
+      "approved": true,
+      "status": "implemented_pending_acceptance",
+      "evidence": "current main validates/restores peer provider allowlist"
+    },
+    {
+      "id": "F15",
+      "category": "Исправление",
+      "priority": "P2",
+      "module": "Android / проекты",
+      "title": "Удаление проекта оставляет связанные данные и может восстановить встроенный проект",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#204; Core terminal-data purge, queue/drafts/pins/history and tombstones"
+    },
+    {
+      "id": "F16",
+      "category": "Исправление",
+      "priority": "P2",
+      "module": "Android / GigaChat",
+      "title": "Вызовы GigaChat не ограничены тайм-аутом и размером ответа",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#204; OAuth/chat timeout, size bound and disconnect"
+    },
+    {
+      "id": "F17",
+      "category": "Исправление",
+      "priority": "P2",
+      "module": "Android / Алиса",
+      "title": "Наличие ключа делает Алису «готовой», хотя адаптер отсутствует",
+      "approved": true,
+      "status": "implemented_pending_acceptance",
+      "evidence": "#203; unimplemented Yandex adapter is unavailable"
+    },
+    {
+      "id": "F18",
+      "category": "Исправление",
+      "priority": "P2",
+      "module": "Android / хранилище паролей",
+      "title": "Новое хранилище нельзя повторно открыть после локальной блокировки",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#203/#204; vault configured state refresh"
+    },
+    {
+      "id": "F19",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "iOS / Face ID",
+      "title": "В app target отсутствует описание использования Face ID",
+      "approved": true,
+      "status": "implemented_pending_acceptance",
+      "evidence": "#203; both target configs declare Face ID usage; iOS runner queued"
+    },
+    {
+      "id": "F20",
+      "category": "Исправление",
+      "priority": "P2",
+      "module": "Windows Hub / выбор задачи",
+      "title": "Подходящая задача за первыми 128 кандидатами не выдаётся",
+      "approved": true,
+      "status": "implemented_pending_acceptance",
+      "evidence": "#203; 129th candidate regression passed in Windows CI"
+    },
+    {
+      "id": "F21",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "CI / Android",
+      "title": "Изменения TaskStore, PayloadCrypto и BackupArchive обходят эмулятор",
+      "approved": true,
+      "status": "implemented_pending_acceptance",
+      "evidence": "#203; main Android source selects emulator; Windows Hub added to common CI"
+    },
+    {
+      "id": "F22",
+      "category": "Исправление",
+      "priority": "P2",
+      "module": "Android / статус бэкапа",
+      "title": "Экран не наблюдает завершение фонового резервирования",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#204; manual/daily WorkManager observation"
+    },
+    {
+      "id": "F23",
+      "category": "Исправление",
+      "priority": "P1",
+      "module": "Core / переносимость бэкапа",
+      "title": "Копия SQLite из PR #191 не решает восстановление на новом телефоне",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "M01",
+      "category": "Незавершённый этап",
+      "priority": "До LIVE",
+      "module": "Core / исполнение",
+      "title": "Подключить путь от пользовательской задачи до устойчивого исполнения",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "M02",
+      "category": "Незавершённый этап",
+      "priority": "До LIVE",
+      "module": "Windows Hub / сеть",
+      "title": "Завершить авторитетный Windows HTTPS host и сопряжение",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "M03",
+      "category": "Незавершённый этап",
+      "priority": "До LIVE",
+      "module": "Windows Agent",
+      "title": "Подключить service к enrollment, lease и обработчикам",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "M04",
+      "category": "Незавершённый этап",
+      "priority": "До LIVE",
+      "module": "Core / Windows Hub",
+      "title": "Согласовать единое владение и синхронизацию задач",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "M05",
+      "category": "Незавершённый этап",
+      "priority": "До релиза",
+      "module": "iOS / продукт",
+      "title": "Подключить проекты, диалоги и реальные состояния iOS",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "M06",
+      "category": "Незавершённый этап",
+      "priority": "После основы",
+      "module": "Core / память и проверка",
+      "title": "Реализовать operational memory, независимую проверку и Trace",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "M07",
+      "category": "Незавершённый этап",
+      "priority": "До LIVE",
+      "module": "Контракты / платформы",
+      "title": "Принять общие DTO и поведенческие протоколы на всех платформах",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "M08",
+      "category": "Незавершённый этап",
+      "priority": "После основы",
+      "module": "Mother / сеть / VPN",
+      "title": "Разрабатывать Mother, кошелёк и VPN как последующие продукты",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "M09",
+      "category": "Незавершённый этап",
+      "priority": "До релиза",
+      "module": "Сборки / поставка",
+      "title": "Завершить подписанные установки, обновление и приёмку устройств",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "U01",
+      "category": "Улучшение",
+      "priority": "После исправлений",
+      "module": "Провайдеры",
+      "title": "Добавить выбор модели и проверку доступности",
+      "approved": true,
+      "status": "partial",
+      "evidence": "#204 model IDs configurable; full provider health UI/fallback not complete"
+    },
+    {
+      "id": "U02",
+      "category": "Улучшение",
+      "priority": "После основы",
+      "module": "Знания / документы",
+      "title": "Добавить документы, поиск с источниками и прикрепления",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "U03",
+      "category": "Улучшение",
+      "priority": "После исправлений",
+      "module": "Конфиденциальность",
+      "title": "Шифровать чувствительную историю и локальные результаты",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    },
+    {
+      "id": "U04",
+      "category": "Улучшение",
+      "priority": "После исправлений",
+      "module": "Android / vault",
+      "title": "Добавить автоматическую блокировку и ограничение сессии",
+      "approved": true,
+      "status": "implemented_pending_ci",
+      "evidence": "#204; background lock and five-minute session limit"
+    },
+    {
+      "id": "U05",
+      "category": "Улучшение",
+      "priority": "После основы",
+      "module": "Планировщик",
+      "title": "Распределять нагрузку между проектами и ограничивать расходы",
+      "approved": true,
+      "status": "partial",
+      "evidence": "main includes project fairness; direct provider cost accounting not complete"
+    },
+    {
+      "id": "U06",
+      "category": "Улучшение",
+      "priority": "После основы",
+      "module": "Наблюдаемость",
+      "title": "Показывать очередь, владельца, lease, ошибки и результат в одном месте",
+      "approved": true,
+      "status": "partial",
+      "evidence": "main has task queue UI and Desktop event history; unified authority/result view not complete"
+    },
+    {
+      "id": "U07",
+      "category": "Улучшение",
+      "priority": "После исправлений",
+      "module": "Интерфейс / качество",
+      "title": "Добавить UI-сценарии и разделить большой MainActivity",
+      "approved": true,
+      "status": "partial",
+      "evidence": "#204 extracts history/pending delivery; complete navigation/accessibility work not done"
+    },
+    {
+      "id": "U08",
+      "category": "Улучшение",
+      "priority": "После основы",
+      "module": "Контекст / согласия",
+      "title": "Сделать состав проектного контекста видимым владельцу",
+      "approved": true,
+      "status": "open",
+      "evidence": "Not implemented/accepted in this execution."
+    }
+  ],
+  "cycle_1_draft": [
+    {
+      "number": 1,
+      "id": "C1-001",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Добавить версию формата JSON и цепочку миграций без перезаписи исходника",
+      "depends_on": [
+        "APPROVED-REGISTER-REGRESSION"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 2,
+      "id": "C1-002",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Добавить журнал незавершённых миграций с восстановлением при запуске",
+      "depends_on": [
+        "C1-001"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 3,
+      "id": "C1-003",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Ограничить размер JSON до разбора и возвращать диагностируемую ошибку",
+      "depends_on": [
+        "C1-002"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 4,
+      "id": "C1-004",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Добавить проверку контрольной суммы поколения перед его продвижением",
+      "depends_on": [
+        "C1-003"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 5,
+      "id": "C1-005",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Вынести все закрепления в атомарный репозиторий",
+      "depends_on": [
+        "C1-004"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 6,
+      "id": "C1-006",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Добавить долговечный журнал удаления проекта и завершать очистку после перезапуска",
+      "depends_on": [
+        "C1-005"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 7,
+      "id": "C1-007",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Отклонять новые задачи для удалённых проектов во всех точках входа",
+      "depends_on": [
+        "C1-006"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 8,
+      "id": "C1-008",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Добавить миграцию истории в шифрованный локальный формат с откатом",
+      "depends_on": [
+        "C1-007"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 9,
+      "id": "C1-009",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Добавить шифрование текста и результатов Android outbox с отдельным форматом миграции",
+      "depends_on": [
+        "C1-008"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 10,
+      "id": "C1-010",
+      "phase": "S1",
+      "phase_title": "Долговечные локальные данные",
+      "audit_ids": [
+        "F04",
+        "F15",
+        "U03"
+      ],
+      "action": "Добавить единый экран диагностики повреждений с экспортом обезличенного отчёта",
+      "depends_on": [
+        "C1-009"
+      ],
+      "conflicts": "app storage; #54/#56; preserve built-in project migrations",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 11,
+      "id": "C1-011",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Добавить версионированный логический экспорт задач вместо переносимого raw SQLite",
+      "depends_on": [
+        "C1-010"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 12,
+      "id": "C1-012",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Добавить перенос результатов Core с расшифровкой источником и перешифрованием получателем",
+      "depends_on": [
+        "C1-011"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 13,
+      "id": "C1-013",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Включить зависимости, узлы и заголовки планов в переносимую схему",
+      "depends_on": [
+        "C1-012"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 14,
+      "id": "C1-014",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Исключить пары устройств, разрешения и активные аренды из переносимого снимка",
+      "depends_on": [
+        "C1-013"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 15,
+      "id": "C1-015",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Добавить проверку полного логического снимка до изменения файлов приложения",
+      "depends_on": [
+        "C1-014"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 16,
+      "id": "C1-016",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Добавить fsync-журнал отката вне восстанавливаемого каталога",
+      "depends_on": [
+        "C1-015"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 17,
+      "id": "C1-017",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Заблокировать все обработчики и сетевую отправку при незавершённом restore",
+      "depends_on": [
+        "C1-016"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 18,
+      "id": "C1-018",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Добавить восстановление после остановки процесса в каждой фазе установки снимка",
+      "depends_on": [
+        "C1-017"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 19,
+      "id": "C1-019",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Добавить импорт предыдущей версии архива с явным сообщением о несовместимых данных",
+      "depends_on": [
+        "C1-018"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 20,
+      "id": "C1-020",
+      "phase": "S2",
+      "phase_title": "Переносимые бэкапы и восстановление",
+      "audit_ids": [
+        "F02",
+        "F03",
+        "F14",
+        "F23"
+      ],
+      "action": "Добавить приёмочный сценарий переноса на новый Keystore и восстановление из облачной папки",
+      "depends_on": [
+        "C1-019"
+      ],
+      "conflicts": "BackupArchive, TaskStore; #57/#191/#193; retain authenticated archive hardening",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 21,
+      "id": "C1-021",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Добавить конфигурацию endpoint/model с проверкой HTTPS и запретом перенаправления ключей",
+      "depends_on": [
+        "C1-020"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 22,
+      "id": "C1-022",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Добавить отдельную проверку доступа выбранной модели для каждого поддержанного провайдера",
+      "depends_on": [
+        "C1-021"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 23,
+      "id": "C1-023",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Сохранять дату, модель и обезличенную причину последней проверки доступности",
+      "depends_on": [
+        "C1-022"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 24,
+      "id": "C1-024",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Показывать различие между сохранённым ключом и подтверждённой доступностью модели",
+      "depends_on": [
+        "C1-023"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 25,
+      "id": "C1-025",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Добавить учёт usage из ответов без сохранения ключей и сырых заголовков",
+      "depends_on": [
+        "C1-024"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 26,
+      "id": "C1-026",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Добавить проектный лимит стоимости и резервирование бюджета до запроса",
+      "depends_on": [
+        "C1-025"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 27,
+      "id": "C1-027",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Добавить сверку фактической стоимости с резервом после ответа",
+      "depends_on": [
+        "C1-026"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 28,
+      "id": "C1-028",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Добавить долговечные контрольные точки консультации нескольких моделей",
+      "depends_on": [
+        "C1-027"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 29,
+      "id": "C1-029",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Добавить разрешённый владельцем fallback с видимым изменением провайдера и границы данных",
+      "depends_on": [
+        "C1-028"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 30,
+      "id": "C1-030",
+      "phase": "S3",
+      "phase_title": "Транспорт моделей и стоимость",
+      "audit_ids": [
+        "F06",
+        "F16",
+        "F17",
+        "U01",
+        "U05"
+      ],
+      "action": "Добавить адаптер Yandex только с валидированной конфигурацией проекта и живой проверкой",
+      "depends_on": [
+        "C1-029"
+      ],
+      "conflicts": "AiProviderClient, Coordinator, Settings; #54; no silent privacy-changing fallback",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 31,
+      "id": "C1-031",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Добавить WorkManager wake-up для безопасно повторяемых сообщений при восстановлении сети",
+      "depends_on": [
+        "C1-030"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 32,
+      "id": "C1-032",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Добавить lease процесса доставки с атомарным claim и защитой от двух workers",
+      "depends_on": [
+        "C1-031"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 33,
+      "id": "C1-033",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Сохранять версию промпта и ссылки на разрешённый контекст вместе с операцией",
+      "depends_on": [
+        "C1-032"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 34,
+      "id": "C1-034",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Добавить атомарную фиксацию результата и метки доставки в один локальный журнал",
+      "depends_on": [
+        "C1-033"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 35,
+      "id": "C1-035",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Добавить отмену queued операции с долговечной записью причины",
+      "depends_on": [
+        "C1-034"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 36,
+      "id": "C1-036",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Добавить отдельное действие сверки uncertain операции перед ручным повтором",
+      "depends_on": [
+        "C1-035"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 37,
+      "id": "C1-037",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Добавить ограничение размера и удержания завершённых outbox записей",
+      "depends_on": [
+        "C1-036"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 38,
+      "id": "C1-038",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Добавить метрики возраста очереди и количества попыток без содержимого сообщений",
+      "depends_on": [
+        "C1-037"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 39,
+      "id": "C1-039",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Добавить восстановление ответа после завершения Activity и повторного открытия приложения",
+      "depends_on": [
+        "C1-038"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 40,
+      "id": "C1-040",
+      "phase": "S4",
+      "phase_title": "Доставка сообщений",
+      "audit_ids": [
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "action": "Добавить очередь диалога, сохраняющую порядок пользовательских запросов и ответов",
+      "depends_on": [
+        "C1-039"
+      ],
+      "conflicts": "PendingDelivery, HistoryStore; one outbox authority; no automatic unknown replay",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 41,
+      "id": "C1-041",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Добавить единый контракт регистрации и отзыва устройства Windows Hub",
+      "depends_on": [
+        "C1-040"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 42,
+      "id": "C1-042",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Добавить общий DTO lease с обязательными leaseId и fencingToken",
+      "depends_on": [
+        "C1-041"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 43,
+      "id": "C1-043",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Добавить общий DTO heartbeat с ограничением срока и поколения",
+      "depends_on": [
+        "C1-042"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 44,
+      "id": "C1-044",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Добавить контракт терминального результата с digest и идентификатором отправителя",
+      "depends_on": [
+        "C1-043"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 45,
+      "id": "C1-045",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Добавить контракт идемпотентного durable ACK результата",
+      "depends_on": [
+        "C1-044"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 46,
+      "id": "C1-046",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Подключить общие DTO к Android сериализации вместо параллельных строковых моделей",
+      "depends_on": [
+        "C1-045"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 47,
+      "id": "C1-047",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Подключить общие DTO к Swift сериализации и обработке ошибок",
+      "depends_on": [
+        "C1-046"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 48,
+      "id": "C1-048",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Подключить общие DTO к Windows Agent и Desktop listener",
+      "depends_on": [
+        "C1-047"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 49,
+      "id": "C1-049",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Добавить семантическую совместимость версий и явное отклонение старого unfenced клиента",
+      "depends_on": [
+        "C1-048"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 50,
+      "id": "C1-050",
+      "phase": "S5",
+      "phase_title": "Общие исполняемые контракты",
+      "audit_ids": [
+        "F13",
+        "M07"
+      ],
+      "action": "Добавить единый набор отрицательных протокольных сценариев на всех четырёх реализациях",
+      "depends_on": [
+        "C1-049"
+      ],
+      "conflicts": "contracts/v1, Android/JVM/C#/Swift; #170; no mixed unfenced wire formats",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 51,
+      "id": "C1-051",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Добавить сохраняемый режим исполнения с отдельным владельческим переключением LIVE",
+      "depends_on": [
+        "C1-050"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 52,
+      "id": "C1-052",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Связать создание плана из UI с просмотром узлов до выдачи разрешения",
+      "depends_on": [
+        "C1-051"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 53,
+      "id": "C1-053",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Добавить исполнение только зарегистрированных безопасных локальных типов задач",
+      "depends_on": [
+        "C1-052"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 54,
+      "id": "C1-054",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Добавить проверку хэша утверждённого действия непосредственно перед исполнением",
+      "depends_on": [
+        "C1-053"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 55,
+      "id": "C1-055",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Добавить истечение, отзыв и одноразовое потребление grant в транзакции",
+      "depends_on": [
+        "C1-054"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 56,
+      "id": "C1-056",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Добавить отмену плана с каскадным прекращением не начатых узлов",
+      "depends_on": [
+        "C1-055"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 57,
+      "id": "C1-057",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Добавить политику отказа зависимого узла при terminal failure предшественника",
+      "depends_on": [
+        "C1-056"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 58,
+      "id": "C1-058",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Добавить учёт шагов, времени и стоимости на уровне всего плана",
+      "depends_on": [
+        "C1-057"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 59,
+      "id": "C1-059",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Добавить сохранение типизированного результата каждого узла без подмены статусной строкой",
+      "depends_on": [
+        "C1-058"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 60,
+      "id": "C1-060",
+      "phase": "S6",
+      "phase_title": "Core: исполнение и разрешения",
+      "audit_ids": [
+        "M01",
+        "F09",
+        "U05"
+      ],
+      "action": "Добавить восстановление незавершённого плана после перезапуска без повтора внешнего эффекта",
+      "depends_on": [
+        "C1-059"
+      ],
+      "conflicts": "RuntimeOwner, executor, grants, plan DAG; #190/#192; keep DRY_RUN until gate",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 61,
+      "id": "C1-061",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить HTTPS listener с управляемым lifecycle и явным локальным адресом",
+      "depends_on": [
+        "C1-060"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 62,
+      "id": "C1-062",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить загрузку сертификата из защищённого хранилища Windows",
+      "depends_on": [
+        "C1-061"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 63,
+      "id": "C1-063",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить сопряжение по одноразовому приглашению с ограниченным сроком",
+      "depends_on": [
+        "C1-062"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 64,
+      "id": "C1-064",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить интерфейс владельческого одобрения пары и запрошенных scopes",
+      "depends_on": [
+        "C1-063"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 65,
+      "id": "C1-065",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить выпуск индивидуального device credential через DPAPI resolver",
+      "depends_on": [
+        "C1-064"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 66,
+      "id": "C1-066",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить маршрутизацию подписанных запросов через durable replay guard",
+      "depends_on": [
+        "C1-065"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 67,
+      "id": "C1-067",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить лимиты тела, времени, частоты и параллельности входящих запросов",
+      "depends_on": [
+        "C1-066"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 68,
+      "id": "C1-068",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить отзыв устройства с немедленным запретом heartbeat, claim и result",
+      "depends_on": [
+        "C1-067"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 69,
+      "id": "C1-069",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить атомарный lease/result/ACK маршрут поверх существующего Hub store",
+      "depends_on": [
+        "C1-068"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 70,
+      "id": "C1-070",
+      "phase": "S7",
+      "phase_title": "Авторитетный Windows HTTPS Hub",
+      "audit_ids": [
+        "M02"
+      ],
+      "action": "Добавить сетевой интеграционный стенд с TLS pinning, перезапуском listener и потерей ответа",
+      "depends_on": [
+        "C1-069"
+      ],
+      "conflicts": "windows-desktop; #189/#195; Android/iOS are clients; do not merge Android host #140",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 71,
+      "id": "C1-071",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Подключить enrollment service к авторитетному HTTPS Hub",
+      "depends_on": [
+        "C1-070"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 72,
+      "id": "C1-072",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Добавить загрузку device credential из CurrentUser/Service account protected store",
+      "depends_on": [
+        "C1-071"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 73,
+      "id": "C1-073",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Добавить heartbeat возможностей и ограничений ресурсов устройства",
+      "depends_on": [
+        "C1-072"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 74,
+      "id": "C1-074",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Добавить опрос lease с bounded backoff и обработкой отзыва устройства",
+      "depends_on": [
+        "C1-073"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 75,
+      "id": "C1-075",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Подключить разрешённые handler registry к полученным lease",
+      "depends_on": [
+        "C1-074"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 76,
+      "id": "C1-076",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Добавить локальное долговечное состояние исполнения с исключением второго процесса",
+      "depends_on": [
+        "C1-075"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 77,
+      "id": "C1-077",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Добавить персистентный result outbox, удерживаемый до durable ACK",
+      "depends_on": [
+        "C1-076"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 78,
+      "id": "C1-078",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Добавить карантин неопределённого внешнего результата после аварии service",
+      "depends_on": [
+        "C1-077"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 79,
+      "id": "C1-079",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Добавить drain shutdown с удержанием lock и ключей до фактической остановки handlers",
+      "depends_on": [
+        "C1-078"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 80,
+      "id": "C1-080",
+      "phase": "S8",
+      "phase_title": "Windows Agent service",
+      "audit_ids": [
+        "M03",
+        "F10",
+        "F11",
+        "F12"
+      ],
+      "action": "Добавить service recovery и health endpoint без секретов и текста задач",
+      "depends_on": [
+        "C1-079"
+      ],
+      "conflicts": "windows-agent; desktop-bridge is legacy test client, not a second authority",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 81,
+      "id": "C1-081",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Зафиксировать owner/epoch поля в общих задачах и индексах хранения",
+      "depends_on": [
+        "C1-080"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 82,
+      "id": "C1-082",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Добавить авторитетную регистрацию проекта и клиентское представление Android",
+      "depends_on": [
+        "C1-081"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 83,
+      "id": "C1-083",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Добавить загрузку пользовательского плана на Windows Hub с idempotency key",
+      "depends_on": [
+        "C1-082"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 84,
+      "id": "C1-084",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Добавить журнал исходящих клиентских операций для работы offline",
+      "depends_on": [
+        "C1-083"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 85,
+      "id": "C1-085",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Добавить серверную дедупликацию повторной синхронизации того же плана",
+      "depends_on": [
+        "C1-084"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 86,
+      "id": "C1-086",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Добавить курсор изменений и возобновляемую загрузку статусов и результатов",
+      "depends_on": [
+        "C1-085"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 87,
+      "id": "C1-087",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Добавить обнаружение устаревшего owner epoch и запрет записи старого узла",
+      "depends_on": [
+        "C1-086"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 88,
+      "id": "C1-088",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Добавить разрешение конфликтов удаления и редактирования проекта через tombstones",
+      "depends_on": [
+        "C1-087"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 89,
+      "id": "C1-089",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Добавить владельческий перенос authority с остановкой выдачи lease предыдущим узлом",
+      "depends_on": [
+        "C1-088"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 90,
+      "id": "C1-090",
+      "phase": "S9",
+      "phase_title": "Владение и синхронизация устройств",
+      "audit_ids": [
+        "M04",
+        "F13"
+      ],
+      "action": "Добавить восстановление после разрыва сети с проверкой отсутствия двух исполнителей",
+      "depends_on": [
+        "C1-089"
+      ],
+      "conflicts": "Core SQLite vs Windows Hub; #65; one owner, monotonic epochs, no dual writers",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 91,
+      "id": "C1-091",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Разделить App navigation и состояние проекта в отдельный lifecycle owner",
+      "depends_on": [
+        "C1-090"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 92,
+      "id": "C1-092",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Вынести ChatScreen и его модель состояния из MainActivity",
+      "depends_on": [
+        "C1-091"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 93,
+      "id": "C1-093",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Добавить единый экран owner/task/lease/result с обновлением из репозитория",
+      "depends_on": [
+        "C1-092"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 94,
+      "id": "C1-094",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Добавить действия pause/resume/cancel с отображением подтверждённого серверного статуса",
+      "depends_on": [
+        "C1-093"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 95,
+      "id": "C1-095",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Добавить видимый состав контекста перед отправкой в другой провайдер",
+      "depends_on": [
+        "C1-094"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 96,
+      "id": "C1-096",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Добавить проектные разрешения источников и индивидуальное исключение документа/чата",
+      "depends_on": [
+        "C1-095"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 97,
+      "id": "C1-097",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Добавить безопасное отображение частичных ответов и uncertain состояний",
+      "depends_on": [
+        "C1-096"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 98,
+      "id": "C1-098",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Добавить доступные названия кнопок, масштабирование текста и навигацию экранного диктора",
+      "depends_on": [
+        "C1-097"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 99,
+      "id": "C1-099",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Добавить восстановление маршрута и черновика после пересоздания Activity",
+      "depends_on": [
+        "C1-098"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 100,
+      "id": "C1-100",
+      "phase": "S10",
+      "phase_title": "Android: управляемый интерфейс",
+      "audit_ids": [
+        "U06",
+        "U07",
+        "U08",
+        "M01"
+      ],
+      "action": "Добавить UI сценарий от создания проекта до результата плана с повторным запуском приложения",
+      "depends_on": [
+        "C1-099"
+      ],
+      "conflicts": "MainActivity, TaskQueue, Settings, Council; preserve current entrypoints",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 101,
+      "id": "C1-101",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Подключить список проектов к клиентскому репозиторию вместо placeholders",
+      "depends_on": [
+        "C1-100"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 102,
+      "id": "C1-102",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Подключить диалоги к сохранённой истории и server cursor",
+      "depends_on": [
+        "C1-101"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 103,
+      "id": "C1-103",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Добавить отправку сообщения через устойчивый клиентский outbox",
+      "depends_on": [
+        "C1-102"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 104,
+      "id": "C1-104",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Добавить экран сопряжения и проверку pin сертификата Windows Hub",
+      "depends_on": [
+        "C1-103"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 105,
+      "id": "C1-105",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Добавить Keychain хранение device credential и отзыв соединения",
+      "depends_on": [
+        "C1-104"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 106,
+      "id": "C1-106",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Добавить список планов, зависимостей и результатов с project isolation",
+      "depends_on": [
+        "C1-105"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 107,
+      "id": "C1-107",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Добавить действия владельческого подтверждения с хэшем и сроком grant",
+      "depends_on": [
+        "C1-106"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 108,
+      "id": "C1-108",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Добавить Face ID/device credential unlock и lifecycle блокировку",
+      "depends_on": [
+        "C1-107"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 109,
+      "id": "C1-109",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Добавить экспорт и удаление личных данных через клиентские API",
+      "depends_on": [
+        "C1-108"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 110,
+      "id": "C1-110",
+      "phase": "S11",
+      "phase_title": "iOS: реальные рабочие экраны",
+      "audit_ids": [
+        "M05",
+        "F19"
+      ],
+      "action": "Добавить UI smoke сценарии offline, reconnect, process restart и недоступного Hub",
+      "depends_on": [
+        "C1-109"
+      ],
+      "conflicts": "ios/GlafiraBridgeKit; native clients must use same authority and contracts",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 111,
+      "id": "C1-111",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить импорт прикреплений с ограничением размера и разрешённых форматов",
+      "depends_on": [
+        "C1-110"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 112,
+      "id": "C1-112",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить шифрованный проектный каталог исходных документов с digest и источником",
+      "depends_on": [
+        "C1-111"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 113,
+      "id": "C1-113",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить извлечение текста в ограниченном процессе без исполнения вложений",
+      "depends_on": [
+        "C1-112"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 114,
+      "id": "C1-114",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить версионированные фрагменты текста с привязкой к исходным страницам",
+      "depends_on": [
+        "C1-113"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 115,
+      "id": "C1-115",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить индекс поиска с project/source ACL фильтрацией до выдачи результатов",
+      "depends_on": [
+        "C1-114"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 116,
+      "id": "C1-116",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить удаление документа с каскадным удалением фрагментов и индекса",
+      "depends_on": [
+        "C1-115"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 117,
+      "id": "C1-117",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить выдачу цитат с проверяемым source ID и версией документа",
+      "depends_on": [
+        "C1-116"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 118,
+      "id": "C1-118",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить owner-visible operational memory с источником, датой и областью",
+      "depends_on": [
+        "C1-117"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 119,
+      "id": "C1-119",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить исправление, экспорт и удаление записи памяти без изменения исходного журнала",
+      "depends_on": [
+        "C1-118"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 120,
+      "id": "C1-120",
+      "phase": "S12",
+      "phase_title": "Документы и управляемая память",
+      "audit_ids": [
+        "U02",
+        "U08",
+        "M06"
+      ],
+      "action": "Добавить детерминированную сборку контекста с бюджетом и отображением использованных источников",
+      "depends_on": [
+        "C1-119"
+      ],
+      "conflicts": "project-scoped ingestion/RAG; #3/#41; no unscoped chat-history export",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 121,
+      "id": "C1-121",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить trace ID, связывающий план, узел, lease, provider call и результат",
+      "depends_on": [
+        "C1-120"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 122,
+      "id": "C1-122",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить долговечный журнал redacted событий с политикой удержания",
+      "depends_on": [
+        "C1-121"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 123,
+      "id": "C1-123",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить независимый reviewer для результата с отдельными полномочиями",
+      "depends_on": [
+        "C1-122"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 124,
+      "id": "C1-124",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить проверку цитат и обязательных критериев до принятия результата",
+      "depends_on": [
+        "C1-123"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 125,
+      "id": "C1-125",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить статусы reviewer rejected/needs owner и маршрут исправления узла",
+      "depends_on": [
+        "C1-124"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 126,
+      "id": "C1-126",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить измерение времени, попыток и стоимости в агрегаты проекта",
+      "depends_on": [
+        "C1-125"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 127,
+      "id": "C1-127",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить справедливые квоты между проектами на авторитетном диспетчере",
+      "depends_on": [
+        "C1-126"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 128,
+      "id": "C1-128",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить выявление stalled task, просроченного lease и неотправленного результата",
+      "depends_on": [
+        "C1-127"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 129,
+      "id": "C1-129",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить экспорт диагностического пакета с автоматической редакцией секретов",
+      "depends_on": [
+        "C1-128"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 130,
+      "id": "C1-130",
+      "phase": "S13",
+      "phase_title": "Независимая проверка и наблюдаемость",
+      "audit_ids": [
+        "M06",
+        "U05",
+        "U06"
+      ],
+      "action": "Добавить приёмочный dashboard с доказательствами CI и результатами регрессии на точном SHA",
+      "depends_on": [
+        "C1-129"
+      ],
+      "conflicts": "Core trace, reviewer, scheduler; no secret logging or duplicate result stores",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 131,
+      "id": "C1-131",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить Mother account registry с уникальным username и стабильным account ID",
+      "depends_on": [
+        "C1-130"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 132,
+      "id": "C1-132",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить регистрацию, recovery и отзыв device enrollment аккаунта",
+      "depends_on": [
+        "C1-131"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 133,
+      "id": "C1-133",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить append-only double-entry ledger с проверкой сбалансированности транзакции",
+      "depends_on": [
+        "C1-132"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 134,
+      "id": "C1-134",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить идемпотентный перевод username-to-username и доставку offline получателю",
+      "depends_on": [
+        "C1-133"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 135,
+      "id": "C1-135",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить конфигурируемую политику выпуска токенов с журналом владельческого решения",
+      "depends_on": [
+        "C1-134"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 136,
+      "id": "C1-136",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить добровольный compute enrollment с явными лимитами ресурсов",
+      "depends_on": [
+        "C1-135"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 137,
+      "id": "C1-137",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить проверяемое доказательство выполненной работы до начисления награды",
+      "depends_on": [
+        "C1-136"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 138,
+      "id": "C1-138",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить VPN entitlement и provisioning adapter с отдельными device keys",
+      "depends_on": [
+        "C1-137"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 139,
+      "id": "C1-139",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить тарифное списание по утверждённой политике с остановкой при исчерпании баланса",
+      "depends_on": [
+        "C1-138"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 140,
+      "id": "C1-140",
+      "phase": "S14",
+      "phase_title": "Mother, кошелёк и VPN: изолированный продуктовый этап",
+      "audit_ids": [
+        "M08"
+      ],
+      "action": "Добавить изолированный сетевой стенд регистрации, перевода, начисления и VPN доступа",
+      "depends_on": [
+        "C1-139"
+      ],
+      "conflicts": "Mother/ledger/VPN specs; #178/#183; blocked on owner policy, infrastructure and pricing",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 141,
+      "id": "C1-141",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить монотонное версионирование совместимых пакетов и release manifest",
+      "depends_on": [
+        "C1-140"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 142,
+      "id": "C1-142",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить Android release signing через защищённые CI secrets владельца",
+      "depends_on": [
+        "C1-141"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 143,
+      "id": "C1-143",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить iOS archive/export через утверждённую signing identity и provisioning",
+      "depends_on": [
+        "C1-142"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 144,
+      "id": "C1-144",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить подписанный установщик Windows Desktop с проверкой зависимостей",
+      "depends_on": [
+        "C1-143"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 145,
+      "id": "C1-145",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить установку и обновление Windows Agent service с сохранением credential ACL",
+      "depends_on": [
+        "C1-144"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 146,
+      "id": "C1-146",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить проверку подписи и digest перед установкой обновления клиентом",
+      "depends_on": [
+        "C1-145"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 147,
+      "id": "C1-147",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить staged update с проверкой совместимости схемы и безопасным rollback",
+      "depends_on": [
+        "C1-146"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 148,
+      "id": "C1-148",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить полнотестовый release workflow с обязательными отчётами без zero-tests успеха",
+      "depends_on": [
+        "C1-147"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 149,
+      "id": "C1-149",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить device acceptance сценарии установки, обновления, бэкапа и межустройственного исполнения",
+      "depends_on": [
+        "C1-148"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    },
+    {
+      "number": 150,
+      "id": "C1-150",
+      "phase": "S15",
+      "phase_title": "Поставка и итоговая приёмка",
+      "audit_ids": [
+        "M09"
+      ],
+      "action": "Добавить пакет доказательств итоговой регрессии и сформировать второй цикл из 150 задач по фактическим результатам",
+      "depends_on": [
+        "C1-149"
+      ],
+      "conflicts": "Android/iOS/Windows release; signing identities and real devices required",
+      "status": "planned",
+      "acceptance": "Изменение реализовано; регрессия изменённого поведения проходит на точном SHA; доказательство приложено."
+    }
+  ],
+  "cycle_2": "Not generated: must be based on the completed first cycle and subsequent full regression. No second cycle is claimed running."
+}

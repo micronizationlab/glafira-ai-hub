@@ -297,6 +297,28 @@ fun BackupSettingsSection() {
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Восстановить из файла") }
 
+                if (GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
+                    OutlinedButton(onClick = {
+                        val recoveryPassphrase = passphrase.toCharArray()
+                        busy = true
+                        scope.launch {
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    withCoreBackupCoordinator(context) { it.recover(recoveryPassphrase) }
+                                }
+                                status = "Откат завершён. Можно продолжить работу."
+                            } catch (error: Exception) {
+                                status = "Ошибка отката: ${error.message}"
+                            } finally {
+                                recoveryPassphrase.fill('\u0000')
+                                busy = false
+                            }
+                        }
+                    }, enabled = !busy && passphrase.length >= 12, modifier = Modifier.fillMaxWidth()) {
+                        Text("Завершить прерванное восстановление")
+                    }
+                }
+
                 if (lastSuccess > 0L) {
                     Text("Последняя успешная копия: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(lastSuccess))}", color = Gr, fontSize = 11.sp)
                 }

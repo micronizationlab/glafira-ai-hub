@@ -138,6 +138,39 @@ object BackupArchive {
         }
     }
 
+    internal fun <T> withVerifiedEntry(context: Context, file: File, passphrase: CharArray,
+        relativePath: String, block: (File, BackupVerification) -> T): T {
+        require(relativePath.isNotBlank() && !relativePath.startsWith("/") &&
+            relativePath.split("/").none { it == ".." || it.isBlank() })
+        val extracted = decryptToStaging(context, file, passphrase)
+        try {
+            require(extracted.appId == context.packageName) { "Архив создан для другого приложения." }
+            val entry = requireNotNull(extracted.files.singleOrNull { it.relativePath == relativePath }) {
+                "Архив не содержит переносимый снимок Core. Старые raw SQLite архивы требуют исходного устройства."
+            }
+            return block(entry.file, extracted.verification)
+        } finally { extracted.directory.deleteRecursively() }
+    }
+
+    internal fun copyBounded(input: InputStream, output: OutputStream) {
+        val buffer = ByteArray(8192)
+        var total = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (count == 0) {
+                val single = input.read()
+                if (single < 0) break
+                require(++total <= MAX_ARCHIVE_BYTES) { "Архив слишком большой." }
+                output.write(single)
+                continue
+            }
+            total += count
+            require(total <= MAX_ARCHIVE_BYTES) { "Архив слишком большой." }
+            output.write(buffer, 0, count)
+        }
+    }
+
     fun restore(context: Context, file: File, passphrase: CharArray): BackupVerification {
         // Keep a verified snapshot of the current state so a partial restore can be rolled back.
         val safetySnapshot = create(context, passphrase)

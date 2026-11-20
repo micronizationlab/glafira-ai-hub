@@ -416,6 +416,7 @@ class GlafiraTaskStore(context: Context) :
         }
     }
 
+    @Synchronized
     fun enqueuePlan(plan: GlafiraCoreTaskPlan): GlafiraCoreTaskPlanEnqueueResult {
         GlafiraCoreTaskPlanPolicy.validate(plan)
         val db = writableDatabase

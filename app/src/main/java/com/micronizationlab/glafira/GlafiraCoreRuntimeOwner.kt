@@ -85,7 +85,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     val isEnabled: Boolean
-        get() = preferences.getBoolean(KEY_ENABLED, false)
+        get() = preferences.getBoolean(KEY_ENABLED, false) && !GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
 
     /** Current owner-controlled, persisted Core execution limits. */
     fun runtimeBudget(): GlafiraRuntimeBudget = loadRuntimeBudget()
@@ -120,6 +120,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
+        check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
         val result = taskStore.enqueue(task)
         if (result.inserted && isEnabled) {
             GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
@@ -129,6 +130,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     /** Atomically stores a task and its dependency graph before any worker is woken. */
     fun enqueue(task: GlafiraTask, dependencies: Set<String>): GlafiraTaskEnqueueResult {
+        check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
         val result = taskStore.enqueueWithDependencies(task, dependencies)
         if (result.inserted && isEnabled) {
             GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
@@ -151,6 +153,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     /** Atomically registers an entire bounded DAG before waking the shared dispatcher. */
     fun enqueuePlan(plan: GlafiraCoreTaskPlan): GlafiraCoreTaskPlanEnqueueResult {
+        check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
         val result = taskStore.enqueuePlan(plan)
         if (result.inserted && isEnabled) {
             GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
@@ -349,6 +352,12 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         ownerApprovalStore.reject(taskId, ownerSession)
 
     companion object {
+        internal fun pauseForRestore(context: Context) {
+            check(context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
+                .putBoolean(KEY_ENABLED, false).commit()) { "Не удалось приостановить Core." }
+            GlafiraCoreWorkScheduler.cancel(context)
+        }
+
         private const val DRY_RUN_PREVIEW_PREFIX = "DRY_RUN_PREVIEW:"
         private const val PREFERENCES = "glafira_core_runtime"
         private const val KEY_ENABLED = "runtime_enabled"
