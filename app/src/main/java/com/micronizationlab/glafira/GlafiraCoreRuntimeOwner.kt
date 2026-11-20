@@ -125,6 +125,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         return result
     }
 
+    /** Atomically stores a task and its dependency graph before any worker is woken. */
+    fun enqueue(task: GlafiraTask, dependencies: Set<String>): GlafiraTaskEnqueueResult {
+        val result = taskStore.enqueueWithDependencies(task, dependencies)
+        if (result.inserted && isEnabled) {
+            GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+        }
+        return result
+    }
+
     internal suspend fun executeNext(): GlafiraTaskExecutionResult {
         check(isEnabled) { "GLAFIRA autonomous runtime is paused by owner." }
         return executor.executeNext()
