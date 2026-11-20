@@ -64,6 +64,16 @@ class DataManagerProjectMigrationInstrumentedTest {
         }
 
     @Test
+    fun deletedBuiltInDoesNotReturnDuringMigration() = withIsolatedContext { context, _ ->
+        val original = loadProjects(context)
+        deletedProjectStore(context.filesDir).write(setOf("token"))
+        saveProjects(context, original.filterNot { it.id == "token" })
+
+        assertTrue(loadProjects(context).none { it.id == "token" })
+        assertTrue(loadProjects(context).none { it.id == "token" })
+    }
+
+    @Test
     fun malformedProjectFileRecoversToBuiltInWorkspaces() =
         withIsolatedContext { context, _ ->
             File(context.filesDir, "projects.json").writeText("{malformed")

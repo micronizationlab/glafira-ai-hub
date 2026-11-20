@@ -67,7 +67,8 @@ object GlafiraCoordinator {
         plan.failure?.let { return it }
         if (!plan.shouldConsult || plan.providers.isEmpty()) {
             return plan.directAnswer?.let { AiProviderResult.Success(it) }
-                ?: callAiProviderResult(context, primaryProvider, history, systemPrompt)
+                ?: AiProviderResult.Failure(AiProviderError(AiProviderErrorCategory.INVALID_RESPONSE,
+                    "Координатор не вернул ответ или допустимый план."))
         }
 
         val question = safeHistory.lastOrNull { it.isUser }?.text.orEmpty()
@@ -96,8 +97,8 @@ object GlafiraCoordinator {
         }
 
         if (peerResults.isEmpty()) {
-            // Do not repeat peer requests; make one fresh primary request instead.
-            return callAiProviderResult(context, primaryProvider, history, systemPrompt)
+            return AiProviderResult.Failure(AiProviderError(AiProviderErrorCategory.PROVIDER,
+                "Не удалось получить мнения выбранных провайдеров."))
         }
 
         val councilContext = buildString {

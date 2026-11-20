@@ -57,6 +57,8 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     }
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
+    var modelId by remember(primaryProvider) { mutableStateOf(loadProviderModel(context, primaryProvider, defaultProviderModel(primaryProvider))) }
+    var modelMessage by remember(primaryProvider) { mutableStateOf<String?>(null) }
     var peerConsultationEnabled by remember(peerConsultationKey) {
         mutableStateOf(context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
             .getBoolean(peerConsultationKey, false))
@@ -231,6 +233,17 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         }
                     }
                 }
+                OutlinedTextField(
+                    value = modelId, onValueChange = { modelId = it; modelMessage = null },
+                    label = { Text("ID модели ${primaryProvider.displayName}") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedButton(onClick = {
+                    modelMessage = if (saveProviderModel(context, primaryProvider, modelId))
+                        "Модель сохранена. Доступность подтверждается ответом API."
+                    else "Не удалось сохранить ID модели."
+                }) { Text("СОХРАНИТЬ МОДЕЛЬ") }
+                modelMessage?.let { Text(it, color = Tx, fontSize = 10.sp) }
                 if (configuredProviders.isEmpty()) {
                     Text("Сначала подключи хотя бы одну модель выше.", color = Tx, fontSize = 10.sp)
                 }

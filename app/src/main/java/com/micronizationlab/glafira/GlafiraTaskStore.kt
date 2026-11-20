@@ -18,6 +18,25 @@ class GlafiraTaskStore(context: Context) :
     GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraCoreTaskResultPersistence {
     private val appContext = context.applicationContext
 
+    /** The caller holds maintenance and pauses pending delivery before deleting project files. */
+    @Synchronized
+    internal fun deleteFinishedProject(projectId: String) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.rawQuery("SELECT 1 FROM core_tasks WHERE project_id = ? AND state NOT IN ('succeeded','failed','cancelled') LIMIT 1",
+                arrayOf(projectId)).use {
+                check(!it.moveToFirst()) { "Сначала завершите или отмените задачи проекта в очереди Core." }
+            }
+            db.delete(TABLE_TASKS, "project_id = ?", arrayOf(projectId))
+            db.delete("core_task_plans", "project_id = ?", arrayOf(projectId))
+            val approvalsExist = db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_action_approvals'", null)
+                .use { it.moveToFirst() }
+            if (approvalsExist) db.delete("core_action_approvals", "project_id = ?", arrayOf(projectId))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         db.setForeignKeyConstraintsEnabled(true)

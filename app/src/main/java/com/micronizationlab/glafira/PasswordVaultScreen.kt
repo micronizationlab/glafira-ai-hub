@@ -22,6 +22,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.UUID
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import kotlinx.coroutines.delay
 
 @Composable
 fun PasswordVaultScreen(onBack: () -> Unit) {
@@ -53,6 +57,33 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
     var website by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var importStatus by remember { mutableStateOf<String?>(null) }
+    fun lockVault() {
+        session?.lock()
+        session = null
+        entries = emptyList()
+        masterPassword = ""
+        confirmPassword = ""
+        title = ""; username = ""; password = ""; website = ""; notes = ""
+        showAdd = false
+        importStatus = null
+        error = null
+    }
+    DisposableEffect(context) {
+        var host: Context = context
+        while (host is ContextWrapper && host !is Activity) host = host.baseContext
+        val lifecycle = (host as? LifecycleOwner)?.lifecycle
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) lockVault()
+        }
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
+    }
+    LaunchedEffect(session) {
+        if (session != null) {
+            delay(5 * 60_000L)
+            lockVault()
+        }
+    }
     val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             try {
@@ -165,9 +196,7 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
                     Text("Локально на этом устройстве · AES-256-GCM", color = Tx, fontSize = 11.sp)
                 }
                 Text("ЗАБЛОКИРОВАТЬ", color = Red, fontSize = 10.sp, modifier = Modifier.clickable {
-                    session?.lock()
-                    session = null
-                    entries = emptyList()
+                    lockVault()
                 }.padding(6.dp))
             }
             Spacer(Modifier.height(12.dp))

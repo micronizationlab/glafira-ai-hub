@@ -45,17 +45,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
-import java.net.URL
-import java.security.KeyStore
-import java.security.cert.CertificateFactory
 import java.text.SimpleDateFormat
 import java.util.*
-import javax.net.ssl.HttpsURLConnection
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManagerFactory
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -81,7 +72,7 @@ data class A(
     val providerId: ProviderId = ProviderId.GIGACHAT,
     val group: AgentGroup = AgentGroup.IA
 )
-data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "")
+data class Msg(val text: String, val isUser: Boolean, val time: String, val date: String = "", val operationId: String = "")
 
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,7 +90,7 @@ fun App() {
     var statusRefresh by remember { mutableStateOf(0) }
     val context = LocalContext.current
     var projects by remember { mutableStateOf(loadProjects(context)) }
-    var currentProject by remember { mutableStateOf(projects.first()) }
+    var currentProject by remember { mutableStateOf(projects.firstOrNull() ?: defaultProjects().first()) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(context) { SoundHelper.init(context) }
@@ -147,40 +138,16 @@ fun App() {
     }
 
     LaunchedEffect(Unit) {
-        val queue = loadPendingQueue(context)
-        if (queue.isNotEmpty()) {
-            val remaining = mutableListOf<PendingMessage>()
-            queue.forEach { pm ->
-                val agentPrompt = when (pm.agentName) {
-                    "ГЛАФИРА" -> "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу."
-                    "АНАЛИТИК" -> "Ты — Аналитик. Твоя задача — глубоко анализировать данные, искать закономерности, строить прогнозы и давать объективные выводы. Будь точен."
-                    "ПРОГРАММИСТ" -> "Ты — Программист. Ты пишешь код, находишь баги и предлагаешь архитектурные решения. Твой ответ должен содержать код и краткое объяснение."
-                    "GigaChat" -> "Ты — GigaChat. Отвечай по делу, структурированно, на русском языке."
-                    else -> "Ты — помощник."
-                }
-                val key = "${pm.projectId}_${pm.agentName}"
-                val history = loadHistory(context, key)
-                val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                val provider = if (pm.agentName == "ГЛАФИРА") {
-                    loadGlafiraPrimaryProvider(context)
-                } else {
-                    runCatching { ProviderId.valueOf(pm.providerId) }.getOrDefault(ProviderId.GIGACHAT)
-                }
-                val pendingHistory = history + Msg(pm.text, true, pm.time, today)
-                val reply = if (pm.agentName == "ГЛАФИРА") {
-                    GlafiraCoordinator.respond(context, provider, pendingHistory, agentPrompt, pm.projectId)
-                } else {
-                    callAiProvider(context, provider, pendingHistory, agentPrompt)
-                }
-                if (reply.startsWith("Ошибка сети")) {
-                    remaining.add(pm)
-                } else {
-                    val updated = history + Msg(pm.text, true, pm.time, today) + Msg(reply, false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()), today)
-                    saveHistory(context, key, updated)
-                    SoundHelper.playIncoming()
-                }
+        // Recover interrupted calls once, then retry only outcomes known to be safe.
+        while (true) {
+            try {
+                PendingDeliveryRuntime.replay(context)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                recordStorageDiagnostic(context.filesDir, "pending_queue.json", "replay_${error.javaClass.simpleName}")
             }
-            savePendingQueue(context, remaining)
+            delay(5_000)
         }
     }
 
@@ -202,14 +169,19 @@ fun App() {
                 onProjectSelect = { currentProject = it },
                 onProjectAdd = { name ->
                     val newProj = Project(UUID.randomUUID().toString(), name)
-                    projects = projects + newProj
-                    saveProjects(context, projects)
+                    projects = updateProjects(context) { it + newProj }
                     currentProject = newProj
                 },
                 onProjectDelete = { project ->
-                    projects = deleteProject(context, project, projects)
-                    if (currentProject.id == project.id) {
-                        currentProject = projects.first()
+                    scope.launch {
+                        try {
+                            projects = withContext(Dispatchers.IO) { deleteProject(context, project) }
+                            if (currentProject.id == project.id) {
+                                currentProject = projects.firstOrNull() ?: defaultProjects().first()
+                            }
+                        } catch (error: Exception) {
+                            ToastHelper.short(context, error.message ?: "Не удалось удалить проект.")
+                        }
                     }
                 },
                 onAgentClick = { currentAgent = it },
@@ -549,8 +521,22 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val context = LocalContext.current
     var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.n)) }
     val historyKey = "${project.id}_${agent.n}"
-    var messages by remember { mutableStateOf(loadHistory(context, historyKey)) }
-    var isLoading by remember { mutableStateOf(false) }
+    var messages by remember(historyKey) { mutableStateOf(loadHistory(context, historyKey)) }
+    var pendingMessages by remember(historyKey) { mutableStateOf(emptyList<PendingMessage>()) }
+    var retryConfirmation by remember { mutableStateOf<PendingMessage?>(null) }
+    LaunchedEffect(historyKey) {
+        while (true) {
+            withContext(Dispatchers.IO) {
+                loadHistory(context, historyKey) to loadPendingQueue(context).filter {
+                    it.projectId == project.id && it.agentName == agent.n && it.state != PendingDeliveryState.COMPLETED && it.state != PendingDeliveryState.CANCELLED
+                }
+            }.let { (history, pending) -> messages = history; pendingMessages = pending }
+            delay(1_000)
+        }
+    }
+    val isLoading = pendingMessages.any {
+        it.state in setOf(PendingDeliveryState.QUEUED, PendingDeliveryState.IN_FLIGHT, PendingDeliveryState.RESULT_READY)
+    }
     var showProfile by remember { mutableStateOf(false) }
     var isSearching by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -629,45 +615,53 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
 
     LaunchedEffect(messages.size) {
         if (!isSearching && messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+            listState.animateScrollToItem(messages.size + pendingMessages.size - 1)
         }
     }
 
     fun sendMessage(text: String) {
         if (text.isBlank() || isLoading) return
-        val now = Date()
-        val timeNow = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
-        val updatedMessages = messages + Msg(text, true, timeNow, today)
-        messages = updatedMessages
-        saveHistory(context, historyKey, updatedMessages)
-        clearDraft(context, project.id, agent.n)
-        isLoading = true
-        SoundHelper.playSent()
-        scope.launch {
-            val projectContext = buildProjectContext(context, project.id, agent.n)
-            val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
-            val reply = if (agent.n == "ГЛАФИРА") {
-                GlafiraCoordinator.respond(context, loadGlafiraPrimaryProvider(context), updatedMessages, fullPrompt, project.id)
-            } else {
-                callAiProvider(context, agent.providerId, updatedMessages, fullPrompt)
-            }
-            val replyDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            val replyTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-            if (reply.startsWith("Ошибка сети")) {
-                addToPendingQueue(context, PendingMessage(project.id, agent.n, text, timeNow, if (agent.n == "ГЛАФИРА") loadGlafiraPrimaryProvider(context).name else agent.providerId.name))
-                val queuedMsg = Msg("⏳ Сообщение в очереди. Отправится при появлении сети.", false, replyTime, replyDate)
-                val finalMessages = updatedMessages + queuedMsg
-                messages = finalMessages
-                saveHistory(context, historyKey, finalMessages)
-            } else {
-                val finalMessages = updatedMessages + Msg(reply, false, replyTime, replyDate)
-                messages = finalMessages
-                saveHistory(context, historyKey, finalMessages)
-                SoundHelper.playIncoming()
-            }
-            isLoading = false
+        if (isPendingDispatchBlocked(context)) {
+            ToastHelper.short(context, "Сначала завершите восстановление резервной копии в настройках.")
+            return
         }
+        val now = Date()
+        val pending = PendingMessage(
+            project.id, agent.n, text,
+            SimpleDateFormat("HH:mm", Locale.getDefault()).format(now),
+            if (agent.n == "ГЛАФИРА") loadGlafiraPrimaryProvider(context).name else agent.providerId.name,
+            date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
+        )
+        try {
+            // Outbox precedes the call; a process death cannot erase the operation.
+            addToPendingQueue(context, pending)
+            messages = appendPendingUserMessage(context, pending)
+            if (inputText == text) {
+                clearDraft(context, project.id, agent.n)
+                inputText = ""
+            }
+        } catch (error: Exception) {
+            ToastHelper.short(context, "Не удалось сохранить сообщение. Черновик оставлен.")
+            return
+        }
+        pendingMessages = pendingMessages + pending
+        SoundHelper.playSent()
+        val projectContext = buildProjectContext(context, project.id, agent.n)
+        val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
+        PendingDeliveryRuntime.dispatch(context, pending, fullPrompt)
+    }
+
+    retryConfirmation?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { retryConfirmation = null },
+            title = { Text("Повторить запрос?") },
+            text = { Text("Предыдущий запрос мог уже выполниться у провайдера. Повтор создаст новый вызов и может повторно израсходовать квоту.") },
+            confirmButton = { TextButton(onClick = {
+                PendingMessageStore(context.filesDir).retry(pending.id)
+                retryConfirmation = null
+            }) { Text("Повторить") } },
+            dismissButton = { TextButton(onClick = { retryConfirmation = null }) { Text("Назад") } }
+        )
     }
 
     if (showProfile) {
@@ -741,6 +735,27 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             }
 
             LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                itemsIndexed(pendingMessages) { _, pending ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp)) {
+                        Text(
+                            when (pending.state) {
+                                PendingDeliveryState.QUEUED -> "⏳ В очереди: ${pending.text.take(60)}. Попытка ${pending.attempts}/${PendingMessageStore.MAX_ATTEMPTS}"
+                                PendingDeliveryState.IN_FLIGHT -> "Запрос выполняется: ${pending.text.take(60)}"
+                                PendingDeliveryState.RESULT_READY -> "Результат сохранён; восстанавливаем историю."
+                                else -> pending.error ?: "Запрос требует проверки."
+                            }, color = Tx, fontSize = 11.sp
+                        )
+                        Row {
+                            if (pending.state == PendingDeliveryState.UNCERTAIN || pending.state == PendingDeliveryState.FAILED) {
+                                TextButton(onClick = { retryConfirmation = pending }) { Text("Повторить…") }
+                            }
+                            if (pending.state != PendingDeliveryState.IN_FLIGHT && pending.state != PendingDeliveryState.RESULT_READY) {
+                                TextButton(onClick = { PendingMessageStore(context.filesDir).cancel(pending.id) }) { Text("Отменить") }
+                            }
+                        }
+                    }
+                }
+
                 if (searchQuery.isBlank() && messages.isNotEmpty()) {
                     item {
                         Text("— ${dateLabel(messages.first().date)} —", color = Tx, fontSize = 9.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -843,9 +858,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     Box(
                         Modifier.size(36.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable {
                             if (inputText.isNotBlank()) {
-                                val t = inputText
-                                inputText = ""
-                                sendMessage(t)
+                                sendMessage(inputText)
                             }
                         },
                         contentAlignment = Alignment.Center
@@ -937,11 +950,9 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                         "$who: ${m.text}"
                                     }
                                     val targetKey = "${project.id}_$name"
-                                    val targetHistory = loadHistory(context, targetKey).toMutableList()
                                     val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                                     val sysMsg = Msg("[Передано от ${agent.n}]:\n$transferText", false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()), today)
-                                    targetHistory.add(sysMsg)
-                                    saveHistory(context, targetKey, targetHistory)
+                                    appendHistory(context, targetKey, listOf(sysMsg))
                                     showTransferDialog = false
                                     copyToClipboard(context, "Передано агенту $name")
                                 }.padding(vertical = 8.dp)
@@ -1046,41 +1057,6 @@ object ToastHelper {
     }
 }
 
-fun saveHistory(context: Context, key: String, history: List<Msg>) {
-    val file = File(context.filesDir, "chat_$key.json")
-    val jsonArray = JSONArray()
-    history.forEach {
-        jsonArray.put(JSONObject().apply {
-            put("text", it.text)
-            put("isUser", it.isUser)
-            put("time", it.time)
-            put("date", it.date)
-        })
-    }
-    file.writeText(jsonArray.toString())
-}
-
-fun loadHistory(context: Context, key: String): List<Msg> {
-    val file = File(context.filesDir, "chat_$key.json")
-    if (!file.exists()) return emptyList()
-    val list = mutableListOf<Msg>()
-    try {
-        val jsonArray = JSONArray(file.readText())
-        for (i in 0 until jsonArray.length()) {
-            val obj = jsonArray.getJSONObject(i)
-            list.add(
-                Msg(
-                    obj.getString("text"),
-                    obj.getBoolean("isUser"),
-                    obj.optString("time", ""),
-                    obj.optString("date", "")
-                )
-            )
-        }
-    } catch (e: Exception) { }
-    return list
-}
-
 fun buildProjectContext(context: Context, projectId: String, currentAgentName: String, maxMessagesPerChat: Int = 5): String {
     val files = context.filesDir.listFiles { file ->
         file.name.startsWith("chat_${projectId}_") && file.name.endsWith(".json")
@@ -1106,60 +1082,5 @@ fun buildProjectContext(context: Context, projectId: String, currentAgentName: S
     return if (result.isBlank()) "" else "Контекст других чатов в этом проекте:\n$result"
 }
 
-suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>, systemPrompt: String): String = withContext(Dispatchers.IO) {
-    val authKey = loadApiKey(context)
-    if (authKey.isBlank()) return@withContext "Ошибка: Ключ API не найден. Зайдите в настройки и вставьте ключ."
-    try {
-        val certFactory = CertificateFactory.getInstance("X.509")
-        val certInputStream = context.assets.open("russian_trusted_root_ca.crt")
-        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
-        keyStore.load(null, null)
-        keyStore.setCertificateEntry("russian_ca", certFactory.generateCertificate(certInputStream))
-        val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-        tmf.init(keyStore)
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(null, tmf.trustManagers, null)
-        val socketFactory = sslContext.socketFactory
-
-        val tokenUrl = URL("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
-        val tokenConn = tokenUrl.openConnection() as HttpsURLConnection
-        tokenConn.sslSocketFactory = socketFactory
-        tokenConn.requestMethod = "POST"
-        tokenConn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-        tokenConn.setRequestProperty("Accept", "application/json")
-        tokenConn.setRequestProperty("RqUID", UUID.randomUUID().toString())
-        tokenConn.setRequestProperty("Authorization", "Basic $authKey")
-        tokenConn.doOutput = true
-        tokenConn.outputStream.use { it.write("scope=GIGACHAT_API_PERS".toByteArray()) }
-
-        if (tokenConn.responseCode != 200) return@withContext "Ошибка токена: ${tokenConn.responseCode}"
-        val accessToken = JSONObject(tokenConn.inputStream.bufferedReader().readText()).getString("access_token")
-
-        val chatUrl = URL("https://api.giga.chat/v1/chat/completions")
-        val chatConn = chatUrl.openConnection() as HttpsURLConnection
-        chatConn.sslSocketFactory = socketFactory
-        chatConn.requestMethod = "POST"
-        chatConn.setRequestProperty("Content-Type", "application/json")
-        chatConn.setRequestProperty("Accept", "application/json")
-        chatConn.setRequestProperty("Authorization", "Bearer $accessToken")
-        chatConn.doOutput = true
-
-        val messagesArray = JSONArray()
-        messagesArray.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-        history.forEach { msg ->
-            messagesArray.put(JSONObject().apply { put("role", if (msg.isUser) "user" else "assistant"); put("content", msg.text) })
-        }
-
-        val chatBody = JSONObject().apply { put("model", "GigaChat-2"); put("messages", messagesArray) }.toString()
-        chatConn.outputStream.use { it.write(chatBody.toByteArray()) }
-
-        if (chatConn.responseCode == 200) {
-            val json = JSONObject(chatConn.inputStream.bufferedReader().readText())
-            json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
-        } else {
-            "Ошибка API: ${chatConn.responseCode}"
-        }
-    } catch (e: Exception) {
-        "Ошибка сети: ${e.message}"
-    }
-}
+suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>, systemPrompt: String): String =
+    callAiProvider(context, ProviderId.GIGACHAT, history, systemPrompt)
