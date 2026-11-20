@@ -16,7 +16,7 @@ public sealed class DesktopHubStoreTests : IDisposable
     {
         var now = DateTimeOffset.UtcNow;
         _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 1, false), now);
-        _store.Enqueue(Task("task-1"), now);
+        _store.Enqueue(CreateTask("task-1"), now);
 
         Assert.Null(_store.ClaimNext("agent-1", now, TimeSpan.FromMinutes(1)));
 
@@ -27,11 +27,11 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
-    public void CapabilityMismatchDoesNotClaimTask()
+    public void CapabilityMismatchDoesNotClaimCreateTask()
     {
         var now = DateTimeOffset.UtcNow;
         _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 1, true), now);
-        _store.Enqueue(Task("task-1", required: ["coding"]), now);
+        _store.Enqueue(CreateTask("task-1", required: ["coding"]), now);
 
         Assert.Null(_store.ClaimNext("agent-1", now, TimeSpan.FromMinutes(1)));
         Assert.Equal(HubTaskState.Queued, _store.GetTaskState("task-1"));
@@ -42,8 +42,8 @@ public sealed class DesktopHubStoreTests : IDisposable
     {
         var now = DateTimeOffset.UtcNow;
         _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 1, true), now);
-        _store.Enqueue(Task("task-1"), now);
-        _store.Enqueue(Task("task-2"), now);
+        _store.Enqueue(CreateTask("task-1"), now);
+        _store.Enqueue(CreateTask("task-2"), now);
 
         var first = _store.ClaimNext("agent-1", now, TimeSpan.FromMinutes(1));
 
@@ -56,8 +56,8 @@ public sealed class DesktopHubStoreTests : IDisposable
     {
         var now = DateTimeOffset.UtcNow;
         _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 2, true), now);
-        _store.Enqueue(Task("parent"), now);
-        _store.Enqueue(Task("child", dependencies: ["parent"]), now);
+        _store.Enqueue(CreateTask("parent"), now);
+        _store.Enqueue(CreateTask("child", dependencies: ["parent"]), now);
 
         var parent = _store.ClaimNext("agent-1", now, TimeSpan.FromMinutes(1));
         Assert.NotNull(parent);
@@ -76,8 +76,8 @@ public sealed class DesktopHubStoreTests : IDisposable
     {
         var now = DateTimeOffset.UtcNow;
         _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 2, true), now);
-        _store.Enqueue(Task("read-only"), now);
-        _store.Enqueue(Task("external", risk: HubTaskEffectRisk.ExternalSideEffect, approval: "owner-approval-1"), now);
+        _store.Enqueue(CreateTask("read-only"), now);
+        _store.Enqueue(CreateTask("external", risk: HubTaskEffectRisk.ExternalSideEffect, approval: "owner-approval-1"), now);
 
         var first = _store.ClaimNext("agent-1", now, TimeSpan.FromSeconds(1));
         Assert.NotNull(first);
@@ -91,12 +91,29 @@ public sealed class DesktopHubStoreTests : IDisposable
         Assert.Contains(recovered, item => item.TaskId == "external" && item.State == HubTaskState.OutcomeUnknown);
     }
 
+
+    [Fact]
+    public async Task ConcurrentAgentsCannotReceiveTheSameQueuedTask()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 1, true), now);
+        _store.RegisterAgent(new HubAgentRegistration("agent-2", "device-2", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("single-task"), now);
+
+        var claims = await Task.WhenAll(
+            System.Threading.Tasks.Task.Run(() => _store.ClaimNext("agent-1", now, TimeSpan.FromMinutes(1))),
+            System.Threading.Tasks.Task.Run(() => _store.ClaimNext("agent-2", now, TimeSpan.FromMinutes(1))));
+
+        Assert.Single(claims.Where(lease => lease is not null));
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState("single-task"));
+    }
+
     [Fact]
     public void RejectsExternalSideEffectWithoutOwnerApprovalReference()
     {
         var now = DateTimeOffset.UtcNow;
         Assert.Throws<InvalidOperationException>(() =>
-            _store.Enqueue(Task("external", risk: HubTaskEffectRisk.ExternalSideEffect), now));
+            _store.Enqueue(CreateTask("external", risk: HubTaskEffectRisk.ExternalSideEffect), now));
     }
 
     [Fact]
@@ -104,7 +121,7 @@ public sealed class DesktopHubStoreTests : IDisposable
     {
         var now = DateTimeOffset.UtcNow;
         _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 1, true), now);
-        _store.Enqueue(Task("task-1"), now);
+        _store.Enqueue(CreateTask("task-1"), now);
 
         var first = _store.ClaimNext("agent-1", now, TimeSpan.FromSeconds(1));
         Assert.NotNull(first);
@@ -119,7 +136,7 @@ public sealed class DesktopHubStoreTests : IDisposable
             second.FencingToken, succeeded: true, now.AddSeconds(4)));
     }
 
-    private static HubTaskRequest Task(
+    private static HubTaskRequest CreateTask(
         string id,
         IReadOnlyCollection<string>? required = null,
         IReadOnlyCollection<string>? dependencies = null,
