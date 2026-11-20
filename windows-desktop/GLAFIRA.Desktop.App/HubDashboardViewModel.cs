@@ -11,7 +11,13 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
     private string _status = "Готово";
     private DateTimeOffset _refreshedAt;
 
-    public HubDashboardViewModel(DesktopHubStore store) { _store = store; Refresh(); }
+    public HubDashboardViewModel(DesktopHubStore store, DesktopHubHostController bridgeHost)
+    {
+        _store = store;
+        BridgeHost = bridgeHost;
+        Refresh();
+    }
+    public DesktopHubHostController BridgeHost { get; }
     public ObservableCollection<HubAgentSnapshot> Agents { get; } = [];
     public ObservableCollection<HubTaskSnapshot> Tasks { get; } = [];
     public ObservableCollection<HubTaskEventSnapshot> TaskHistory { get; } = [];
