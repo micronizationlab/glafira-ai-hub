@@ -12,7 +12,15 @@ class HrIntelligenceAgentTest {
     private fun review(id: String, decision: HrReviewDecision) = HrAgentReview(
         agentId = id,
         decision = decision,
-        rationale = "Reviewed against the supplied source."
+        rationale = "Reviewed against the supplied source.",
+        sourceReferences = listOf(
+            HrSourceReference(
+                sourceType = "review_fixture",
+                sourceId = id,
+                recordId = "review-$id",
+                observedAt = now
+            )
+        )
     )
 
     @Test
@@ -93,6 +101,20 @@ class HrIntelligenceAgentTest {
         assertFalse(outcome.allEligibleAgentsReviewed)
         assertTrue(outcome.hasConflict)
         assertFalse(outcome.canPromote)
+    }
+
+
+    @Test
+    fun acceptedReviewWithoutEvidenceIsRejected() {
+        val error = runCatching {
+            HrAgentReview(
+                agentId = "analyst",
+                decision = HrReviewDecision.ACCEPT,
+                rationale = "No source cited."
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
     }
 
     @Test
