@@ -60,6 +60,18 @@ class DesktopTaskQueueTest {
     }
 
     @Test
+    fun leaseAttachmentRejectsInvalidFenceAndLeaseIdentifier() {
+        val q = queue()
+        q.enqueue(task())
+        assertThrows(IllegalArgumentException::class.java) {
+            q.attachLease("task_1", "lease-0001", 0L)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            q.attachLease("task_1", "short", 1L)
+        }
+    }
+
+    @Test
     fun claimUsesPriorityAndPreservesFifoForEqualPriority() {
         val q = queue()
         q.enqueue(task(id = "low", priority = 1))
