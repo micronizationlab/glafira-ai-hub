@@ -24,6 +24,8 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     private string _selectedAddress = string.Empty;
     private string _endpointsText = "—";
     private string _certificateFingerprint = "—";
+    private string _pairingTicketDescriptor = "Сначала запустите HTTPS, затем создайте одноразовый билет сопряжения.";
+    private bool _pairingTicketActive;
 
     public DesktopHubHostController(string rootDirectory, string databasePath, DesktopHubStore store)
     {
@@ -59,9 +61,18 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         get => _certificateFingerprint;
         private set => Set(ref _certificateFingerprint, value);
     }
+    public string PairingTicketDescriptor
+    {
+        get => _pairingTicketDescriptor;
+        private set => Set(ref _pairingTicketDescriptor, value);
+    }
     public bool IsRunning => _host?.IsRunning == true;
     public bool CanStart => !IsRunning;
     public bool CanStop => IsRunning;
+    public bool CanCreatePairingTicket =>
+        IsRunning && _host is not null && _tlsIdentity is not null && !_pairingTicketActive;
+    public bool CanCopyPairingTicket =>
+        IsRunning && _host is not null && PairingTicketDescriptor.Contains("Код:", StringComparison.Ordinal);
 
     public void RefreshAvailableAddresses()
     {
@@ -74,6 +85,39 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         AvailableAddressesText = addresses.Count == 0
             ? "Активные частные LAN-адреса не найдены"
             : "Выберите адрес, доступный только в вашей локальной сети.";
+    }
+
+    public string CreatePairingTicket()
+    {
+        if (!CanCreatePairingTicket || _host is null || _tlsIdentity is null)
+            throw new InvalidOperationException("Сначала запустите HTTPS Bridge.");
+
+        // The code is returned once and only its digest is stored by the ticket store.
+        var ticket = new BridgeV1PairingTicketStore(_databasePath).Create(
+            ["desktop.task.claim", "desktop.task.result"],
+            TimeSpan.FromMinutes(5));
+        var endpoint = _host.Endpoints.Single().AbsoluteUri;
+        _pairingTicketActive = true;
+        PairingTicketDescriptor = string.Join(Environment.NewLine,
+            "Сопряжение GLAFIRA Agent — действительно 5 минут",
+            $"Endpoint: {endpoint}",
+            $"TLS SHA-256: {_tlsIdentity.FingerprintSha256}",
+            $"Ticket ID: {ticket.TicketId}",
+            $"Код: {ticket.PairingCode}",
+            $"Истекает: {ticket.ExpiresAt.ToLocalTime():dd.MM.yyyy HH:mm:ss}",
+            "Scopes: desktop.task.claim, desktop.task.result",
+            "Передавайте код только на подключаемый компьютер. После истечения создайте новый билет.");
+        Notify(nameof(CanCreatePairingTicket));
+        Notify(nameof(CanCopyPairingTicket));
+        return PairingTicketDescriptor;
+    }
+
+    public void ClearPairingTicket()
+    {
+        PairingTicketDescriptor = "Билет скрыт. Для нового сопряжения создайте новый одноразовый билет.";
+        _pairingTicketActive = false;
+        Notify(nameof(CanCreatePairingTicket));
+        Notify(nameof(CanCopyPairingTicket));
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -113,6 +157,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             Notify(nameof(IsRunning));
             Notify(nameof(CanStart));
             Notify(nameof(CanStop));
+            Notify(nameof(CanCreatePairingTicket));
         }
         catch (InvalidOperationException error) when (error.Message == "BRIDGE_TLS_ROTATION_REQUIRED")
         {
@@ -122,6 +167,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             Notify(nameof(IsRunning));
             Notify(nameof(CanStart));
             Notify(nameof(CanStop));
+            Notify(nameof(CanCreatePairingTicket));
         }
         catch (Exception)
         {
@@ -136,6 +182,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             Notify(nameof(IsRunning));
             Notify(nameof(CanStart));
             Notify(nameof(CanStop));
+            Notify(nameof(CanCreatePairingTicket));
         }
     }
 
@@ -153,12 +200,14 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         }
         finally
         {
+            ClearPairingTicket();
             DisposeTlsIdentity();
             EndpointsText = "—";
             Status = "Остановлен";
             Notify(nameof(IsRunning));
             Notify(nameof(CanStart));
             Notify(nameof(CanStop));
+            Notify(nameof(CanCreatePairingTicket));
         }
     }
 
