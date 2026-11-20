@@ -1,0 +1,87 @@
+package com.micronizationlab.glafira
+
+import org.json.JSONArray
+import org.json.JSONObject
+
+/**
+ * Converts a model's structured JSON response into typed, permission-bounded Core task nodes.
+ * The model may propose task types only from the caller's explicit allowlist; it cannot set
+ * project identity, owner grants, execution mode, task state, credentials or arbitrary handlers.
+ */
+object GlafiraJsonTaskPlanDecoder {
+    const val MAX_RESPONSE_CHARS = 96 * 1024
+
+    fun decode(
+        request: GlafiraTaskPlanRequest,
+        responseJson: String,
+        allowedTaskTypes: Set<String>
+    ): GlafiraTaskPlan {
+        require(responseJson.length in 2..MAX_RESPONSE_CHARS) { "Planner response size is invalid." }
+        require(allowedTaskTypes.isNotEmpty() && allowedTaskTypes.size <= 64)
+        require(allowedTaskTypes.all { it.matches(Regex("[a-z][a-z0-9_.-]{1,63}")) })
+
+        val root = JSONObject(responseJson)
+        val planId = root.getString("planId")
+        val rawNodes = root.getJSONArray("nodes")
+        require(rawNodes.length() in 1..request.maxNodes) { "Planner node count exceeds the request budget." }
+
+        val nodes = buildList {
+            for (index in 0 until rawNodes.length()) {
+                val raw = rawNodes.getJSONObject(index)
+                val taskId = raw.getString("taskId")
+                val taskType = raw.getString("taskType")
+                require(taskType in allowedTaskTypes) { "Planner proposed a task type outside the approved allowlist." }
+                val payload = raw.getString("payload")
+                require(payload.length <= 512 * 1024)
+                val priority = raw.optInt("priority", 0)
+                val dependencies = raw.optJSONArray("dependsOnTaskIds").toStringSet()
+                val scopes = raw.optJSONArray("requiredScopes").toStringSet()
+                val task = GlafiraTask(
+                    taskId = taskId,
+                    projectId = request.projectId,
+                    taskType = taskType,
+                    payload = payload,
+                    origin = "instruction-planner",
+                    priority = priority,
+                    createdAtMillis = request.createdAtMillis,
+                    updatedAtMillis = request.createdAtMillis,
+                    idempotencyKey = request.idempotencyKey + ":" + taskId,
+                    requiredScopes = scopes
+                )
+                add(GlafiraTaskPlanNode(task, dependencies))
+            }
+        }
+
+        return GlafiraTaskPlan(
+            planId = planId,
+            projectId = request.projectId,
+            idempotencyKey = request.idempotencyKey,
+            nodes = nodes,
+            createdAtMillis = request.createdAtMillis
+        ).also(GlafiraTaskPlanPolicy::validate)
+    }
+
+    private fun JSONArray?.toStringSet(): Set<String> {
+        if (this == null) return emptySet()
+        require(length() <= 64)
+        return buildSet {
+            for (index in 0 until length()) add(getString(index))
+        }
+    }
+}
+
+/**
+ * Adapter for an approved model provider. The injected generator must return structured JSON;
+ * this class only decodes and validates it and never invokes tools itself.
+ */
+class GlafiraStructuredTaskPlanDecomposer(
+    private val allowedTaskTypes: Set<String>,
+    private val generateStructuredPlan: (GlafiraTaskPlanRequest) -> String
+) : GlafiraTaskPlanDecomposer {
+    override fun decompose(request: GlafiraTaskPlanRequest): GlafiraTaskPlan =
+        GlafiraJsonTaskPlanDecoder.decode(
+            request,
+            generateStructuredPlan(request),
+            allowedTaskTypes
+        )
+}
