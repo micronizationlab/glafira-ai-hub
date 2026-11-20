@@ -81,20 +81,47 @@ public sealed class DesktopHubStore
         using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO Agents(agent_id, device_id, capabilities_json, max_parallel, owner_approved, last_heartbeat_ms)
-            VALUES($agent, $device, '[]', 1, 0, $heartbeat)
+            VALUES($agent, $device, '[]', 1, 0, 0)
             ON CONFLICT(agent_id) DO UPDATE SET
                 device_id = excluded.device_id,
                 capabilities_json = '[]',
                 max_parallel = 1,
                 owner_approved = 0,
-                last_heartbeat_ms = excluded.last_heartbeat_ms
+                last_heartbeat_ms = 0
             WHERE Agents.owner_approved = 0;
             """;
         command.Parameters.AddWithValue("$agent", agentId);
         command.Parameters.AddWithValue("$device", deviceId);
-        command.Parameters.AddWithValue("$heartbeat", now.ToUnixTimeMilliseconds());
         if (command.ExecuteNonQuery() != 1)
             throw new InvalidOperationException("AGENT_ALREADY_OWNER_APPROVED");
+    }
+
+    /// <summary>Assigns capabilities and enables a paired Agent without fabricating a heartbeat.</summary>
+    public bool ConfigureAgentApproval(
+        string agentId,
+        IReadOnlyCollection<string> capabilities,
+        int maxParallelTasks)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        ArgumentNullException.ThrowIfNull(capabilities);
+        if (maxParallelTasks is < 1 or > 16)
+            throw new ArgumentOutOfRangeException(nameof(maxParallelTasks));
+        var normalized = Normalize(capabilities);
+        if (normalized.Length is < 1 or > 16)
+            throw new ArgumentException("An approved Agent must have 1–16 explicit capabilities.", nameof(capabilities));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE Agents
+            SET capabilities_json = $capabilities,
+                max_parallel = $parallel,
+                owner_approved = 1
+            WHERE agent_id = $agent;
+            """;
+        command.Parameters.AddWithValue("$capabilities", JsonSerializer.Serialize(normalized));
+        command.Parameters.AddWithValue("$parallel", maxParallelTasks);
+        command.Parameters.AddWithValue("$agent", agentId);
+        return command.ExecuteNonQuery() == 1;
     }
 
     public bool IsAgentOwnerApproved(string agentId)
