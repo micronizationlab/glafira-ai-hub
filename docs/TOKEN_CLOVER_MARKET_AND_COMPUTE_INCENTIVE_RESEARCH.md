@@ -308,3 +308,77 @@ Reference FX: **1 USD = 81.9290 RUB** on 2026-11-20. This is an analytical norma
 - Poe official purchase FAQ (subscription from $4.99 and compute-point conditions): https://help.poe.com/hc/en-us/articles/19945140063636-Poe-Purchases-FAQs
 
 **Confidence:** high for the published source prices and FX arithmetic as of the stated snapshot; medium for Russian consumer competitiveness because checkout availability, regional pricing and payment acceptance vary. No quality equivalence is implied.
+
+
+## 5B. Grok Bot: a real cloud-computer competitor (checked 2026-11-20)
+
+Grok Bot is a direct competitor to the planned GLAFIRA AI-office experience—not merely a chat model.
+
+| Tier | Published monthly price | Included usage |
+|---|---:|---|
+| Premium | $30 (~2,458 RUB at 81.929 RUB/USD) | Grok Bot cloud computer, tool sign-in, scheduled routines, desktop/mobile, weekly Bot usage |
+| Super | $100 (~8,193 RUB) | Premium plus 3.5× Premium usage and priority model access |
+| Ultra | $200 (~16,386 RUB) | Super plus 12× Premium usage and earliest access |
+
+Important product details:
+- Each user's Bots share one persistent cloud computer (files, browser sessions and logins). The isolation boundary is per user, not per Bot; separate Bots are not separate security compartments.
+- Bots can run in parallel and continue on the cloud computer when the user's laptop is closed.
+- Windows, macOS and Linux desktop clients plus iOS/Android companion apps share the same Bots, conversations, routines and cloud computer.
+- The user can explicitly allow a Bot to execute on their local computer; local execution is not the default security boundary.
+- Usage is weekly pooled; extra usage can be billed based on token cost. This is not unlimited agent execution.
+- Routines have rate limits (up to 300 runs/hour across all routines and 200/hour per routine); a failed run is not automatically retried. Frequent routines consume the weekly usage pool quickly, and unattended routines may pause after long inactivity.
+
+**Competitive implication:** GLAFIRA must not claim that an AI teammate with a computer, tool sign-in, scheduled routines, parallel agents, mobile/desktop access or local execution with permission is unique. Grok Bot already markets all of these. GLAFIRA's defensible target is the combination of provider-neutral multi-model routing, durable cross-project task graph and evidence journal, user-controlled local Windows Desktop/Agent fleet, opt-in compute from independently owned devices, buyer-funded task marketplace, verifiable accepted-work rewards and an integrated optional VPN/service plane. These remain target-state claims until implemented and accepted.
+
+At 500 RUB/month, GLAFIRA's AI tier is far below Grok Bot Premium (~2,458 RUB/month) but above Poe's ~$4.99 entry tier (~409 RUB at the reference FX). This does not prove that 500 RUB is attractive: the included weekly/model usage, local execution, project continuity and task completion must be clearly specified. Never compare a capped 500-RUB plan with Grok Bot's cloud computer as if both provide unlimited work.
+
+Official sources:
+- Grok Bot pricing and product: https://x.ai/bot
+- Grok Bot setup, supported platforms and local execution boundary: https://docs.x.ai/grok-bot/get-started
+- Grok Bot routines, usage consumption and rate limits: https://docs.x.ai/grok-bot/skills-routines-and-automations
+- X Subscription shared usage pool: https://docs.x.ai/x-subscription/grok-bot
+
+## 5C. Compute and bandwidth contribution: real rates, payout friction and design lessons
+
+### GPU compute — Salad (not a smartphone benchmark)
+
+Salad's official GPU earning-rate page lists *active job* rates as of 2026-11-01. For example:
+- RTX 5070: $0.064–$0.160 per hour while a GPU job is running.
+- RTX 5070 Ti: $0.080–$0.216 per active job-hour.
+- RTX 5090: $0.200–$0.480 per active job-hour.
+
+These are not guaranteed 24-hour earnings. Salad explicitly says electricity and time between jobs are excluded from the published active-job rate. Its live earning dashboard separately reports average earnings per chopping hour, time with a job and top-chef outliers; these metrics must not be mixed with active-job tariffs.
+
+A community RTX 5090 owner reported ~40+ hours of high GPU utilization at ~497–500W and about $50 total, but clarified the jobs/rates were bursty and electricity cost mattered. This is one anecdote, not an average or earnings forecast.
+
+### Bandwidth sharing — Honeygain / JumpTask (not compute)
+
+Honeygain's current official payout rules illustrate how redemption friction affects user trust:
+- Honeygain mode: $20 minimum payout, PayPal/JumpTask-credit route, published $2.02 payout fee.
+- JumpTask mode: 1,000 credits = $1, cash-out from $0.50 (first payout minimum $1); gift-card/PayPal routes through the payout partner and fees vary by country.
+- Honeygain mode has a 5% earning boost; JumpTask mode does not. The user can switch modes, but previously earned balances are not retroactively redirected.
+
+This is bandwidth-sharing economics, not phone CPU/GPU compute. It should not be used to infer the earning potential of a smartphone running GLAFIRA's 10% compute ceiling.
+
+### What GLAFIRA should learn
+
+1. **Immediate utility first:** the AI workspace and VPN must be valuable without compute contribution. Token rewards are an optional extra, not a condition for using the service.
+2. **No tapping or artificial engagement:** no daily tap, check-in, ad watch, forced screen-on time, fake visits or uptime farming. The phone should contribute only when safe and useful.
+3. **Reward accepted work, not resource promises:** task result, quality, verification and requester acceptance determine reward; no pay for raw uptime or unverified benchmark claims.
+4. **Net reward transparency:** show measured incremental energy, data, active time, accepted workload, resource confidence, reward formula and pending/available GLF. For PCs, include actual job occupancy and incremental kWh; for phones, include the incremental draw over charging idle.
+5. **Low-friction usefulness:** small rewards should remain visible and usable inside the ecosystem if legal and unit economics permit. Avoid arbitrary high withdrawal thresholds and expiring balances. Do not promise cash redemption.
+6. **Different device classes, different economics:** a smartphone at a 10% ceiling is not a GPU server. Its tasks should be small, interruptible, Wi-Fi-only and scheduled only when charging/thermal/idle conditions allow. A desktop GPU can use a different workload and reward curve.
+7. **Demand-backed rewards:** if no buyer needs the work, there is no compute reward. Never mint rewards simply because a device stayed online.
+8. **Payout trust matters:** publish the minimum, fees, settlement delay, region restrictions, reversals and support route before enrollment. Honeygain's $20 vs $0.50 modes show how much the cash-out route changes perceived usability.
+
+Official sources:
+- Salad GPU earning rates: https://support.salad.com/faq/compatibility/compatible-gpus-and-earning-rates/
+- Salad live average dashboard: https://app.salad.io/earning-rates/
+- Salad electricity/profit calculation: https://support.salad.com/faq/jobs/calculating-profitability-and-electricity-costs/
+- Honeygain minimum payout and fees: https://support.honeygain.com/hc/en-us/articles/30688405604252-What-is-the-minimum-payout-threshold
+- Honeygain payout methods: https://support.honeygain.com/hc/en-us/articles/30688374419228-What-are-the-payout-methods
+- JumpTask mode: https://support.honeygain.com/hc/en-us/articles/30688517831708-What-is-JumpTask-mode
+- JumpTask credits: https://support.honeygain.com/hc/en-us/articles/30688558061084-What-are-credits-JumpTask
+- Verified user anecdote (RTX 5090): https://www.reddit.com/r/SaladChefs/comments/1vzmeyf/rtx_5090_on_salad_made_about_50_but_i_dont_think/
+
+**Evidence caution:** Salad's rates are provider-published but are job-availability dependent; the Reddit report is anecdotal; Honeygain's thresholds are provider policy and may change. None of these sources establish that GLAFIRA smartphone compute can earn a particular amount. GLAFIRA must measure its own accepted workloads and incremental energy before publishing any reward estimate.
