@@ -5,7 +5,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class GlafiraJsonTaskPlanDecoderTest {
-    private val request = GlafiraTaskPlanRequest(
+    private val request = GlafiraCoreTaskPlanRequest(
         instruction = "Read and summarize project materials",
         projectId = "project-a",
         idempotencyKey = "instruction-0001",
