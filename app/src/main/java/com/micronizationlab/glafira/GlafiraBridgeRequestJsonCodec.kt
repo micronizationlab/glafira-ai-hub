@@ -29,7 +29,7 @@ object GlafiraBridgeRequestJsonCodec {
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
             .decode(ByteBuffer.wrap(bytes)).toString()
-        val reader = JsonReader(StringReader(json)).apply { isLenient = false }
+        val reader = JsonReader(StringReader(json))
         val root = readValue(reader).asJsonObject
         require(reader.peek() == JsonToken.END_DOCUMENT) { "Trailing JSON content is not allowed." }
         require(root.keySet() == requiredKeys) { "Bridge request fields are missing or unknown." }
