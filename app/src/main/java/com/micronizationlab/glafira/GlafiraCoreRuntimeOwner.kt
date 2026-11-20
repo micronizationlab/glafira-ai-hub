@@ -136,13 +136,13 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     /** Decomposes a high-level instruction through a trusted planner, then persists its DAG. */
     fun submitInstruction(
-        request: GlafiraTaskPlanRequest,
-        decomposer: GlafiraTaskPlanDecomposer
-    ): GlafiraTaskPlanEnqueueResult =
-        GlafiraTaskPlanOrchestrator(decomposer, ::enqueuePlan).submit(request)
+        request: GlafiraCoreTaskPlanRequest,
+        decomposer: GlafiraCoreTaskPlanDecomposer
+    ): GlafiraCoreTaskPlanEnqueueResult =
+        GlafiraCoreTaskPlanOrchestrator(decomposer, ::enqueuePlan).submit(request)
 
     /** Atomically registers an entire bounded DAG before waking the shared dispatcher. */
-    fun enqueuePlan(plan: GlafiraTaskPlan): GlafiraTaskPlanEnqueueResult {
+    fun enqueuePlan(plan: GlafiraCoreTaskPlan): GlafiraCoreTaskPlanEnqueueResult {
         val result = taskStore.enqueuePlan(plan)
         if (result.inserted && isEnabled) {
             GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
@@ -151,15 +151,15 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     /** Project-scoped orchestration status and durable node journal. */
-    fun taskPlan(planId: String, projectId: String): GlafiraTaskPlanRecord? =
+    fun taskPlan(planId: String, projectId: String): GlafiraCoreTaskPlanRecord? =
         taskStore.taskPlan(planId, projectId)
 
     /** Project-scoped plan journal, including current node states and outcomes. */
-    fun taskPlans(projectId: String, limit: Int = 100): List<GlafiraTaskPlanRecord> =
+    fun taskPlans(projectId: String, limit: Int = 100): List<GlafiraCoreTaskPlanRecord> =
         taskStore.taskPlans(projectId, limit)
 
     /** Full project-scoped plan journal with task histories and persisted results. */
-    fun taskPlanJournal(planId: String, projectId: String): GlafiraTaskPlanJournal? =
+    fun taskPlanJournal(planId: String, projectId: String): GlafiraCoreTaskPlanJournal? =
         taskStore.taskPlanJournal(planId, projectId)
 
     internal suspend fun executeNext(): GlafiraTaskExecutionResult {
