@@ -857,6 +857,32 @@ class GlafiraTaskStore(context: Context) :
         }, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
+    /** All recently heartbeating Desktop nodes, ordered by freshness for dispatch planning. */
+    @Synchronized
+    fun desktopNodes(maxAgeMillis: Long = 45_000L): List<GlafiraNodeCapabilities> {
+        require(maxAgeMillis in 1_000L..300_000L)
+        val cutoff = System.currentTimeMillis() - maxAgeMillis
+        return readableDatabase.query(
+            "core_desktop_nodes", null, "last_seen_at >= ?",
+            arrayOf(cutoff.toString()), null, null, "last_seen_at DESC", "32"
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    val json = JSONArray(cursor.getString(cursor.getColumnIndexOrThrow("capabilities_json")))
+                    val capabilities = buildSet {
+                        for (index in 0 until json.length()) add(json.getString(index))
+                    }
+                    add(GlafiraNodeCapabilities(
+                        nodeId = cursor.getString(cursor.getColumnIndexOrThrow("device_id")),
+                        available = true,
+                        maxParallelTasks = cursor.getInt(cursor.getColumnIndexOrThrow("max_parallel_tasks")).coerceIn(1, 8),
+                        capabilities = capabilities
+                    ))
+                }
+            }
+        }
+    }
+
     @Synchronized
     fun desktopNodeCapabilities(maxAgeMillis: Long = 45_000L): GlafiraNodeCapabilities? {
         val now = System.currentTimeMillis()
