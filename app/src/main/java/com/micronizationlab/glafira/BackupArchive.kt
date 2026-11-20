@@ -98,7 +98,7 @@ object BackupArchive {
                     }
                 }
             }
-            verify(output, passphrase)
+            verify(context, output, passphrase)
             return output
         } catch (error: Exception) {
             output.delete()
@@ -106,9 +106,29 @@ object BackupArchive {
         }
     }
 
-    fun verify(file: File, passphrase: CharArray): BackupVerification {
-        val extracted = decryptToStaging(file, passphrase)
+    fun verify(context: Context, file: File, passphrase: CharArray): BackupVerification {
+        val extracted = decryptToStaging(context, file, passphrase)
         try {
+            return extracted.verification
+        } finally {
+            extracted.directory.deleteRecursively()
+        }
+    }
+
+    /** Verifies the authenticated archive contains a required relative data path. */
+    fun verifyContains(context: Context, file: File, passphrase: CharArray, relativePath: String): BackupVerification {
+        require(relativePath.isNotBlank() && !relativePath.startsWith("/") &&
+            relativePath.split("/").none { it == ".." || it.isBlank() }) {
+            "Недопустимый путь обязательного файла архива."
+        }
+        val extracted = decryptToStaging(context, file, passphrase)
+        try {
+            require(extracted.appId == context.packageName) {
+                "Резервная копия создана для другого приложения."
+            }
+            require(extracted.files.any { it.relativePath == relativePath }) {
+                "Архив не содержит обязательную базу GLAFIRA Core."
+            }
             return extracted.verification
         } finally {
             extracted.directory.deleteRecursively()
@@ -119,31 +139,42 @@ object BackupArchive {
         // Keep a verified snapshot of the current state so a partial restore can be rolled back.
         val safetySnapshot = create(context, passphrase)
         val extracted = try {
-            decryptToStaging(file, passphrase)
+            decryptToStaging(context, file, passphrase)
         } catch (error: Exception) {
             safetySnapshot.delete()
             throw error
         }
+        var safetySnapshotCanBeDeleted = true
         try {
+            require(extracted.appId == context.packageName) {
+                "Резервная копия создана для другого приложения."
+            }
             applyStaged(context, extracted.files, extracted.safePreferences)
             return extracted.verification
         } catch (restoreError: Exception) {
-            val rollback = decryptToStaging(safetySnapshot, passphrase)
+            safetySnapshotCanBeDeleted = false
             try {
-                val safePaths = rollback.files.map { it.relativePath }.toSet()
-                extracted.files.map { it.relativePath }.filter { it !in safePaths }.forEach { relative ->
-                    File(context.filesDir, relative).delete()
+                val rollback = decryptToStaging(context, safetySnapshot, passphrase)
+                try {
+                    val safePaths = rollback.files.map { it.relativePath }.toSet()
+                    extracted.files.map { it.relativePath }.filter { it !in safePaths }.forEach { relative ->
+                        File(context.filesDir, relative).delete()
+                    }
+                    applyStaged(context, rollback.files, rollback.safePreferences)
+                    safetySnapshotCanBeDeleted = true
+                } finally {
+                    rollback.directory.deleteRecursively()
                 }
-                applyStaged(context, rollback.files, rollback.safePreferences)
             } catch (rollbackError: Exception) {
                 restoreError.addSuppressed(rollbackError)
-            } finally {
-                rollback.directory.deleteRecursively()
+                restoreError.addSuppressed(
+                    IllegalStateException("Safety archive retained for manual recovery: ${safetySnapshot.absolutePath}")
+                )
             }
             throw restoreError
         } finally {
             extracted.directory.deleteRecursively()
-            safetySnapshot.delete()
+            if (safetySnapshotCanBeDeleted) safetySnapshot.delete()
         }
     }
 
@@ -189,13 +220,17 @@ object BackupArchive {
         val directory: File,
         val files: List<StagedFile>,
         val verification: BackupVerification,
-        val safePreferences: JSONObject
+        val safePreferences: JSONObject,
+        val appId: String
     )
 
-    private fun decryptToStaging(file: File, passphrase: CharArray): StagedArchive {
+    private fun decryptToStaging(context: Context, file: File, passphrase: CharArray): StagedArchive {
         require(file.exists() && file.length() > 0L) { "Файл резервной копии пуст или отсутствует." }
         require(file.length() <= MAX_ARCHIVE_BYTES) { "Файл резервной копии слишком большой." }
-        val staging = File(file.parentFile, "glafira-restore-${System.currentTimeMillis()}").apply { mkdirs() }
+        // Decrypted staging data must stay in the app-private cache, never beside a
+        // user-selected archive which may live in Downloads or shared storage.
+        val staging = File(context.cacheDir, "glafira-restore-${java.util.UUID.randomUUID()}")
+        check(staging.mkdir()) { "Не удалось создать защищённый каталог восстановления." }
         try {
             DataInputStream(BufferedInputStream(FileInputStream(file))).use { input ->
                 val magic = ByteArray(MAGIC.size)
@@ -221,53 +256,102 @@ object BackupArchive {
                 var manifest: JSONObject? = null
                 var totalBytes = 0L
                 var entries = 0
-                ZipInputStream(BufferedInputStream(CipherInputStream(input, cipher))).use { zip ->
-                    var entry = zip.nextEntry
-                    while (entry != null) {
-                        require(!entry.isDirectory) { "Каталоги как отдельные записи не поддерживаются." }
-                        entries++
-                        require(entries <= MAX_FILES + 1) { "В архиве слишком много файлов." }
-                        val name = entry.name
-                        require(!name.startsWith("/") && !name.contains("\\") &&
-                            name.split("/").none { it == ".." || it.isBlank() }) { "Обнаружен небезопасный путь в архиве." }
-                        if (name == "manifest.json") {
-                            require(manifest == null) { "Повторный manifest в архиве." }
-                            val bytes = zip.readBytesLimited(2L * 1024L * 1024L)
-                            manifest = JSONObject(String(bytes, Charsets.UTF_8))
-                        } else {
-                            require(name.startsWith("data/")) { "Неизвестная запись в архиве." }
-                            val relative = name.removePrefix("data/")
-                            val destination = File(staging, relative).canonicalFile
-                            require(destination.path.startsWith(staging.canonicalPath + File.separator)) { "Недопустимый путь в архиве." }
-                            destination.parentFile?.mkdirs()
-                            var copied = 0L
-                            FileOutputStream(destination).use { out ->
-                                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                                while (true) {
-                                    val count = zip.read(buffer)
-                                    if (count < 0) break
-                                    copied += count
-                                    totalBytes += count
-                                    require(totalBytes <= MAX_ARCHIVE_BYTES) { "Распакованный архив превышает допустимый размер." }
-                                    out.write(buffer, 0, count)
-                                }
-                            }
-                            stagedFiles.add(StagedFile(relative, destination))
+                val bufferedCipherInput = BufferedInputStream(CipherInputStream(input, cipher))
+                try {
+                    // ZipInputStream stops at the ZIP central-directory marker, which can be
+                    // before the AES-GCM authentication tag. Keep the cipher stream open and
+                    // drain it to EOF after ZIP parsing so Cipher.doFinal verifies that tag.
+                    val zip = ZipInputStream(object : java.io.FilterInputStream(bufferedCipherInput) {
+                        override fun close() {
+                            // The cipher stream must remain open until the authenticated drain.
                         }
-                        zip.closeEntry()
-                        entry = zip.nextEntry
+                    })
+                    try {
+                        var entry = zip.nextEntry
+                        while (entry != null) {
+                            require(!entry.isDirectory) { "Каталоги как отдельные записи не поддерживаются." }
+                            entries++
+                            require(entries <= MAX_FILES + 1) { "В архиве слишком много файлов." }
+                            val name = entry.name
+                            require(!name.startsWith("/") && !name.contains("\\") &&
+                                name.split("/").none { it == ".." || it.isBlank() }) {
+                                "Обнаружен небезопасный путь в архиве."
+                            }
+                            if (name == "manifest.json") {
+                                require(manifest == null) { "Повторный manifest в архиве." }
+                                val bytes = zip.readBytesLimited(2L * 1024L * 1024L)
+                                try {
+                                    manifest = JSONObject(String(bytes, Charsets.UTF_8))
+                                } finally {
+                                    bytes.fill(0)
+                                }
+                            } else {
+                                require(name.startsWith("data/")) { "Неизвестная запись в архиве." }
+                                val relative = name.removePrefix("data/")
+                                val destination = File(staging, relative).canonicalFile
+                                require(destination.path.startsWith(staging.canonicalPath + File.separator)) {
+                                    "Недопустимый путь в архиве."
+                                }
+                                destination.parentFile?.mkdirs()
+                                FileOutputStream(destination).use { out ->
+                                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                    try {
+                                        while (true) {
+                                            val count = zip.read(buffer)
+                                            if (count < 0) break
+                                            totalBytes += count
+                                            require(totalBytes <= MAX_ARCHIVE_BYTES) {
+                                                "Распакованный архив превышает допустимый размер."
+                                            }
+                                            out.write(buffer, 0, count)
+                                        }
+                                    } finally {
+                                        buffer.fill(0)
+                                    }
+                                }
+                                stagedFiles.add(StagedFile(relative, destination))
+                            }
+                            zip.closeEntry()
+                            entry = zip.nextEntry
+                        }
+                    } finally {
+                        zip.close()
                     }
+
+                    val authenticationDrain = ByteArray(DEFAULT_BUFFER_SIZE)
+                    try {
+                        while (bufferedCipherInput.read(authenticationDrain) >= 0) {
+                            // Discard authenticated ZIP trailer bytes.
+                        }
+                    } finally {
+                        authenticationDrain.fill(0)
+                    }
+                } finally {
+                    bufferedCipherInput.close()
                 }
 
                 val parsed = requireNotNull(manifest) { "В архиве отсутствует manifest." }
                 require(parsed.optString("format") == "GLAFIRA_BACKUP") { "Неверный формат manifest." }
                 require(parsed.optInt("version") == FORMAT_VERSION) { "Версия manifest не поддерживается." }
+                val archiveAppId = parsed.optString("appId")
+                require(archiveAppId.isNotBlank()) { "В manifest отсутствует идентификатор приложения." }
+                require(parsed.optInt("fileCount", -1) == stagedFiles.size) {
+                    "Количество файлов не совпадает с заголовком manifest."
+                }
+                require(parsed.optLong("totalBytes", -1L) == totalBytes) {
+                    "Общий размер файлов не совпадает с manifest."
+                }
                 val expected = parsed.getJSONArray("files")
                 require(expected.length() == stagedFiles.size) { "Количество файлов не совпадает с manifest." }
                 val stagedByPath = stagedFiles.associateBy { it.relativePath }
+                require(stagedByPath.size == stagedFiles.size) {
+                    "В архиве обнаружены повторяющиеся пути файлов."
+                }
+                val manifestPaths = mutableSetOf<String>()
                 for (index in 0 until expected.length()) {
                     val item = expected.getJSONObject(index)
                     val relative = item.getString("path")
+                    require(manifestPaths.add(relative)) { "В manifest обнаружен повторяющийся путь." }
                     val staged = stagedByPath[relative] ?: error("В архиве отсутствует файл $relative")
                     require(staged.file.length() == item.getLong("size")) { "Размер файла не совпадает: $relative" }
                     require(sha256(staged.file) == item.getString("sha256")) { "Контрольная сумма не совпадает: $relative" }
@@ -280,7 +364,8 @@ object BackupArchive {
                         stagedFiles.size,
                         totalBytes
                     ),
-                    parsed.optJSONObject("safePreferences") ?: JSONObject()
+                    parsed.optJSONObject("safePreferences") ?: JSONObject(),
+                    archiveAppId
                 )
             }
         } catch (error: Exception) {
@@ -318,12 +403,19 @@ object BackupArchive {
             val key = keys.next()
             val safeKey = key == "glafira_primary_provider" ||
                 key == "peer_consultation_enabled" ||
-                key.startsWith("peer_consultation_enabled_")
+                key.startsWith("peer_consultation_enabled_") ||
+                key == "peer_consultation_providers" ||
+                key.startsWith("peer_consultation_providers_")
             if (!safeKey) continue
             val value = values.opt(key)
             when {
                 key == "glafira_primary_provider" && value is String -> editor.putString(key, value)
-                value is Boolean -> editor.putBoolean(key, value)
+                (key == "peer_consultation_providers" ||
+                    key.startsWith("peer_consultation_providers_")) && value is String ->
+                    editor.putString(key, value)
+                (key == "peer_consultation_enabled" ||
+                    key.startsWith("peer_consultation_enabled_")) && value is Boolean ->
+                    editor.putBoolean(key, value)
             }
         }
         check(editor.commit()) { "Не удалось восстановить настройки приложения." }
@@ -343,9 +435,13 @@ object BackupArchive {
 
     private fun deriveKey(passphrase: CharArray, salt: ByteArray, iterations: Int): SecretKeySpec {
         val spec = PBEKeySpec(passphrase, salt, iterations, 256)
-        return try {
+        try {
             val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
-            SecretKeySpec(bytes, "AES")
+            return try {
+                SecretKeySpec(bytes, "AES")
+            } finally {
+                bytes.fill(0)
+            }
         } finally {
             spec.clearPassword()
         }
