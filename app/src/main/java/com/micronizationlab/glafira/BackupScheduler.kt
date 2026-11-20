@@ -33,9 +33,10 @@ object BackupScheduler {
     }
 
     fun runNow(context: Context, wifiOnly: Boolean) {
+        // An owner-triggered manual backup must not wait for the daily-work battery rule.
+        // Network policy is still respected; WorkManager reports queued/running/failure states.
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
-            .setRequiresBatteryNotLow(true)
             .build()
         val request = OneTimeWorkRequestBuilder<GlafiraBackupWorker>()
             .setConstraints(constraints)
