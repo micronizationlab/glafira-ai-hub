@@ -263,3 +263,28 @@ X Subscription Premium/Grok Bot is about 2,458 RUB/month at the 2026-11-20 CBR r
 Official sources:
 - Grok Bot product/pricing: https://x.ai/bot
 - X Subscription announcement: https://x.ai/news/x-subscription
+
+
+## 5C. User-reported incentive outcomes: what attracts and what drives churn
+
+Community reports are anecdotal, not audited averages. They are useful as failure-mode evidence, not as earnings forecasts.
+
+- **Salad / GPU supply:** one RTX 5090 owner reported roughly $50 from 40+ hours of high-utilization compute at about 497–500W. Other 5070/5070 Ti owners reported roughly $0.06–$0.15/hour, variable job availability, cash-out loss around 9–10%, and electricity costs reducing net earnings to only a few cents/hour. Another discussion notes that rates change with demand and resource allocation. The lesson: publish *net* reward after energy, fees, utilization and hardware wear; never advertise a best-case GPU hourly rate as typical.
+- **Honeygain / bandwidth supply:** a recent community payout update describes direct Honeygain cash-out at $20, while JumpTask routing can unlock lower cash-out thresholds and gift-card/crypto options. Users report that even several devices can take months to reach the direct payout threshold. The lesson: payout friction and long waiting periods matter as much as nominal reward rate.
+- **No tapping required:** these networks attract users with passive background participation and reward redemption; GLAFIRA should not introduce artificial taps, daily check-ins or ad watching. It should make the real task/resource contribution visible and let the user do nothing while the device is idle.
+
+### Design implications for GLAFIRA
+
+1. Give the user immediate tangible value first: paid AI workspace and VPN service. Token rewards are an additional benefit, not the sole reason to install.
+2. Make participation opt-in, reversible and safe by default: Wi-Fi only on smartphones, strict compute ceiling, charging/thermal/idle gates, no cellular data, immediate pause when the owner needs the device.
+3. Reward only accepted useful work; show task, device, measured/estimated resources, acceptance result, formula version, GLF earned and spendable/reserved status.
+4. Let GLF be useful inside the ecosystem (e.g. eligible AI/VPN service credits or marketplace purchases) only after legal and unit-economics approval. Do not promise cash conversion or guaranteed monthly earnings.
+5. Avoid high minimum withdrawal thresholds for internal service credits. If a user earns a small amount, it should still be visible and useful; no arbitrary expiring points.
+6. Separate device classes. A smartphone at a 10% ceiling is not a GPU server; do not market it as such or promise comparable income. Home PCs/GPU devices need explicit power and wear accounting.
+7. Use demand-backed tasks. Do not reward idle uptime; if there is no buyer demand, no compute reward is generated.
+
+Community examples (anecdotal):
+- Salad RTX 5090 high-load report: https://www.reddit.com/r/SaladChefs/comments/1vzmeyf/rtx_5090_on_salad_made_about_50_but_i_dont_think/
+- Salad 5070/5070 Ti earnings and electricity discussion: https://www.reddit.com/r/SaladChefs/comments/1wb8ya7/graphics_card_5070_processor_amd_9_9900x3d_ram_32/
+- Honeygain payout options / $20 direct threshold discussion: https://www.reddit.com/r/Honeygain/comments/1vx18x0/more_ways_to_get_paid_heres_whats_changing_with/
+- Honeygain low-reward / long-threshold user discussion: https://www.reddit.com/r/gotpaidonline/comments/1whd20s/honeygain_literally_free_money_earn_just_by_being/
