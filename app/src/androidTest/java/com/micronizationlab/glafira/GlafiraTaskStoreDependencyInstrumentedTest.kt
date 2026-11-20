@@ -45,6 +45,11 @@ class GlafiraTaskStoreDependencyInstrumentedTest {
         idempotencyKey = "idem-$id"
     )
 
+    private fun desktopTask(id: String) = task(id).copy(
+        taskType = GlafiraTaskStore.DESKTOP_TASK_TYPE,
+        payload = """{"requiredCapabilities":[]}"""
+    )
+
     private fun enqueue(store: GlafiraTaskStore, item: GlafiraTask) {
         assertTrue(store.enqueue(item).inserted)
     }
@@ -141,6 +146,43 @@ class GlafiraTaskStoreDependencyInstrumentedTest {
             pool.shutdownNow()
             pool.awaitTermination(5, TimeUnit.SECONDS)
         }
+    }
+
+    @Test fun desktopClaimLaneHonorsDependenciesAndReleasesTaskAfterSuccess() {
+        val store = newStore()
+        enqueue(store, task("parent"))
+        enqueue(store, desktopTask("desktop-child"))
+        assertTrue(store.addTaskDependencies("desktop-child", setOf("parent"), 2_000L))
+
+        assertEquals("parent", store.claimNext(3_000L)?.taskId)
+        assertTrue(store.queuedDesktopTasks().isEmpty())
+        assertNull(store.claimDesktopTask(
+            "desktop-child", "agent-01", emptySet(), 1, 3_001L
+        ))
+
+        assertTrue(store.transition(
+            "parent", setOf(GlafiraTaskState.RUNNING), GlafiraTaskState.SUCCEEDED,
+            4_000L, null, null
+        ))
+        assertEquals(listOf("desktop-child"), store.queuedDesktopTasks().map { it.taskId })
+        assertNotNull(store.claimDesktopTask(
+            "desktop-child", "agent-01", emptySet(), 1, 4_001L
+        ))
+    }
+
+    @Test fun desktopDependentIsFailedWhenItsPredecessorFails() {
+        val store = newStore()
+        enqueue(store, task("parent"))
+        enqueue(store, desktopTask("desktop-child"))
+        assertTrue(store.addTaskDependencies("desktop-child", setOf("parent"), 2_000L))
+        assertEquals("parent", store.claimNext(3_000L)?.taskId)
+        assertTrue(store.transition(
+            "parent", setOf(GlafiraTaskState.RUNNING), GlafiraTaskState.FAILED,
+            4_000L, null, "test failure"
+        ))
+
+        assertTrue(store.queuedDesktopTasks().isEmpty())
+        assertEquals(GlafiraTaskState.FAILED, store.getTask("desktop-child")?.state)
     }
 
     @Test fun versionFiveDatabaseMigratesDependencyTableWithoutDroppingTasks() {
