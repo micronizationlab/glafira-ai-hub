@@ -141,6 +141,12 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     ): GlafiraCoreTaskPlanEnqueueResult =
         GlafiraCoreTaskPlanOrchestrator(decomposer, ::enqueuePlan).submit(request)
 
+    /** Uses the configured primary AI provider to decompose and persist a durable plan. */
+    suspend fun submitInstruction(
+        request: GlafiraCoreTaskPlanRequest
+    ): GlafiraCoreTaskPlanEnqueueResult =
+        submitInstruction(request, GlafiraAiProviderTaskPlanDecomposer(appContext))
+
     /** Atomically registers an entire bounded DAG before waking the shared dispatcher. */
     fun enqueuePlan(plan: GlafiraCoreTaskPlan): GlafiraCoreTaskPlanEnqueueResult {
         val result = taskStore.enqueuePlan(plan)
