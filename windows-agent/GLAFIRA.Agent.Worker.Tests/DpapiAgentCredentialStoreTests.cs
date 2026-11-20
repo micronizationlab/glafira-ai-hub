@@ -25,7 +25,15 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
         var diskBytes = await File.ReadAllBytesAsync(_path);
 
         Assert.False(ContainsSequence(diskBytes, Convert.FromBase64String(credential.SharedSecretBase64)));
-        Assert.Equal(credential, await store.LoadAsync(default));
+        var loaded = await store.LoadAsync(default);
+        Assert.NotNull(loaded);
+        Assert.Equal(credential.AgentId, loaded.AgentId);
+        Assert.Equal(credential.DesktopHubId, loaded.DesktopHubId);
+        Assert.Equal(credential.Endpoint, loaded.Endpoint);
+        Assert.Equal(credential.SharedSecretBase64, loaded.SharedSecretBase64);
+        Assert.True(credential.Scopes.SetEquals(loaded.Scopes));
+        Assert.Equal(credential.EnrolledAt, loaded.EnrolledAt);
+        Assert.Equal(credential.ExpiresAt, loaded.ExpiresAt);
     }
 
     [Fact]
