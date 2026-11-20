@@ -70,3 +70,8 @@ This is a schema and contract draft, not a running broker, transport, enrollment
 The generator keeps the seven message families separate instead of flattening the top-level `oneOf` into one permissive object. Generated DTOs provide typed transport shapes; the canonical JSON Schema validator remains authoritative for conditional and cross-field rules such as mandatory owner approval for external side effects and reconciliation requirements for `OUTCOME_UNKNOWN`. Do not treat deserialization alone as policy validation.
 
 Generated artifacts are build outputs at this stage. Platform modules must adopt the DTOs deliberately and run the shared lifecycle fixtures before interoperability is claimed.
+
+
+## Desktop task lease fencing
+
+For the Bridge `DESKTOP_TASK_CLAIM` response, a successful lease must include opaque `leaseId` and positive `fencingToken` alongside the task fields. Every `DESKTOP_TASK_RESULT` update (including progress) must echo both values. The Desktop worker persists the lease identity with its local task record and must not submit a result without it. The Desktop Hub accepts updates only when the device, task, lease ID and fencing token all match the currently active lease; stale workers must be rejected.
