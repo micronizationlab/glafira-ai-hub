@@ -21,7 +21,7 @@ internal object GlafiraCoreTaskPlanAdapter {
         }
         val desktopTool = GlafiraToolRegistry.find(GlafiraTaskStore.DESKTOP_TASK_TYPE)
             ?: throw IllegalStateException("DESKTOP_EXECUTION_TOOL_NOT_REGISTERED")
-        val deadline = request.createdAtMillis + GlafiraDistributedTaskOrchestrator.MAX_TASK_TTL_MS
+        val deadline = Math.addExact(request.createdAtMillis, GlafiraDistributedTaskOrchestrator.MAX_TASK_TTL_MS)
 
         val nodes = plan.tasks.map { subtask ->
             val required = requiredCapabilities(subtask.executor)
