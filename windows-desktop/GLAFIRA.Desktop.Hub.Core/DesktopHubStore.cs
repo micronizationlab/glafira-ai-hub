@@ -184,13 +184,8 @@ public sealed class DesktopHubStore
             approval.Transaction = transaction;
             approval.CommandText = "UPDATE Agents SET owner_approved = 0, last_heartbeat_ms = 0 WHERE agent_id = $agent;";
             approval.Parameters.AddWithValue("$agent", agentId);
-            if (approval.ExecuteNonQuery() == 0)
-            {
-                transaction.Commit();
-                return false;
-            }
-        }
-        using (var credential = connection.CreateCommand())
+            var agentRowUpdated = approval.ExecuteNonQuery() == 1;
+            using (var credential = connection.CreateCommand())
         {
             credential.Transaction = transaction;
             credential.CommandText = """
@@ -200,9 +195,8 @@ public sealed class DesktopHubStore
                 """;
             credential.Parameters.AddWithValue("$agent", agentId);
             credential.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
-            credential.ExecuteNonQuery();
-        }
-        using (var enrollment = connection.CreateCommand())
+            var credentialUpdated = credential.ExecuteNonQuery() > 0;
+            using (var enrollment = connection.CreateCommand())
         {
             enrollment.Transaction = transaction;
             enrollment.CommandText = """
@@ -212,10 +206,10 @@ public sealed class DesktopHubStore
                 """;
             enrollment.Parameters.AddWithValue("$agent", agentId);
             enrollment.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
-            enrollment.ExecuteNonQuery();
+            var enrollmentUpdated = enrollment.ExecuteNonQuery() > 0;
+            transaction.Commit();
+            return agentRowUpdated || credentialUpdated || enrollmentUpdated;
         }
-        transaction.Commit();
-        return true;
     }
 
     /// <summary>Called only by the owner-approval UI after an authenticated pairing ceremony.</summary>
