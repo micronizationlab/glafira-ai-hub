@@ -215,6 +215,74 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void ProgressJournalFailureRollsBackLeaseRenewalAndProgressAck()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration(
+            "agent-progress-fault", "device-progress-fault", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("progress-fault-task"), now);
+        var lease = _store.ClaimNext(
+            "agent-progress-fault", now.AddSeconds(1), TimeSpan.FromSeconds(30));
+        Assert.NotNull(lease);
+
+        using (var connection = new SqliteConnection($"Data Source={_databasePath};Foreign Keys=True;"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TRIGGER inject_progress_event_failure
+                BEFORE INSERT ON TaskEvents
+                WHEN NEW.event_code = 'TASK_PROGRESS'
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected-progress-ack-failure');
+                END;
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var failure = Assert.Throws<SqliteException>(() => _store.ReportProgress(
+            "agent-progress-fault",
+            "progress-fault-task",
+            lease!.LeaseId,
+            lease.FencingToken,
+            60,
+            "progress must roll back",
+            now.AddSeconds(20),
+            TimeSpan.FromMinutes(2)));
+        Assert.Contains("injected-progress-ack-failure", failure.Message);
+
+        Assert.DoesNotContain(
+            _store.GetTaskHistory("progress-fault-task"),
+            item => item.EventCode == "TASK_PROGRESS");
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState("progress-fault-task"));
+
+        // The original 30-second lease must still expire at T+31s. If the renewal
+        // escaped the failed transaction, this recovery would find nothing.
+        var recovered = _store.RecoverExpiredLeases(now.AddSeconds(40));
+        var item = Assert.Single(recovered);
+        Assert.Equal("progress-fault-task", item.TaskId);
+        Assert.Equal(HubTaskState.Queued, item.State);
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("progress-fault-task"));
+        Assert.DoesNotContain(
+            _store.GetTaskHistory("progress-fault-task"),
+            history => history.EventCode == "TASK_PROGRESS");
+
+        using (var connection = new SqliteConnection($"Data Source={_databasePath};Foreign Keys=True;"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "DROP TRIGGER inject_progress_event_failure;";
+            command.ExecuteNonQuery();
+        }
+
+        var reopened = new DesktopHubStore(_databasePath);
+        Assert.Equal(HubTaskState.Queued, reopened.GetTaskState("progress-fault-task"));
+        Assert.DoesNotContain(
+            reopened.GetTaskHistory("progress-fault-task"),
+            history => history.EventCode == "TASK_PROGRESS");
+    }
+
+    [Fact]
     public void AcceptedProgressRenewsLeaseAndKeepsItOutOfExpiredRecovery()
     {
         var now = DateTimeOffset.UtcNow;
