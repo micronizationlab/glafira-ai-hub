@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using GLAFIRA.Desktop.Core.Identity;
 
 namespace GLAFIRA.Desktop.Core.Ownership;
 
@@ -106,6 +107,29 @@ public static class CoreOwnershipTransferCryptography
             GetCanonicalBytes(payload),
             HashAlgorithmName.SHA256,
             DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+    }
+
+    /// <summary>
+    /// Signs only when the transfer's old owner and key epoch match this local Desktop Core.
+    /// </summary>
+    public static byte[] SignWithInstallationIdentity(
+        WindowsDesktopCoreInstallationIdentityStore identityStore,
+        OwnershipTransferSigningPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(identityStore);
+        ArgumentNullException.ThrowIfNull(payload);
+        var identity = identityStore.LoadOrCreate();
+
+        if (!StringComparer.Ordinal.Equals(payload.OldOwnerCoreId, identity.CoreId))
+            throw new InvalidOperationException("OWNERSHIP_TRANSFER_OLD_CORE_ID_MISMATCH");
+        if (payload.SigningKeyEpoch != identity.KeyEpoch)
+            throw new InvalidOperationException("OWNERSHIP_TRANSFER_SIGNING_EPOCH_MISMATCH");
+        if (!FixedTimeEqualsAscii(
+                identity.PublicKeySha256.ToLowerInvariant(),
+                payload.SigningPublicKeySha256))
+            throw new InvalidOperationException("OWNERSHIP_TRANSFER_SIGNING_FINGERPRINT_MISMATCH");
+
+        return identityStore.Sign(GetCanonicalBytes(payload));
     }
 
     /// <summary>
