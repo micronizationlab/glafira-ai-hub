@@ -19,9 +19,6 @@ public sealed class AgentWorker(
 {
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollTick = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan MinimumPollDelay = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan MaximumIdlePollDelay = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan MaximumFailurePollDelay = TimeSpan.FromSeconds(60);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -99,11 +96,7 @@ public sealed class AgentWorker(
                 {
                     var worked = await taskPollingCoordinator.PollOnceAsync(credential, stoppingToken)
                         .ConfigureAwait(false);
-                    pollDelay = worked
-                        ? MinimumPollDelay
-                        : TimeSpan.FromMilliseconds(Math.Min(
-                            MaximumIdlePollDelay.TotalMilliseconds,
-                            Math.Max(MinimumPollDelay.TotalMilliseconds, pollDelay.TotalMilliseconds * 2)));
+                    pollDelay = AgentPollingBackoff.NextDelay(pollDelay, worked, failed: false);
                     nextPoll = DateTimeOffset.UtcNow.Add(pollDelay);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -115,9 +108,7 @@ public sealed class AgentWorker(
                     logger.LogWarning(error,
                         "GLAFIRA Agent {AgentId} task polling/execution failed; durable lease/outbox state remains journaled and retry is backed off.",
                         credential.AgentId);
-                    pollDelay = TimeSpan.FromMilliseconds(Math.Min(
-                        MaximumFailurePollDelay.TotalMilliseconds,
-                        Math.Max(MinimumPollDelay.TotalMilliseconds, pollDelay.TotalMilliseconds * 2)));
+                    pollDelay = AgentPollingBackoff.NextDelay(pollDelay, worked: false, failed: true);
                     nextPoll = DateTimeOffset.UtcNow.Add(pollDelay);
 
                     if (error is HttpRequestException or IOException or TaskCanceledException)
