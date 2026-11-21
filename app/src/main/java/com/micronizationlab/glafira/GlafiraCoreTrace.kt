@@ -122,11 +122,11 @@ object GlafiraCoreTraceRedactor {
             "TRACE_TOO_MANY_EVIDENCE_REFS"
         }
         return GlafiraCoreTraceEvent(
-            eventId = safeIdentifier(draft.eventId),
-            projectId = safeIdentifier(draft.projectId),
-            taskId = draft.taskId?.let(::safeIdentifier),
-            parentEventId = draft.parentEventId?.let(::safeIdentifier),
-            correlationId = safeIdentifier(draft.correlationId),
+            eventId = requiredIdentifier(draft.eventId),
+            projectId = requiredIdentifier(draft.projectId),
+            taskId = draft.taskId?.let(::requiredIdentifier),
+            parentEventId = draft.parentEventId?.let(::requiredIdentifier),
+            correlationId = requiredIdentifier(draft.correlationId),
             occurredAtMillis = draft.occurredAtMillis,
             actorType = draft.actorType,
             actorId = safeIdentifier(draft.actorId),
@@ -146,6 +146,18 @@ object GlafiraCoreTraceRedactor {
         )
     }
 
+    private fun requiredIdentifier(raw: String): String {
+        val value = raw.trim()
+        require(!containsSensitiveValue(value) && GlafiraCoreTraceEvent.isSafeIdentifier(value)) {
+            "TRACE_IDENTIFIER_INVALID"
+        }
+        return value
+    }
+
+    private fun containsSensitiveValue(value: String): Boolean =
+        secretPatterns.any { it.containsMatchIn(value) } ||
+            email.containsMatchIn(value) || url.containsMatchIn(value) || phone.containsMatchIn(value)
+
     private fun safeIdentifier(raw: String): String =
         sanitize(raw, GlafiraCoreTraceEvent::isSafeIdentifier)
 
@@ -154,10 +166,7 @@ object GlafiraCoreTraceRedactor {
 
     private fun sanitize(raw: String, valid: (String) -> Boolean): String {
         val value = raw.trim()
-        if (secretPatterns.any { it.containsMatchIn(value) } ||
-            email.containsMatchIn(value) || url.containsMatchIn(value) || phone.containsMatchIn(value) ||
-            !valid(value)
-        ) return REDACTED
+        if (containsSensitiveValue(value) || !valid(value)) return REDACTED
         return value
     }
 
