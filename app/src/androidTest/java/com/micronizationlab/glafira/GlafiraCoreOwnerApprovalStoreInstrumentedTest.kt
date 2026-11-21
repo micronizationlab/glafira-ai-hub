@@ -1,6 +1,5 @@
 package com.micronizationlab.glafira
 
-import android.content.ContentValues
 import android.content.Context
 import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
@@ -147,15 +146,10 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
                 4_100L
             )
         )
-        taskStore.writableDatabase.update(
-            "core_tasks",
-            ContentValues().apply {
-                put("payload", """{"actionSummary":"Send a DIFFERENT test message","recipient":"other@example.invalid","message":"changed"}""")
-            },
-            "task_id = ?",
-            arrayOf(original.taskId)
+        val queued = requireNotNull(taskStore.getTask(original.taskId))
+        val changed = queued.copy(
+            payload = """{"actionSummary":"Send a DIFFERENT test message","recipient":"other@example.invalid","message":"changed"}"""
         )
-        val changed = requireNotNull(taskStore.getTask(original.taskId))
         assertNull(approvals.approvalGrant(
             changed,
             "Send a DIFFERENT test message",
