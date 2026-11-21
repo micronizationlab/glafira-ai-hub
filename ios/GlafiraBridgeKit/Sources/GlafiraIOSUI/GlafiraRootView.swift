@@ -49,7 +49,7 @@ public struct GlafiraRootView: View {
             }
             .navigationTitle("GLAFIRA")
         } detail: {
-            GlafiraWelcomeView()
+            GlafiraWelcomeView(hasPairedDevice: !pairedDeviceIds.isEmpty)
         }
         .navigationSplitViewStyle(.balanced)
         .task { refreshCredentialState() }
@@ -72,6 +72,8 @@ public struct GlafiraRootView: View {
 }
 
 private struct GlafiraWelcomeView: View {
+    let hasPairedDevice: Bool
+
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "bubble.left.and.bubble.right")
@@ -85,11 +87,16 @@ private struct GlafiraWelcomeView: View {
                 .font(.title3)
                 .multilineTextAlignment(.center)
 
-            Label("Устройство ещё не подключено", systemImage: "lock.shield")
+            Label(
+                hasPairedDevice ? "Ключ сопряжения сохранён" : "Устройство ещё не сопряжено",
+                systemImage: hasPairedDevice ? "checkmark.shield" : "lock.shield"
+            )
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
-            Text("После безопасного сопряжения здесь появятся ваши проекты и диалоги.")
+            Text(hasPairedDevice
+                 ? "Ключ хранится в Keychain. Проекты и диалоги появятся после подключения к доступному Core."
+                 : "После безопасного сопряжения здесь появятся ваши проекты и диалоги.")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
