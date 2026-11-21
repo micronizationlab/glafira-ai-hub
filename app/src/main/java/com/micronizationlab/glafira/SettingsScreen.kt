@@ -1,6 +1,17 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -54,6 +65,28 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     }
     var soundEffectsVolume by remember {
         mutableFloatStateOf(audioPreferences.getFloat("sound_effects_volume", 1f).coerceIn(0f, 1f))
+    }
+    var microphoneGranted by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+    }
+    var showMicrophonePermissionHelp by remember { mutableStateOf(false) }
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        microphoneGranted = granted
+        if (!granted) showMicrophonePermissionHelp = true
+    }
+    val lifecycleOwner = context as? LifecycleOwner
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                microphoneGranted = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        onDispose { lifecycleOwner?.lifecycle?.removeObserver(observer) }
     }
     var primaryProvider by remember { mutableStateOf(loadGlafiraPrimaryProvider(context)) }
     var primaryProviderMenu by remember { mutableStateOf(false) }
@@ -371,6 +404,27 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         TtsHelper.setEnabled(context, it)
                     })
                 }
+                Divider(color = Color(0xFFB8B8B8))
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Голосовой ввод", color = Color(0xFF202020), fontSize = 14.sp)
+                        Text(
+                            if (microphoneGranted) "Микрофон разрешён · запись только после нажатия кнопки в чате"
+                            else "Для диктовки сообщений требуется разрешение Android",
+                            color = Tx, fontSize = 11.sp
+                        )
+                    }
+                    if (microphoneGranted) {
+                        Text("✓ РАЗРЕШЁН", color = Gr, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        OutlinedButton(onClick = {
+                            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }) { Text("РАЗРЕШИТЬ", fontSize = 10.sp) }
+                    }
+                }
                 Text("ГРОМКОСТЬ ЗВУКОВ", color = Tx, fontSize = 10.sp)
                 Slider(
                     value = soundEffectsVolume,
@@ -515,6 +569,35 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 }
                 .padding(16.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+
+    if (showMicrophonePermissionHelp) {
+        AlertDialog(
+            onDismissRequest = { showMicrophonePermissionHelp = false },
+            title = { Text("Нужен доступ к микрофону", color = Color(0xFF202020)) },
+            text = {
+                Text(
+                    "GLAFIRA использует микрофон только после вашего действия — нажатия кнопки голосового ввода. Фоновая запись не запускается. Разрешение можно выдать повторно здесь или в настройках Android.",
+                    color = Tx, fontSize = 12.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showMicrophonePermissionHelp = false
+                    microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }) { Text("ПОВТОРИТЬ ЗАПРОС", color = Gr) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showMicrophonePermissionHelp = false
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        }
+                    )
+                }) { Text("НАСТРОЙКИ ANDROID", color = Tx) }
+            }
         )
     }
 
