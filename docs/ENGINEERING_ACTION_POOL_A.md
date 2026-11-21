@@ -1,8 +1,6 @@
 # Action Pool A — rolling 50-item GLAFIRA backlog
 
 **Snapshot:** 2026-11-21 — priority labels reconciled to the current owner hierarchy. Linked PR/CI statuses remain snapshots and must be re-fetched against exact head SHA before assignment or acceptance.  
-**Current owner priority:** P2 Core → P2 Backup & Recovery → P3 Runtime/Bridge/Android instrumentation/Windows Desktop/Windows Agent → P4 Android UX/voice/iOS/specialist agents → P5 optional commercial integrations.
-
 **Current owner priority:** P1 Core → P2 Backup & Recovery → P3 Runtime/Bridge/Android instrumentation/Windows Desktop/Windows Agent → P4 Android UX/voice/iOS/specialist agents → P5 optional commercial integrations.
 
 **Rule:** take the highest-priority item that is currently unblocked and non-conflicting. After each completion or newly available slot, rescan from item 1. Keep Pool A alive; prepare Pool B before Pool A runs out. Statuses are a planning snapshot, not claims of completion.
