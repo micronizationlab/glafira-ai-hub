@@ -1,9 +1,12 @@
 package com.micronizationlab.glafira
 
+import android.util.Base64
+import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
 import java.time.OffsetDateTime
 
 /** Signature-covered fields of Dual-Core Ownership Transfer v1; signature is excluded. */
@@ -85,6 +88,32 @@ internal object GlafiraCoreOwnershipTransferCryptography {
         signer.initSign(privateKey)
         signer.update(canonicalBytes(payload))
         return derToP1363(signer.sign())
+    }
+
+    /** Sign only when the envelope is bound to this installation's current Core ID and key epoch. */
+    fun signWithInstallationIdentity(
+        identityStore: AndroidCoreInstallationIdentityStore,
+        payload: GlafiraOwnershipTransferSigningPayload
+    ): ByteArray {
+        val identity = identityStore.loadOrCreate()
+        require(payload.oldOwnerCoreId == identity.coreId) {
+            "OWNERSHIP_TRANSFER_OLD_CORE_ID_MISMATCH"
+        }
+        require(payload.signingKeyEpoch == identity.keyEpoch) {
+            "OWNERSHIP_TRANSFER_SIGNING_EPOCH_MISMATCH"
+        }
+        val encodedPublicKey = Base64.decode(identity.publicKeyBase64, Base64.NO_WRAP)
+        val publicKey = KeyFactory.getInstance("EC")
+            .generatePublic(X509EncodedKeySpec(encodedPublicKey))
+        require(fingerprint(publicKey) == payload.signingPublicKeySha256) {
+            "OWNERSHIP_TRANSFER_SIGNING_FINGERPRINT_MISMATCH"
+        }
+
+        val signature = derToP1363(identityStore.sign(canonicalBytes(payload)))
+        check(verify(payload, publicKey, signature)) {
+            "OWNERSHIP_TRANSFER_IDENTITY_ROTATED_DURING_SIGNING"
+        }
+        return signature
     }
 
     fun verify(
