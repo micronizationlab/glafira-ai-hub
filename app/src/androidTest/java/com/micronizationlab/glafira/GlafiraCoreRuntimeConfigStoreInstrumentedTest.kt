@@ -1,7 +1,6 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
@@ -29,9 +28,8 @@ class GlafiraCoreRuntimeConfigStoreInstrumentedTest {
 
     @Test
     fun missingConfigurationInitializesPausedWithConservativeDefaults() {
-        val snapshot = store.loadOrInitialize(null, null)
-        assertNotNull(snapshot)
-        assertFalse(requireNotNull(snapshot).enabled)
+        val snapshot = requireNotNull(store.loadOrInitialize(null, null))
+        assertFalse(snapshot.enabled)
         assertEquals(GlafiraRuntimeBudget(), snapshot.budget)
         assertEquals(1, snapshot.configVersion)
     }
