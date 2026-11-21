@@ -231,6 +231,8 @@
 
 ### In progress
 
+- Step 4: state mapping is documented in `docs/GLAFIRA_TASK_STATE_MODEL.md`, but code consolidation remains open: Hub has no distinct `Cancelled` state, Core `WAITING_FOR_OWNER` carries multiple reason classes, and canonical result reconciliation is not yet wired.
+- Step 80 compatibility: PR #254 adds a regression proving old DPAPI journals without `PendingProgresses` still load and upgrade; exact-head Windows Agent CI is pending.
 - Step 5: complete. PR #240 added v7→v9 and v8→v9 migration cases; PR #245 added v1/v2. Existing v3–v6 cases plus the new v1/v2/v7/v8 cases all passed exact-head managed Android emulator acceptance. PR #245 merged as `b564771b8116b487bb6adceb3055c4192cc29d98`; its emulator report contained 68 cases, 0 failures, 0 errors and 0 skipped.
 - Step 16: failure-injection coverage is improved by PR #244 progress-ACK restart tests and PR #250 terminal-result process-restart tests, but the full crash matrix across every Core/provider/trace boundary is still open.
 - Step 9: complete. PR #240's independent-connection cancellation-vs-result-commit race passed on managed emulator.
