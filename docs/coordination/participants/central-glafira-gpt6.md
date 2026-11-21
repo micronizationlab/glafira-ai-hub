@@ -46,7 +46,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 ## Cycle close-out
 
-Cycle 01 remains partial (17/150 before the latest audit; now 19/150). PR #362 docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform jobs were skipped, not passed. PR #369 exact-head CI for `b46a1d8496a63a40718192d37571b1ca7359a0de` is still running; the previous head failed Kotlin compilation because of an invalid import, which was removed in the current head. Do not mark the cycle complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
+Cycle 01 remains partial (17/150 before the latest audit; now 20/150). PR #362 docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform jobs were skipped, not passed. PR #369 exact-head CI for `b46a1d8496a63a40718192d37571b1ca7359a0de` is still running; the previous head failed Kotlin compilation because of an invalid import, which was removed in the current head. Do not mark the cycle complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
 
 ## Whole-project audit after cycle 20
 
@@ -78,3 +78,6 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 
 
 | C01-A019 | P1 | Расширил поиск прямых изменений `core_tasks.state`: обнаружен дополнительный путь в `GlafiraCoreLiveRunStore.approveReadOnlyRun()` — выдача LIVE grant и перевод задачи в QUEUED проверяют только task ID/state; сама таблица LIVE grants также не содержит owner generation. Зафиксировал также, что обычный `GlafiraTaskStore.transition()` остаётся state-only CAS, а state_version trigger — это учёт версии, не авторизация владельца. | https://github.com/micronizationlab/glafira-ai-hub/issues/366#issuecomment-7066110210 | Read-only audit; production changes not yet made. | complete |
+
+
+| C01-A020 | P2 | Получил логи PR #372 exact-head `d005cc1...`: 116/117 emulator tests passed, оставшийся failure — accessibility-проверка missing-folder guidance. Установил, что `clearAndSetSemantics` удаляет семантику потомков; заменил на `semantics(mergeDescendants = true)` с сохранением явных Button role/onClick. Создан новый exact-head run. | https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44927626370 ; commit `87589331cb1b40498cc9a42b4a3667aeedb830f7` | JVM/shared-contract jobs in progress at last check; emulator/APK not yet reported. Prior exact head failed emulator 1/117. | in progress |
