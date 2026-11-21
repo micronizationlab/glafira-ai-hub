@@ -85,7 +85,7 @@ public sealed class WindowsDesktopCoreInstallationIdentityStoreTests : IDisposab
         var error = Assert.Throws<InvalidOperationException>(() => store.LoadOrCreate());
 
         Assert.Contains("DESKTOP_CORE_IDENTITY_METADATA_INVALID", error.Message);
-        Assert.Equal(original.CoreId.Length > 0, File.Exists(_identityPath));
+        Assert.True(File.Exists(_identityPath));
     }
 
     public void Dispose()
