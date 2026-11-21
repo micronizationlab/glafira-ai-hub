@@ -558,7 +558,7 @@ class GlafiraCoreOwnerApprovalStore(
     private data class DecisionRow(
         val projectId: String, val toolId: String, val actionHash: String,
         val status: String, val expiresAt: Long,
-        val ownerCoreId: String, val ownerGeneration: Long
+        val ownerCoreId: String?, val ownerGeneration: Long
     )
 
     companion object {
