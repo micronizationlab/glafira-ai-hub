@@ -1,5 +1,6 @@
 package com.micronizationlab.glafira.desktop
 
+import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -8,14 +9,20 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Files
+import java.security.SecureRandom
 
 class DesktopTaskQueueTest {
     @get:Rule
     val temp = TemporaryFolder()
 
     private var now = 1_800_000_000_000L
+    private val secret = ByteArray(32) { it.toByte() }
+    private val binding = "a".repeat(64)
     private fun queue(max: Int = 10) =
-        DesktopTaskQueue(temp.root.toPath().resolve("tasks.json"), max) { now }
+        DesktopTaskQueue(
+            temp.root.toPath().resolve("tasks.json"), max, { now },
+            PairingDesktopTaskQueueProtector.fromPairing(binding, secret)
+        )
 
     private fun task(
         id: String = "task_1",
@@ -136,7 +143,7 @@ class DesktopTaskQueueTest {
 
     @Test
     fun retainedTaskHistoryIsBoundedWithoutDroppingActiveWork() {
-        val q = DesktopTaskQueue(null, 10) { now }
+        val q = DesktopTaskQueue(null, 10, clock = { now })
         repeat(DesktopTaskQueue.MAX_RETAINED_RECORDS + 2) { index ->
             val id = "task_$index"
             q.enqueue(task(id = id))
@@ -190,8 +197,73 @@ class DesktopTaskQueueTest {
     fun rejectsOversizedQueueFileBeforeReadingItIntoMemory() {
         val path = temp.root.toPath().resolve("oversized-tasks.json")
         Files.writeString(path, " ".repeat(16 * 1024 * 1024 + 1))
-        val q = DesktopTaskQueue(path, 10) { now }
+        val q = DesktopTaskQueue(
+            path, 10, { now }, PairingDesktopTaskQueueProtector.fromPairing(binding, secret)
+        )
         assertThrows(IllegalArgumentException::class.java) { q.list() }
+    }
+
+    @Test
+    fun persistentQueueIsEncryptedAndSurvivesRestart() {
+        val path = temp.root.toPath().resolve("tasks.json")
+        queue().enqueue(task().copy(instruction = "plaintext instruction marker"))
+        val bytes = Files.readAllBytes(path)
+
+        assertEquals("GLFQ", String(bytes.copyOfRange(0, 4), Charsets.US_ASCII))
+        assertEquals(false, String(bytes, Charsets.ISO_8859_1).contains("plaintext instruction marker"))
+        assertEquals("plaintext instruction marker", queue().get("task_1")!!.envelope.instruction)
+    }
+
+    @Test
+    fun legacyPlaintextQueueMigratesAtomicallyWithoutLeavingPlaintextCopy() {
+        val path = temp.root.toPath().resolve("tasks.json")
+        val legacy = Gson().toJson(listOf(DesktopTaskRecord(task().copy(instruction = "legacy marker"))))
+        Files.writeString(path, legacy)
+
+        assertEquals("legacy marker", queue().get("task_1")!!.envelope.instruction)
+        val migrated = Files.readAllBytes(path)
+        assertEquals("GLFQ", String(migrated.copyOfRange(0, 4), Charsets.US_ASCII))
+        assertEquals(false, String(migrated, Charsets.ISO_8859_1).contains("legacy marker"))
+        assertEquals(listOf("tasks.json"), Files.list(temp.root.toPath()).use { paths ->
+            paths.map { it.fileName.toString() }.sorted().toList()
+        })
+    }
+
+    @Test
+    fun wrongPairingKeyFailsClosedAndPreservesCiphertext() {
+        val path = temp.root.toPath().resolve("tasks.json")
+        queue().enqueue(task())
+        val original = Files.readAllBytes(path)
+        val wrong = DesktopTaskQueue(
+            path, 10, { now }, PairingDesktopTaskQueueProtector.fromPairing(
+                "b".repeat(64), SecureRandom().generateSeed(32)
+            )
+        )
+
+        assertThrows(SecurityException::class.java) { wrong.list() }
+        assertEquals(true, original.contentEquals(Files.readAllBytes(path)))
+    }
+
+    @Test
+    fun recoveryReencryptsRecordsForReplacementPairingWithoutCopyingOldKey() {
+        val sourcePath = temp.root.toPath().resolve("tasks.json")
+        val targetPath = temp.root.toPath().resolve("recovered.json")
+        val source = queue()
+        source.enqueue(task().copy(instruction = "recover marker"))
+        val newSecret = ByteArray(32) { (it + 33).toByte() }
+        val newBinding = "c".repeat(64)
+
+        assertEquals(1, source.reencryptTo(
+            targetPath, PairingDesktopTaskQueueProtector.fromPairing(newBinding, newSecret)
+        ))
+        val recovered = DesktopTaskQueue(
+            targetPath, 10, { now }, PairingDesktopTaskQueueProtector.fromPairing(newBinding, newSecret)
+        )
+        assertEquals("recover marker", recovered.get("task_1")!!.envelope.instruction)
+        val oldKey = DesktopTaskQueue(
+            targetPath, 10, { now }, PairingDesktopTaskQueueProtector.fromPairing(binding, secret)
+        )
+        assertThrows(SecurityException::class.java) { oldKey.list() }
     }
 
     @Test

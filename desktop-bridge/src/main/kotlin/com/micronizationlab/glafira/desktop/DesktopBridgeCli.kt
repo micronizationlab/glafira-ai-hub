@@ -47,9 +47,9 @@ fun main() {
                 println("Ollama must be running locally at 127.0.0.1:11434.")
                 val binding = desktopCliPairingBinding(entry.origin, credentials)
                 if (java.nio.file.Files.exists(desktopCliTaskQueuePath(vaultPath))) {
-                    println("An unbound legacy tasks.json is preserved; it will not be sent under this pairing.")
+                    println("An unbound legacy tasks.json is encrypted in place; it will not be sent under this pairing.")
                 }
-                val activeSession = desktopCliTaskSession(vaultPath, binding)
+                val activeSession = desktopCliTaskSession(vaultPath, binding, credentials.hmacSecret)
                 try {
                     val createdWorker = DesktopBridgeTaskWorker(
                         origin = entry.origin,

@@ -8,7 +8,10 @@ import org.junit.rules.TemporaryFolder
 class DesktopResultOutboxTest {
     @get:Rule val temp = TemporaryFolder()
     private val now = 1_800_000_000_000L
-    private fun queue() = DesktopTaskQueue(temp.root.toPath().resolve("results.json"), clock = { now })
+    private fun queue() = DesktopTaskQueue(
+        temp.root.toPath().resolve("results.json"), clock = { now },
+        protector = desktopTaskQueueTestProtector()
+    )
     private fun completed(queue: DesktopTaskQueue, id: String): DesktopTaskRecord {
         queue.enqueue(DesktopTaskEnvelope(taskId = id, projectId = "project-a", taskType = "analysis.document",
             instruction = "Analyze", contextRefs = emptyList(), requiredCapabilities = emptySet(), requiredScopes = emptySet(),

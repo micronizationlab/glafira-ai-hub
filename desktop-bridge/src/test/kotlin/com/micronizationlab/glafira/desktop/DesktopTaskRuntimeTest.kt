@@ -13,6 +13,9 @@ import java.util.concurrent.atomic.AtomicInteger
 class DesktopTaskRuntimeTest {
     @get:Rule val temp = TemporaryFolder()
     private var now = 1_800_000_000_000L
+    private fun queue(name: String) = DesktopTaskQueue(
+        temp.root.toPath().resolve(name), clock = { now }, protector = desktopTaskQueueTestProtector()
+    )
 
     private fun task(id: String, type: String = "analysis.document") = DesktopTaskEnvelope(
         taskId = id, projectId = "project-a", taskType = type,
@@ -23,7 +26,7 @@ class DesktopTaskRuntimeTest {
     )
 
     @Test fun dispatchesIndependentTasksInParallelAndPublishesResults() {
-        val queue = DesktopTaskQueue(temp.root.toPath().resolve("tasks.json")) { now }
+        val queue = queue("tasks.json")
         queue.enqueue(task("task_one"))
         queue.enqueue(task("task_two"))
         val started = CountDownLatch(2)
@@ -53,7 +56,7 @@ class DesktopTaskRuntimeTest {
     }
 
     @Test fun runtimeMarksOrphanedRunningTasksFailedBeforeDispatch() {
-        val queue = DesktopTaskQueue(temp.root.toPath().resolve("tasks-recovery.json")) { now }
+        val queue = queue("tasks-recovery.json")
         queue.enqueue(task("task_interrupted"))
         queue.claimNext()
         queue.transition("task_interrupted", DesktopTaskState.ACCEPTED)
@@ -77,7 +80,7 @@ class DesktopTaskRuntimeTest {
     }
 
     @Test fun missingAgentHandlerFailsClosed() {
-        val queue = DesktopTaskQueue(temp.root.toPath().resolve("tasks.json")) { now }
+        val queue = queue("tasks.json")
         queue.enqueue(task("task_missing"))
         val results = mutableListOf<DesktopAgentResult>()
         DesktopTaskRuntime(queue, emptyMap(), onResult = results::add).use { runtime ->
@@ -88,7 +91,7 @@ class DesktopTaskRuntimeTest {
         assertEquals("NO_AGENT_HANDLER", results.single().errorCode)
     }
     @Test fun closeDrainsAnAlreadyRunningTaskBeforeReturning() {
-        val queue = DesktopTaskQueue(temp.root.toPath().resolve("tasks-close.json")) { now }
+        val queue = queue("tasks-close.json")
         queue.enqueue(task("task_close"))
         val started = CountDownLatch(1)
         val finish = CountDownLatch(1)
@@ -119,7 +122,7 @@ class DesktopTaskRuntimeTest {
     }
 
     @Test fun closeFailsClosedWhenHandlerIgnoresInterruptAndKeepsWorkerAlive() {
-        val queue = DesktopTaskQueue(temp.root.toPath().resolve("tasks-unresponsive-close.json")) { now }
+        val queue = queue("tasks-unresponsive-close.json")
         queue.enqueue(task("task_unresponsive_close"))
         val started = CountDownLatch(1)
         val finish = CountDownLatch(1)

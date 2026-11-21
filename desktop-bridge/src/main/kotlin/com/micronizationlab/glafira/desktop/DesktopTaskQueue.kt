@@ -6,6 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermission
+import java.nio.ByteBuffer
 
 internal enum class DesktopTaskState {
     QUEUED, DISPATCHED, ACCEPTED, RUNNING, SUCCEEDED, FAILED, CANCELLED, EXPIRED
@@ -51,14 +52,18 @@ internal data class DesktopTaskRecord(
 internal class DesktopTaskQueue(
     private val file: Path?,
     private val maxQueued: Int = DEFAULT_MAX_QUEUED,
-    private val clock: () -> Long = System::currentTimeMillis
-) {
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val protector: DesktopTaskQueueProtector? = null
+) : AutoCloseable {
     private val gson = Gson()
     private val lock = Any()
     private var memoryRecords = mutableListOf<DesktopTaskRecord>()
 
     init {
         require(maxQueued in 1..MAX_QUEUE_LIMIT)
+        require(file == null || protector != null) {
+            "A persistent Desktop task queue requires an encryption protector."
+        }
         file?.parent?.let { Files.createDirectories(it) }
     }
 
@@ -324,18 +329,40 @@ internal class DesktopTaskQueue(
         val target = file ?: return memoryRecords.toList()
         if (!Files.exists(target)) return emptyList()
         val size = Files.size(target)
-        require(size in 1..MAX_QUEUE_FILE_BYTES.toLong()) { "Desktop task queue file size is invalid." }
-        val type = object : TypeToken<List<DesktopTaskRecord>>() {}.type
-        return requireNotNull(gson.fromJson<List<DesktopTaskRecord>>(Files.readString(target), type)) {
-            "Desktop task queue is null; preserve the file and recover it before starting the worker."
-        }.also { records ->
-            require(records.size <= MAX_RETAINED_RECORDS)
-            require(records.map { it.envelope.taskId }.distinct().size == records.size)
-            records.forEach { record ->
-                require(record.state in DesktopTaskState.entries && record.sequence >= 0)
-                require(record.envelope.taskId.isNotBlank() && record.envelope.projectId.isNotBlank())
-                require(record.envelope.instruction.isNotBlank())
+        require(size in 1..MAX_ENCRYPTED_QUEUE_FILE_BYTES.toLong()) {
+            "Desktop task queue file size is invalid."
+        }
+        val stored = Files.readAllBytes(target)
+        var plaintext: ByteArray? = null
+        try {
+            require(stored.size.toLong() == size)
+            val legacyPlaintext = !hasEncryptedHeader(stored)
+            plaintext = if (legacyPlaintext) stored.copyOf() else {
+                require(stored.size >= ENVELOPE_HEADER_BYTES) { "Desktop task queue envelope is truncated." }
+                val buffer = ByteBuffer.wrap(stored)
+                require(buffer.int == QUEUE_MAGIC && buffer.int == QUEUE_VERSION) {
+                    "Desktop task queue envelope is unsupported."
+                }
+                val ciphertextSize = buffer.int
+                require(ciphertextSize in 28..MAX_ENCRYPTED_QUEUE_FILE_BYTES && ciphertextSize == buffer.remaining())
+                val ciphertext = ByteArray(ciphertextSize).also(buffer::get)
+                try {
+                    requireNotNull(protector).unprotect(ciphertext)
+                } finally {
+                    ciphertext.fill(0)
+                }
             }
+            require(plaintext.size <= MAX_QUEUE_FILE_BYTES) { "Desktop task queue plaintext exceeds its limit." }
+            val type = object : TypeToken<List<DesktopTaskRecord>>() {}.type
+            val records = requireNotNull(
+                gson.fromJson<List<DesktopTaskRecord>>(plaintext.toString(Charsets.UTF_8), type)
+            ) { "Desktop task queue is null; preserve the file and recover it before starting the worker." }
+            validatePersistedRecords(records)
+            if (legacyPlaintext) writeAll(records)
+            return records
+        } finally {
+            plaintext?.fill(0)
+            stored.fill(0)
         }
     }
 
@@ -344,9 +371,25 @@ internal class DesktopTaskQueue(
             memoryRecords = records.toMutableList()
             return
         }
-        val serialized = gson.toJson(records)
-        require(serialized.toByteArray(Charsets.UTF_8).size <= MAX_QUEUE_FILE_BYTES) {
+        val plaintext = gson.toJson(records).toByteArray(Charsets.UTF_8)
+        require(plaintext.size <= MAX_QUEUE_FILE_BYTES) {
             "Desktop task queue exceeds its storage limit."
+        }
+        val ciphertext = try {
+            requireNotNull(protector).protect(plaintext)
+        } finally {
+            plaintext.fill(0)
+        }
+        val serialized = ByteBuffer.allocate(ENVELOPE_HEADER_BYTES + ciphertext.size).run {
+            putInt(QUEUE_MAGIC)
+            putInt(QUEUE_VERSION)
+            putInt(ciphertext.size)
+            put(ciphertext)
+            array()
+        }
+        ciphertext.fill(0)
+        require(serialized.size <= MAX_ENCRYPTED_QUEUE_FILE_BYTES) {
+            "Encrypted Desktop task queue exceeds its storage limit."
         }
         val parent = target.toAbsolutePath().parent
             ?: throw IllegalStateException("Desktop task queue has no parent directory.")
@@ -355,7 +398,7 @@ internal class DesktopTaskQueue(
         try {
             setOwnerOnly(temp)
             java.nio.channels.FileChannel.open(temp, java.nio.file.StandardOpenOption.WRITE).use { channel ->
-                val bytes = java.nio.ByteBuffer.wrap(serialized.toByteArray(Charsets.UTF_8))
+                val bytes = ByteBuffer.wrap(serialized)
                 while (bytes.hasRemaining()) channel.write(bytes)
                 channel.force(true)
             }
@@ -367,8 +410,41 @@ internal class DesktopTaskQueue(
             setOwnerOnly(target)
         } finally {
             Files.deleteIfExists(temp)
+            serialized.fill(0)
         }
     }
+
+    /**
+     * Logical recovery: decrypt with the current pairing and immediately encrypt with
+     * the destination pairing. No plaintext queue or machine-bound key is copied.
+     */
+    fun reencryptTo(target: Path, targetProtector: DesktopTaskQueueProtector): Int = synchronized(lock) {
+        val source = requireNotNull(file) { "An in-memory queue cannot be recovered to disk." }
+        require(source.toAbsolutePath().normalize() != target.toAbsolutePath().normalize())
+        require(!Files.exists(target)) { "Recovery target already exists." }
+        val records = readAll()
+        DesktopTaskQueue(target, maxQueued, clock, targetProtector).use { destination ->
+            destination.writeAll(records)
+        }
+        records.size
+    }
+
+    override fun close() {
+        protector?.close()
+    }
+
+    private fun validatePersistedRecords(records: List<DesktopTaskRecord>) {
+        require(records.size <= MAX_RETAINED_RECORDS)
+        require(records.map { it.envelope.taskId }.distinct().size == records.size)
+        records.forEach { record ->
+            require(record.state in DesktopTaskState.entries && record.sequence >= 0)
+            require(record.envelope.taskId.isNotBlank() && record.envelope.projectId.isNotBlank())
+            require(record.envelope.instruction.isNotBlank())
+        }
+    }
+
+    private fun hasEncryptedHeader(bytes: ByteArray): Boolean =
+        bytes.size >= ENVELOPE_HEADER_BYTES && ByteBuffer.wrap(bytes, 0, 4).int == QUEUE_MAGIC
 
     private fun setOwnerOnly(path: Path) {
         try {
@@ -400,6 +476,10 @@ internal class DesktopTaskQueue(
         private const val MAX_PROGRESS_CHARS = 500
         private const val MAX_RESULT_CHARS = 24_000
         private const val MAX_QUEUE_FILE_BYTES = 16 * 1024 * 1024
+        private const val MAX_ENCRYPTED_QUEUE_FILE_BYTES = MAX_QUEUE_FILE_BYTES + 64
+        private const val QUEUE_MAGIC = 0x474C4651 // GLFQ
+        private const val QUEUE_VERSION = 1
+        private const val ENVELOPE_HEADER_BYTES = 12
         private const val MAX_CLOCK_SKEW_MS = 60_000L
     }
 }

@@ -20,8 +20,11 @@ internal class DesktopCliTaskSession(
     private val closed = AtomicBoolean(false)
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        try { if (lock.isValid) lock.release() }
-        finally { try { channel.close() } finally { releaseReservation() } }
+        try { queue.close() }
+        finally {
+            try { if (lock.isValid) lock.release() }
+            finally { try { channel.close() } finally { releaseReservation() } }
+        }
     }
 }
 
@@ -30,7 +33,11 @@ internal class DesktopCliTaskSession(
 private val desktopCliSessionPaths = ConcurrentHashMap.newKeySet<Path>()
 
 /** Startup failures release the lock and propagate; no empty in-memory queue is substituted. */
-internal fun desktopCliTaskSession(vaultPath: Path, binding: String? = null): DesktopCliTaskSession {
+internal fun desktopCliTaskSession(
+    vaultPath: Path,
+    binding: String,
+    hmacSecret: ByteArray
+): DesktopCliTaskSession {
     val queuePath = desktopCliTaskQueuePath(vaultPath, binding)
     Files.createDirectories(queuePath.parent)
     val lockPath = queuePath.resolveSibling("tasks.lock")
@@ -40,6 +47,7 @@ internal fun desktopCliTaskSession(vaultPath: Path, binding: String? = null): De
     }
     var channel: FileChannel? = null
     var lock: FileLock? = null
+    var queue: DesktopTaskQueue? = null
     try {
         channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
         try {
@@ -49,14 +57,35 @@ internal fun desktopCliTaskSession(vaultPath: Path, binding: String? = null): De
         }
         lock = try { channel.tryLock() } catch (_: OverlappingFileLockException) { null }
         check(lock != null) { "A Desktop worker is already using this task queue. Close it before starting another." }
-        val queue = DesktopTaskQueue(queuePath)
-        queue.list() // Validate existing storage before any remote task can be claimed.
+        val unboundLegacyPath = desktopCliTaskQueuePath(vaultPath)
+        if (unboundLegacyPath != queuePath && Files.isRegularFile(unboundLegacyPath) &&
+            isPlaintextDesktopQueue(unboundLegacyPath)
+        ) {
+            DesktopTaskQueue(
+                unboundLegacyPath,
+                protector = PairingDesktopTaskQueueProtector.fromPairing(binding, hmacSecret)
+            ).use { it.list() }
+        }
+        queue = DesktopTaskQueue(
+            queuePath,
+            protector = PairingDesktopTaskQueueProtector.fromPairing(binding, hmacSecret)
+        )
+        queue.list() // Validate/migrate storage before any remote task can be claimed.
         return DesktopCliTaskSession(queue, channel, lock) { desktopCliSessionPaths.remove(reservation) }
     } catch (error: Throwable) {
-        try { if (lock?.isValid == true) lock.release() }
-        finally { try { channel?.close() } finally { desktopCliSessionPaths.remove(reservation) } }
+        try { queue?.close() }
+        finally {
+            try { if (lock?.isValid == true) lock.release() }
+            finally { try { channel?.close() } finally { desktopCliSessionPaths.remove(reservation) } }
+        }
         throw error
     }
+}
+
+private fun isPlaintextDesktopQueue(path: Path): Boolean {
+    val prefix = ByteArray(4)
+    val count = Files.newInputStream(path).use { it.read(prefix) }
+    return count < 4 || String(prefix, Charsets.US_ASCII) != "GLFQ"
 }
 
 internal fun desktopCliTaskQueuePath(vaultPath: Path, binding: String? = null): Path {
