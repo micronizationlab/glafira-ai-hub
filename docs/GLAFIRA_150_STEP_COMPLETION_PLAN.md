@@ -338,3 +338,11 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 200. [ ] Провести итоговую независимую приёмку расширенной программы: матрица требований, exact SHAs, CI evidence, security review, backup/restore drill и реальные устройства; незакрытые пункты остаются явно открытыми.
 
 **Правило исполнения расширения:** шаги 151–200 не образуют отдельную программу и не отменяют приоритеты исходных 150 шагов. Диспетчер выбирает следующие незаблокированные задачи по риску и зависимостям, продолжая параллельную работу. Постоянное имя всей программы — «150 шагов GLAFIRA».
+
+
+## Execution ledger update — 2026-11-21 03:41 UTC
+
+- Step 16 remains **open**. PR #261 merged a deterministic result-row insertion failure test proving task state/result/history rollback together. PR #265 merged a claim-history trigger failure test proving claim state and attempt count roll back and the task remains claimable after reopen. PR #275 adds two isolated failure injections: a read-only handler exception followed by a failed retry/history persistence (then safe recovery after reopen), and a failed Desktop Agent progress write (lease expiry/progress/message must remain unchanged across reopen). PR #275 is open and awaits exact-head CI; no completion claim is made for the full claim/handler/progress/result/ACK matrix.
+- Step 17: PR #264 merged a focused dispatch-boundary classifier. Pre-dispatch transport failures are NOT_SENT; after dispatch is attempted, transport ambiguity is UNKNOWN and not automatically replayed. This is a hardening slice, not proof that every provider/composite workflow is fully reconciled.
+- Step 18 remains open under issue #266: durable result outbox, exact ACK identity, retry/backoff and idempotent reconciliation still need implementation and acceptance.
+- Mobile Personal Data Bridge is tracked separately by issue #273 and draft PR #274 (docs/MOBILE_PERSONAL_DATA_BRIDGE.md). This is architecture only; native Android/iOS adapters, permission UI, OCR, contact import/update and OS-mediated credential flows are not implemented or accepted yet.
