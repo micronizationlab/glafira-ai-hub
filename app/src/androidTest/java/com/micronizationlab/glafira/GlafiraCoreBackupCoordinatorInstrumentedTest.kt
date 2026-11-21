@@ -2,6 +2,7 @@ package com.micronizationlab.glafira
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.database.sqlite.SQLiteException
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
@@ -187,6 +188,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             "known-good-result",
             3_000L
         ))
+        val trace = GlafiraCoreTraceStore(store)
+        trace.append(GlafiraCoreTraceDraft(
+            eventId = "restore-failure-trace",
+            projectId = "backup-project",
+            taskId = "backup-result-task",
+            correlationId = "restore-failure-correlation",
+            occurredAtMillis = 3_500L,
+            actorType = GlafiraCoreTraceActorType.CORE,
+            actorId = "core-main",
+            component = "BackupCoordinator",
+            eventType = GlafiraCoreTraceEventType.TASK_SUCCEEDED,
+            actionCode = "core.result.committed"
+        ))
 
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
@@ -211,11 +225,75 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             )
             assertEquals("created-after-backup", store.getTask("created-after-backup")?.taskId)
             assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertEquals(
+                listOf("restore-failure-trace"),
+                trace.query(
+                    GlafiraCoreTraceQuery("backup-project"),
+                    GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
+                ).events.map { it.eventId }
+            )
+            assertThrows(android.database.sqlite.SQLiteException::class.java) {
+                store.writableDatabase.delete(
+                    GlafiraCoreTraceStore.TABLE,
+                    "event_id = ?",
+                    arrayOf("restore-failure-trace")
+                )
+            }
             store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
         }
+    }
+
+    @Test
+    fun portableBackupRestoresAppendOnlyTraceEventsAndReinstatesGuards() = runBlocking {
+        val trace = GlafiraCoreTraceStore(store)
+        val original = GlafiraCoreTraceDraft(
+            eventId = "backup-trace-before",
+            projectId = "backup-trace-project",
+            correlationId = "backup-trace-correlation",
+            occurredAtMillis = 10_000L,
+            actorType = GlafiraCoreTraceActorType.SYSTEM,
+            actorId = "system",
+            component = "core",
+            eventType = GlafiraCoreTraceEventType.BACKUP_STARTED,
+            actionCode = "BACKUP_STARTED",
+            dataClassification = GlafiraCoreTraceDataClassification.INTERNAL
+        )
+        trace.append(original)
+
+        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val passphrase = "GLAFIRA-trace-backup-passphrase".toCharArray()
+        val archive = coordinator.create(passphrase)
+        try {
+            trace.append(original.copy(
+                eventId = "backup-trace-after",
+                correlationId = "backup-trace-after-correlation",
+                occurredAtMillis = 20_000L,
+                eventType = GlafiraCoreTraceEventType.BACKUP_VERIFIED,
+                actionCode = "BACKUP_VERIFIED"
+            ))
+
+            coordinator.restore(archive, passphrase)
+
+            val restored = trace.query(
+                GlafiraCoreTraceQuery("backup-trace-project"),
+                GlafiraCoreTraceAccessContext("backup-trace-project", allowProjectEvents = true)
+            )
+            assertEquals(listOf("backup-trace-before"), restored.events.map { it.eventId })
+            assertThrows(SQLiteException::class.java) {
+                store.writableDatabase.delete(
+                    GlafiraCoreTraceStore.TABLE,
+                    "event_id = ?",
+                    arrayOf("backup-trace-before")
+                )
+            }
+        } finally {
+            archive.delete()
+            passphrase.fill('\u0000')
+        }
+        Unit
     }
 
     @Test
