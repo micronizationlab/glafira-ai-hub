@@ -11,9 +11,20 @@ class GlafiraCoreOwnerAuthorizationTest {
         var grant: ToolApprovalGrant? = null
         var requested: GlafiraTask? = null
         var requestedHash: String? = null
+        var approvalGrantCalls = 0
+        var peekApprovalGrantCalls = 0
+        private var grantConsumed = false
 
         override fun grantedScopes(task: GlafiraTask) = scopes
-        override fun approvalGrant(task: GlafiraTask, actionSummary: String, nowMillis: Long) = grant
+        override fun approvalGrant(task: GlafiraTask, actionSummary: String, nowMillis: Long): ToolApprovalGrant? {
+            approvalGrantCalls++
+            if (grantConsumed) return null
+            return grant.also { if (it != null) grantConsumed = true }
+        }
+        override fun peekApprovalGrant(task: GlafiraTask, actionSummary: String, nowMillis: Long): ToolApprovalGrant? {
+            peekApprovalGrantCalls++
+            return grant.takeUnless { grantConsumed }
+        }
         override fun requestApproval(task: GlafiraTask, actionSummary: String, nowMillis: Long): Boolean {
             requested = task
             requestedHash = GlafiraToolRegistry.actionHash(task, actionSummary)
@@ -76,6 +87,29 @@ class GlafiraCoreOwnerAuthorizationTest {
         assertEquals(GlafiraTaskAuthorizationStatus.AUTHORIZED, authorizer.authorize(original, 2_000L).status)
         val modified = original.copy(payload = """{"actionSummary":"Send a different message"}""")
         assertEquals(GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER, authorizer.authorize(modified, 2_000L).status)
+    }
+
+    @Test
+    fun dryRunInspectionDoesNotConsumeOneUseOwnerGrant() {
+        val original = task()
+        val hash = GlafiraToolRegistry.actionHash(original, "Send the approved customer update")
+        val grants = FakeGrantSource().apply {
+            scopes = setOf("communications.send")
+            grant = ToolApprovalGrant(
+                original.projectId, original.taskType, hash,
+                approvedAt = 1_500L, expiresAt = 5_000L, taskId = original.taskId
+            )
+        }
+        val authorizer = RegistryBackedGlafiraTaskAuthorizer(grants)
+
+        assertEquals(GlafiraTaskAuthorizationStatus.AUTHORIZED, authorizer.inspectForDryRun(original, 2_000L).status)
+        assertEquals(1, grants.peekApprovalGrantCalls)
+        assertEquals(0, grants.approvalGrantCalls)
+
+        // The real execution path can still consume the exact grant once after the preview.
+        assertEquals(GlafiraTaskAuthorizationStatus.AUTHORIZED, authorizer.authorize(original, 2_000L).status)
+        assertEquals(1, grants.approvalGrantCalls)
+        assertEquals(GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER, authorizer.authorize(original, 2_000L).status)
     }
 
     @Test
