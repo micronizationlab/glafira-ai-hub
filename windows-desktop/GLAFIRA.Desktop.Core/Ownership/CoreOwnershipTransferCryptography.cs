@@ -93,6 +93,7 @@ public static class CoreOwnershipTransferCryptography
     public static byte[] Sign(ECDsa signer, OwnershipTransferSigningPayload payload)
     {
         ArgumentNullException.ThrowIfNull(signer);
+        ArgumentNullException.ThrowIfNull(payload);
         if (signer.KeySize != 256)
             throw new CryptographicException("OWNERSHIP_SIGNING_KEY_MUST_BE_P256");
 
