@@ -27,8 +27,7 @@ class AndroidCoreInstallationIdentityStore(context: Context) {
     private val identityFile = File(context.applicationContext.noBackupFilesDir, IDENTITY_FILE)
     private val keyStore: KeyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
 
-    @Synchronized
-    fun loadOrCreate(): CoreInstallationIdentity {
+    fun loadOrCreate(): CoreInstallationIdentity = synchronized(PROCESS_LOCK) {
         if (!identityFile.exists()) {
             // If metadata was intentionally removed or lost, never silently reuse a leftover key.
             keyStore.aliases().toList().filter { it.startsWith(KEY_ALIAS_PREFIX) }
@@ -60,8 +59,7 @@ class AndroidCoreInstallationIdentityStore(context: Context) {
     }
 
     /** Rotate the local signing key and increment its monotonic key epoch. */
-    @Synchronized
-    fun rotateKey(): CoreInstallationIdentity {
+    fun rotateKey(): CoreInstallationIdentity = synchronized(PROCESS_LOCK) {
         val current = loadOrCreate()
         val nextEpoch = Math.addExact(current.keyEpoch, 1L)
         val pair = createKeyPair(nextEpoch)
@@ -80,8 +78,7 @@ class AndroidCoreInstallationIdentityStore(context: Context) {
         return next
     }
 
-    @Synchronized
-    fun sign(payload: ByteArray): ByteArray {
+    fun sign(payload: ByteArray): ByteArray = synchronized(PROCESS_LOCK) {
         require(payload.isNotEmpty()) { "CORE_SIGNATURE_PAYLOAD_EMPTY" }
         val identity = loadOrCreate()
         val privateKey = keyStore.getKey(keyAlias(identity.keyEpoch), null) as? PrivateKey
@@ -136,6 +133,9 @@ class AndroidCoreInstallationIdentityStore(context: Context) {
     private fun keyAlias(epoch: Long) = "$KEY_ALIAS_PREFIX$epoch"
 
     companion object {
+        // Synchronize across store instances: runtime initialization and tests may construct
+        // more than one adapter for the same app-private identity file.
+        private val PROCESS_LOCK = Any()
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
         private const val IDENTITY_FILE = "glafira_core_installation_identity.properties"
         private const val KEY_ALIAS_PREFIX = "glafira.core.installation.signing."
