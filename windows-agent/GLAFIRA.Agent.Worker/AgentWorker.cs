@@ -5,9 +5,9 @@ using Microsoft.Extensions.Logging;
 namespace GLAFIRA.Agent.Worker;
 
 /// <summary>
-/// Validates the machine-protected enrollment and maintains an authenticated,
-/// TLS-pinned heartbeat with Desktop. Task claims remain disabled until typed
-/// task handlers and durable result delivery are integrated.
+/// Validates machine-protected enrollment, maintains the authenticated TLS-pinned
+/// Desktop heartbeat and polls only when at least one typed handler is registered.
+/// The coordinator persists leases/results and executes ReadOnly handlers only.
 /// </summary>
 public sealed class AgentWorker(
     ILogger<AgentWorker> logger,
