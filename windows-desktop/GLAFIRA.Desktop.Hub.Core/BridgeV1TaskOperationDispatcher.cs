@@ -181,6 +181,9 @@ public sealed class BridgeV1TaskOperationDispatcher(
     {
         var payload = request.Payload;
         if (!payload.TryGetValue("taskId", out var taskId) ||
+            !payload.TryGetValue("ownerCoreId", out var ownerCoreId) ||
+            !long.TryParse(payload.GetValueOrDefault("ownerGeneration"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var ownerGeneration) || ownerGeneration <= 0 ||
             !payload.TryGetValue("leaseId", out var leaseId) ||
             !long.TryParse(payload.GetValueOrDefault("fencingToken"), NumberStyles.None,
                 CultureInfo.InvariantCulture, out var fencingToken) ||
@@ -188,6 +191,16 @@ public sealed class BridgeV1TaskOperationDispatcher(
             !int.TryParse(payload.GetValueOrDefault("progressPercent"), NumberStyles.None,
                 CultureInfo.InvariantCulture, out var progress))
             return Failure("INVALID_TASK_RESULT");
+
+        try
+        {
+            if (!store.MatchesTaskOwnership(taskId, ownerCoreId, ownerGeneration))
+                return Failure("OWNER_GENERATION_REJECTED");
+        }
+        catch (ArgumentException)
+        {
+            return Failure("INVALID_TASK_RESULT");
+        }
 
         bool accepted;
         if (state is "ACCEPTED" or "RUNNING")

@@ -212,6 +212,28 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task StaleOwnerGenerationCannotCompleteCurrentLease()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+
+        var response = await dispatcher.DispatchAsync(
+            ResultRequest("SUCCEEDED", claim.Result["leaseId"],
+                long.Parse(claim.Result["fencingToken"]), "stale owner", ownerGeneration: 2),
+            now.AddSeconds(2));
+
+        Assert.Equal("FAILED", response.Status);
+        Assert.Equal("OWNER_GENERATION_REJECTED", response.ErrorCode);
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState("task-0001"));
+        Assert.Null(_store.GetTaskResult("task-0001"));
+        Assert.DoesNotContain(_store.GetTaskHistory("task-0001"),
+            item => item.EventCode is "TASK_SUCCEEDED" or "TASK_FAILED");
+    }
+
+    [Fact]
     public async Task PayloadHashMismatchFailsClosedAndQuarantinesClaimedTask()
     {
         var now = DateTimeOffset.UtcNow;
@@ -286,10 +308,13 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
         });
 
     private static BridgeV1SignedRequest ResultRequest(
-        string state, string leaseId, long fencingToken, string result) =>
+        string state, string leaseId, long fencingToken, string result,
+        string ownerCoreId = "windows-core-0001", long ownerGeneration = 1) =>
         Request(BridgeV1Operation.DESKTOP_TASK_RESULT, new Dictionary<string, string>
         {
             ["taskId"] = "task-0001",
+            ["ownerCoreId"] = ownerCoreId,
+            ["ownerGeneration"] = ownerGeneration.ToString(),
             ["leaseId"] = leaseId,
             ["fencingToken"] = fencingToken.ToString(),
             ["state"] = state,

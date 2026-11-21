@@ -250,6 +250,26 @@ public sealed class BridgeV1RequestAuthenticatorTests
         Assert.Equal(0, replay.Claims);
     }
 
+    [Theory]
+    [InlineData("windows-core-0001", "0")]
+    [InlineData("windows-core-0001", "not-a-number")]
+    [InlineData("bad owner", "1")]
+    [InlineData("windows-ядро", "1")]
+    public async Task RejectsMalformedTaskResultOwnershipBeforeReplayClaim(
+        string ownerCoreId, string ownerGeneration)
+    {
+        var replay = new FakeReplayGuard();
+        var payload = ValidTaskResultPayload();
+        payload["ownerCoreId"] = ownerCoreId;
+        payload["ownerGeneration"] = ownerGeneration;
+
+        var result = await CreateTaskResultAuthenticator(replay).AuthenticateAsync(
+            Sign(TaskResultRequest(payload)), DateTimeOffset.UtcNow);
+
+        Assert.Equal(BridgeV1AdmissionFailure.InvalidEnvelope, result.Failure);
+        Assert.Equal(0, replay.Claims);
+    }
+
     private static BridgeV1RequestAuthenticator CreateTaskResultAuthenticator(FakeReplayGuard replay) =>
         new(new FakeCredentialResolver(new HubRequestCredential(
             "device-0001", Secret, new HashSet<string> { "desktop.task.result" })), replay);
@@ -257,6 +277,8 @@ public sealed class BridgeV1RequestAuthenticatorTests
     private static Dictionary<string, string> ValidTaskResultPayload() => new()
     {
         ["taskId"] = "task_1",
+        ["ownerCoreId"] = "windows-core-0001",
+        ["ownerGeneration"] = "1",
         ["leaseId"] = "lease-0001",
         ["fencingToken"] = "42",
         ["state"] = "SUCCEEDED",

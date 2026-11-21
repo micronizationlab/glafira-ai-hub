@@ -83,7 +83,7 @@ Heartbeat is transport/liveness only: it does not claim a task, renew a task lea
 
 ## Desktop task lease fencing
 
-For the Bridge `DESKTOP_TASK_CLAIM` response, a successful lease must include the canonical `ownerCoreId`, positive `ownerGeneration`, opaque `leaseId`, and positive `fencingToken` alongside the task fields. The Agent validates and preserves the owner identity and generation in its typed task envelope. Every `DESKTOP_TASK_RESULT` update (including progress) must echo both lease values. The Desktop worker persists the lease identity with its local task record and must not submit a result without it. The Desktop Hub accepts updates only when the device, task, lease ID and fencing token all match the currently active lease; stale workers must be rejected.
+For the Bridge `DESKTOP_TASK_CLAIM` response, a successful lease must include the canonical `ownerCoreId`, positive `ownerGeneration`, opaque `leaseId`, and positive `fencingToken` alongside the task fields. The Agent validates and preserves the owner identity and generation in its typed task envelope. Every `DESKTOP_TASK_RESULT` update (including progress) must echo all four values. The Desktop worker persists that identity with its local task record and must not submit a result without it. The Desktop Hub accepts updates only when the device, task, owner Core ID, owner generation, lease ID and fencing token match the durable task/lease; stale workers must be rejected.
 
 ### Durable result acknowledgement
 

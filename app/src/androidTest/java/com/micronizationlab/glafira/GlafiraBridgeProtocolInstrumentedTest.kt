@@ -34,6 +34,8 @@ class GlafiraBridgeProtocolInstrumentedTest {
         val request = taskResult(
             mapOf(
                 "taskId" to "task_1",
+                "ownerCoreId" to "windows-core-0001",
+                "ownerGeneration" to "1",
                 "leaseId" to "lease-0001",
                 "fencingToken" to "42",
                 "state" to "SUCCEEDED",
@@ -66,8 +68,29 @@ class GlafiraBridgeProtocolInstrumentedTest {
         )
     }
 
+    @Test
+    fun desktopTaskResultRejectsMalformedOwnershipGeneration() {
+        val staleGeneration = taskResult(validPayload().toMutableMap().apply {
+            put("ownerGeneration", "0")
+        })
+        val malformedOwner = taskResult(validPayload().toMutableMap().apply {
+            put("ownerCoreId", "bad owner")
+        })
+
+        assertEquals(
+            GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE,
+            GlafiraBridgeProtocol.validate(staleGeneration, now)
+        )
+        assertEquals(
+            GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE,
+            GlafiraBridgeProtocol.validate(malformedOwner, now)
+        )
+    }
+
     private fun validPayload(): Map<String, String> = mapOf(
         "taskId" to "task_1",
+        "ownerCoreId" to "windows-core-0001",
+        "ownerGeneration" to "1",
         "leaseId" to "lease-0001",
         "fencingToken" to "42",
         "state" to "SUCCEEDED",

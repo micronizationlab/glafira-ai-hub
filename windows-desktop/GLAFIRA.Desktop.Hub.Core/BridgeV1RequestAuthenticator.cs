@@ -78,7 +78,7 @@ public sealed class BridgeV1RequestAuthenticator(
             [BridgeV1Operation.APPROVAL_REQUEST] = new HashSet<string>(["toolId", "actionSummary"], StringComparer.Ordinal),
             [BridgeV1Operation.DESKTOP_TASK_CLAIM] = new HashSet<string>(["capabilities", "maxParallelTasks"], StringComparer.Ordinal),
             [BridgeV1Operation.DESKTOP_TASK_RESULT] = new HashSet<string>(
-                ["taskId", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode"],
+                ["taskId", "ownerCoreId", "ownerGeneration", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode"],
                 StringComparer.Ordinal),
             [BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT] = new HashSet<string>(StringComparer.Ordinal)
         };
@@ -217,6 +217,11 @@ public sealed class BridgeV1RequestAuthenticator(
             if (request.Payload.TryGetValue("resultEncoding", out var encoding) && encoding != "json")
                 return BridgeV1AdmissionFailure.InvalidEnvelope;
             if (!IsTaskIdentifier(request.Payload["taskId"]) ||
+                !IsIdentifier(request.Payload["ownerCoreId"]) ||
+                !long.TryParse(request.Payload["ownerGeneration"],
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var ownerGeneration) ||
+                ownerGeneration <= 0 ||
                 !IsIdentifier(request.Payload["leaseId"]) ||
                 !long.TryParse(request.Payload["fencingToken"],
                     System.Globalization.NumberStyles.None,
@@ -239,5 +244,5 @@ public sealed class BridgeV1RequestAuthenticator(
 
     private static bool IsIdentifier(string value) =>
         value is { Length: >= 8 and <= 128 } &&
-        value.All(character => char.IsLetterOrDigit(character) || character is '-' or '_' or '.');
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.');
 }

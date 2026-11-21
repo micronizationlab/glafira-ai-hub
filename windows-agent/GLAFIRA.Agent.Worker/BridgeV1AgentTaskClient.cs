@@ -198,6 +198,8 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
         var payload = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["taskId"] = lease.TaskId,
+            ["ownerCoreId"] = lease.OwnerCoreId,
+            ["ownerGeneration"] = lease.OwnerGeneration.ToString(CultureInfo.InvariantCulture),
             ["leaseId"] = lease.LeaseId,
             ["fencingToken"] = lease.FencingToken.ToString(CultureInfo.InvariantCulture),
             ["state"] = state,

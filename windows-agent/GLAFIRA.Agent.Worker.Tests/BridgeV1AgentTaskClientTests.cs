@@ -29,21 +29,7 @@ public sealed class BridgeV1AgentTaskClientTests
             return Json(new
             {
                 status = "ACCEPTED",
-                result = new Dictionary<string, string>
-                {
-                    ["available"] = "true", ["taskId"] = "task-001", ["projectId"] = "default",
-                    ["ownerCoreId"] = "windows-core-0001", ["ownerGeneration"] = "3",
-                    ["taskType"] = "web.research", ["idempotencyKey"] = "idem-task-001",
-                    ["payloadRef"] = "payload://task-001", ["payloadSha256"] = new string('a', 64),
-                    ["effectRisk"] = "ReadOnly", ["approvalRef"] = "",
-                    ["leaseExpiresAtEpochMs"] = _now.AddMinutes(2).ToUnixTimeMilliseconds().ToString(),
-                    ["parentTaskId"] = "parent-001", ["subtaskId"] = "sub-001",
-                    ["title"] = "Research", ["instruction"] = "Analyze supplied material",
-                    ["executor"] = "RESEARCHER", ["requiredCapabilities"] = "[\"web.research\"]",
-                    ["createdAtEpochMs"] = _now.ToUnixTimeMilliseconds().ToString(),
-                    ["expiresAtEpochMs"] = _now.AddMinutes(5).ToUnixTimeMilliseconds().ToString(),
-                    ["priority"] = "10", ["leaseId"] = "lease-0001", ["fencingToken"] = "42"
-                }
+                result = ValidClaimResult()
             });
         });
         var client = Client(handler);
@@ -81,6 +67,21 @@ public sealed class BridgeV1AgentTaskClientTests
         Assert.Equal("2", captured["maxParallelTasks"]);
     }
 
+    [Theory]
+    [InlineData("ownerGeneration", null)]
+    [InlineData("ownerGeneration", "0")]
+    [InlineData("ownerCoreId", "bad owner")]
+    public async Task ClaimRejectsMissingOrMalformedOwnershipIdentity(string field, string? replacement)
+    {
+        var result = ValidClaimResult();
+        if (replacement is null) result.Remove(field);
+        else result[field] = replacement;
+        var handler = new StubHandler(_ => Task.FromResult(Json(new { status = "ACCEPTED", result })));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            Client(handler).ClaimNextAsync(Credential(), ["web.research"], 1, ["web.research"]));
+    }
+
     [Fact]
     public async Task ClaimSendsOnlyRegisteredSupportedTaskTypes()
     {
@@ -116,15 +117,22 @@ public sealed class BridgeV1AgentTaskClientTests
     {
         var resultJson = "\"done\"";
         var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson))).ToLowerInvariant();
-        var handler = new StubHandler(_ => Task.FromResult(Json(new
+        Dictionary<string, string>? captured = null;
+        var handler = new StubHandler(async request =>
         {
-            status = "SUCCEEDED",
-            result = new Dictionary<string, string>
+            using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            captured = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                document.RootElement.GetProperty("payload").GetRawText());
+            return Json(new
             {
-                ["accepted"] = "true", ["taskId"] = "task-001", ["leaseId"] = "lease-0001",
-                ["fencingToken"] = "42", ["state"] = "SUCCEEDED", ["resultSha256"] = digest
-            }
-        })));
+                status = "SUCCEEDED",
+                result = new Dictionary<string, string>
+                {
+                    ["accepted"] = "true", ["taskId"] = "task-001", ["leaseId"] = "lease-0001",
+                    ["fencingToken"] = "42", ["state"] = "SUCCEEDED", ["resultSha256"] = digest
+                }
+            });
+        });
         var client = Client(handler);
         var lease = Lease();
 
@@ -134,6 +142,9 @@ public sealed class BridgeV1AgentTaskClientTests
         Assert.Equal("task-001", ack.TaskId);
         Assert.Equal(digest, ack.ResultSha256);
         Assert.Equal(0L, ack.LeaseExpiresAtEpochMs);
+        Assert.NotNull(captured);
+        Assert.Equal("windows-core-0001", captured["ownerCoreId"]);
+        Assert.Equal("3", captured["ownerGeneration"]);
     }
 
     [Fact]
@@ -192,6 +203,22 @@ public sealed class BridgeV1AgentTaskClientTests
         "Research", "Analyze", "RESEARCHER", new HashSet<string> { "web.research" },
         _now.ToUnixTimeMilliseconds(), _now.AddMinutes(5).ToUnixTimeMilliseconds(),
         10, "lease-0001", 42);
+
+    private Dictionary<string, string> ValidClaimResult() => new()
+    {
+        ["available"] = "true", ["taskId"] = "task-001", ["projectId"] = "default",
+        ["ownerCoreId"] = "windows-core-0001", ["ownerGeneration"] = "3",
+        ["taskType"] = "web.research", ["idempotencyKey"] = "idem-task-001",
+        ["payloadRef"] = "payload://task-001", ["payloadSha256"] = new string('a', 64),
+        ["effectRisk"] = "ReadOnly", ["approvalRef"] = "",
+        ["leaseExpiresAtEpochMs"] = _now.AddMinutes(2).ToUnixTimeMilliseconds().ToString(),
+        ["parentTaskId"] = "parent-001", ["subtaskId"] = "sub-001",
+        ["title"] = "Research", ["instruction"] = "Analyze supplied material",
+        ["executor"] = "RESEARCHER", ["requiredCapabilities"] = "[\"web.research\"]",
+        ["createdAtEpochMs"] = _now.ToUnixTimeMilliseconds().ToString(),
+        ["expiresAtEpochMs"] = _now.AddMinutes(5).ToUnixTimeMilliseconds().ToString(),
+        ["priority"] = "10", ["leaseId"] = "lease-0001", ["fencingToken"] = "42"
+    };
 
     private AgentEnrollmentCredential Credential() => new("agent-01", "desktop-hub-01",
         Endpoint, Pin, Convert.ToBase64String(_secret),

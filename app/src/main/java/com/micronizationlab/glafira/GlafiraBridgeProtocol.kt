@@ -47,7 +47,7 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.CONVERSATION_APPEND to setOf("conversationId", "messageText"),
         GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary"),
         GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to setOf("capabilities", "maxParallelTasks"),
-        GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode")
+        GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "ownerCoreId", "ownerGeneration", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode")
     )
     private val allowedFields = requiredFields
 
@@ -136,9 +136,12 @@ object GlafiraBridgeProtocol {
             if (request.payload["resultEncoding"]?.let { it != "json" } == true)
                 return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
             val leaseId = request.payload["leaseId"] ?: return GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD
+            val ownerCoreId = request.payload["ownerCoreId"] ?: return GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD
+            val ownerGeneration = request.payload["ownerGeneration"]?.toLongOrNull()
             val fencingToken = request.payload["fencingToken"]?.toLongOrNull()
             val progress = request.payload["progressPercent"]?.toIntOrNull()
-            if (!isTaskIdentifier(request.payload["taskId"].orEmpty()) || !isIdentifier(leaseId) ||
+            if (!isTaskIdentifier(request.payload["taskId"].orEmpty()) || !isIdentifier(ownerCoreId) ||
+                ownerGeneration == null || ownerGeneration <= 0L || !isIdentifier(leaseId) ||
                 fencingToken == null || fencingToken <= 0L ||
                 progress == null || progress !in 0..100 ||
                 request.payload["state"] !in setOf("ACCEPTED", "RUNNING", "SUCCEEDED", "FAILED")
@@ -156,5 +159,7 @@ object GlafiraBridgeProtocol {
         }
 
     private fun isIdentifier(value: String): Boolean =
-        value.length in 8..128 && value.all { it.isLetterOrDigit() || it in "-_." }
+        value.length in 8..128 && value.all {
+            it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it in "-_."
+        }
 }

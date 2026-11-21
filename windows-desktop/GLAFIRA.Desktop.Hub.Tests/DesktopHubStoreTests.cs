@@ -113,6 +113,8 @@ public sealed class DesktopHubStoreTests : IDisposable
         Assert.True(_store.TransferQueuedTaskOwnership(
             "owner-transfer", "windows-core-0001", 1,
             "android-core-0001", 2, now.AddMilliseconds(2)));
+        Assert.False(_store.MatchesTaskOwnership("owner-transfer", "windows-core-0001", 1));
+        Assert.True(_store.MatchesTaskOwnership("owner-transfer", "android-core-0001", 2));
         Assert.False(_store.TransferQueuedTaskOwnership(
             "owner-transfer", "windows-core-0001", 1,
             "ios-core-0001", 2, now.AddMilliseconds(3)));

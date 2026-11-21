@@ -1003,6 +1003,28 @@ public sealed class DesktopHubStore
         return Enum.TryParse<HubTaskState>(value, out var state) ? state : null;
     }
 
+    /// <summary>
+    /// Matches the canonical ownership identity attached to a durable task. Ownership can
+    /// advance only while queued, so this check remains stable for leased and terminal updates.
+    /// </summary>
+    public bool MatchesTaskOwnership(string taskId, string ownerCoreId, long ownerGeneration)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        ValidateOwnerCoreId(ownerCoreId, nameof(ownerCoreId));
+        if (ownerGeneration <= 0)
+            throw new ArgumentOutOfRangeException(nameof(ownerGeneration));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*) FROM Tasks
+            WHERE task_id = $task AND owner_core_id = $owner AND owner_generation = $generation;
+            """;
+        command.Parameters.AddWithValue("$task", taskId);
+        command.Parameters.AddWithValue("$owner", ownerCoreId);
+        command.Parameters.AddWithValue("$generation", ownerGeneration);
+        return Convert.ToInt32(command.ExecuteScalar()) == 1;
+    }
+
     /// <summary>Returns the durable, append-only state history for one task without payloads or credentials.</summary>
     public IReadOnlyList<HubTaskEventSnapshot> GetTaskHistory(string taskId, int limit = 500)
     {
