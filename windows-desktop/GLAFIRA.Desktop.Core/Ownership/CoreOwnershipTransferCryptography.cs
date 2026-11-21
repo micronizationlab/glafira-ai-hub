@@ -96,6 +96,11 @@ public static class CoreOwnershipTransferCryptography
         if (signer.KeySize != 256)
             throw new CryptographicException("OWNERSHIP_SIGNING_KEY_MUST_BE_P256");
 
+        var publicKey = signer.ExportSubjectPublicKeyInfo();
+        var fingerprint = Convert.ToHexString(SHA256.HashData(publicKey)).ToLowerInvariant();
+        if (!FixedTimeEqualsAscii(fingerprint, payload.SigningPublicKeySha256))
+            throw new CryptographicException("OWNERSHIP_SIGNING_KEY_FINGERPRINT_MISMATCH");
+
         return signer.SignData(
             GetCanonicalBytes(payload),
             HashAlgorithmName.SHA256,
@@ -111,6 +116,7 @@ public static class CoreOwnershipTransferCryptography
         ReadOnlySpan<byte> publicKeySubjectPublicKeyInfo,
         ReadOnlySpan<byte> signature)
     {
+        ArgumentNullException.ThrowIfNull(payload);
         try
         {
             if (signature.Length != 64 || publicKeySubjectPublicKeyInfo.IsEmpty)
