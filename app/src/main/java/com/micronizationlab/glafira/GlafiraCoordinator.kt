@@ -72,13 +72,7 @@ object GlafiraCoordinator {
         }
 
         val question = safeHistory.lastOrNull { it.isUser }?.text.orEmpty()
-        val consultationPrompt = """
-            Ты — независимый эксперт, которого пригласила Глафира.
-            Дай самостоятельное мнение по задаче. Проверь предположения, риски и предложи
-            конкретные действия. Не пытайся управлять Глафирой и не выдавай догадки за факты.
-            Вопрос пользователя:
-            $question
-        """.trimIndent()
+        val consultationPrompt = GlafiraPeerConsultationPolicy.buildPrompt(question)
 
         val peerResults = coroutineScope {
             plan.providers.map { peer ->

@@ -591,6 +591,9 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val chatContextAssembler = remember(context.filesDir) {
         ProjectChatContextAssembler(context.filesDir) { key -> loadHistory(context, key) }
     }
+    val contextDispatchPlanner = remember(knowledgePreviewService, chatContextAssembler) {
+        OwnerApprovedContextDispatchPlanner(knowledgePreviewService, chatContextAssembler)
+    }
     val citationManifestStore = remember(context.applicationContext) {
         GlafiraContextCitationManifestRuntime.store(context)
     }
@@ -794,51 +797,27 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             return
         }
         val now = Date()
-        val selectedChatPreview = if (
-            approvedContextQuery == text.trim() && approvedChatSources.isNotEmpty()
+        val dispatch = if (
+            approvedContextQuery == text.trim() &&
+            (approvedKnowledgeSources.isNotEmpty() || approvedChatSources.isNotEmpty())
         ) {
-            val preview = runCatching {
-                chatContextAssembler.preview(
-                    projectId = ProjectIdentifier(project.id),
+            runCatching {
+                contextDispatchPlanner.prepare(
+                    selection = OwnerApprovedContextSelection(
+                        query = text.trim(),
+                        documentSources = approvedKnowledgeSources,
+                        chatSources = approvedChatSources
+                    ),
+                    recipient = recipientName,
                     currentAgentName = agent.n,
-                    recipient = recipientName,
-                    includedSources = approvedChatSources
+                    access = knowledgeAccess
                 )
             }.getOrElse {
-                ToastHelper.short(context, "Не удалось проверить выбранные чаты. Сообщение не отправлено.")
+                ToastHelper.short(context, "Выбранный контекст изменился. Проверьте источники заново.")
                 return
             }
-            if (preview.citations.map { it.source }.toSet() != approvedChatSources) {
-                ToastHelper.short(context, "Один из выбранных чатов изменился. Проверьте контекст заново.")
-                return
-            }
-            preview
         } else null
-        val projectContext = selectedChatPreview?.renderForProvider().orEmpty()
-        val selectedKnowledgePreview = if (
-            approvedContextQuery == text.trim() && approvedKnowledgeSources.isNotEmpty()
-        ) {
-            val preview = runCatching {
-                knowledgePreviewService.preview(
-                    query = text.trim(),
-                    recipient = recipientName,
-                    access = knowledgeAccess,
-                    includedSources = approvedKnowledgeSources
-                )
-            }.getOrElse {
-                ToastHelper.short(context, "Не удалось проверить выбранный контекст. Сообщение не отправлено.")
-                return
-            }
-            if (preview.citations.map { it.source }.toSet() != approvedKnowledgeSources) {
-                ToastHelper.short(context, "Один из выбранных документов изменился. Проверьте контекст заново.")
-                return
-            }
-            preview
-        } else null
-        val knowledgeContext = selectedKnowledgePreview?.renderForProvider().orEmpty()
-        val fullPrompt = listOf(agent.prompt, projectContext, knowledgeContext)
-            .filter { it.isNotBlank() }
-            .joinToString("\n\n")
+        val fullPrompt = dispatch?.primarySystemPrompt(agent.prompt) ?: agent.prompt
         val pending = PendingMessage(
             project.id, agent.n, text,
             SimpleDateFormat("HH:mm", Locale.getDefault()).format(now),
@@ -846,31 +825,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now),
             systemPrompt = fullPrompt
         )
-        val citationManifest = if (selectedKnowledgePreview != null || selectedChatPreview != null) {
-            ContextCitationManifest(
-                operationId = pending.id,
-                projectId = ProjectIdentifier(project.id),
-                recipient = recipientName,
-                createdAt = Instant.ofEpochMilli(now.time),
-                documents = selectedKnowledgePreview?.citations.orEmpty().map { citation ->
-                    DocumentCitationReference(
-                        citation.source.sourceId.value,
-                        citation.source.version,
-                        citation.title,
-                        citation.sourceUri,
-                        citation.classification
-                    )
-                },
-                chats = selectedChatPreview?.citations.orEmpty().map { citation ->
-                    ChatCitationReference(
-                        citation.source.sourceId,
-                        citation.source.contentVersion,
-                        citation.agentName,
-                        citation.classification
-                    )
-                }
-            )
-        } else null
+        val citationManifest = dispatch?.manifest(pending.id, Instant.ofEpochMilli(now.time))
         try {
             // Source provenance must be durable before the provider operation can begin.
             citationManifest?.let { citationManifestStore.put(it, citationAccess) }

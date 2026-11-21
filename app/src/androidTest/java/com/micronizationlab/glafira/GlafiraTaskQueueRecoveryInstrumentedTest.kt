@@ -109,6 +109,68 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(listOf("second"), store.listTasks(projectId = "second-project").map { it.taskId })
     }
 
+    @Test fun injectedClaimHistoryFailureRollsBackClaimAndAttemptCountTogether() {
+        store.enqueue(task("injected-claim-history-failure"))
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER inject_core_claim_history_failure
+            BEFORE INSERT ON core_task_history
+            WHEN NEW.to_state = 'running'
+            BEGIN
+                SELECT RAISE(ABORT, 'injected-claim-history-failure');
+            END
+        """.trimIndent())
+
+        val failure = runCatching { store.claimNext(2_000) }.exceptionOrNull()
+        assertNotNull("The injected history failure must abort the claim", failure)
+        val afterFailure = requireNotNull(store.getTask("injected-claim-history-failure"))
+        assertEquals(GlafiraTaskState.QUEUED, afterFailure.state)
+        assertEquals(0, afterFailure.attemptCount)
+        assertEquals(listOf(GlafiraTaskState.QUEUED),
+            store.taskHistory("injected-claim-history-failure", "project").map { it.toState })
+        store.writableDatabase.execSQL("DROP TRIGGER inject_core_claim_history_failure")
+
+        store.close()
+        store = GlafiraTaskStore(context)
+        val reopened = requireNotNull(store.getTask("injected-claim-history-failure"))
+        assertEquals(GlafiraTaskState.QUEUED, reopened.state)
+        assertEquals(0, reopened.attemptCount)
+        assertEquals(listOf(GlafiraTaskState.QUEUED),
+            store.taskHistory("injected-claim-history-failure", "project").map { it.toState })
+        assertEquals("injected-claim-history-failure", store.claimNext(3_000)?.taskId)
+    }
+
+    @Test fun repeatedCoreResultCommitIsIdempotentAndConflictingResultFailsClosed() {
+        store.enqueue(task("idempotent-core-result"))
+        assertEquals("idempotent-core-result", store.claimNext(2_000)?.taskId)
+
+        assertTrue(store.persistCoreTaskResult(
+            "idempotent-core-result",
+            setOf(GlafiraTaskState.RUNNING),
+            "canonical-result",
+            3_000L
+        ))
+        assertTrue(store.persistCoreTaskResult(
+            "idempotent-core-result",
+            setOf(GlafiraTaskState.RUNNING),
+            "canonical-result",
+            4_000L
+        ))
+
+        assertThrows(IllegalStateException::class.java) {
+            store.persistCoreTaskResult(
+                "idempotent-core-result",
+                setOf(GlafiraTaskState.RUNNING),
+                "conflicting-result",
+                5_000L
+            )
+        }
+
+        assertEquals("canonical-result", store.coreTaskResult("idempotent-core-result", "project")?.result)
+        assertEquals(1, store.taskHistory("idempotent-core-result", "project")
+            .count { it.toState == GlafiraTaskState.SUCCEEDED })
+        assertEquals(GlafiraTaskState.SUCCEEDED, store.getTask("idempotent-core-result")?.state)
+    }
+
     @Test fun injectedResultInsertFailureRollsBackStateResultAndHistoryTogether() {
         store.enqueue(task("injected-result-failure"))
         assertNotNull(store.claimNext(2_000))
