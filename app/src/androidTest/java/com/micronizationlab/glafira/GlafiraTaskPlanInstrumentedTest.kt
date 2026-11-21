@@ -157,6 +157,24 @@ class GlafiraCoreTaskPlanInstrumentedTest {
         assertTrue(upgraded.enqueuePlan(plan(listOf(GlafiraCoreTaskPlanNode(task("after-upgrade"))))).inserted)
     }
 
+    @Test fun missingInPlanPredecessorIsRejectedBeforeAnyRowsAreWritten() {
+        val queue = requireNotNull(store)
+        val invalid = plan(listOf(
+            GlafiraCoreTaskPlanNode(task("orphan"), setOf("missing-node"))
+        ))
+
+        var rejected = false
+        try {
+            queue.enqueuePlan(invalid)
+        } catch (_: IllegalArgumentException) {
+            rejected = true
+        }
+
+        assertTrue("A plan may not refer to a predecessor outside its node set", rejected)
+        assertNull(queue.getTask("orphan"))
+        assertNull(queue.taskPlan("plan-00000001", "hydrogen-active"))
+    }
+
     @Test fun cyclicOrCrossPlanEdgesAreRejectedBeforeAnyRowsAreWritten() {
         val queue = requireNotNull(store)
         val cyclic = plan(listOf(

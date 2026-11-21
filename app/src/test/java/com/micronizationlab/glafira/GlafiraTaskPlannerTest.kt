@@ -26,6 +26,34 @@ class GlafiraTaskPlannerTest {
         assertEquals(listOf(2, 2, 2, 2, 2, 2, 2, 2), batches.map { it.size })
     }
 
+    @Test fun rejectsMissingDependencyAndDuplicateDependencyEdges() {
+        fun planWith(dependencies: JSONArray): String {
+            val tasks = JSONArray()
+            tasks.put(JSONObject().apply {
+                put("id", "parent")
+                put("title", "Parent")
+                put("instruction", "Complete parent")
+                put("executor", "GLAFIRA")
+                put("dependsOn", JSONArray())
+            })
+            tasks.put(JSONObject().apply {
+                put("id", "child")
+                put("title", "Child")
+                put("instruction", "Complete child")
+                put("executor", "GLAFIRA")
+                put("dependsOn", dependencies)
+            })
+            return JSONObject().put("goal", "Validate dependency references").put("tasks", tasks).toString()
+        }
+
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            GlafiraTaskPlanner.parseAndValidate(planWith(JSONArray().put("missing")))
+        }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            GlafiraTaskPlanner.parseAndValidate(planWith(JSONArray().put("parent").put("parent")))
+        }
+    }
+
     @Test fun rejectsSeventeenthNodeBeforeExecution() {
         val tasks = JSONArray()
         repeat(GlafiraTaskPlanner.MAX_TASKS + 1) { index ->

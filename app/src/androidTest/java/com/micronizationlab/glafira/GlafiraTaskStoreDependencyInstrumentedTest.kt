@@ -98,6 +98,22 @@ class GlafiraTaskStoreDependencyInstrumentedTest {
         assertEquals("DEPENDENCY_FAILED", store.getTask("child")?.lastError)
     }
 
+    @Test fun missingPredecessorIsRejectedWithoutWritingPartialEdges() {
+        val store = newStore()
+        enqueue(store, task("child"))
+
+        var rejected = false
+        try {
+            store.addTaskDependencies("child", setOf("missing-parent"), 2_000L)
+        } catch (_: IllegalArgumentException) {
+            rejected = true
+        }
+
+        assertTrue("A missing predecessor must be rejected", rejected)
+        assertTrue(store.taskDependencies("child").isEmpty())
+        assertEquals(GlafiraTaskState.QUEUED, store.getTask("child")?.state)
+    }
+
     @Test fun dependencyEdgesRejectCyclesAndCrossProjectReferences() {
         val store = newStore()
         enqueue(store, task("a"))
