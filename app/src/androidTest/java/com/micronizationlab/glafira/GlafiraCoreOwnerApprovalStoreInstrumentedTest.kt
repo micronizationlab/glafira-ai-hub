@@ -182,13 +182,17 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
 
     @Test
     fun legacyApprovalRowWithUnknownScopeFailsClosedWhenReadingGrantedScopes() {
-        val original = task("approval-legacy-unknown")
+        val now = System.currentTimeMillis()
+        val original = task("approval-legacy-unknown").copy(
+            createdAtMillis = now,
+            updatedAtMillis = now
+        )
         taskStore.enqueue(original)
-        val running = requireNotNull(taskStore.claimNext(2_000L))
+        val running = requireNotNull(taskStore.claimNext(now + 1L))
         assertTrue(approvals.requestApproval(
             running,
             "Send a test message to test@example.invalid",
-            3_000L
+            now + 2L
         ))
         assertEquals(
             GlafiraCoreOwnerApprovalMutation.APPROVED,
@@ -196,7 +200,7 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
                 original.taskId,
                 setOf("communications.send"),
                 authenticatedOwnerSession(),
-                4_000L
+                now + 3L
             )
         )
         taskStore.writableDatabase.execSQL(
