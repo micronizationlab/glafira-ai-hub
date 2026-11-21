@@ -48,7 +48,7 @@ class BackupSettingsSmokeTest {
             assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
             saveButton!!.click()
             var guidance = device.wait(
-                Until.findObject(By.descContains("Сначала выбери папку")), 1_000)
+                Until.findObject(By.textContains("Сначала выбери папку")), 1_000)
             repeat(8) {
                 if (guidance == null) {
                     device.swipe(
@@ -56,7 +56,7 @@ class BackupSettingsSmokeTest {
                         device.displayWidth / 2, device.displayHeight / 4, 12
                     )
                     guidance = device.wait(
-                        Until.findObject(By.descContains("Сначала выбери папку")), 1_000)
+                        Until.findObject(By.textContains("Сначала выбери папку")), 1_000)
                 }
             }
             assertNotNull("Missing-folder guidance was not shown after scrolling", guidance)

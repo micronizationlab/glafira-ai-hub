@@ -542,6 +542,8 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val historyKey = "${project.id}_${agent.n}"
     var messages by remember(historyKey) { mutableStateOf(loadHistory(context, historyKey)) }
     var pendingMessages by remember(historyKey) { mutableStateOf(emptyList<PendingMessage>()) }
+    var historyInitialized by remember(historyKey) { mutableStateOf(false) }
+    var lastObservedMessage by remember(historyKey) { mutableStateOf<Msg?>(messages.lastOrNull()) }
     var retryConfirmation by remember { mutableStateOf<PendingMessage?>(null) }
     LaunchedEffect(historyKey) {
         while (true) {
@@ -549,7 +551,14 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 loadHistory(context, historyKey) to loadPendingQueue(context).filter {
                     it.projectId == project.id && it.agentName == agent.n && it.state != PendingDeliveryState.COMPLETED && it.state != PendingDeliveryState.CANCELLED
                 }
-            }.let { (history, pending) -> messages = history; pendingMessages = pending }
+            }.let { (history, pending) ->
+                messages = history
+                pendingMessages = pending
+                if (!historyInitialized) {
+                    lastObservedMessage = history.lastOrNull()
+                    historyInitialized = true
+                }
+            }
             delay(1_000)
         }
     }
@@ -572,6 +581,21 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
 
     LaunchedEffect(Unit) {
         TtsHelper.init(context)
+    }
+
+    LaunchedEffect(historyInitialized, messages.lastOrNull()) {
+        if (!historyInitialized) return@LaunchedEffect
+        val latest = messages.lastOrNull() ?: return@LaunchedEffect
+        val previousMessage = lastObservedMessage
+        if (latest != previousMessage) {
+            lastObservedMessage = latest
+            val autoSpeak = context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
+                .getBoolean("auto_speak_responses", false)
+            if (shouldAutoSpeakAgentReply(previousMessage, latest, autoSpeak)) {
+                TtsHelper.speak(latest.text) { speakingIndex = null }
+                speakingIndex = messages.lastIndex
+            }
+        }
     }
 
     val speechLauncher = rememberLauncherForActivityResult(

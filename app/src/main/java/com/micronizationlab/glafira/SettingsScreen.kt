@@ -63,6 +63,9 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var voiceOutputEnabled by remember {
         mutableStateOf(audioPreferences.getBoolean("voice_output_enabled", true))
     }
+    var autoSpeakResponsesEnabled by remember {
+        mutableStateOf(audioPreferences.getBoolean("auto_speak_responses", false))
+    }
     var soundEffectsVolume by remember {
         mutableFloatStateOf(audioPreferences.getFloat("sound_effects_volume", 1f).coerceIn(0f, 1f))
     }
@@ -403,6 +406,20 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         voiceOutputEnabled = it
                         TtsHelper.setEnabled(context, it)
                     })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Автоматически озвучивать ответы", color = Color(0xFF202020), fontSize = 14.sp)
+                        Text("Новые ответы агента будут произноситься вслух", color = Tx, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = autoSpeakResponsesEnabled,
+                        enabled = voiceOutputEnabled,
+                        onCheckedChange = {
+                            autoSpeakResponsesEnabled = it
+                            audioPreferences.edit().putBoolean("auto_speak_responses", it).apply()
+                        }
+                    )
                 }
                 Divider(color = Color(0xFFB8B8B8))
                 Row(
