@@ -587,15 +587,21 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val knowledgePreviewService = remember(knowledgeRepository) {
         KnowledgeContextPreviewService(knowledgeRepository)
     }
+    val chatContextAssembler = remember(context.filesDir) {
+        ProjectChatContextAssembler(context.filesDir) { key -> loadHistory(context, key) }
+    }
     var showKnowledgeImportDialog by remember { mutableStateOf(false) }
     var showKnowledgePreview by remember { mutableStateOf(false) }
     var knowledgePreview by remember { mutableStateOf<KnowledgeContextPreview?>(null) }
+    var chatContextPreview by remember { mutableStateOf<ProjectChatContextPreview?>(null) }
     var knowledgePreviewError by remember { mutableStateOf<String?>(null) }
     var knowledgePreviewLoading by remember { mutableStateOf(false) }
     var importClassification by remember { mutableStateOf(CoreDataClassification.INTERNAL) }
     var excludedKnowledgeSources by remember(project.id) { mutableStateOf(emptySet<KnowledgeSourceRef>()) }
-    var approvedKnowledgeQuery by remember(project.id) { mutableStateOf<String?>(null) }
+    var excludedChatSources by remember(project.id) { mutableStateOf(emptySet<ChatContextSourceRef>()) }
+    var approvedContextQuery by remember(project.id) { mutableStateOf<String?>(null) }
     var approvedKnowledgeSources by remember(project.id) { mutableStateOf(emptySet<KnowledgeSourceRef>()) }
+    var approvedChatSources by remember(project.id) { mutableStateOf(emptySet<ChatContextSourceRef>()) }
 
     val recipientName = if (agent.n == "ГЛАФИРА") {
         loadGlafiraPrimaryProvider(context).displayName
@@ -624,17 +630,26 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         query = query,
                         recipient = recipientName,
                         access = knowledgeAccess
+                    ) to chatContextAssembler.preview(
+                        projectId = ProjectIdentifier(project.id),
+                        currentAgentName = agent.n,
+                        recipient = recipientName
                     )
                 }
             }
             knowledgePreviewLoading = false
-            result.onSuccess { preview ->
-                knowledgePreview = preview
+            result.onSuccess { (documentPreview, chatPreview) ->
+                knowledgePreview = documentPreview
+                chatContextPreview = chatPreview
                 excludedKnowledgeSources = excludedKnowledgeSources.intersect(
-                    preview.citations.map { it.source }.toSet()
+                    documentPreview.citations.map { it.source }.toSet()
+                )
+                excludedChatSources = excludedChatSources.intersect(
+                    chatPreview.citations.map { it.source }.toSet()
                 )
             }.onFailure {
                 knowledgePreview = null
+                chatContextPreview = null
                 knowledgePreviewError = "Контекст недоступен. Сообщение не будет использовать документы."
             }
         }
@@ -718,8 +733,9 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             }
             when (val result = receipt.result) {
                 is KnowledgeImportResult.Stored -> {
-                    approvedKnowledgeQuery = null
+                    approvedContextQuery = null
                     approvedKnowledgeSources = emptySet()
+                    approvedChatSources = emptySet()
                     ToastHelper.short(context, "Документ добавлен: ${receipt.displayName}")
                 }
                 is KnowledgeImportResult.Rejected -> ToastHelper.short(
@@ -762,9 +778,28 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             return
         }
         val now = Date()
-        val projectContext = buildProjectContext(context, project.id, agent.n)
+        val projectContext = if (
+            approvedContextQuery == text.trim() && approvedChatSources.isNotEmpty()
+        ) {
+            val preview = runCatching {
+                chatContextAssembler.preview(
+                    projectId = ProjectIdentifier(project.id),
+                    currentAgentName = agent.n,
+                    recipient = recipientName,
+                    includedSources = approvedChatSources
+                )
+            }.getOrElse {
+                ToastHelper.short(context, "Не удалось проверить выбранные чаты. Сообщение не отправлено.")
+                return
+            }
+            if (preview.citations.map { it.source }.toSet() != approvedChatSources) {
+                ToastHelper.short(context, "Один из выбранных чатов изменился. Проверьте контекст заново.")
+                return
+            }
+            preview.renderForProvider()
+        } else ""
         val knowledgeContext = if (
-            approvedKnowledgeQuery == text.trim() && approvedKnowledgeSources.isNotEmpty()
+            approvedContextQuery == text.trim() && approvedKnowledgeSources.isNotEmpty()
         ) {
             runCatching {
                 knowledgePreviewService.preview(
@@ -859,46 +894,93 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 ) {
                     Text("Проект: ${project.name}", fontWeight = FontWeight.Bold)
                     Text("Получатель: $recipientName")
-                    Text("Лимит: 4 000 символов · максимум 5 источников", color = Tx, fontSize = 11.sp)
+                    Text("Документы: до 4 000 символов/5 источников. Чаты: до 4 000/10.", color = Tx, fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                     when {
                         knowledgePreviewLoading -> CircularProgressIndicator(Modifier.size(24.dp))
                         knowledgePreviewError != null -> Text(knowledgePreviewError.orEmpty(), color = Red)
-                        knowledgePreview?.citations.isNullOrEmpty() -> Text("Подходящих документов проекта не найдено.")
-                        else -> knowledgePreview!!.citations.forEach { citation ->
-                            val included = citation.source !in excludedKnowledgeSources
-                            Row(
-                                Modifier.fillMaxWidth().clickable {
-                                    excludedKnowledgeSources = if (included) {
-                                        excludedKnowledgeSources + citation.source
-                                    } else {
-                                        excludedKnowledgeSources - citation.source
-                                    }
-                                },
-                                verticalAlignment = Alignment.Top
+                        else -> {
+                            if (
+                                knowledgePreview?.citations.isNullOrEmpty() &&
+                                chatContextPreview?.citations.isNullOrEmpty()
                             ) {
-                                Checkbox(
-                                    checked = included,
-                                    onCheckedChange = { checked ->
-                                        excludedKnowledgeSources = if (checked) {
-                                            excludedKnowledgeSources - citation.source
-                                        } else {
-                                            excludedKnowledgeSources + citation.source
+                                Text("Подходящих источников проекта не найдено.")
+                            }
+                            if (!knowledgePreview?.citations.isNullOrEmpty()) {
+                                Text("ДОКУМЕНТЫ", color = Gr, fontWeight = FontWeight.Bold)
+                                knowledgePreview!!.citations.forEach { citation ->
+                                    val included = citation.source !in excludedKnowledgeSources
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable {
+                                            excludedKnowledgeSources = if (included) {
+                                                excludedKnowledgeSources + citation.source
+                                            } else {
+                                                excludedKnowledgeSources - citation.source
+                                            }
+                                        },
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Checkbox(
+                                            checked = included,
+                                            onCheckedChange = { checked ->
+                                                excludedKnowledgeSources = if (checked) {
+                                                    excludedKnowledgeSources - citation.source
+                                                } else {
+                                                    excludedKnowledgeSources + citation.source
+                                                }
+                                            }
+                                        )
+                                        Column(Modifier.weight(1f)) {
+                                            Text(citation.title, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                "${citation.source.sourceId.value} · v${citation.source.version} · ${citation.classification}",
+                                                color = Tx,
+                                                fontSize = 10.sp
+                                            )
+                                            Text(citation.excerpt, fontSize = 11.sp)
+                                            Text(citation.sourceUri, color = Gr, fontSize = 9.sp)
                                         }
                                     }
-                                )
-                                Column(Modifier.weight(1f)) {
-                                    Text(citation.title, fontWeight = FontWeight.Bold)
-                                    Text(
-                                        "${citation.source.sourceId.value} · v${citation.source.version} · ${citation.classification}",
-                                        color = Tx,
-                                        fontSize = 10.sp
-                                    )
-                                    Text(citation.excerpt, fontSize = 11.sp)
-                                    Text(citation.sourceUri, color = Gr, fontSize = 9.sp)
+                                    Divider(Modifier.padding(vertical = 6.dp))
                                 }
                             }
-                            Divider(Modifier.padding(vertical = 6.dp))
+                            if (!chatContextPreview?.citations.isNullOrEmpty()) {
+                                Text("ДРУГИЕ ЧАТЫ ПРОЕКТА", color = Gr, fontWeight = FontWeight.Bold)
+                                chatContextPreview!!.citations.forEach { citation ->
+                                    val included = citation.source !in excludedChatSources
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable {
+                                            excludedChatSources = if (included) {
+                                                excludedChatSources + citation.source
+                                            } else {
+                                                excludedChatSources - citation.source
+                                            }
+                                        },
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Checkbox(
+                                            checked = included,
+                                            onCheckedChange = { checked ->
+                                                excludedChatSources = if (checked) {
+                                                    excludedChatSources - citation.source
+                                                } else {
+                                                    excludedChatSources + citation.source
+                                                }
+                                            }
+                                        )
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Чат с ${citation.agentName}", fontWeight = FontWeight.Bold)
+                                            Text(
+                                                "${citation.source.sourceId} · v${citation.source.contentVersion.take(12)} · ${citation.classification}",
+                                                color = Tx,
+                                                fontSize = 10.sp
+                                            )
+                                            Text(citation.excerpt, fontSize = 11.sp)
+                                        }
+                                    }
+                                    Divider(Modifier.padding(vertical = 6.dp))
+                                }
+                            }
                         }
                     }
                 }
@@ -907,17 +989,23 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 TextButton(
                     enabled = !knowledgePreviewLoading && knowledgePreviewError == null,
                     onClick = {
-                        val selected = knowledgePreview?.citations.orEmpty()
+                        val selectedDocuments = knowledgePreview?.citations.orEmpty()
                             .map { it.source }
                             .filterNot { it in excludedKnowledgeSources }
                             .toSet()
-                        approvedKnowledgeQuery = inputText.trim()
-                        approvedKnowledgeSources = selected
+                        val selectedChats = chatContextPreview?.citations.orEmpty()
+                            .map { it.source }
+                            .filterNot { it in excludedChatSources }
+                            .toSet()
+                        approvedContextQuery = inputText.trim()
+                        approvedKnowledgeSources = selectedDocuments
+                        approvedChatSources = selectedChats
                         showKnowledgePreview = false
+                        val total = selectedDocuments.size + selectedChats.size
                         ToastHelper.short(
                             context,
-                            if (selected.isEmpty()) "Документы не будут добавлены в контекст"
-                            else "Разрешено источников: ${selected.size}"
+                            if (total == 0) "Проектный контекст не будет добавлен"
+                            else "Разрешено источников: $total"
                         )
                     }
                 ) { Text("ИСПОЛЬЗОВАТЬ ВЫБРАННОЕ") }
@@ -978,11 +1066,14 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                             .padding(end = 8.dp)
                     )
                     Text(
-                        if (approvedKnowledgeQuery == inputText.trim() && approvedKnowledgeSources.isNotEmpty()) {
-                            "📚${approvedKnowledgeSources.size}"
+                        if (
+                            approvedContextQuery == inputText.trim() &&
+                            (approvedKnowledgeSources.isNotEmpty() || approvedChatSources.isNotEmpty())
+                        ) {
+                            "📚${approvedKnowledgeSources.size + approvedChatSources.size}"
                         } else "📚",
                         fontSize = 14.sp,
-                        color = if (approvedKnowledgeSources.isNotEmpty()) Gr else Tx,
+                        color = if (approvedKnowledgeSources.isNotEmpty() || approvedChatSources.isNotEmpty()) Gr else Tx,
                         modifier = Modifier
                             .semantics { contentDescription = "Просмотреть контекст перед отправкой" }
                             .clickable { loadKnowledgePreview() }
@@ -1351,31 +1442,6 @@ object ToastHelper {
     fun short(context: Context, text: String) {
         android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
     }
-}
-
-fun buildProjectContext(context: Context, projectId: String, currentAgentName: String, maxMessagesPerChat: Int = 5): String {
-    val files = context.filesDir.listFiles { file ->
-        file.name.startsWith("chat_${projectId}_") && file.name.endsWith(".json")
-    } ?: return ""
-    if (files.isEmpty()) return ""
-    val sb = StringBuilder()
-    files.forEach { file ->
-        val key = file.name.removePrefix("chat_").removeSuffix(".json")
-        val parts = key.split("_")
-        val agentName = if (parts.size > 1) parts[1] else "Агент"
-        if (agentName == currentAgentName) return@forEach
-        val history = loadHistory(context, key)
-        if (history.isEmpty()) return@forEach
-        val tail = history.takeLast(maxMessagesPerChat)
-        sb.appendLine("--- Чат с $agentName ---")
-        tail.forEach { msg ->
-            val author = if (msg.isUser) "Пользователь" else agentName
-            sb.appendLine("$author: ${msg.text.take(300)}")
-        }
-        sb.appendLine()
-    }
-    val result = sb.toString().trim()
-    return if (result.isBlank()) "" else "Контекст других чатов в этом проекте:\n$result"
 }
 
 suspend fun callGigaChatWithTrustedCert(context: Context, history: List<Msg>, systemPrompt: String): String =

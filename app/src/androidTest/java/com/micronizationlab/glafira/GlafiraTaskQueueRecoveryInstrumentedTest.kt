@@ -186,6 +186,78 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         ))
     }
 
+    @Test fun versionOneUpgradeCreatesEveryLaterSchemaWithoutDroppingTasks() {
+        store.enqueue(task("legacy-v1"))
+        store.close()
+        val database = android.database.sqlite.SQLiteDatabase.openDatabase(
+            context.getDatabasePath("glafira_core_tasks.db").path,
+            null,
+            android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+        )
+        try {
+            listOf(
+                "core_desktop_leases", "core_desktop_results", "core_desktop_nodes",
+                "core_dry_run_previews", "core_task_history", "core_task_results",
+                "core_task_dependencies", "core_task_plan_nodes", "core_task_plans",
+                "core_live_run_grants"
+            ).forEach { database.execSQL("DROP TABLE IF EXISTS $it") }
+            listOf(
+                "core_task_history_insert", "core_task_history_transition",
+                "core_task_terminal_guard", "core_task_plan_updated"
+            ).forEach { database.execSQL("DROP TRIGGER IF EXISTS $it") }
+            database.version = 1
+        } finally {
+            database.close()
+        }
+
+        store = GlafiraTaskStore(context)
+        assertEquals(9, store.readableDatabase.version)
+        assertNotNull(store.getTask("legacy-v1"))
+        listOf(
+            "core_desktop_leases", "core_desktop_results", "core_desktop_nodes",
+            "core_dry_run_previews", "core_task_history", "core_task_results",
+            "core_task_dependencies", "core_task_plan_nodes", "core_task_plans",
+            "core_live_run_grants"
+        ).forEach { table ->
+            assertTrue("Missing migrated table $table", store.readableDatabase.rawQuery(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+                arrayOf(table)
+            ).use { it.moveToFirst() })
+        }
+    }
+
+    @Test fun versionTwoUpgradeAddsAllLaterSchemasWithoutDroppingTasks() {
+        store.enqueue(task("legacy-v2"))
+        store.close()
+        val database = android.database.sqlite.SQLiteDatabase.openDatabase(
+            context.getDatabasePath("glafira_core_tasks.db").path,
+            null,
+            android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+        )
+        try {
+            listOf(
+                "core_dry_run_previews", "core_task_history", "core_task_results",
+                "core_task_dependencies", "core_task_plan_nodes", "core_task_plans",
+                "core_live_run_grants"
+            ).forEach { database.execSQL("DROP TABLE IF EXISTS $it") }
+            listOf(
+                "core_task_history_insert", "core_task_history_transition",
+                "core_task_terminal_guard", "core_task_plan_updated"
+            ).forEach { database.execSQL("DROP TRIGGER IF EXISTS $it") }
+            database.version = 2
+        } finally {
+            database.close()
+        }
+
+        store = GlafiraTaskStore(context)
+        assertEquals(9, store.readableDatabase.version)
+        assertNotNull(store.getTask("legacy-v2"))
+        assertTrue(store.readableDatabase.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_live_run_grants'",
+            null
+        ).use { it.moveToFirst() })
+    }
+
     @Test fun versionThreeUpgradePreservesTasksAndStartsHonestHistoryBaseline() {
         store.enqueue(task("legacy"))
         val db = store.writableDatabase

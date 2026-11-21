@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `b007837cf0e87d843774316c3712c41c8f2c8074` (refresh before each integration).  
+**Baseline main for this ledger revision:** `2f0f29e5c0cc67d55e7f366fc3510a5955ce6f97` (refresh before each integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -18,10 +18,10 @@
 ### P0 — Core: ownership и queue kernels
 
 1. [x] Снять baseline main SHA, open PR/issues, CI runs и артефакты.
-2. [ ] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
-3. [ ] Сверить PR #71/#104/#119/#122 с main и выделить только уникальные Core изменения.
+2. [x] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
+3. [x] Сверить PR #71/#104/#119/#122 с main и выделить только уникальные Core изменения.
 4. [ ] Зафиксировать единый task state machine и допустимые переходы.
-5. [ ] Проверить все SQLite migrations на upgrade с поддерживаемых версий.
+5. [x] Проверить все SQLite migrations на upgrade с поддерживаемых версий.
 6. [x] Проверить concurrent claim из независимых SQLite connections.
 7. [x] Доказать отсутствие двойной выдачи task при конкуренции N workers.
 8. [ ] Разделить maintenance gate и locks отдельных задач.
@@ -31,7 +31,7 @@
 12. [x] Добавить fairness/starvation bounds между проектами.
 13. [ ] Проверить bounded worker pool, backpressure и configurable concurrency.
 14. [ ] Проверить stale worker fencing после lease expiry и повторной выдачи.
-15. [ ] Добавить crash recovery для каждого non-terminal state.
+15. [x] Добавить crash recovery для каждого non-terminal state.
 16. [ ] Сделать failure injection между claim, handler, progress, result и ACK.
 17. [ ] Разделить provider outcomes: rejected, unsent, unknown; не replay-ить unknown blindly.
 18. [ ] Завершить durable result outbox с retry/backoff и explicit ACK.
@@ -206,10 +206,13 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `b007837cf0e87d843774316c3712c41c8f2c8074`.
+**Refreshed main after this wave:** `2f0f29e5c0cc67d55e7f366fc3510a5955ce6f97`.
 
 ### Verified complete
 
+- Step 5: SQLite upgrade coverage spans every supported predecessor version v1–v8 into v9. PR #245 exact-head emulator run `44851572341`: 68 test cases, 0 failures, 0 errors, 0 skipped.
+- Steps 2–3: historical recovery-stack map and file/commit reconciliation are documented in `docs/CORE_RECOVERY_STACK_RECONCILIATION.md`. PRs #71/#104/#119/#122 are confirmed as stale/diverged stacks; their useful Core concurrency, dependency, fairness and task-plan features are already represented in mainline code. The obsolete Android-hosted Desktop task claim/result path is intentionally not transplanted because it conflicts with the current Windows Hub / dual-Core ownership architecture.
+- Step 15: non-terminal restart behavior is covered across queued, running safe-read, uncertain-write, waiting-for-network, waiting-for-owner and retry-scheduled states; terminal states remain immutable after reopen.
 - Step 1: baseline captured and refreshed at each integration; this ledger revision starts from main `195a45e430b271d3303a3cdca5bbf01dbb241485`.
 - Steps 6–7, 10–12 and 15: current Core has independent-connection/concurrent-claim, duplicate-claim, DAG cycle/cross-project/dependency-join, project fairness and process-restart recovery instrumentation coverage. Exact Core acceptance remains dependent on the managed emulator and the remaining failure-injection/trace cases.
 - Steps 26–27: AndroidJUnit4 suite is selected by CI; managed emulator executed instrumentation tests, JUnit reports were non-empty and diagnostics uploaded (PR #227 exact-head run `44841507909`).
@@ -218,13 +221,17 @@
 - Step 72: strict lease validation and handler-aware claim filtering landed (PR #230 merged as `1a1b7cc5e9a5123362b6abe725302ecfc8fda46c`); PR #232 made the handler allowlist mandatory for every claim (merged as `60ba9b5a95eefaaed351c3f769a6c725a27b35d5`).
 - Steps 73, 75, 79, 81 and 83: DPAPI lease/result journal, Worker lifecycle registration, server-confirmed lease renewal, cancellation on renewal failure, terminal result outbox, exact ACK identity/digest validation and restart recovery are merged in PR #238 (`b439177d6c71bebcbb8e4a6a17fd36ded39fdc26`). Exact-head Windows Agent tests: 67 passed, 0 failed; Windows Hub tests/build, shared contract conformance and x64 packages passed.
 - Step 80: complete. PR #244 (`b007837cf0e87d843774316c3712c41c8f2c8074`) adds DPAPI-backed progress outbox, write-ahead progress persistence, exact progress ACK checks and restart flush before handler resume. Exact-head Windows Agent tests: 72 passed, 0 failed; shared contract and x64 packages passed.
+- Step 83 / terminal result restart: PR #250 (`81e05f7ce7660350c584218a55f3cd62b3d9ef98`) reconstructs a new polling coordinator after terminal result persistence and lost ACK; the exact result is retried from the DPAPI journal without re-executing the handler. Exact-head Windows Agent tests: 72 passed, 0 failed; shared contracts and x64 packages passed.
 - Step 74: bounded idle/failure polling backoff and pause-on-disconnect/revoke behavior merged in PR #242 (`195a45e430b271d3303a3cdca5bbf01dbb241485`). Exact-head Windows Agent tests: 68 passed, 0 failed; compile, shared contracts and x64 packages passed.
 - Step 111: native iOS Xcode project/simulator target builds in CI (PR #237).
 
 ### In progress
 
-- Step 5: PR #240 added v7→v9 and v8→v9 Core migration coverage, but v1/v2 acceptance remains open in PR #245; existing v3–v6 cases plus v7/v8 are covered. Do not mark step 5 complete until PR #245 emulator acceptance passes.
+- Step 5: complete. PR #240 added v7→v9 and v8→v9 migration cases; PR #245 added v1/v2. Existing v3–v6 cases plus the new v1/v2/v7/v8 cases all passed exact-head managed Android emulator acceptance. PR #245 merged as `b564771b8116b487bb6adceb3055c4192cc29d98`; its emulator report contained 68 cases, 0 failures, 0 errors and 0 skipped.
+- Step 10: PR #247 adds explicit missing-predecessor and duplicate-edge tests at store, planner and durable-plan boundaries; Android JVM and emulator validation are pending.
+- Step 16: failure-injection coverage is improved by PR #244 progress-ACK restart tests and PR #250 terminal-result process-restart tests, but the full crash matrix across every Core/provider/trace boundary is still open.
 - Step 9: complete. PR #240's independent-connection cancellation-vs-result-commit race passed on managed emulator.
+- Step 15: complete. Current Core restart tests cover queued, running safe-read, uncertain-write, waiting-for-network, waiting-for-owner, retry-scheduled and terminal tasks across reopen/recovery; PR #240's emulator run executed the regression suite.
 - Step 76: no production Windows Agent task handler is registered. The Agent remains connected but intentionally does not claim work. The next safe handler must match a real Core task type/capability and have a bounded, useful result contract; do not add a fake generic executor.
 - Steps 77–78 and 82, 84–90: payload/handler isolation, sandbox/resource limits, unknown-outcome classification, owner pause/preemption, tray state, credential rotation/revocation, installer/service lifecycle, fleet harness and physical two-PC acceptance remain open.
 - iOS step 113 is partial: PR #241 displays paired-device identifiers from Keychain metadata after import (`41d2ca035450a7b2709d70425401153f5fae1ea1`); it correctly says “key saved”, not “connected”. Projects, authenticated Core session and live data are still placeholders.
@@ -234,6 +241,7 @@
 - Dual-Core authority is per task, not one global writable queue. PR #243 (this ledger's companion) adds the normative ownership/handoff/fencing contract; implementation and two-device acceptance remain open.
 - PR #225 merged as `0c9c1f26f146e853b84bf3891387ac9ff67223b8`: opt-in automatic speech for newly delivered Agent replies, operationId-based duplicate suppression, and persistent missing-cloud-folder backup guidance. Exact-head Android JVM, debug APK and managed-emulator acceptance passed.
 - PR #237 merged as `077579b818f3b2bf3179f0b3f9ea12b5f010f978`: macOS CI builds the actual native `ios/GLAFIRA.xcodeproj` Simulator app target in addition to Swift BridgeKit tests; exact-head iOS app and contract jobs passed. Physical iPhone acceptance remains open.
+- PR #248 merged as `91b18fa9aec641edea1440413c092d6ea8678b30`: Windows Desktop Control Center footer now accurately reports implemented Agent transport and the remaining handler/Core handoff gaps.
 - PR #227 merged as `14fba6f6a4e83dfba5a7177b4d25cea846d433c3`: restore regression proves RUNNING tasks return to owner review and source-device leases/nodes do not transfer.
 - PR #229 merged as `d11afe70372f0dcf6215671ae317a2150711cad1`: this 150-step plan is the ordered execution ledger.
 - Historical Core PRs #71/#104/#119/#122 are not merge candidates as stacks; current main contains newer versions of overlapping concurrency, maintenance, dependency, fairness and durable plan code. Issue #91 remains open for remaining Core acceptance gaps.
