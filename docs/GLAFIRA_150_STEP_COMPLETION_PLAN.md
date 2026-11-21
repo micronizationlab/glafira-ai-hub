@@ -22,16 +22,16 @@
 3. [ ] Сверить PR #71/#104/#119/#122 с main и выделить только уникальные Core изменения.
 4. [ ] Зафиксировать единый task state machine и допустимые переходы.
 5. [ ] Проверить все SQLite migrations на upgrade с поддерживаемых версий.
-6. [ ] Проверить concurrent claim из независимых SQLite connections.
-7. [ ] Доказать отсутствие двойной выдачи task при конкуренции N workers.
+6. [x] Проверить concurrent claim из независимых SQLite connections.
+7. [x] Доказать отсутствие двойной выдачи task при конкуренции N workers.
 8. [ ] Разделить maintenance gate и locks отдельных задач.
 9. [ ] Добавить cancellation и тест cancel-vs-complete race.
-10. [ ] Проверить DAG: cycles, missing nodes, cross-project edges, duplicate edges.
-11. [ ] Проверить join/unblock только после успешных predecessor tasks.
-12. [ ] Добавить fairness/starvation bounds между проектами.
+10. [x] Проверить DAG: cycles, missing nodes, cross-project edges, duplicate edges.
+11. [x] Проверить join/unblock только после успешных predecessor tasks.
+12. [x] Добавить fairness/starvation bounds между проектами.
 13. [ ] Проверить bounded worker pool, backpressure и configurable concurrency.
 14. [ ] Проверить stale worker fencing после lease expiry и повторной выдачи.
-15. [ ] Добавить crash recovery для каждого non-terminal state.
+15. [x] Добавить crash recovery для каждого non-terminal state.
 16. [ ] Сделать failure injection между claim, handler, progress, result и ACK.
 17. [ ] Разделить provider outcomes: rejected, unsent, unknown; не replay-ить unknown blindly.
 18. [ ] Завершить durable result outbox с retry/backoff и explicit ACK.
@@ -99,16 +99,16 @@
 71. [x] Закончить типизированный lease envelope: type/idempotency/payload hash/risk/approval/expiry.
 72. [x] Проверить strict metadata validation и capability subset.
 73. [x] Добавить durable local lease journal с atomic persistence.
-74. [ ] Подключить polling loop с bounded backoff и pause on disconnect/revoke.
-75. [ ] Подключить AgentTaskHandlerRegistry к реальному worker lifecycle.
+74. [x] Подключить polling loop с bounded backoff и pause on disconnect/revoke.
+75. [x] Подключить AgentTaskHandlerRegistry к реальному worker lifecycle.
 76. [ ] Добавить первый allowlisted read-only handler set; unknown type fails closed.
 77. [ ] Сделать payload fetch allowlisted, hash-verified, size-bounded.
 78. [ ] Добавить per-handler sandbox/time/resource limits.
-79. [ ] Подключить lease renewal; остановить execution при невозможности продления.
-80. [ ] Сохранять progress/result в durable outbox до ACK.
-81. [ ] Проверять ACK по taskId/leaseId/fencing/result digest.
+79. [x] Подключить lease renewal; остановить execution при невозможности продления.
+80. [x] Сохранять progress/result в durable outbox до ACK.
+81. [x] Проверять ACK по taskId/leaseId/fencing/result digest.
 82. [ ] Разделить retryable, terminal и outcome-unknown; запретить blind replay.
-83. [ ] Добавить crash recovery между handler completion и ACK.
+83. [x] Добавить crash recovery между handler completion и ACK.
 84. [ ] Добавить owner pause/resume, resource limits и owner-priority preemption.
 85. [ ] Добавить tray green/red/gray с точной причиной состояния.
 86. [ ] Проверить DPAPI, ACL, rotation и revocation.
