@@ -347,7 +347,7 @@ class GlafiraCoreTaskExecutor(
             )
         }
         val retryLimit = minOf(maxAttempts - 1, configuredMaxRetries)
-        if (task.attemptCount >= retryLimit + 1) return fail(task, "RETRY_LIMIT_REACHED:$reason")
+        if (task.attemptCount >= retryLimit + 1) return fail(task, ownershipToken, "RETRY_LIMIT_REACHED:$reason")
         val exponent = (task.attemptCount - 1).coerceIn(0, 20)
         val delay = (baseRetryDelayMillis * (1L shl exponent)).coerceAtMost(maxRetryDelayMillis)
         val retryAt = if (Long.MAX_VALUE - nowMillis < delay) Long.MAX_VALUE else nowMillis + delay
