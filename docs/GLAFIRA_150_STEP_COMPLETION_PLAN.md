@@ -250,3 +250,19 @@
 - PR #227 merged as `14fba6f6a4e83dfba5a7177b4d25cea846d433c3`: restore regression proves RUNNING tasks return to owner review and source-device leases/nodes do not transfer.
 - PR #229 merged as `d11afe70372f0dcf6215671ae317a2150711cad1`: this 150-step plan is the ordered execution ledger.
 - Historical Core PRs #71/#104/#119/#122 are not merge candidates as stacks; current main contains newer versions of overlapping concurrency, maintenance, dependency, fairness and durable plan code. Issue #91 remains open for remaining Core acceptance gaps.
+
+
+## New owner-directed workstream — identity, autonomy, continuity and updates (2026-11-21)
+
+Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. This workstream is added without displacing the existing P0/P1 order; execute its independent design/security slices in parallel and schedule implementation by dependency.
+
+- [ ] Owner identity: trusted immutable-by-chat policy for Корчагин Валерий Вячеславович; only the authenticated owner receives the address `папа`; exact canonical answer; multi-account isolation and prompt-injection tests.
+- [ ] Credential autonomy: OS-backed vault adapters, local credential broker, allowlisted browser/app automation, least-privilege grants, audit/revocation and owner confirmation for high-risk actions.
+- [ ] Durable cross-device continuation: conversation branch/checkpoint IDs, authoritative history re-read before resume, task persistence independent of initiating UI, idempotent result/ACK reconciliation.
+- [ ] Dynamic group membership: variable-size device registry, heartbeat freshness, lease-backed coordinator election, fencing, split-brain and offline-peer handling.
+- [ ] Update trust: signed release manifest, owner signing authority, platform/product/version/hash checks, compatibility and rollback policy.
+- [ ] Windows update chain: owner release → Windows Desktop → verified Windows Agent distribution; cached authorized source failover only.
+- [ ] Mobile update UX: Android first Settings tab bottom action `Обновление` with small installed-version label; signed package verification and OS installer handoff. iOS uses App Store/TestFlight/MDM-supported update path, never silent self-install.
+- [ ] Fleet and physical acceptance: variable node count, network partition, stale leader, revoked node, interrupted update, rollback and real-device installation tests.
+
+**Important boundaries:** task owner Core, Windows fleet coordinator and update source are distinct roles. No device becomes authority solely because another is offline. Passwords never enter prompts/logs/Git/backups in plaintext. External side effects with unknown outcomes are never blindly replayed. A step is complete only after code plus exact-head tests and required acceptance evidence.
