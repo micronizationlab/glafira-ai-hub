@@ -6,17 +6,17 @@ This roadmap records the owner's priority order. Features remain on the roadmap 
 
 This order was explicitly reconfirmed by the owner on 2026-11-20 and supersedes older priority groupings for active work. The full mandatory dispatcher policy and rolling 50-item action pool are in `docs/ENGINEERING_DISPATCHER_OPERATING_RULE.md` and `docs/ENGINEERING_ACTION_POOL_A.md`.
 
-1. **P0 — Core kernels and execution foundation:** durable ownership/state, SQLite concurrency, bounded workers, dependency scheduling, cancellation, crash recovery, provider/tool boundaries, idempotency, result delivery and audit.
-2. **P1 — Android instrumentation suite and Bridge:** the suite must exist in `main`, run on a managed emulator for relevant changes, publish non-empty JUnit reports and retain older Core/TaskPlan instrumentation coverage. Bridge requires versioned Task/Result/Lease/Agent contracts, authenticated pairing, durable ingress/delivery, fencing, heartbeats, acknowledgements and reconnect recovery.
-3. **P2 — Windows Desktop and Windows Agent:** laptop-first Desktop control center, authoritative Desktop Hub host, enrollment/revocation, multi-agent scheduling, task lifecycle, Windows Agent service and end-to-end Desktop ↔ Agent acceptance.
-4. **P3 — Oldest unfinished work:** revisit the oldest abandoned PRs/issues and release blockers immediately after Core/Bridge/host foundations; port useful work safely, do not discard it because it is old.
-5. **P4 — Android user-facing and voice/platform work:** backup/council/task queue, Google Drive restore, STT/TTS, Android reliability and iOS parity.
-6. **P5 — Specialist agents, connectors, GCU/GLF and production integrations:** preserve existing specifications and resume implementation after the higher priorities.
-7. **External Project Token/Clover research:** proceed in parallel whenever it does not consume a blocking engineering resource; no token-economy feature may displace P0–P3.
+1. **P1 — GLAFIRA Core:** durable ownership/state, SQLite concurrency, bounded workers, dependency scheduling, cancellation, crash recovery, idempotency, result delivery/ACK, Trace/audit and policy.
+2. **P2 — Backup & Recovery:** encrypted portable backup, integrity verification, restore, interrupted-restore recovery and verified off-device copies. This is a separate owner priority, not a low-priority Android UI feature.
+3. **P3 — Runtime / Bridge / Desktop:** Android instrumentation and Bridge contracts/pairing, Windows Desktop Hub, Windows Agent, reconnect and end-to-end acceptance. Respect internal dependencies: Bridge contracts and authenticated pairing precede production fleet execution; Desktop host/scheduler precedes full Agent-fleet acceptance.
+4. **P4 — Android UX, voice, specialist agents and optional expansions:** user-facing polish, STT/TTS, roles, connectors and other non-foundation modules.
+5. **P5 — GCU/GLF, VPN/commercial integrations and Project Token/Clover:** research may proceed in parallel only when it does not displace P1–P3 or create paid-resource dependencies.
 
-A higher-priority item waiting on CI, hardware, review or a conflicting file is not a reason to idle. Start the highest-priority independent action below it, then rescan from P0 whenever a slot opens. Every GitHub visit requires status refresh, exact-head run/log inspection, test-count verification and immediate dispatch of the next safe action. Never treat a skipped test as a pass.
+Old unfinished work is a cross-cutting obligation at its current owner priority, not a separate priority tier. Preserve useful work and dependencies; re-rank each item into P1–P5 instead of postponing all old work as a single bucket.
 
-## Priority 1 — GLAFIRA Core (the brain and system authority)
+A higher-priority item waiting on CI, hardware, review or a conflicting file is not a reason to idle. Start the highest-priority independent action below it, then rescan from P1 whenever a slot opens. Every GitHub visit requires status refresh, exact-head run/log inspection, test-count verification and immediate dispatch of the next safe action. Never treat a skipped test as a pass.
+
+## P1 — GLAFIRA Core (the brain and system authority)
 
 Goal: make Glafira a reliable coordinator for the entire AI office. Core is the highest engineering priority and the single authority for task execution, permissions and agent coordination.
 
@@ -37,7 +37,7 @@ Foundation contracts are specified in [GLAFIRA CORE — Foundation Technical Spe
 
 No external irreversible action (send, publish, purchase, delete, alter business records) without explicit approval or a narrowly scoped owner policy.
 
-## Priority 2 — Backup & Recovery
+## P2 — Backup & Recovery
 
 Goal: protect user data before expanding the product.
 
@@ -51,7 +51,9 @@ Goal: protect user data before expanding the product.
 
 No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
 
-## Priority 3 — Autonomous Runtime, Bridge, Roles and Voice
+## P3 — Runtime, Bridge, Desktop and Windows Agent
+
+Bridge and Desktop execution foundations belong to P3. Android instrumentation is the cross-platform conformance gate for relevant Core/Bridge changes, not a reason to demote Backup & Recovery. Voice, roles and specialist-agent expansion are P4.
 
 1. Make role definitions executable and provider-independent.
 2. Add role registry and project-level assignment.
