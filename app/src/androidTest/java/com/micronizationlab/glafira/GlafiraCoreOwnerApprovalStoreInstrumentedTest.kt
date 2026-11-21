@@ -113,6 +113,113 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
             "Send a test message to test@example.invalid",
             4_003L
         ))
+        val trace = GlafiraCoreTraceStore(taskStore).query(
+            GlafiraCoreTraceQuery("approval-project", taskId = original.taskId),
+            GlafiraCoreTraceAccessContext("approval-project", taskIds = setOf(original.taskId))
+        )
+        assertEquals(
+            setOf(
+                GlafiraCoreTraceEventType.APPROVAL_REQUESTED,
+                GlafiraCoreTraceEventType.APPROVAL_GRANTED,
+                GlafiraCoreTraceEventType.APPROVAL_CONSUMED
+            ),
+            trace.events.map { it.eventType }.filter {
+                it in setOf(
+                    GlafiraCoreTraceEventType.APPROVAL_REQUESTED,
+                    GlafiraCoreTraceEventType.APPROVAL_GRANTED,
+                    GlafiraCoreTraceEventType.APPROVAL_CONSUMED
+                )
+            }.toSet()
+        )
+    }
+
+    @Test
+    fun approvalTraceInsertFailureRollsBackRequestGrantAndConsumption() {
+        val original = task("approval-trace-failure")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        val db = taskStore.writableDatabase
+        val summary = "Send a test message to test@example.invalid"
+
+        db.execSQL("""
+            CREATE TRIGGER fail_approval_requested
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'APPROVAL_REQUESTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_APPROVAL_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(android.database.sqlite.SQLiteException::class.java) {
+            approvals.requestApproval(running, summary, 3_000L)
+        }
+        assertEquals(GlafiraTaskState.RUNNING, taskStore.getTask(original.taskId)?.state)
+        assertTrue(approvals.pendingApprovals(3_001L).isEmpty())
+        db.execSQL("DROP TRIGGER fail_approval_requested")
+
+        assertTrue(approvals.requestApproval(running, summary, 3_100L))
+        db.execSQL("""
+            CREATE TRIGGER fail_approval_granted
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'APPROVAL_GRANTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_APPROVAL_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(android.database.sqlite.SQLiteException::class.java) {
+            approvals.approve(
+                original.taskId,
+                setOf("communications.send"),
+                authenticatedOwnerSession(),
+                4_000L
+            )
+        }
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, taskStore.getTask(original.taskId)?.state)
+        assertEquals(1, approvals.pendingApprovals(4_001L).size)
+        db.execSQL("DROP TRIGGER fail_approval_granted")
+
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                original.taskId,
+                setOf("communications.send"),
+                authenticatedOwnerSession(),
+                4_100L
+            )
+        )
+        val queued = requireNotNull(taskStore.getTask(original.taskId))
+        db.execSQL("""
+            CREATE TRIGGER fail_approval_consumed
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'APPROVAL_CONSUMED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_APPROVAL_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(android.database.sqlite.SQLiteException::class.java) {
+            approvals.approvalGrant(queued, summary, 4_200L)
+        }
+        assertNotNull(approvals.peekApprovalGrant(queued, summary, 4_201L))
+        db.execSQL("DROP TRIGGER fail_approval_consumed")
+        assertNotNull(approvals.approvalGrant(queued, summary, 4_300L))
+        assertNull(approvals.peekApprovalGrant(queued, summary, 4_301L))
+    }
+
+    @Test
+    fun ownerRejectionIsRecordedAsApprovalRejectedTrace() {
+        val original = task("approval-trace-rejected")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        assertTrue(approvals.requestApproval(
+            running,
+            "Send a test message to test@example.invalid",
+            3_000L
+        ))
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.REJECTED,
+            approvals.reject(original.taskId, authenticatedOwnerSession(), 4_000L)
+        )
+        val events = GlafiraCoreTraceStore(taskStore).query(
+            GlafiraCoreTraceQuery("approval-project", taskId = original.taskId),
+            GlafiraCoreTraceAccessContext("approval-project", taskIds = setOf(original.taskId))
+        ).events
+        val rejected = events.single { it.eventType == GlafiraCoreTraceEventType.APPROVAL_REJECTED }
+        assertEquals(GlafiraCoreTraceActorType.OWNER, rejected.actorType)
+        assertEquals("owner", rejected.actorId)
+        assertEquals("OWNER_APPROVAL_REJECTED", rejected.actionCode)
     }
 
     @Test
