@@ -16,7 +16,7 @@ Before doing any project work, every invited ChatGPT/AI account must:
 2. Read [the collaborator handoff](docs/GLAFIRA_COLLABORATOR_HANDOFF.md).
 3. Read [the engineering roadmap](docs/IMPLEMENTATION_ROADMAP.md).
 4. Read [the mandatory dispatcher rule](docs/ENGINEERING_DISPATCHER_OPERATING_RULE.md).
-5. Read [Action Pool A](docs/ENGINEERING_ACTION_POOL_A.md), then inspect the current issues and open PRs directly on GitHub.
+5. Read [the ordered 150-step completion plan](docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md) and [Action Pool A](docs/ENGINEERING_ACTION_POOL_A.md), then inspect the current issues and open PRs directly on GitHub.
 6. Read the [shared task board](docs/coordination/TASK_BOARD.md), then read the specific issue/specification and relevant code before claiming or changing a task.
 7. Register using a unique participant file under `docs/coordination/participants/<participant-id>.md` based on [the participant template](docs/coordination/PARTICIPANT_TEMPLATE.md). Do not edit another participant's file.
 8. Check for conflicts and dependencies before starting. If registration cannot be committed, identify yourself in a GitHub issue/PR comment and do not assume a task is reserved.
@@ -62,7 +62,7 @@ Every invited participant is asked to execute the project's 150-step improvement
 
 Rules:
 
-1. A cycle contains 150 numbered, concrete actions selected from a fresh audit of the current repository, backlog, CI, architecture and owner priorities.
+1. Use [the ordered 150-step completion plan](docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md) as the shared project baseline, then create each cycle's 150 numbered, concrete actions from a fresh audit of the current repository, backlog, CI, architecture and owner priorities. The shared plan is a starting map, not a list to copy blindly.
 2. Each action must have a tangible output: code change, test, reproducible diagnosis, reviewed finding, accepted documentation/specification improvement, verified research result, or a new actionable issue with evidence and acceptance criteria.
 3. Record each action's unique ID, short description, priority, output link, validation/evidence and status in the participant's own progress file.
 4. Do not pad counts by splitting trivial edits, rewording the same finding, repeating an action, creating duplicate issues, or counting an unverified proposal as completed.
