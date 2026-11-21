@@ -13,6 +13,80 @@ public sealed class DesktopHubStoreFailureInjectionTests : IDisposable
     public DesktopHubStoreFailureInjectionTests() => _store = new DesktopHubStore(_databasePath);
 
     [Fact]
+    public void OutcomeUnknownCancellationJournalFailurePreservesActiveLease()
+    {
+        var now = DateTimeOffset.UtcNow;
+        const string agentId = "agent-cancel-fault";
+        const string taskId = "cancel-fault-task";
+        _store.RegisterAgent(new HubAgentRegistration(
+            agentId, "device-cancel-fault", ["web.research"], 1, true), now);
+        _store.Enqueue(new HubTaskRequest(
+            taskId,
+            "cancel-fault-project",
+            "cancel-fault-idempotency",
+            "web.research",
+            "payload://cancel-fault-task",
+            new string('a', 64),
+            ["web.research"],
+            [],
+            HubTaskEffectRisk.ExternalSideEffect,
+            "owner-approval-cancel-fault",
+            5), now);
+        var lease = _store.ClaimNext(agentId, now.AddSeconds(1), TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+
+        using (var connection = new SqliteConnection($"Data Source={_databasePath};Foreign Keys=True;"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TRIGGER inject_cancel_event_failure
+                BEFORE INSERT ON TaskEvents
+                WHEN NEW.event_code = 'TASK_CANCELLED_OUTCOME_UNKNOWN'
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected-cancel-journal-failure');
+                END;
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var failure = Assert.Throws<SqliteException>(() => _store.CancelTask(taskId, now.AddSeconds(2)));
+        Assert.Contains("injected-cancel-journal-failure", failure.Message);
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState(taskId));
+
+        using (var connection = new SqliteConnection($"Data Source={_databasePath};Foreign Keys=True;"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM Leases WHERE task_id = $task;";
+            command.Parameters.AddWithValue("$task", taskId);
+            Assert.Equal(1L, (long)command.ExecuteScalar()!);
+            command.CommandText = "DROP TRIGGER inject_cancel_event_failure;";
+            command.Parameters.Clear();
+            command.ExecuteNonQuery();
+        }
+
+        // The failed cancellation must not partially fence the Agent. A valid progress
+        // update proves the lease survived; the subsequent cancellation can then commit.
+        Assert.True(_store.ReportProgress(
+            agentId, taskId, lease.LeaseId, lease.FencingToken,
+            25, "still holding the original lease", now.AddSeconds(3)));
+        Assert.True(_store.CancelTask(taskId, now.AddSeconds(4)));
+        Assert.Equal(HubTaskState.OutcomeUnknown, _store.GetTaskState(taskId));
+        Assert.False(_store.ReportProgress(
+            agentId, taskId, lease.LeaseId, lease.FencingToken,
+            50, "late progress after committed cancellation", now.AddSeconds(5)));
+        Assert.False(_store.Complete(
+            agentId, taskId, lease.LeaseId, lease.FencingToken,
+            succeeded: true, now.AddSeconds(6), result: "must not commit"));
+        Assert.Empty(_store.RecoverExpiredLeases(now.AddMinutes(2)));
+
+        var reopened = new DesktopHubStore(_databasePath);
+        Assert.Equal(HubTaskState.OutcomeUnknown, reopened.GetTaskState(taskId));
+        Assert.Equal("TASK_CANCELLED_OUTCOME_UNKNOWN", reopened.GetTaskHistory(taskId).Last().EventCode);
+    }
+
+    [Fact]
     public void ResultJournalFailureRollsBackTaskResultAndLeaseCompletion()
     {
         var now = DateTimeOffset.UtcNow;
