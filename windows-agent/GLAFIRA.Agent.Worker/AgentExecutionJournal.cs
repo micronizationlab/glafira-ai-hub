@@ -309,14 +309,15 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
 
     private static void ValidatePendingResult(AgentPendingResult result)
     {
-        if (result.Lease is null || result.State is not ("SUCCEEDED" or "FAILED") ||
+        var lease = result.Lease;
+        if (lease is null || result.State is not ("SUCCEEDED" or "FAILED") ||
             result.ProgressPercent is < 0 or > 100 ||
             string.IsNullOrWhiteSpace(result.ProgressMessage) || result.ProgressMessage.Length > 512 ||
             string.IsNullOrWhiteSpace(result.ResultJson) || result.ResultJson.Length > 12_000 ||
             string.IsNullOrWhiteSpace(result.ErrorCode) || result.ErrorCode.Length > 128 ||
             !System.Text.RegularExpressions.Regex.IsMatch(result.ResultSha256, "^[a-f0-9]{64}$"))
-        ValidateLease(result.Lease);
             throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_RESULT_INVALID");
+        ValidateLease(lease);
         using var parsed = JsonDocument.Parse(result.ResultJson, new JsonDocumentOptions { MaxDepth = 2 });
         if (parsed.RootElement.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
             throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_RESULT_INVALID");
