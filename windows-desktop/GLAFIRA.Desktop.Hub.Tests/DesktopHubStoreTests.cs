@@ -391,7 +391,8 @@ public sealed class DesktopHubStoreTests : IDisposable
         await Task.WhenAll(cancel, complete);
 
         Assert.NotEqual(cancel.Result, complete.Result);
-        var state = _store.GetTaskState("cancel-race");
+        var state = _store.GetTaskState("cancel-race")
+            ?? throw new InvalidOperationException("Cancellation race task disappeared.");
         Assert.Contains(state, new[] { HubTaskState.Cancelled, HubTaskState.Succeeded });
         var history = _store.GetTaskHistory("cancel-race");
         Assert.Equal(1, history.Count(item => item.State is HubTaskState.Cancelled or HubTaskState.Succeeded));
