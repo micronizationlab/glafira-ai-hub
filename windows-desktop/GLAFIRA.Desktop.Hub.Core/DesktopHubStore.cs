@@ -322,11 +322,21 @@ public sealed class DesktopHubStore
     public HubTaskLease? ClaimNext(
         string agentId,
         DateTimeOffset now,
-        TimeSpan leaseDuration)
+        TimeSpan leaseDuration,
+        IReadOnlyCollection<string>? supportedTaskTypes = null)
     {
         ValidateIdentifier(agentId, nameof(agentId));
         if (leaseDuration <= TimeSpan.Zero || leaseDuration > TimeSpan.FromMinutes(15))
             throw new ArgumentOutOfRangeException(nameof(leaseDuration));
+        HashSet<string>? supportedTypes = null;
+        if (supportedTaskTypes is not null)
+        {
+            if (supportedTaskTypes.Count is < 1 or > 64 ||
+                supportedTaskTypes.Any(type => string.IsNullOrWhiteSpace(type) || type.Length > 96) ||
+                supportedTaskTypes.Distinct(StringComparer.Ordinal).Count() != supportedTaskTypes.Count)
+                throw new ArgumentException("Supported task types must be 1–64 unique bounded identifiers.", nameof(supportedTaskTypes));
+            supportedTypes = new HashSet<string>(supportedTaskTypes, StringComparer.Ordinal);
+        }
 
         using var connection = Open();
         using var transaction = connection.BeginTransaction(deferred: false);
@@ -401,11 +411,13 @@ public sealed class DesktopHubStore
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
+                var taskType = reader.GetString(2);
+                if (supportedTypes is not null && !supportedTypes.Contains(taskType)) continue;
                 var required = JsonSerializer.Deserialize<string[]>(reader.GetString(5)) ?? [];
                 if (required.All(agentCapabilities.Contains))
                 {
                     candidates.Add(new Candidate(
-                        reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                        reader.GetString(0), reader.GetString(1), taskType,
                         reader.GetString(3), reader.GetString(4), (HubTaskEffectRisk)reader.GetInt32(6),
                         reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt64(8), reader.GetString(9)));
                     break;

@@ -79,18 +79,47 @@ public sealed class BridgeV1AgentTaskClient
         _handlerFactory = handlerFactory ?? throw new ArgumentNullException(nameof(handlerFactory));
     }
 
-    public async Task<AgentTaskLease?> ClaimNextAsync(
+    public Task<AgentTaskLease?> ClaimNextAsync(
         AgentEnrollmentCredential credential,
         IReadOnlyCollection<string> ownerApprovedCapabilities,
         int maxParallelTasks,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ClaimNextCoreAsync(credential, ownerApprovedCapabilities, maxParallelTasks, null, cancellationToken);
+
+    public Task<AgentTaskLease?> ClaimNextAsync(
+        AgentEnrollmentCredential credential,
+        IReadOnlyCollection<string> ownerApprovedCapabilities,
+        int maxParallelTasks,
+        IReadOnlyCollection<string> supportedTaskTypes,
+        CancellationToken cancellationToken = default) =>
+        ClaimNextCoreAsync(credential, ownerApprovedCapabilities, maxParallelTasks,
+            supportedTaskTypes ?? throw new ArgumentNullException(nameof(supportedTaskTypes)), cancellationToken);
+
+    private async Task<AgentTaskLease?> ClaimNextCoreAsync(
+        AgentEnrollmentCredential credential,
+        IReadOnlyCollection<string> ownerApprovedCapabilities,
+        int maxParallelTasks,
+        IReadOnlyCollection<string>? supportedTaskTypes,
+        CancellationToken cancellationToken)
     {
         ValidateOwnerProfile(credential, ownerApprovedCapabilities, maxParallelTasks, "desktop.task.claim");
+        string[]? normalizedTaskTypes = null;
+        if (supportedTaskTypes is not null)
+        {
+            normalizedTaskTypes = supportedTaskTypes.Order(StringComparer.Ordinal).ToArray();
+            if (normalizedTaskTypes.Length is < 1 or > 64 ||
+                normalizedTaskTypes.Any(type => string.IsNullOrWhiteSpace(type) || type.Length > 96 ||
+                    !System.Text.RegularExpressions.Regex.IsMatch(type, "^[a-z][a-z0-9_.-]*$")) ||
+                normalizedTaskTypes.Distinct(StringComparer.Ordinal).Count() != normalizedTaskTypes.Length)
+                throw new ArgumentException("Supported task types must be 1–64 unique bounded identifiers.", nameof(supportedTaskTypes));
+        }
         var payload = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["capabilities"] = JsonSerializer.Serialize(ownerApprovedCapabilities.Order(StringComparer.Ordinal)),
             ["maxParallelTasks"] = maxParallelTasks.ToString(CultureInfo.InvariantCulture)
         };
+        if (normalizedTaskTypes is not null)
+            payload["taskTypes"] = JsonSerializer.Serialize(normalizedTaskTypes);
         var response = await SendAsync(credential, "DESKTOP_TASK_CLAIM", payload, cancellationToken).ConfigureAwait(false);
         if (response.Status != "ACCEPTED" || response.Result is null)
             throw new InvalidDataException(response.ErrorCode ?? "TASK_CLAIM_REJECTED");

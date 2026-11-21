@@ -95,6 +95,21 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task ClaimDoesNotLeaseTaskTypesTheAgentCannotExecute()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+
+        var response = await CreateDispatcher(_payload).DispatchAsync(
+            ClaimRequest(["web.research"], 1, ["analysis.document"]), now.AddSeconds(1));
+
+        Assert.Equal("ACCEPTED", response.Status);
+        Assert.Equal("false", response.Result["available"]);
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("task-0001"));
+    }
+
+    [Fact]
     public async Task DeviceCannotEscalateCapabilitiesOrConcurrencyInClaimPayload()
     {
         var now = DateTimeOffset.UtcNow;
@@ -219,11 +234,14 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     private static BridgeV1SignedRequest HeartbeatRequest() =>
         Request(BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT, new Dictionary<string, string>());
 
-    private static BridgeV1SignedRequest ClaimRequest(IReadOnlyCollection<string> capabilities, int parallel) =>
+    private static BridgeV1SignedRequest ClaimRequest(
+        IReadOnlyCollection<string> capabilities, int parallel,
+        IReadOnlyCollection<string>? taskTypes = null) =>
         Request(BridgeV1Operation.DESKTOP_TASK_CLAIM, new Dictionary<string, string>
         {
             ["capabilities"] = JsonSerializer.Serialize(capabilities),
-            ["maxParallelTasks"] = parallel.ToString()
+            ["maxParallelTasks"] = parallel.ToString(),
+            ["taskTypes"] = JsonSerializer.Serialize(taskTypes ?? ["web.research"])
         });
 
     private static BridgeV1SignedRequest ResultRequest(

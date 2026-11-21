@@ -29,6 +29,10 @@ public sealed class AgentTaskHandlerRegistry
         _handlers = registered;
     }
 
+    /// <summary>Stable, sorted task-type allowlist that this Agent can actually execute.</summary>
+    public IReadOnlyList<string> RegisteredTaskTypes =>
+        _handlers.Keys.Order(StringComparer.Ordinal).ToArray();
+
     public bool TryResolve(string taskType, out IAgentTaskHandler? handler)
     {
         if (string.IsNullOrWhiteSpace(taskType))

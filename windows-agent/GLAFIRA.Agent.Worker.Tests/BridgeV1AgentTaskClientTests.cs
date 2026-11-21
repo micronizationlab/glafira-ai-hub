@@ -75,6 +75,25 @@ public sealed class BridgeV1AgentTaskClientTests
     }
 
     [Fact]
+    public async Task ClaimSendsOnlyRegisteredSupportedTaskTypes()
+    {
+        Dictionary<string, string>? captured = null;
+        var handler = new StubHandler(async request =>
+        {
+            using var doc = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            captured = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                doc.RootElement.GetProperty("payload").GetRawText());
+            return Json(new { status = "ACCEPTED", result = new Dictionary<string, string> { ["available"] = "false" } });
+        });
+
+        await Client(handler).ClaimNextAsync(Credential(), new[] { "web.research" }, 1,
+            new[] { "web.research", "analysis.document" });
+
+        Assert.NotNull(captured);
+        Assert.Equal("[\"analysis.document\",\"web.research\"]", captured["taskTypes"]);
+    }
+
+    [Fact]
     public async Task EmptyQueueReturnsNull()
     {
         var client = Client(new StubHandler(_ => Task.FromResult(Json(new
