@@ -1054,7 +1054,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     "WHERE state IN (?, ?) AND task_type != ? " +
                     "AND (retry_at IS NULL OR retry_at <= ?) " +
                     "AND (deadline_at IS NULL OR deadline_at >= ?) " +
-                    "AND (? IS NULL OR EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own " +
+                    "AND (? = '' OR EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own " +
                     "WHERE own.task_id = t.task_id AND own.owner_core_id = ?)) " +
                     "AND NOT EXISTS (SELECT 1 FROM $TABLE_DEPENDENCIES d " +
                     "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
@@ -1071,8 +1071,8 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     DESKTOP_TASK_TYPE,
                     nowMillis.toString(),
                     nowMillis.toString(),
-                    ownerCoreId,
-                    ownerCoreId,
+                    ownerCoreId.orEmpty(),
+                    ownerCoreId.orEmpty(),
                     GlafiraTaskState.SUCCEEDED.databaseValue,
                     GlafiraTaskState.RUNNING.databaseValue,
                     GlafiraTaskState.RUNNING.databaseValue
