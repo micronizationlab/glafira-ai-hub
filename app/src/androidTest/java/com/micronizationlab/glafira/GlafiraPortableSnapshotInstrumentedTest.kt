@@ -103,6 +103,65 @@ class GlafiraPortableSnapshotInstrumentedTest {
         passphrase.fill('\u0000')
     }
 
+    @Test fun traceEventsRoundTripAndLegacyV2SnapshotsBackfillTaskHistoryTrace() {
+        store.enqueue(task("trace-portable"))
+        store.claimNext(2_000L)
+        val trace = GlafiraCoreTraceSqliteRepository(store)
+        trace.append(GlafiraCoreTraceDraft(
+            eventId = "manual-approval-event",
+            projectId = "portable-project",
+            taskId = "trace-portable",
+            correlationId = "manual-approval-correlation",
+            occurredAtMillis = 4_000L,
+            actorType = GlafiraCoreTraceActorType.CORE,
+            actorId = "core",
+            component = "OwnerApproval",
+            eventType = GlafiraCoreTraceEventType.APPROVAL_REQUESTED,
+            actionCode = "approval.requested",
+            targetType = "TASK",
+            targetId = "trace-portable",
+            approvalRef = "approval-001",
+            dataClassification = GlafiraCoreTraceDataClassification.CONFIDENTIAL
+        ))
+
+        val portable = GlafiraPortableCoreSnapshot(store)
+        portable.exportTo(snapshot)
+        val originalV3 = JSONObject(snapshot.readText())
+        assertTrue(originalV3.getJSONObject("tables").getJSONArray("core_trace_events").length() >= 3)
+
+        portable.restore(portable.readVerified(snapshot))
+        val restored = trace.query(
+            GlafiraCoreTraceQuery(
+                projectId = "portable-project",
+                taskId = "trace-portable",
+                eventTypes = setOf(GlafiraCoreTraceEventType.APPROVAL_REQUESTED)
+            ),
+            GlafiraCoreTraceAccessContext("portable-project", setOf("trace-portable"))
+        )
+        assertEquals(1, restored.events.size)
+        assertEquals("manual-approval-event", restored.events.single().eventId)
+
+        val legacyV2 = JSONObject(originalV3.toString())
+        legacyV2.getJSONObject("tables").remove("core_trace_events")
+        legacyV2.put("version", 2)
+        snapshot.writeText(legacyV2.toString())
+        val migrated = portable.readVerified(snapshot)
+        assertEquals(3, migrated.getInt("version"))
+        assertTrue(migrated.getJSONObject("tables").getJSONArray("core_trace_events").length() >= 2)
+
+        portable.restore(migrated)
+        val legacyEvents = trace.query(
+            GlafiraCoreTraceQuery(
+                projectId = "portable-project",
+                taskId = "trace-portable"
+            ),
+            GlafiraCoreTraceAccessContext("portable-project", setOf("trace-portable"))
+        ).events
+        assertTrue(legacyEvents.any { it.eventType == GlafiraCoreTraceEventType.TASK_QUEUED })
+        assertTrue(legacyEvents.any { it.eventType == GlafiraCoreTraceEventType.TASK_STARTED })
+        assertFalse(legacyEvents.any { it.eventType == GlafiraCoreTraceEventType.APPROVAL_REQUESTED })
+    }
+
     @Test fun missingTablesAreRejectedBeforeAnyReplacement() {
         store.enqueue(task("unchanged"))
         val portable = GlafiraPortableCoreSnapshot(store)
