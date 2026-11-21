@@ -221,9 +221,9 @@ class GlafiraTaskStore(context: Context) :
                     redaction_applied, secret_values_stored, duration_ms
                 ) VALUES (
                     'task-history-' || NEW.event_id,
-                    CASE WHEN NEW.project_id GLOB '[A-Za-z0-9]*' AND NEW.project_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                    CASE WHEN NEW.project_id GLOB '[A-Za-z0-9]*' AND NEW.project_id NOT GLOB '*[^A-Za-z0-9._:-]*' AND NEW.project_id GLOB '*[A-Za-z]*'
                         THEN NEW.project_id ELSE 'redacted' END,
-                    CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                    CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*' AND NEW.task_id GLOB '*[A-Za-z]*'
                         THEN NEW.task_id ELSE NULL END,
                     NULL,
                     'task-history-' || NEW.event_id,
@@ -241,9 +241,9 @@ class GlafiraTaskStore(context: Context) :
                         ELSE 'TASK_STATE_CHANGED'
                     END END,
                     'task.state.changed',
-                    CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                    CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*' AND NEW.task_id GLOB '*[A-Za-z]*'
                         THEN 'TASK' ELSE NULL END,
-                    CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                    CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*' AND NEW.task_id GLOB '*[A-Za-z]*'
                         THEN NEW.task_id ELSE NULL END,
                     upper(NEW.to_state), NULL, NULL, '[]', 'INTERNAL', 1, 0, NULL
                 );
