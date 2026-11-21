@@ -167,7 +167,7 @@ public static class CoreOwnershipTransferCryptography
             throw new ArgumentException("OWNERSHIP_TRANSFER_SIGNATURE_FORMAT_UNSUPPORTED");
 
         if (!DateTimeOffset.TryParse(payload.IssuedAt, CultureInfo.InvariantCulture,
-                DateTimeStyles.RoundtripKind, out var issuedAt) ||
+                DateTimeStyles.None, out var issuedAt) ||
             !DateTimeOffset.TryParse(payload.ExpiresAt, CultureInfo.InvariantCulture,
                 DateTimeStyles.RoundtripKind, out var expiresAt) ||
             expiresAt <= issuedAt)
