@@ -126,21 +126,25 @@ internal class GlafiraPortableCoreSnapshot(
             val restoreTime = maxOf(1L, System.currentTimeMillis())
             taskProjects(tables).values.toSet().filter(GlafiraCoreTraceEvent::isSafeIdentifier).forEach { projectId ->
                 val eventId = UUID.randomUUID().toString()
-                traceRepository.append(GlafiraCoreTraceDraft(
-                    eventId = eventId,
-                    projectId = projectId,
-                    correlationId = "restore-$eventId",
-                    occurredAtMillis = restoreTime,
-                    actorType = GlafiraCoreTraceActorType.CORE,
-                    actorId = "core",
-                    component = "PortableCoreSnapshot",
-                    eventType = GlafiraCoreTraceEventType.RESTORE_SUCCEEDED,
-                    actionCode = "core.restore.completed",
-                    targetType = "PROJECT",
-                    targetId = projectId,
-                    resultStatus = "RESTORED",
-                    dataClassification = GlafiraCoreTraceDataClassification.INTERNAL
-                ))
+                try {
+                    traceRepository.append(GlafiraCoreTraceDraft(
+                        eventId = eventId,
+                        projectId = projectId,
+                        correlationId = "restore-$eventId",
+                        occurredAtMillis = restoreTime,
+                        actorType = GlafiraCoreTraceActorType.CORE,
+                        actorId = "core",
+                        component = "PortableCoreSnapshot",
+                        eventType = GlafiraCoreTraceEventType.RESTORE_SUCCEEDED,
+                        actionCode = "core.restore.completed",
+                        targetType = "PROJECT",
+                        targetId = projectId,
+                        resultStatus = "RESTORED",
+                        dataClassification = GlafiraCoreTraceDataClassification.INTERNAL
+                    ))
+                } catch (_: IllegalArgumentException) {
+                    // A legacy opaque project identifier that fails redaction is never persisted.
+                }
             }
             } finally {
                 store.setTaskHistoryTraceTriggerEnabled(db, enabled = true)
