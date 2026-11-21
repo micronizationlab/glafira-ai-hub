@@ -43,6 +43,8 @@ public sealed class AgentTaskExecutor : IAsyncDisposable
             return Failed(task.TaskId, "INVALID_TASK_ENVELOPE");
         if (_runtimeState.Status != AgentServiceStatus.Ready)
             return Failed(task.TaskId, "AGENT_NOT_READY");
+        if (!StringComparer.Ordinal.Equals(task.EffectRisk, "ReadOnly"))
+            return Failed(task.TaskId, "NON_READ_ONLY_TASK_DISABLED");
         var ownerApprovedCapabilities = _runtimeState.Capabilities;
         if (task.RequiredCapabilities.Any(capability =>
                 !ownerApprovedCapabilities.Contains(capability, StringComparer.Ordinal)))

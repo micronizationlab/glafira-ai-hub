@@ -173,6 +173,24 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task RunningProgressReturnsTheServerRenewedLeaseExpiry()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+
+        var progress = await dispatcher.DispatchAsync(
+            ResultRequest("RUNNING", claim.Result["leaseId"], long.Parse(claim.Result["fencingToken"]), "null"),
+            now.AddSeconds(2));
+
+        Assert.Equal("SUCCEEDED", progress.Status);
+        Assert.True(long.Parse(progress.Result["leaseExpiresAtEpochMs"]) >
+            now.AddSeconds(2).ToUnixTimeMilliseconds());
+    }
+
+    [Fact]
     public async Task StaleFencingTokenCannotCompleteCurrentLease()
     {
         var now = DateTimeOffset.UtcNow;
