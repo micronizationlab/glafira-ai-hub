@@ -578,6 +578,67 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var speakingIndex by remember { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val knowledgeRepository = remember(context.applicationContext) {
+        GlafiraProjectKnowledgeRuntime.repository(context)
+    }
+    val knowledgeImporter = remember(context.applicationContext, knowledgeRepository) {
+        AndroidProjectKnowledgeImporter(context, knowledgeRepository)
+    }
+    val knowledgePreviewService = remember(knowledgeRepository) {
+        KnowledgeContextPreviewService(knowledgeRepository)
+    }
+    var showKnowledgeImportDialog by remember { mutableStateOf(false) }
+    var showKnowledgePreview by remember { mutableStateOf(false) }
+    var knowledgePreview by remember { mutableStateOf<KnowledgeContextPreview?>(null) }
+    var knowledgePreviewError by remember { mutableStateOf<String?>(null) }
+    var knowledgePreviewLoading by remember { mutableStateOf(false) }
+    var importClassification by remember { mutableStateOf(CoreDataClassification.INTERNAL) }
+    var excludedKnowledgeSources by remember(project.id) { mutableStateOf(emptySet<KnowledgeSourceRef>()) }
+    var approvedKnowledgeQuery by remember(project.id) { mutableStateOf<String?>(null) }
+    var approvedKnowledgeSources by remember(project.id) { mutableStateOf(emptySet<KnowledgeSourceRef>()) }
+
+    val recipientName = if (agent.n == "ГЛАФИРА") {
+        loadGlafiraPrimaryProvider(context).displayName
+    } else {
+        agent.providerId.displayName
+    }
+    val knowledgeAccess = KnowledgeAccessContext(
+        actorId = "local-owner",
+        projectId = ProjectIdentifier(project.id),
+        maximumClassification = CoreDataClassification.RESTRICTED
+    )
+
+    fun loadKnowledgePreview() {
+        val query = inputText.trim()
+        if (query.isBlank()) {
+            ToastHelper.short(context, "Сначала введите вопрос для подбора контекста")
+            return
+        }
+        showKnowledgePreview = true
+        knowledgePreviewLoading = true
+        knowledgePreviewError = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    knowledgePreviewService.preview(
+                        query = query,
+                        recipient = recipientName,
+                        access = knowledgeAccess
+                    )
+                }
+            }
+            knowledgePreviewLoading = false
+            result.onSuccess { preview ->
+                knowledgePreview = preview
+                excludedKnowledgeSources = excludedKnowledgeSources.intersect(
+                    preview.citations.map { it.source }.toSet()
+                )
+            }.onFailure {
+                knowledgePreview = null
+                knowledgePreviewError = "Контекст недоступен. Сообщение не будет использовать документы."
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         TtsHelper.init(context)
@@ -643,6 +704,38 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         }
     }
 
+    val knowledgeDocumentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val receipt = withContext(Dispatchers.IO) {
+                knowledgeImporter.importDocument(
+                    uri = uri,
+                    projectId = ProjectIdentifier(project.id),
+                    classification = importClassification
+                )
+            }
+            when (val result = receipt.result) {
+                is KnowledgeImportResult.Stored -> {
+                    approvedKnowledgeQuery = null
+                    approvedKnowledgeSources = emptySet()
+                    ToastHelper.short(context, "Документ добавлен: ${receipt.displayName}")
+                }
+                is KnowledgeImportResult.Rejected -> ToastHelper.short(
+                    context,
+                    when (result.reasonCode) {
+                        "KNOWLEDGE_IMPORT_TOO_LARGE" -> "Документ больше 512 КБ"
+                        "KNOWLEDGE_MEDIA_TYPE_NOT_SUPPORTED" -> "Поддерживаются только TXT и Markdown"
+                        "KNOWLEDGE_TEXT_INVALID_UTF8" -> "Документ должен быть в UTF-8"
+                        "KNOWLEDGE_VERSION_ALREADY_EXISTS" -> "Эта версия документа уже добавлена"
+                        else -> "Не удалось безопасно добавить документ"
+                    }
+                )
+            }
+        }
+    }
+
     fun startVoiceInput() {
         val hasPermission = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECORD_AUDIO
@@ -670,7 +763,24 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         }
         val now = Date()
         val projectContext = buildProjectContext(context, project.id, agent.n)
-        val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
+        val knowledgeContext = if (
+            approvedKnowledgeQuery == text.trim() && approvedKnowledgeSources.isNotEmpty()
+        ) {
+            runCatching {
+                knowledgePreviewService.preview(
+                    query = text.trim(),
+                    recipient = recipientName,
+                    access = knowledgeAccess,
+                    includedSources = approvedKnowledgeSources
+                ).renderForProvider()
+            }.getOrElse {
+                ToastHelper.short(context, "Не удалось проверить выбранный контекст. Сообщение не отправлено.")
+                return
+            }
+        } else ""
+        val fullPrompt = listOf(agent.prompt, projectContext, knowledgeContext)
+            .filter { it.isNotBlank() }
+            .joinToString("\n\n")
         val pending = PendingMessage(
             project.id, agent.n, text,
             SimpleDateFormat("HH:mm", Locale.getDefault()).format(now),
@@ -693,6 +803,129 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         pendingMessages = pendingMessages + pending
         SoundHelper.playSent()
         PendingDeliveryRuntime.dispatch(context, pending, fullPrompt)
+    }
+
+    if (showKnowledgeImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showKnowledgeImportDialog = false },
+            title = { Text("Добавить документ в проект") },
+            text = {
+                Column {
+                    Text("Файл будет зашифрован и доступен только в проекте «${project.name}».")
+                    Spacer(Modifier.height(8.dp))
+                    Text("Классификация", fontWeight = FontWeight.Bold)
+                    CoreDataClassification.values().forEach { classification ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { importClassification = classification },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = importClassification == classification,
+                                onClick = { importClassification = classification }
+                            )
+                            Text(
+                                when (classification) {
+                                    CoreDataClassification.PUBLIC -> "Публичный"
+                                    CoreDataClassification.INTERNAL -> "Внутренний"
+                                    CoreDataClassification.CONFIDENTIAL -> "Конфиденциальный"
+                                    CoreDataClassification.RESTRICTED -> "Ограниченный"
+                                }
+                            )
+                        }
+                    }
+                    Text("Поддерживаются TXT и Markdown до 512 КБ.", color = Tx, fontSize = 11.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showKnowledgeImportDialog = false
+                    knowledgeDocumentPicker.launch(arrayOf("text/plain", "text/markdown"))
+                }) { Text("ВЫБРАТЬ ФАЙЛ") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showKnowledgeImportDialog = false }) { Text("ОТМЕНА") }
+            }
+        )
+    }
+
+    if (showKnowledgePreview) {
+        AlertDialog(
+            onDismissRequest = { showKnowledgePreview = false },
+            title = { Text("Контекст перед отправкой") },
+            text = {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 500.dp)
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                ) {
+                    Text("Проект: ${project.name}", fontWeight = FontWeight.Bold)
+                    Text("Получатель: $recipientName")
+                    Text("Лимит: 4 000 символов · максимум 5 источников", color = Tx, fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                    when {
+                        knowledgePreviewLoading -> CircularProgressIndicator(Modifier.size(24.dp))
+                        knowledgePreviewError != null -> Text(knowledgePreviewError.orEmpty(), color = Red)
+                        knowledgePreview?.citations.isNullOrEmpty() -> Text("Подходящих документов проекта не найдено.")
+                        else -> knowledgePreview!!.citations.forEach { citation ->
+                            val included = citation.source !in excludedKnowledgeSources
+                            Row(
+                                Modifier.fillMaxWidth().clickable {
+                                    excludedKnowledgeSources = if (included) {
+                                        excludedKnowledgeSources + citation.source
+                                    } else {
+                                        excludedKnowledgeSources - citation.source
+                                    }
+                                },
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Checkbox(
+                                    checked = included,
+                                    onCheckedChange = { checked ->
+                                        excludedKnowledgeSources = if (checked) {
+                                            excludedKnowledgeSources - citation.source
+                                        } else {
+                                            excludedKnowledgeSources + citation.source
+                                        }
+                                    }
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(citation.title, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "${citation.source.sourceId.value} · v${citation.source.version} · ${citation.classification}",
+                                        color = Tx,
+                                        fontSize = 10.sp
+                                    )
+                                    Text(citation.excerpt, fontSize = 11.sp)
+                                    Text(citation.sourceUri, color = Gr, fontSize = 9.sp)
+                                }
+                            }
+                            Divider(Modifier.padding(vertical = 6.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !knowledgePreviewLoading && knowledgePreviewError == null,
+                    onClick = {
+                        val selected = knowledgePreview?.citations.orEmpty()
+                            .map { it.source }
+                            .filterNot { it in excludedKnowledgeSources }
+                            .toSet()
+                        approvedKnowledgeQuery = inputText.trim()
+                        approvedKnowledgeSources = selected
+                        showKnowledgePreview = false
+                        ToastHelper.short(
+                            context,
+                            if (selected.isEmpty()) "Документы не будут добавлены в контекст"
+                            else "Разрешено источников: ${selected.size}"
+                        )
+                    }
+                ) { Text("ИСПОЛЬЗОВАТЬ ВЫБРАННОЕ") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showKnowledgePreview = false }) { Text("НАЗАД") }
+            }
+        )
     }
 
     retryConfirmation?.let { pending ->
@@ -736,6 +969,25 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                     }
                     Text("⬆", fontSize = 14.sp, color = Gr, modifier = Modifier.clickable { scope.launch { listState.animateScrollToItem(0) } }.padding(end = 8.dp))
                     Text("📌", fontSize = 14.sp, modifier = Modifier.clickable { showPinnedPanel = !showPinnedPanel }.padding(end = 8.dp))
+                    Text(
+                        "📎",
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .semantics { contentDescription = "Добавить документ в проект" }
+                            .clickable { showKnowledgeImportDialog = true }
+                            .padding(end = 8.dp)
+                    )
+                    Text(
+                        if (approvedKnowledgeQuery == inputText.trim() && approvedKnowledgeSources.isNotEmpty()) {
+                            "📚${approvedKnowledgeSources.size}"
+                        } else "📚",
+                        fontSize = 14.sp,
+                        color = if (approvedKnowledgeSources.isNotEmpty()) Gr else Tx,
+                        modifier = Modifier
+                            .semantics { contentDescription = "Просмотреть контекст перед отправкой" }
+                            .clickable { loadKnowledgePreview() }
+                            .padding(end = 8.dp)
+                    )
                     Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 8.dp))
                     Text("↗", fontSize = 16.sp, color = Gr, modifier = Modifier.clickable { showTransferDialog = true }.padding(end = 8.dp))
                     Text("🔇", fontSize = 14.sp, modifier = Modifier.clickable {

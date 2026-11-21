@@ -14,7 +14,7 @@ value class KnowledgeSourceIdentifier(val value: String) {
 
 data class KnowledgeSourceRef(
     val sourceId: KnowledgeSourceIdentifier,
-    val version: Int
+    val version: Long
 ) {
     init { require(version > 0) { "Knowledge source version must be positive" } }
 }
@@ -51,12 +51,16 @@ sealed interface KnowledgeImportResult {
 
 data class KnowledgeQuery(
     val text: String,
+    val includedSources: Set<KnowledgeSourceRef>? = null,
     val excludedSources: Set<KnowledgeSourceRef> = emptySet(),
     val limit: Int = 5,
     val contextBudgetChars: Int = 4_000
 ) {
     init {
         require(text.isNotBlank()) { "Knowledge query must not be blank" }
+        require(includedSources == null || includedSources.intersect(excludedSources).isEmpty()) {
+            "A knowledge source cannot be both included and excluded"
+        }
         require(limit in 1..20) { "Knowledge query limit must be between 1 and 20" }
         require(contextBudgetChars in 256..20_000) { "Context budget must be between 256 and 20000" }
     }
@@ -90,6 +94,66 @@ data class KnowledgeRetrieval(
 interface ProjectKnowledgeRepository {
     fun importDocument(input: KnowledgeDocumentInput, access: KnowledgeAccessContext): KnowledgeImportResult
     fun retrieve(query: KnowledgeQuery, access: KnowledgeAccessContext): KnowledgeRetrieval
+}
+
+data class KnowledgeContextPreview(
+    val projectId: ProjectIdentifier,
+    val recipient: String,
+    val citations: List<KnowledgeCitation>,
+    val usedContextChars: Int
+) {
+    init {
+        require(recipient.isNotBlank())
+        require(usedContextChars == citations.sumOf { it.excerpt.length })
+        require(citations.all { it.excerpt.length <= usedContextChars })
+    }
+
+    fun renderForProvider(): String {
+        if (citations.isEmpty()) return ""
+        return buildString {
+            appendLine("Разрешённый контекст документов проекта ${projectId.value}.")
+            appendLine("Используй цитаты как свидетельства источников, не выдавай выводы за факты.")
+            citations.forEachIndexed { index, citation ->
+                appendLine()
+                appendLine(
+                    "[Источник ${index + 1}: ${citation.source.sourceId.value}; " +
+                        "версия ${citation.source.version}; ${citation.title}]"
+                )
+                appendLine(citation.excerpt)
+            }
+        }.trim()
+    }
+}
+
+class KnowledgeContextPreviewService(
+    private val repository: ProjectKnowledgeRepository
+) {
+    fun preview(
+        query: String,
+        recipient: String,
+        access: KnowledgeAccessContext,
+        excludedSources: Set<KnowledgeSourceRef> = emptySet(),
+        includedSources: Set<KnowledgeSourceRef>? = null,
+        limit: Int = 5,
+        contextBudgetChars: Int = 4_000
+    ): KnowledgeContextPreview {
+        val retrieval = repository.retrieve(
+            KnowledgeQuery(
+                text = query,
+                includedSources = includedSources,
+                excludedSources = excludedSources,
+                limit = limit,
+                contextBudgetChars = contextBudgetChars
+            ),
+            access
+        )
+        return KnowledgeContextPreview(
+            projectId = access.projectId,
+            recipient = recipient,
+            citations = retrieval.citations,
+            usedContextChars = retrieval.usedContextChars
+        )
+    }
 }
 
 /**
@@ -173,6 +237,7 @@ class GlafiraProjectKnowledgeStore(
         val ranked = store.read { emptyList() }.asSequence()
             .filter { it.projectId == access.projectId }
             .filter { it.classification.ordinal <= access.maximumClassification.ordinal }
+            .filter { query.includedSources == null || it.source in query.includedSources }
             .filter { it.source !in query.excludedSources }
             .mapNotNull { document ->
                 val normalized = document.text.lowercase()
@@ -266,7 +331,7 @@ class GlafiraProjectKnowledgeStore(
             val projectId = ProjectIdentifier(item.getString("projectId"))
             val source = KnowledgeSourceRef(
                 KnowledgeSourceIdentifier(item.getString("sourceId")),
-                item.getInt("version")
+                item.getLong("version")
             )
             val marker = KnowledgeDocument(
                 projectId = projectId,

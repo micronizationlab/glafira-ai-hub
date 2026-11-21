@@ -114,6 +114,6 @@
         </DataGrid>
       </TabItem>
     </TabControl>
-    <TextBlock DockPanel.Dock="Bottom" Text="Сопряжение, одобрение и отзыв выполняются только явным действием владельца. Agent installer доступен; LIVE-действия и произвольное выполнение не включены." Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0"/>
+    <TextBlock DockPanel.Dock="Bottom" Text="Сопряжение, одобрение и отзыв выполняются только явным действием владельца. Pairing, heartbeat и защищённый Agent lease/result transport доступны; production handlers и Desktop Core task handoff ещё подключаются, LIVE-действия выключены." Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0"/>
   </DockPanel>
 </Window>

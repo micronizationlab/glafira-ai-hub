@@ -111,7 +111,7 @@ public sealed class AgentWorker(
                     pollDelay = AgentPollingBackoff.NextDelay(pollDelay, worked: false, failed: true);
                     nextPoll = DateTimeOffset.UtcNow.Add(pollDelay);
 
-                    if (error is HttpRequestException or IOException or TaskCanceledException)
+                    if (error is HttpRequestException or IOException or TaskCanceledException or InvalidDataException)
                     {
                         runtimeState.ClearOwnerProfile();
                         runtimeState.SetStatus(AgentServiceStatus.Paused);

@@ -113,6 +113,58 @@ class GlafiraProjectKnowledgeStoreTest {
         )
     }
 
+    @Test fun providerContextContainsOnlyOwnerApprovedSourcesAndNoLocalUri() {
+        val store = repository()
+        val approved = source("approved")
+        val excluded = source("excluded")
+        assertTrue(
+            store.importDocument(
+                document(
+                    source = approved,
+                    title = "Approved policy",
+                    sourceUri = "content://private/approved",
+                    text = "quartz approval threshold is seven"
+                ),
+                projectOne
+            ) is KnowledgeImportResult.Stored
+        )
+        assertTrue(
+            store.importDocument(
+                document(
+                    source = excluded,
+                    title = "Excluded notes",
+                    sourceUri = "content://private/excluded",
+                    text = "quartz excluded draft is nine"
+                ),
+                projectOne
+            ) is KnowledgeImportResult.Stored
+        )
+
+        val preview = KnowledgeContextPreviewService(store).preview(
+            query = "quartz",
+            recipient = "Primary provider",
+            access = projectOne,
+            includedSources = setOf(approved)
+        )
+        val prompt = preview.renderForProvider()
+        assertEquals(listOf(approved), preview.citations.map { it.source })
+        assertTrue(prompt.contains("Approved policy"))
+        assertTrue(prompt.contains("threshold is seven"))
+        assertFalse(prompt.contains("Excluded notes"))
+        assertFalse(prompt.contains("content://private"))
+    }
+
+    @Test fun queryRejectsContradictoryOwnerSelection() {
+        val source = source("same")
+        assertTrue(runCatching {
+            KnowledgeQuery(
+                text = "quartz",
+                includedSources = setOf(source),
+                excludedSources = setOf(source)
+            )
+        }.isFailure)
+    }
+
     private fun repository() = GlafiraProjectKnowledgeStore(
         temporary.root,
         AesGcmMemoryPayloadProtector(
