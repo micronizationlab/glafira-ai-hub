@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.content.ContentValues
 import android.database.sqlite.SQLiteException
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -155,6 +156,16 @@ class GlafiraTaskOwnershipInstrumentedTest {
         val item = task("ownership-legacy-01")
         assertTrue(legacy.enqueue(item).inserted)
         val db = legacy.writableDatabase
+        db.insertOrThrow("core_desktop_leases", null, ContentValues().apply {
+            put("task_id", item.taskId)
+            put("device_id", "legacy-device")
+            put("lease_id", "legacy-lease-0001")
+            put("fencing_token", 1)
+            put("lease_expires_at", 9_000L)
+            put("attempt_count", 1)
+            put("progress_percent", 25)
+            put("updated_at", 1_500L)
+        })
         db.execSQL("DROP TRIGGER IF EXISTS core_task_ownership_state_version")
         db.execSQL("DROP TABLE core_task_ownership")
         db.execSQL("PRAGMA user_version = 10")
@@ -167,6 +178,11 @@ class GlafiraTaskOwnershipInstrumentedTest {
         assertNull(ownership(migrated, item.taskId))
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, migrated.getTask(item.taskId)?.state)
         assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", migrated.getTask(item.taskId)?.lastError)
+        val staleLeaseExists = migrated.readableDatabase.rawQuery(
+            "SELECT 1 FROM core_desktop_leases WHERE task_id = ?",
+            arrayOf(item.taskId)
+        ).use { it.moveToFirst() }
+        assertFalse("Legacy executor lease must be revoked before owner review", staleLeaseExists)
     }
 
     @Test
