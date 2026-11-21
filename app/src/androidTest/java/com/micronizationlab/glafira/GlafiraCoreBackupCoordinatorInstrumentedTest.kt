@@ -198,7 +198,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             actorType = GlafiraCoreTraceActorType.CORE,
             actorId = "core-main",
             component = "BackupCoordinator",
-            eventType = GlafiraCoreTraceEventType.RESULT_COMMITTED,
+            eventType = GlafiraCoreTraceEventType.TASK_SUCCEEDED,
             actionCode = "core.result.committed"
         ))
 
