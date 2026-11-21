@@ -165,3 +165,7 @@ public final class KeychainBridgeCredentialStore {
         }
     }
 }
+
+public extension Notification.Name {
+    static let glafiraBridgeCredentialDidChange = Notification.Name("com.micronizationlab.glafira.bridgeCredentialDidChange")
+}
