@@ -157,7 +157,7 @@ class GlafiraPortableSnapshotInstrumentedTest {
             ),
             GlafiraCoreTraceAccessContext("portable-project", setOf("trace-portable"))
         ).events
-        assertTrue(legacyEvents.any { it.eventType == GlafiraCoreTraceEventType.TASK_QUEUED })
+        assertTrue(legacyEvents.any { it.eventType == GlafiraCoreTraceEventType.TASK_CREATED })
         assertTrue(legacyEvents.any { it.eventType == GlafiraCoreTraceEventType.TASK_STARTED })
         assertFalse(legacyEvents.any { it.eventType == GlafiraCoreTraceEventType.APPROVAL_REQUESTED })
     }
