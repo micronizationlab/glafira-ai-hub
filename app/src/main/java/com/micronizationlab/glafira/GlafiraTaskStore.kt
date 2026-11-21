@@ -90,6 +90,7 @@ class GlafiraTaskStore(context: Context) :
         createDesktopTables(db)
         GlafiraDryRunPreviewSchema.create(db)
         createHistorySchema(db)
+        createTraceSchema(db)
         createCoreTaskResultsSchema(db)
         createTaskDependenciesSchema(db)
         createTaskPlansSchema(db)
@@ -97,6 +98,7 @@ class GlafiraTaskStore(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (newVersion > DATABASE_VERSION) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
         if (oldVersion < 2) createDesktopTables(db)
         if (oldVersion < 3) GlafiraDryRunPreviewSchema.create(db)
         if (oldVersion < 4) createHistorySchema(db)
@@ -105,7 +107,131 @@ class GlafiraTaskStore(context: Context) :
         if (oldVersion < 7) createTaskPlansSchema(db)
         if (oldVersion < 8) migrateDesktopLeaseFencing(db)
         if (oldVersion < 9) GlafiraCoreLiveRunStore.createSchema(db)
-        if (newVersion > 9) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 10) createTraceSchema(db)
+    }
+
+    private fun createTraceSchema(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS core_trace_events (
+                sequence_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL UNIQUE,
+                project_id TEXT NOT NULL,
+                task_id TEXT,
+                parent_event_id TEXT,
+                correlation_id TEXT NOT NULL,
+                occurred_at_ms INTEGER NOT NULL CHECK(occurred_at_ms > 0),
+                actor_type TEXT NOT NULL,
+                actor_id TEXT NOT NULL,
+                component TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                action_code TEXT NOT NULL,
+                target_type TEXT,
+                target_id TEXT,
+                result_status TEXT,
+                error_code TEXT,
+                approval_ref TEXT,
+                evidence_refs TEXT NOT NULL,
+                data_classification TEXT NOT NULL,
+                redaction_applied INTEGER NOT NULL CHECK(redaction_applied = 1),
+                secret_values_stored INTEGER NOT NULL CHECK(secret_values_stored = 0),
+                duration_ms INTEGER CHECK(duration_ms IS NULL OR duration_ms >= 0)
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_core_trace_project_sequence ON core_trace_events(project_id, sequence_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_core_trace_project_task_sequence ON core_trace_events(project_id, task_id, sequence_id)")
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS core_trace_events_no_update
+            BEFORE UPDATE ON core_trace_events BEGIN
+                SELECT RAISE(ABORT, 'CORE_TRACE_APPEND_ONLY');
+            END
+        """.trimIndent())
+        backfillTaskHistoryTrace(db)
+        createTaskHistoryTraceTrigger(db)
+    }
+
+    private fun backfillTaskHistoryTrace(db: SQLiteDatabase) {
+        db.execSQL("""
+            INSERT OR IGNORE INTO core_trace_events(
+                event_id, project_id, task_id, parent_event_id, correlation_id, occurred_at_ms,
+                actor_type, actor_id, component, event_type, action_code, target_type, target_id,
+                result_status, error_code, approval_ref, evidence_refs, data_classification,
+                redaction_applied, secret_values_stored, duration_ms
+            )
+            SELECT
+                'task-history-' || event_id,
+                CASE WHEN project_id GLOB '[A-Za-z0-9]*' AND project_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                    THEN project_id ELSE 'redacted' END,
+                CASE WHEN task_id GLOB '[A-Za-z0-9]*' AND task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                    THEN task_id ELSE NULL END,
+                NULL,
+                'task-history-' || event_id,
+                CASE WHEN changed_at > 0 THEN changed_at ELSE 1 END,
+                'CORE', 'core', 'TaskStore',
+                CASE to_state
+                    WHEN 'queued' THEN 'TASK_QUEUED'
+                    WHEN 'running' THEN 'TASK_STARTED'
+                    WHEN 'waiting_for_network' THEN 'TASK_WAITING_FOR_NETWORK'
+                    WHEN 'waiting_for_owner' THEN 'TASK_WAITING_FOR_OWNER'
+                    WHEN 'retry_scheduled' THEN 'TASK_RETRY_SCHEDULED'
+                    WHEN 'succeeded' THEN 'TASK_SUCCEEDED'
+                    WHEN 'failed' THEN 'TASK_FAILED'
+                    WHEN 'cancelled' THEN 'TASK_CANCELLED'
+                    ELSE 'TASK_STATE_CHANGED'
+                END,
+                'task.state.changed',
+                CASE WHEN task_id GLOB '[A-Za-z0-9]*' AND task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                    THEN 'TASK' ELSE NULL END,
+                CASE WHEN task_id GLOB '[A-Za-z0-9]*' AND task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                    THEN task_id ELSE NULL END,
+                upper(to_state), NULL, NULL, '[]', 'INTERNAL', 1, 0, NULL
+            FROM core_task_history
+        """.trimIndent())
+    }
+
+    internal fun setTaskHistoryTraceTriggerEnabled(db: SQLiteDatabase, enabled: Boolean) {
+        if (enabled) createTaskHistoryTraceTrigger(db)
+        else db.execSQL("DROP TRIGGER IF EXISTS core_trace_from_task_history")
+    }
+
+    private fun createTaskHistoryTraceTrigger(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS core_trace_from_task_history
+            AFTER INSERT ON core_task_history BEGIN
+                INSERT OR IGNORE INTO core_trace_events(
+                    event_id, project_id, task_id, parent_event_id, correlation_id, occurred_at_ms,
+                    actor_type, actor_id, component, event_type, action_code, target_type, target_id,
+                    result_status, error_code, approval_ref, evidence_refs, data_classification,
+                    redaction_applied, secret_values_stored, duration_ms
+                ) VALUES (
+                    'task-history-' || NEW.event_id,
+                    CASE WHEN NEW.project_id GLOB '[A-Za-z0-9]*' AND NEW.project_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                        THEN NEW.project_id ELSE 'redacted' END,
+                    CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                        THEN NEW.task_id ELSE NULL END,
+                    NULL,
+                    'task-history-' || NEW.event_id,
+                    CASE WHEN NEW.changed_at > 0 THEN NEW.changed_at ELSE 1 END,
+                    'CORE', 'core', 'TaskStore',
+                    CASE NEW.to_state
+                        WHEN 'queued' THEN 'TASK_QUEUED'
+                        WHEN 'running' THEN 'TASK_STARTED'
+                        WHEN 'waiting_for_network' THEN 'TASK_WAITING_FOR_NETWORK'
+                        WHEN 'waiting_for_owner' THEN 'TASK_WAITING_FOR_OWNER'
+                        WHEN 'retry_scheduled' THEN 'TASK_RETRY_SCHEDULED'
+                        WHEN 'succeeded' THEN 'TASK_SUCCEEDED'
+                        WHEN 'failed' THEN 'TASK_FAILED'
+                        WHEN 'cancelled' THEN 'TASK_CANCELLED'
+                        ELSE 'TASK_STATE_CHANGED'
+                    END,
+                    'task.state.changed',
+                    CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                        THEN 'TASK' ELSE NULL END,
+                    CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                        THEN NEW.task_id ELSE NULL END,
+                    upper(NEW.to_state), NULL, NULL, '[]', 'INTERNAL', 1, 0, NULL
+                );
+            END
+        """.trimIndent())
     }
 
     private fun createTaskDependenciesSchema(db: SQLiteDatabase) {
@@ -1476,7 +1602,7 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 9
+        private const val DATABASE_VERSION = 10
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
