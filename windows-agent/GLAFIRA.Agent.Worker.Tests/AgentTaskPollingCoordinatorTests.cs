@@ -73,7 +73,10 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
         Assert.Single(pending.PendingResults);
         Assert.Equal(1, handler.Calls);
 
-        var retried = await coordinator.PollOnceAsync(Credential(), CancellationToken.None);
+        // Reconstruct the coordinator to model a service/process restart. The DPAPI journal,
+        // not in-memory coordinator state, must be sufficient to deliver the exact result.
+        var restartedCoordinator = Coordinator(state, [handler], transport, journal);
+        var retried = await restartedCoordinator.PollOnceAsync(Credential(), CancellationToken.None);
 
         Assert.False(retried);
         Assert.Equal(1, handler.Calls);
