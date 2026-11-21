@@ -425,7 +425,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         db.version = 3
         store.close()
         store = GlafiraTaskStore(context)
-        assertEquals(9, store.writableDatabase.version)
+        assertEquals(10, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy")?.state)
         assertEquals("HISTORY_BASELINE", store.taskHistory("legacy", "project").single().reason)
         store.claimNext(2_000)
@@ -520,7 +520,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         store.close()
         store = GlafiraTaskStore(context)
 
-        assertEquals(9, store.writableDatabase.version)
+        assertEquals(10, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy-v4")?.state)
         assertTrue(store.readableDatabase.rawQuery(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'core_task_results'",
