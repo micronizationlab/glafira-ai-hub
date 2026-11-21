@@ -486,10 +486,17 @@ public sealed class DesktopHubStore
 
         HubTaskState current;
         HubTaskEffectRisk risk;
+        string? agentId;
+        string? leaseId;
+        long? fencingToken;
         using (var read = connection.CreateCommand())
         {
             read.Transaction = transaction;
-            read.CommandText = "SELECT state, effect_risk FROM Tasks WHERE task_id = $task;";
+            read.CommandText = """
+                SELECT t.state, t.effect_risk, l.agent_id, l.lease_id, l.fencing_token
+                FROM Tasks t LEFT JOIN Leases l ON l.task_id = t.task_id
+                WHERE t.task_id = $task;
+                """;
             read.Parameters.AddWithValue("$task", taskId);
             using var reader = read.ExecuteReader();
             if (!reader.Read())
@@ -500,6 +507,9 @@ public sealed class DesktopHubStore
             if (!Enum.TryParse(reader.GetString(0), out current))
                 throw new InvalidDataException("HUB_TASK_STATE_INVALID");
             risk = (HubTaskEffectRisk)reader.GetInt32(1);
+            agentId = reader.IsDBNull(2) ? null : reader.GetString(2);
+            leaseId = reader.IsDBNull(3) ? null : reader.GetString(3);
+            fencingToken = reader.IsDBNull(4) ? null : reader.GetInt64(4);
         }
 
         if (current is not (HubTaskState.Queued or HubTaskState.Leased))
@@ -537,7 +547,7 @@ public sealed class DesktopHubStore
         var eventCode = next == HubTaskState.Cancelled
             ? "TASK_CANCELLED_OWNER_REQUEST"
             : "TASK_CANCELLED_OUTCOME_UNKNOWN";
-        AppendTaskEvent(connection, transaction, taskId, next, now, null, null, null, eventCode);
+        AppendTaskEvent(connection, transaction, taskId, next, now, agentId, leaseId, fencingToken, eventCode);
         transaction.Commit();
         return true;
     }
