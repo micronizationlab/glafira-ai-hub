@@ -323,7 +323,24 @@ class GlafiraCoreTraceStoreInstrumentedTest {
             taskId, setOf(GlafiraTaskState.RUNNING), plan, 4_000L
         ))
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, taskStore.getTask(taskId)?.state)
-        assertNotNull(taskStore.dryRunPreview(taskId))
+        val preview = requireNotNull(taskStore.dryRunPreview(taskId))
+        db.execSQL("""
+            CREATE TRIGGER fail_dry_run_review_trace
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'REVIEW_ACCEPTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_REVIEW_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) {
+            taskStore.reviewDryRunPreview(
+                taskId, plan.planHash, GlafiraDryRunReviewStatus.APPROVED, 5_000L
+            )
+        }
+        assertEquals(GlafiraDryRunReviewStatus.PENDING, taskStore.dryRunPreview(taskId)?.reviewStatus)
+        db.execSQL("DROP TRIGGER fail_dry_run_review_trace")
+        assertTrue(taskStore.reviewDryRunPreview(
+            taskId, plan.planHash, GlafiraDryRunReviewStatus.APPROVED, 6_000L
+        ))
+        assertEquals(GlafiraDryRunReviewStatus.APPROVED, taskStore.dryRunPreview(taskId)?.reviewStatus)
         val events = traceStore.query(
             GlafiraCoreTraceQuery(projectId, taskId = taskId),
             GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
@@ -331,6 +348,11 @@ class GlafiraCoreTraceStoreInstrumentedTest {
         assertTrue(events.any {
             it.eventType == GlafiraCoreTraceEventType.POLICY_CHECKED &&
                 it.actionCode == "DRY_RUN_PREVIEW_STORED"
+        })
+        assertTrue(events.any {
+            it.eventType == GlafiraCoreTraceEventType.REVIEW_ACCEPTED &&
+                it.actionCode == "DRY_RUN_REVIEW_ACCEPTED" &&
+                it.actorType == GlafiraCoreTraceActorType.OWNER
         })
     }
 
