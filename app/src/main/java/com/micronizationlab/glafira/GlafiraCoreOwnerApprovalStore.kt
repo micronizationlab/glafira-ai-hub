@@ -325,9 +325,7 @@ class GlafiraCoreOwnerApprovalStore(
     @Synchronized
     fun pendingApprovals(nowMillis: Long = System.currentTimeMillis(), limit: Int = 100): List<GlafiraPendingActionApproval> {
         require(limit in 1..100)
-        val database = db
-        database.beginTransaction()
-        try {
+        return inDatabaseTransaction { database ->
             database.update(
                 "core_action_approvals",
                 ContentValues().apply { put("status", EXPIRED) },
@@ -353,31 +351,28 @@ class GlafiraCoreOwnerApprovalStore(
                     GlafiraTaskState.WAITING_FOR_OWNER.databaseValue, EXPIRED, nowMillis
                 )
             )
-            database.setTransactionSuccessful()
-        } finally {
-            database.endTransaction()
-        }
-        val rows = database.query(
-            "core_action_approvals",
-            arrayOf("task_id", "action_hash", "requested_scopes", "requested_at", "expires_at", "owner_core_id", "owner_generation"),
-            "status = ? AND expires_at > ?", arrayOf(PENDING, nowMillis.toString()),
-            null, null, "requested_at ASC", limit.toString()
-        ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) add(PendingRow(
-                    cursor.getString(0), cursor.getString(1), cursor.getString(2),
-                    cursor.getLong(3), cursor.getLong(4), cursor.getString(5), cursor.getLong(6)
-                ))
+            val rows = database.query(
+                "core_action_approvals",
+                arrayOf("task_id", "action_hash", "requested_scopes", "requested_at", "expires_at", "owner_core_id", "owner_generation"),
+                "status = ? AND expires_at > ?", arrayOf(PENDING, nowMillis.toString()),
+                null, null, "requested_at ASC", limit.toString()
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(PendingRow(
+                        cursor.getString(0), cursor.getString(1), cursor.getString(2),
+                        cursor.getLong(3), cursor.getLong(4), cursor.getString(5), cursor.getLong(6)
+                    ))
+                }
             }
-        }
-        return rows.mapNotNull { row ->
-            val task = taskStore.getTask(row.taskId) ?: return@mapNotNull null
-            if (task.state != GlafiraTaskState.WAITING_FOR_OWNER ||
-                !ownershipMatches(task, row.ownerCoreId, row.ownerGeneration)
-            ) return@mapNotNull null
-            val json = JSONArray(row.scopesJson)
-            val scopes = buildSet { for (i in 0 until json.length()) add(json.getString(i)) }
-            GlafiraPendingActionApproval(task, row.actionHash, scopes, row.requestedAt, row.expiresAt)
+            rows.mapNotNull { row ->
+                val task = taskStore.getTask(row.taskId) ?: return@mapNotNull null
+                if (task.state != GlafiraTaskState.WAITING_FOR_OWNER ||
+                    !ownershipMatches(task, row.ownerCoreId, row.ownerGeneration)
+                ) return@mapNotNull null
+                val json = JSONArray(row.scopesJson)
+                val scopes = buildSet { for (i in 0 until json.length()) add(json.getString(i)) }
+                GlafiraPendingActionApproval(task, row.actionHash, scopes, row.requestedAt, row.expiresAt)
+            }
         }
     }
 
