@@ -31,6 +31,7 @@ class GlafiraTaskStore(context: Context) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
     GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraCoreTaskResultPersistence {
     private val appContext = context.applicationContext
+    private val coreTraceStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { GlafiraCoreTraceStore(this) }
 
     /** The caller holds maintenance and pauses pending delivery before deleting project files. */
     @Synchronized
@@ -393,7 +394,7 @@ class GlafiraTaskStore(context: Context) :
                 SQLiteDatabase.CONFLICT_IGNORE
             )
             if (insertedId != -1L) {
-                GlafiraCoreTraceStore(this).appendInTransaction(
+                coreTraceStore.appendInTransaction(
                     db,
                     GlafiraCoreTraceDraft(
                         projectId = task.projectId,
@@ -838,7 +839,7 @@ class GlafiraTaskStore(context: Context) :
                 arrayOf(taskId, candidate.state.databaseValue)
             )
             check(changed == 1) { "Task claim lost its transactional state check." }
-            GlafiraCoreTraceStore(this).appendInTransaction(
+            coreTraceStore.appendInTransaction(
                 db,
                 GlafiraCoreTraceDraft(
                     projectId = candidate.projectId,
@@ -940,7 +941,7 @@ class GlafiraTaskStore(context: Context) :
                 GlafiraTaskState.FAILED -> GlafiraCoreTraceEventType.TASK_FAILED
                 GlafiraTaskState.CANCELLED -> GlafiraCoreTraceEventType.TASK_CANCELLED
             }
-            GlafiraCoreTraceStore(this).appendInTransaction(
+            coreTraceStore.appendInTransaction(
                 db,
                 GlafiraCoreTraceDraft(
                     projectId = task.projectId,
@@ -1023,7 +1024,7 @@ class GlafiraTaskStore(context: Context) :
                     put("completed_at", nowMillis)
                 }
             )
-            GlafiraCoreTraceStore(this).appendInTransaction(
+            coreTraceStore.appendInTransaction(
                 db,
                 GlafiraCoreTraceDraft(
                     projectId = task.projectId,
