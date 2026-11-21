@@ -38,6 +38,8 @@ public interface IAgentExecutionJournal
         string taskId, string leaseId, long fencingToken, CancellationToken cancellationToken);
     Task<bool> ClearExpiredActiveLeaseAsync(
         string taskId, string leaseId, long fencingToken, long nowEpochMs, CancellationToken cancellationToken);
+    Task<bool> DiscardStaleResultAsync(
+        string taskId, string leaseId, long fencingToken, CancellationToken cancellationToken);
 }
 
 /// <summary>Machine-bound DPAPI protection for the Agent's local execution journal.</summary>
@@ -130,9 +132,21 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             var existing = snapshot.ActiveLeases.SingleOrDefault(item => item.TaskId == lease.TaskId);
             if (existing is not null)
             {
-                if (existing.LeaseId == lease.LeaseId && existing.FencingToken == lease.FencingToken)
-                    return;
-                throw new InvalidDataException("AGENT_ACTIVE_LEASE_CONFLICT");
+                if (existing.LeaseId != lease.LeaseId || existing.FencingToken != lease.FencingToken ||
+                    existing.IdempotencyKey != lease.IdempotencyKey ||
+                    existing.PayloadSha256 != lease.PayloadSha256 ||
+                    existing.TaskType != lease.TaskType)
+                    throw new InvalidDataException("AGENT_ACTIVE_LEASE_CONFLICT");
+                if (lease.LeaseExpiresAtEpochMs > existing.LeaseExpiresAtEpochMs)
+                {
+                    var renewed = snapshot with
+                    {
+                        ActiveLeases = snapshot.ActiveLeases
+                            .Select(item => item.TaskId == lease.TaskId ? lease : item).ToArray()
+                    };
+                    await WriteSnapshotAsync(renewed, cancellationToken).ConfigureAwait(false);
+                }
+                return;
             }
             if (snapshot.ActiveLeases.Count >= MaximumActiveLeases)
                 throw new InvalidDataException("AGENT_ACTIVE_LEASE_LIMIT");
@@ -229,6 +243,32 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             var next = snapshot with
             {
                 ActiveLeases = snapshot.ActiveLeases.Where(item => item.TaskId != taskId).ToArray()
+            };
+            await WriteSnapshotAsync(next, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<bool> DiscardStaleResultAsync(
+        string taskId,
+        string leaseId,
+        long fencingToken,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(taskId) || string.IsNullOrWhiteSpace(leaseId) || fencingToken <= 0)
+            throw new ArgumentException("A complete task/lease/fence identity is required.");
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var snapshot = await ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            var pending = snapshot.PendingResults.SingleOrDefault(item => item.Lease.TaskId == taskId);
+            if (pending is null) return false;
+            if (pending.Lease.LeaseId != leaseId || pending.Lease.FencingToken != fencingToken)
+                throw new InvalidDataException("AGENT_STALE_RESULT_IDENTITY_MISMATCH");
+            var next = snapshot with
+            {
+                PendingResults = snapshot.PendingResults.Where(item => item.Lease.TaskId != taskId).ToArray()
             };
             await WriteSnapshotAsync(next, cancellationToken).ConfigureAwait(false);
             return true;
