@@ -214,6 +214,13 @@ class GlafiraCoreTraceStoreInstrumentedTest {
         val projectId = "trace-lifecycle-project"
         val db = taskStore.writableDatabase
 
+        assertThrows(IllegalArgumentException::class.java) {
+            taskStore.enqueue(task("unsafe task id", projectId))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            taskStore.enqueue(task("safe-task-id", "unsafe project id"))
+        }
+
         db.execSQL("""
             CREATE TRIGGER fail_trace_task_create
             BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
