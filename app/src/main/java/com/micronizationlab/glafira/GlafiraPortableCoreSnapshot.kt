@@ -183,7 +183,11 @@ internal class GlafiraPortableCoreSnapshot(
                     require(GlafiraCoreTraceEvent.isSafeIdentifier(project))
                     val taskId = row.get("task_id")
                     if (taskId !== JSONObject.NULL) {
-                        require(projects[taskId as String] == project) { "Trace event task/project mismatch." }
+                        val taskIdValue = taskId as String
+                        require(GlafiraCoreTraceEvent.isSafeIdentifier(taskIdValue))
+                        // Deleted tasks retain their append-only audit events; if the task is
+                        // still present in this snapshot, its project binding must still match.
+                        projects[taskIdValue]?.let { require(it == project) { "Trace event task/project mismatch." } }
                     }
                     require(GlafiraCoreTraceEvent.isSafeIdentifier(row.getString("event_id")))
                     require(GlafiraCoreTraceEvent.isSafeIdentifier(row.getString("correlation_id")))
