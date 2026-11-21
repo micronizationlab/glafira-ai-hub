@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `2f0f29e5c0cc67d55e7f366fc3510a5955ce6f97` (refresh before each integration).  
+**Baseline main for this ledger revision:** `894a0ace84c045692c9fb21df6538cc4d6086d61` (refresh before each integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -20,17 +20,17 @@
 1. [x] Снять baseline main SHA, open PR/issues, CI runs и артефакты.
 2. [x] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
 3. [x] Сверить PR #71/#104/#119/#122 с main и выделить только уникальные Core изменения.
-4. [ ] Зафиксировать единый task state machine и допустимые переходы.
+4. [x] Зафиксировать единый task state machine и допустимые переходы. PR #259 merged (`26ee94222811c5669d4f8d6d89b13f0cfb0be4dc`); exact-head CI run `44855763242` completed successfully, with exhaustive persisted-state transition and round-trip tests.
 5. [x] Проверить все SQLite migrations на upgrade с поддерживаемых версий.
 6. [x] Проверить concurrent claim из независимых SQLite connections.
 7. [x] Доказать отсутствие двойной выдачи task при конкуренции N workers.
-8. [ ] Разделить maintenance gate и locks отдельных задач.
+8. [x] Разделить maintenance gate и locks отдельных задач.
 9. [x] Добавить cancellation и тест cancel-vs-complete race.
-10. [ ] Проверить DAG: cycles, missing nodes, cross-project edges, duplicate edges.
+10. [x] Проверить DAG: cycles, missing nodes, cross-project edges, duplicate edges.
 11. [x] Проверить join/unblock только после успешных predecessor tasks.
 12. [x] Добавить fairness/starvation bounds между проектами.
-13. [ ] Проверить bounded worker pool, backpressure и configurable concurrency.
-14. [ ] Проверить stale worker fencing после lease expiry и повторной выдачи.
+13. [x] Проверить bounded worker pool, backpressure и configurable concurrency.
+14. [x] Проверить stale worker fencing после lease expiry и повторной выдачи.
 15. [x] Добавить crash recovery для каждого non-terminal state.
 16. [ ] Сделать failure injection между claim, handler, progress, result и ACK.
 17. [ ] Разделить provider outcomes: rejected, unsent, unknown; не replay-ить unknown blindly.
@@ -206,10 +206,14 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `2f0f29e5c0cc67d55e7f366fc3510a5955ce6f97`.
+**Refreshed main after this wave:** `894a0ace84c045692c9fb21df6538cc4d6086d61`.
 
 ### Verified complete
 
+- Step 8: dedicated `GlafiraCoreMaintenanceGate` keeps exclusive maintenance/snapshot work separate from task execution permits; `maintenanceWaitsForHandlersAndBlocksNewExecutionLeases` verifies drain-and-block semantics.
+- Step 10: complete. PR #247 (`4d1ab98a334bc0fa60d17a2c8466512329a419b8`) added missing/duplicate dependency edge tests at persistent store, planner and durable-plan boundaries. Exact-head managed emulator: 70 test cases, 0 failures, 0 errors, 0 skipped; Android JVM, APK and shared contract checks passed.
+- Step 13: bounded, dynamically configurable concurrency is implemented by `GlafiraCoreExecutionLimiter` and `GlafiraCoreDrainWorker`; `independentTasksRunConcurrentlyAndAreClaimedOnlyOnce` proves a configured limit of two is respected under five concurrent callers.
+- Step 14: Hub lease expiry/reissue is fenced by monotonic fencing tokens; `StaleFencingTokenCannotCompleteReissuedLease` proves an old worker cannot complete a replacement lease. Exact-head Hub tests/build passed in PR #238.
 - Step 5: SQLite upgrade coverage spans every supported predecessor version v1–v8 into v9. PR #245 exact-head emulator run `44851572341`: 68 test cases, 0 failures, 0 errors, 0 skipped.
 - Steps 2–3: historical recovery-stack map and file/commit reconciliation are documented in `docs/CORE_RECOVERY_STACK_RECONCILIATION.md`. PRs #71/#104/#119/#122 are confirmed as stale/diverged stacks; their useful Core concurrency, dependency, fairness and task-plan features are already represented in mainline code. The obsolete Android-hosted Desktop task claim/result path is intentionally not transplanted because it conflicts with the current Windows Hub / dual-Core ownership architecture.
 - Step 15: non-terminal restart behavior is covered across queued, running safe-read, uncertain-write, waiting-for-network, waiting-for-owner and retry-scheduled states; terminal states remain immutable after reopen.
@@ -227,8 +231,9 @@
 
 ### In progress
 
+- Step 4: state mapping is documented in `docs/GLAFIRA_TASK_STATE_MODEL.md`, but code consolidation remains open: Hub has no distinct `Cancelled` state, Core `WAITING_FOR_OWNER` carries multiple reason classes, and canonical result reconciliation is not yet wired.
+- Step 80 compatibility: complete. PR #254 (`894a0ace84c045692c9fb21df6538cc4d6086d61`) proves old DPAPI journals without `PendingProgresses` still load and upgrade on write. Exact-head Windows Agent tests: 73 passed, 0 failed; compile, shared contract conformance and Windows packages passed.
 - Step 5: complete. PR #240 added v7→v9 and v8→v9 migration cases; PR #245 added v1/v2. Existing v3–v6 cases plus the new v1/v2/v7/v8 cases all passed exact-head managed Android emulator acceptance. PR #245 merged as `b564771b8116b487bb6adceb3055c4192cc29d98`; its emulator report contained 68 cases, 0 failures, 0 errors and 0 skipped.
-- Step 10: PR #247 adds explicit missing-predecessor and duplicate-edge tests at store, planner and durable-plan boundaries; Android JVM and emulator validation are pending.
 - Step 16: failure-injection coverage is improved by PR #244 progress-ACK restart tests and PR #250 terminal-result process-restart tests, but the full crash matrix across every Core/provider/trace boundary is still open.
 - Step 9: complete. PR #240's independent-connection cancellation-vs-result-commit race passed on managed emulator.
 - Step 15: complete. Current Core restart tests cover queued, running safe-read, uncertain-write, waiting-for-network, waiting-for-owner, retry-scheduled and terminal tasks across reopen/recovery; PR #240's emulator run executed the regression suite.
@@ -245,3 +250,19 @@
 - PR #227 merged as `14fba6f6a4e83dfba5a7177b4d25cea846d433c3`: restore regression proves RUNNING tasks return to owner review and source-device leases/nodes do not transfer.
 - PR #229 merged as `d11afe70372f0dcf6215671ae317a2150711cad1`: this 150-step plan is the ordered execution ledger.
 - Historical Core PRs #71/#104/#119/#122 are not merge candidates as stacks; current main contains newer versions of overlapping concurrency, maintenance, dependency, fairness and durable plan code. Issue #91 remains open for remaining Core acceptance gaps.
+
+
+## New owner-directed workstream — identity, autonomy, continuity and updates (2026-11-21)
+
+Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. This workstream is added without displacing the existing P0/P1 order; execute its independent design/security slices in parallel and schedule implementation by dependency.
+
+- [ ] Owner identity: trusted immutable-by-chat policy for Корчагин Валерий Вячеславович; only the authenticated owner receives the address `папа`; exact canonical answer; multi-account isolation and prompt-injection tests.
+- [ ] Credential autonomy: OS-backed vault adapters, local credential broker, allowlisted browser/app automation, least-privilege grants, audit/revocation and owner confirmation for high-risk actions.
+- [ ] Durable cross-device continuation: conversation branch/checkpoint IDs, authoritative history re-read before resume, task persistence independent of initiating UI, idempotent result/ACK reconciliation.
+- [ ] Dynamic group membership: variable-size device registry, heartbeat freshness, lease-backed coordinator election, fencing, split-brain and offline-peer handling.
+- [ ] Update trust: signed release manifest, owner signing authority, platform/product/version/hash checks, compatibility and rollback policy.
+- [ ] Windows update chain: owner release → Windows Desktop → verified Windows Agent distribution; cached authorized source failover only.
+- [ ] Mobile update UX: Android first Settings tab bottom action `Обновление` with small installed-version label; signed package verification and OS installer handoff. iOS uses App Store/TestFlight/MDM-supported update path, never silent self-install.
+- [ ] Fleet and physical acceptance: variable node count, network partition, stale leader, revoked node, interrupted update, rollback and real-device installation tests.
+
+**Important boundaries:** task owner Core, Windows fleet coordinator and update source are distinct roles. No device becomes authority solely because another is offline. Passwords never enter prompts/logs/Git/backups in plaintext. External side effects with unknown outcomes are never blindly replayed. A step is complete only after code plus exact-head tests and required acceptance evidence.

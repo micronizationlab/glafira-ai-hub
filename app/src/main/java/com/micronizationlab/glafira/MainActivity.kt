@@ -47,6 +47,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.util.*
 import kotlin.math.PI
 import kotlin.math.cos
@@ -590,6 +591,9 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val chatContextAssembler = remember(context.filesDir) {
         ProjectChatContextAssembler(context.filesDir) { key -> loadHistory(context, key) }
     }
+    val citationManifestStore = remember(context.applicationContext) {
+        GlafiraContextCitationManifestRuntime.store(context)
+    }
     var showKnowledgeImportDialog by remember { mutableStateOf(false) }
     var showKnowledgePreview by remember { mutableStateOf(false) }
     var knowledgePreview by remember { mutableStateOf<KnowledgeContextPreview?>(null) }
@@ -602,6 +606,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var approvedContextQuery by remember(project.id) { mutableStateOf<String?>(null) }
     var approvedKnowledgeSources by remember(project.id) { mutableStateOf(emptySet<KnowledgeSourceRef>()) }
     var approvedChatSources by remember(project.id) { mutableStateOf(emptySet<ChatContextSourceRef>()) }
+    var visibleCitationManifest by remember { mutableStateOf<ContextCitationManifest?>(null) }
 
     val recipientName = if (agent.n == "ГЛАФИРА") {
         loadGlafiraPrimaryProvider(context).displayName
@@ -613,6 +618,17 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
         projectId = ProjectIdentifier(project.id),
         maximumClassification = CoreDataClassification.RESTRICTED
     )
+    val citationAccess = ContextCitationAccess(ProjectIdentifier(project.id), "local-owner")
+
+    fun openCitationSource(sourceUri: String) {
+        val opened = runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, android.net.Uri.parse(sourceUri))
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            )
+        }.isSuccess
+        if (!opened) ToastHelper.short(context, "Источник больше недоступен на устройстве")
+    }
 
     fun loadKnowledgePreview() {
         val query = inputText.trim()
@@ -778,7 +794,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             return
         }
         val now = Date()
-        val projectContext = if (
+        val selectedChatPreview = if (
             approvedContextQuery == text.trim() && approvedChatSources.isNotEmpty()
         ) {
             val preview = runCatching {
@@ -796,23 +812,30 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 ToastHelper.short(context, "Один из выбранных чатов изменился. Проверьте контекст заново.")
                 return
             }
-            preview.renderForProvider()
-        } else ""
-        val knowledgeContext = if (
+            preview
+        } else null
+        val projectContext = selectedChatPreview?.renderForProvider().orEmpty()
+        val selectedKnowledgePreview = if (
             approvedContextQuery == text.trim() && approvedKnowledgeSources.isNotEmpty()
         ) {
-            runCatching {
+            val preview = runCatching {
                 knowledgePreviewService.preview(
                     query = text.trim(),
                     recipient = recipientName,
                     access = knowledgeAccess,
                     includedSources = approvedKnowledgeSources
-                ).renderForProvider()
+                )
             }.getOrElse {
                 ToastHelper.short(context, "Не удалось проверить выбранный контекст. Сообщение не отправлено.")
                 return
             }
-        } else ""
+            if (preview.citations.map { it.source }.toSet() != approvedKnowledgeSources) {
+                ToastHelper.short(context, "Один из выбранных документов изменился. Проверьте контекст заново.")
+                return
+            }
+            preview
+        } else null
+        val knowledgeContext = selectedKnowledgePreview?.renderForProvider().orEmpty()
         val fullPrompt = listOf(agent.prompt, projectContext, knowledgeContext)
             .filter { it.isNotBlank() }
             .joinToString("\n\n")
@@ -823,16 +846,51 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now),
             systemPrompt = fullPrompt
         )
+        val citationManifest = if (selectedKnowledgePreview != null || selectedChatPreview != null) {
+            ContextCitationManifest(
+                operationId = pending.id,
+                projectId = ProjectIdentifier(project.id),
+                recipient = recipientName,
+                createdAt = Instant.ofEpochMilli(now.time),
+                documents = selectedKnowledgePreview?.citations.orEmpty().map { citation ->
+                    DocumentCitationReference(
+                        citation.source.sourceId.value,
+                        citation.source.version,
+                        citation.title,
+                        citation.sourceUri,
+                        citation.classification
+                    )
+                },
+                chats = selectedChatPreview?.citations.orEmpty().map { citation ->
+                    ChatCitationReference(
+                        citation.source.sourceId,
+                        citation.source.contentVersion,
+                        citation.agentName,
+                        citation.classification
+                    )
+                }
+            )
+        } else null
         try {
+            // Source provenance must be durable before the provider operation can begin.
+            citationManifest?.let { citationManifestStore.put(it, citationAccess) }
             // Outbox precedes the call; a process death cannot erase the operation.
-            addToPendingQueue(context, pending)
+            try {
+                addToPendingQueue(context, pending)
+            } catch (error: Exception) {
+                citationManifest?.let { citationManifestStore.delete(pending.id, citationAccess) }
+                throw error
+            }
             messages = appendPendingUserMessage(context, pending)
             if (inputText == text) {
                 clearDraft(context, project.id, agent.n)
                 inputText = ""
             }
+            approvedContextQuery = null
+            approvedKnowledgeSources = emptySet()
+            approvedChatSources = emptySet()
         } catch (error: Exception) {
-            ToastHelper.short(context, "Не удалось сохранить сообщение. Черновик оставлен.")
+            ToastHelper.short(context, "Не удалось сохранить сообщение и его источники. Черновик оставлен.")
             return
         }
         pendingMessages = pendingMessages + pending
@@ -1012,6 +1070,50 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             },
             dismissButton = {
                 TextButton(onClick = { showKnowledgePreview = false }) { Text("НАЗАД") }
+            }
+        )
+    }
+
+    visibleCitationManifest?.let { manifest ->
+        AlertDialog(
+            onDismissRequest = { visibleCitationManifest = null },
+            title = { Text("Источники ответа") },
+            text = {
+                Column(Modifier.heightIn(max = 520.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    Text("Получатель: ${manifest.recipient}", fontSize = 11.sp, color = Tx)
+                    Text("Операция: ${manifest.operationId}", fontSize = 9.sp, color = Tx)
+                    if (manifest.documents.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("Документы", fontWeight = FontWeight.Bold)
+                        manifest.documents.forEach { citation ->
+                            Text(
+                                "${citation.title} · ${citation.sourceId} · v${citation.version} · ${citation.classification}",
+                                fontSize = 11.sp,
+                                color = Gr,
+                                modifier = Modifier
+                                    .semantics { contentDescription = "Открыть источник ${citation.title}" }
+                                    .clickable { openCitationSource(citation.sourceUri) }
+                                    .padding(vertical = 5.dp)
+                            )
+                        }
+                    }
+                    if (manifest.chats.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("Чаты проекта", fontWeight = FontWeight.Bold)
+                        manifest.chats.forEach { citation ->
+                            Text(
+                                "${citation.agentName} · ${citation.sourceId} · ${citation.contentVersion.take(12)} · ${citation.classification}",
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(vertical = 5.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Сохранены только идентификаторы и версии источников; выдержки и текст запроса сюда не записываются.", fontSize = 10.sp, color = Tx)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { visibleCitationManifest = null }) { Text("ЗАКРЫТЬ") }
             }
         )
     }
@@ -1200,6 +1302,27 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 Text(msg.time, color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 2.dp))
                                 if (!msg.isUser) {
                                     Spacer(Modifier.width(6.dp))
+                                    if (msg.operationId.isNotBlank() && !msg.operationId.endsWith(":partial")) {
+                                        Text(
+                                            "📚",
+                                            fontSize = 10.sp,
+                                            modifier = Modifier
+                                                .semantics { contentDescription = "Показать источники ответа" }
+                                                .clickable {
+                                                    scope.launch {
+                                                        val manifest = withContext(Dispatchers.IO) {
+                                                            citationManifestStore.get(msg.operationId, citationAccess)
+                                                        }
+                                                        if (manifest == null) {
+                                                            ToastHelper.short(context, "Для этого ответа источники проекта не использовались")
+                                                        } else {
+                                                            visibleCitationManifest = manifest
+                                                        }
+                                                    }
+                                                }
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                    }
                                     Text(
                                         if (speakingIndex == realIdx) "⏹" else "🔊",
                                         fontSize = 10.sp,

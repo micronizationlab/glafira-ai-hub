@@ -12,6 +12,9 @@ suspend fun deleteProject(context: Context, project: Project): List<Project> =
                 require(current.size > 1) { "Нельзя удалить последний проект." }
                 GlafiraCoreRuntimeOwner.get(context).taskStore.deleteFinishedProject(project.id)
                 PendingMessageStore(context.filesDir).deleteProject(project.id)
+                GlafiraContextCitationManifestRuntime.store(context).deleteProject(
+                    ContextCitationAccess(ProjectIdentifier(project.id), "local-owner")
+                )
                 deleteProjectHistory(context, project.id)
                 val prefs = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
                 val encodedId = Base64.getUrlEncoder().withoutPadding().encodeToString(project.id.toByteArray(Charsets.UTF_8))

@@ -47,19 +47,9 @@ class BackupSettingsSmokeTest {
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
             assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
             saveButton!!.click()
-            var guidance = device.wait(
-                Until.findObject(By.textContains("Сначала выбери папку")), 1_000)
-            repeat(8) {
-                if (guidance == null) {
-                    device.swipe(
-                        device.displayWidth / 2, device.displayHeight * 3 / 4,
-                        device.displayWidth / 2, device.displayHeight / 4, 12
-                    )
-                    guidance = device.wait(
-                        Until.findObject(By.textContains("Сначала выбери папку")), 1_000)
-                }
-            }
-            assertNotNull("Missing-folder guidance was not shown after scrolling", guidance)
+            val guidance = device.wait(
+                Until.findObject(By.textContains("Сначала выбери папку")), 3_000)
+            assertNotNull("Missing-folder guidance was not shown beside the manual backup action", guidance)
         } finally {
             scenario.close()
         }

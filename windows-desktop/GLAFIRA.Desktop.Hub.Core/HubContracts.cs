@@ -13,6 +13,7 @@ public enum HubTaskState
     Leased,
     Succeeded,
     Failed,
+    Cancelled,
     OutcomeUnknown
 }
 
