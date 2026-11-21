@@ -56,6 +56,18 @@ private fun deliverSavedResult(context: Context, message: PendingMessage) {
     PendingMessageStore(context.filesDir).delivered(message.id)
 }
 
+/** Cancellation after a remote request starts is ambiguous; keep it quarantined until owner review. */
+internal fun markPendingCancellationUncertain(store: PendingMessageStore, operationId: String) {
+    if (store.all().firstOrNull { it.id == operationId }?.state == PendingDeliveryState.IN_FLIGHT) {
+        store.failed(
+            operationId,
+            "Запрос прерван. Результат у провайдера неизвестен.",
+            retryable = false,
+            unknown = true
+        )
+    }
+}
+
 internal suspend fun executePendingMessage(context: Context, pending: PendingMessage, prompt: String) {
     if (isPendingDispatchBlocked(context)) return
     val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
@@ -90,8 +102,7 @@ internal suspend fun executePendingMessage(context: Context, pending: PendingMes
         }
     } catch (cancelled: CancellationException) {
         withContext(NonCancellable + Dispatchers.IO) {
-            if (store.all().firstOrNull { it.id == claimed.id }?.state == PendingDeliveryState.IN_FLIGHT)
-                store.failed(claimed.id, "Запрос прерван. Результат у провайдера неизвестен.", false, true)
+            markPendingCancellationUncertain(store, claimed.id)
         }
         throw cancelled
     } catch (error: Exception) {
