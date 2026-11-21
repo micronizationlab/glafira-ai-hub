@@ -143,3 +143,41 @@ GLAFIRA Connect mobile invitation bootstrap and adaptive P2P/Wi-Fi route migrati
 - 2026-11-21: initial central multi-agent coordination contract created. Links the existing collaborator handoff, roadmap and dispatcher rule; formalizes per-agent status files and 20 × 150 evidence-based cycles.
 - 2026-11-21: clarified mandatory cycle order (capacity audit → parallel portfolio selection → execution → evidence review → fresh reassessment) and the stop-after-cycle-20 whole-project audit, including legacy builds/branches and previously discussed but unrecorded requirements.
 - 2026-11-21: added a binding free-only resource policy; paid plans, paid APIs and mandatory subscriptions cannot be required without explicit owner approval.
+
+
+## 11. Dedicated cross-cutting workstreams
+
+The owner has approved separating two independent workstreams so invited AI accounts can own them without interfering with Core/Bridge/Desktop implementation. Their account owners are not assigned yet; do not invent participant identities.
+
+### GLAFIRA DESIGN — unified interface design for all four applications
+
+**Scope owner:** one designated design participant/account when assigned.
+
+**Product surfaces covered together:**
+- Android application.
+- Native iOS application.
+- Windows Desktop application.
+- Windows background Agent surfaces, where user-facing.
+
+**Owns:** unified visual language and design system; navigation and information architecture; layouts, interaction patterns, responsive behavior, typography, colors, iconography, component states, accessibility guidance, motion/feedback specifications, screen flows, prototypes and implementation-ready UI specifications.
+
+**Visual direction already established by the owner:** ICQ 2003 character and flower motif combined with a modern Apple/macOS gloss finish. Keep the four applications recognizably one GLAFIRA family while respecting each platform's native conventions.
+
+**Boundary:** the design participant owns design artifacts and specifications (initially under `docs/design/` and `design/`). It does not own Core, Bridge, provider logic, database schemas, runtime behavior, or platform build architecture. It must not independently rewrite production UI source or change API/contracts; implementation teams consume approved specifications. Any cross-boundary change is coordinated through central GLAFIRA and the owner.
+
+### GLAFIRA QA & QUALITY INTELLIGENCE — independent quality engineering
+
+**Scope owner:** one designated QA participant/account when assigned.
+
+**Owns:** cross-platform test strategy; requirement-to-test traceability; regression and acceptance matrices; CI health and exact-head status reconciliation; job/test log diagnosis; test-count and artifact verification; failure-injection scenarios; accessibility and usability acceptance; release-readiness evidence and risk reports.
+
+**Boundary:** QA may add focused tests, test fixtures and isolated CI diagnostics in its reserved branch/files. It does not silently change production behavior to make tests green, weaken assertions, mark skipped tests as passed, or merge other participants' work. A production-code defect is reported to its implementation owner or fixed in a separate explicitly coordinated patch.
+
+### Reservation and protection
+
+- The two workstreams are independent of each other and may progress while higher-priority runtime work waits for CI, provided they do not consume a blocking resource or modify the same files.
+- Once a participant is assigned, record exact ownership, directories, branch and acceptance criteria in the shared task board and that participant's registration file.
+- Other participants must not edit the reserved design artifacts or QA-owned test/CI scope without coordination.
+- These text rules are organizational controls, not GitHub access-control enforcement. Technical enforcement requires suitable repository permissions, CODEOWNERS with required review rules, and branch protection/rulesets. The current `main` branch protection state must be verified and enabled by a repository administrator before claiming hard isolation.
+
+- 2026-11-21: added two owner-approved independent cross-cutting workstreams: GLAFIRA DESIGN (unified design for Android/iOS/Desktop/Agent) and GLAFIRA QA & Quality Intelligence, with explicit ownership boundaries and technical-enforcement caveat.
