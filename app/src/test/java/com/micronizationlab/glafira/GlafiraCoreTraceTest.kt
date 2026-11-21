@@ -5,12 +5,13 @@ import org.junit.Test
 
 class GlafiraCoreTraceTest {
     private fun draft(
+        projectId: String = "project-001",
         actorId: String = "owner-001",
         actionCode: String = "task.started",
         targetId: String? = "task-001",
         evidenceRefs: List<String> = listOf("artifact-001")
     ) = GlafiraCoreTraceDraft(
-        projectId = "project-001",
+        projectId = projectId,
         taskId = "task-001",
         correlationId = "correlation-001",
         occurredAtMillis = 1_800_000_000_000L,
@@ -40,6 +41,16 @@ class GlafiraCoreTraceTest {
         assertEquals(listOf("redacted"), event.evidenceRefs)
         assertTrue(event.redactionApplied)
         assertFalse(event.secretValuesStored)
+    }
+
+    @Test
+    fun invalidProjectOrTaskIdentityIsRejectedRatherThanRedactedIntoAnotherScope() {
+        assertThrows(IllegalArgumentException::class.java) {
+            GlafiraCoreTraceRedactor.redact(draft(projectId = "owner@example.com"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            GlafiraCoreTraceRedactor.redact(draft().copy(taskId = "https://example.com/task"))
+        }
     }
 
     @Test
