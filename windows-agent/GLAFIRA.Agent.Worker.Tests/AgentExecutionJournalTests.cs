@@ -66,6 +66,42 @@ public sealed class AgentExecutionJournalTests : IDisposable
     }
 
     [Fact]
+    public async Task ProgressOutboxSurvivesReloadAndRequiresExactLeaseFenceAck()
+    {
+        var journal = CreateJournal();
+        var lease = Lease();
+        await journal.SaveActiveLeaseAsync(lease, CancellationToken.None);
+        await journal.PersistProgressAsync(
+            new AgentPendingProgress(lease, 25, "processing safely"), CancellationToken.None);
+
+        var pending = Assert.Single((await journal.LoadAsync(CancellationToken.None)).PendingProgresses);
+        Assert.Equal("processing safely", pending.ProgressMessage);
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            journal.AcknowledgeProgressAsync(lease.TaskId, lease.LeaseId, lease.FencingToken + 1, CancellationToken.None));
+        Assert.Single((await journal.LoadAsync(CancellationToken.None)).PendingProgresses);
+
+        Assert.True(await journal.AcknowledgeProgressAsync(
+            lease.TaskId, lease.LeaseId, lease.FencingToken, CancellationToken.None));
+        Assert.Empty((await journal.LoadAsync(CancellationToken.None)).PendingProgresses);
+    }
+
+    [Fact]
+    public async Task TerminalResultAtomicallySupersedesUnacknowledgedProgress()
+    {
+        var journal = CreateJournal();
+        var lease = Lease();
+        await journal.SaveActiveLeaseAsync(lease, CancellationToken.None);
+        await journal.PersistProgressAsync(
+            new AgentPendingProgress(lease, 50, "still running"), CancellationToken.None);
+        await journal.PersistCompletedResultAsync(Pending(lease), CancellationToken.None);
+
+        var snapshot = await journal.LoadAsync(CancellationToken.None);
+        Assert.Empty(snapshot.ActiveLeases);
+        Assert.Empty(snapshot.PendingProgresses);
+        Assert.Single(snapshot.PendingResults);
+    }
+
+    [Fact]
     public async Task SameLeaseCanPersistServerConfirmedRenewedExpiry()
     {
         var journal = CreateJournal();
