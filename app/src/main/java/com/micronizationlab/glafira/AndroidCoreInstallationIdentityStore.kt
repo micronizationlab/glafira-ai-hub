@@ -115,7 +115,7 @@ class AndroidCoreInstallationIdentityStore internal constructor(
             setProperty(KEY_EPOCH, identity.keyEpoch.toString())
             setProperty(KEY_PUBLIC_KEY, identity.publicKeyBase64)
         }
-        val temporary = File(identityFile.parentFile, "$IDENTITY_FILE.tmp")
+        val temporary = File(identityFile.parentFile, "${identityFile.name}.tmp")
         try {
             temporary.outputStream().use { stream ->
                 properties.store(stream, "GLAFIRA local Core identity; do not copy into portable backups")
