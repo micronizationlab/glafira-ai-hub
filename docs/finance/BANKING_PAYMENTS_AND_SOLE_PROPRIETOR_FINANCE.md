@@ -1,38 +1,48 @@
 # GLAFIRA Banking, Payments and Sole-Proprietor Finance
-**Owner-requested capability concept — 2026-11-21**
+**Owner-approved capability concept — 2026-11-21**
 
-See the linked architecture issue for the full threat model and acceptance criteria. This document captures the product intent and mandatory safety boundaries.
+See [Issue #374](https://github.com/micronizationlab/glafira-ai-hub/issues/374) for the full threat model and acceptance criteria. This document captures the product intent and mandatory safety boundaries.
 
-## Primary interaction model: the existing bank app on the owner's smartphone
+## Primary interaction model: maximum permitted autonomy through the owner's existing smartphone bank app
 
-The owner's existing, installed banking application on the smartphone is the primary bank interface. GLAFIRA should assist through that app on the owner's device, rather than requiring the owner to create a separate GLAFIRA bank login or route bank credentials through GLAFIRA.
+The owner's existing, installed banking application on the smartphone is the primary bank interface. GLAFIRA should complete as much of each banking workflow as is technically and legally permitted, minimizing owner involvement. The owner should not have to manually perform routine navigation, searches, data preparation, reconciliation, or downloads when a supported and permitted mechanism can do them.
 
-1. Owner asks GLAFIRA to perform a banking task and identifies the bank/account if needed.
-2. GLAFIRA brings the existing bank app to the foreground and assists with navigation and data entry only to the extent permitted by the bank, Android/iOS platform rules and the app's supported accessibility/deep-link capabilities.
-3. The owner personally enters any credentials, PINs, OTPs and other authentication factors directly in the bank's trusted UI. GLAFIRA must not read, intercept, store, relay or ask the owner to disclose them.
-4. GLAFIRA may locate transactions, prepare payment details, and assist with statement retrieval. Read-only tasks should not require payment authority.
-5. Before any money movement, GLAFIRA presents the complete transaction details. The owner checks the details and personally performs the final bank-native confirmation in the bank app. This is the required confirmation point; GLAFIRA must not press/automate the final authorization control or execute a transfer without the owner's direct action.
-6. GLAFIRA verifies the resulting bank status where the app exposes it, then records the outcome and source evidence. If status is uncertain, it must reconcile before suggesting any retry.
+### Autonomy ladder
 
-Official bank APIs may be added as optional supplementary integrations only after bank-specific verification; they do not replace the smartphone-app-first owner workflow unless the owner explicitly chooses that mode. If a bank prohibits UI automation or does not expose a permitted integration path, GLAFIRA must stop at guidance/manual handoff rather than bypassing the restriction.
+1. **Autonomous preparation and bookkeeping:** GLAFIRA can classify the request, select the configured bank, open the existing bank app, navigate through permitted mechanisms, search transactions, prepare payment/invoice details, reconcile records, organize statements and prepare tax workpapers.
+2. **Permitted deterministic app actions:** GLAFIRA may perform routine navigation and data entry only through bank-supported deep links/intents, documented integration surfaces, official APIs, or another method explicitly permitted by the bank and applicable platform/store policies. It must verify screen/context and field values before proceeding.
+3. **Owner-only authentication:** if the bank requires login, PIN, biometric, OTP, device approval or step-up authentication, the owner completes that step directly in the bank's trusted UI. GLAFIRA does not read, intercept, store, relay or ask the owner to disclose secrets.
+4. **Owner-only final money authorization:** GLAFIRA may prepare the payment and navigate to the final review screen when permitted. The owner must independently review the recipient, destination account, amount, currency, date and purpose, then personally perform the bank's final payment confirmation. GLAFIRA must not trigger the final authorization or transfer.
+5. **Autonomous post-action verification:** after owner confirmation, GLAFIRA checks the resulting status where permitted, records transaction evidence, updates the ledger and reconciles the result. If status is uncertain, it checks bank status before any retry and never blindly repeats a payment.
+
+The default goal is **maximum safe autonomy, not maximum manual interaction**. Owner participation is limited to steps that the bank/platform requires or that authorize a consequential financial action. If the bank prohibits automation or exposes no permitted integration surface, GLAFIRA must use a manual handoff for that step and explain why; it must not bypass the restriction.
+
+## Android / Google Play platform constraint
+
+GLAFIRA is a general-purpose personal assistant, not an accessibility tool whose core purpose is assisting people with disabilities. Therefore, it must not rely on Android AccessibilityService as a general autonomous cross-app agent. Current Google Play policy prohibits Accessibility API use to power apps that autonomously initiate, plan and execute actions/decisions, except for qualifying accessibility tools; non-accessibility uses also have prominent disclosure, affirmative consent and declaration requirements. Prefer narrower supported APIs, documented bank integrations, deep links/intents and explicit owner handoff. Re-check policy before implementation and release.
+
+References:
+- [Google Play — Use of the AccessibilityService API](https://support.google.com/googleplay/android-developer/answer/10964491)
+- [Google Play — Permissions and APIs that access sensitive information](https://support.google.com/googleplay/android-developer/answer/16909972)
+- [Android Developers — AccessibilityService actions](https://developer.android.com/guide/topics/ui/accessibility/views/service)
 
 ## Intended owner workflow
 
-1. Owner tells GLAFIRA to open the existing bank app on the smartphone.
-2. Owner signs in and completes MFA directly in the bank's trusted UI.
-3. GLAFIRA helps search transactions and retrieve statements using permitted app capabilities; owner handles any bank-native confirmation or export step that requires direct interaction.
-4. GLAFIRA categorizes and reconciles transactions, preserving source documents and uncertainty.
-5. GLAFIRA prepares invoices using verified ИП requisites and previews them for approval.
-6. For payments, GLAFIRA prepares the details and guides the owner to the bank's confirmation screen. The owner independently verifies recipient, account, amount, currency and purpose, then personally confirms in the bank app. No unattended transfers and no automated final confirmation.
+1. Owner says, for example, "Find the incoming payment from this customer" or "Prepare a payment to this supplier".
+2. GLAFIRA opens the configured bank app and carries out all permitted navigation/search/data preparation itself.
+3. Owner intervenes only if the bank requests authentication, a security challenge, or direct confirmation.
+4. GLAFIRA retrieves statements and transaction details through permitted capabilities, stores source provenance, categorizes and reconciles the ledger.
+5. GLAFIRA prepares invoices using verified ИП requisites, creates a preview and records delivery/status evidence where permitted.
+6. For a payment, GLAFIRA fills/prepares the details and presents a final review. Owner verifies and personally confirms in the bank app. GLAFIRA then verifies and records the result.
 7. At year end, GLAFIRA prepares a reconciled tax workpaper/export with source statements, categorized totals, missing-document warnings and accountant-review status. It does not silently file or certify a declaration.
 
 ## Hard boundaries
 
-- Existing bank app on the owner's smartphone is the primary interface; no separate GLAFIRA custody of bank credentials.
-- Official APIs/delegated consent are optional supplementary paths only after bank-specific verification. UI assistance is allowed only where the bank permits it and the owner is present.
-- Credentials, PIN, CVV and one-time codes remain inside the bank's own trusted interface. GLAFIRA never requests, captures, stores or forwards them.
-- The owner, not GLAFIRA, performs every final payment confirmation in the bank app. No automation of the final authorization action.
-- No MFA/CAPTCHA/anti-bot/device-binding bypass, hidden payments, unattended transfers or blind retries.
+- Existing bank app on the owner's smartphone is the primary interface.
+- Maximize autonomous routine work only through bank/platform-permitted mechanisms; do not use AccessibilityService as a general autonomous agent.
+- Credentials, PIN, CVV and one-time codes remain inside the bank's trusted interface. GLAFIRA never requests, captures, stores or forwards them.
+- The owner performs every final payment confirmation. No unattended transfers or automated final authorization.
+- No MFA/CAPTCHA/anti-bot/device-binding bypass, hidden payments or blind retries.
 - Default scope is read-only. Payment preparation is distinct from payment authorization.
 - Every prepared payment is bound to immutable details and current owner generation. Any changed amount/beneficiary/account/currency/date requires a fresh owner review.
 - Ambiguous timeouts are reconciled against bank status before any retry.
@@ -41,8 +51,8 @@ Official bank APIs may be added as optional supplementary integrations only afte
 
 ## Architecture building blocks
 
-Smartphone Bank-App Handoff/Assist Adapter; owner-present Session Broker; read-only Transaction/Statement Service; verified ИП Profile and Invoice Service; Payment Draft + Owner Review Gate; Reconciliation/Tax Workpaper Service; immutable Audit/Trace; Android/Desktop/Web coordination adapters.
+Bank Capability Registry; Smartphone Bank-App Handoff/Assist Adapter; owner-present Session Broker; supported deep-link/intent/API adapters; read-only Transaction/Statement Service; verified ИП Profile and Invoice Service; Payment Draft + Owner Review Gate; Reconciliation/Tax Workpaper Service; immutable Audit/Trace; Android/Desktop/Web coordination adapters.
 
-The Android integration must use only permitted platform/app affordances. It must clearly distinguish navigation/data-entry assistance from owner-only sensitive entry and final confirmation. It must fail closed when app state, target fields or transaction details cannot be verified.
+Every bank adapter needs a capability matrix: supported tasks, permitted automation surfaces, owner-intervention points, supported export routes, policy/terms evidence, failure behavior and tested bank-app versions. Unsupported or unverified actions must fail closed and fall back to manual handoff.
 
 No bank adapter or money-moving runtime is enabled merely by writing this specification. Core ownership fencing, durable audit and bank-specific terms/testing are prerequisites.
