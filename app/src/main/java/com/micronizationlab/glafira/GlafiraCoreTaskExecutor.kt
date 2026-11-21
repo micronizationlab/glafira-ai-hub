@@ -86,16 +86,14 @@ class GlafiraCoreTaskExecutor(
                     } else {
                         withContext(dispatcher) {
                             val now = clock()
-                            val claim = if (queue is GlafiraTaskOwnershipExecutionFence) {
-                                queue.claimNextOwned(now)
-                            } else {
-                                queue.claimNext(now)?.let { GlafiraOwnedTaskClaim(it,
-                                    GlafiraTaskOwnershipExecutionToken(it.taskId, "legacy-core-queue", 1L)) }
-                            } ?: return@withContext GlafiraTaskExecutionResult(
+                            val fence = queue as? GlafiraTaskOwnershipExecutionFence
+                            val useOwnershipFence = fence?.ownershipFencingEnabled == true
+                            val ownedClaim = if (useOwnershipFence) fence?.claimNextOwned(now) else null
+                            val task = if (useOwnershipFence) ownedClaim?.task else queue.claimNext(now)
+                            if (task == null) return@withContext GlafiraTaskExecutionResult(
                                 null, GlafiraTaskExecutionStatus.IDLE
                             )
-                            val token = if (queue is GlafiraTaskOwnershipExecutionFence) claim.ownershipToken else null
-                            executeClaimed(claim.task, token, now, effectiveBudget)
+                            executeClaimed(task, ownedClaim?.ownershipToken, now, effectiveBudget)
                         }
                     }
                 }
