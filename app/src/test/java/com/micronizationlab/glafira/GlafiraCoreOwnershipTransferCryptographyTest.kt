@@ -8,7 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.KeyPairGenerator
 import java.security.spec.ECGenParameterSpec
-import java.security.MessageDigest
 
 class GlafiraCoreOwnershipTransferCryptographyTest {
     @Test
