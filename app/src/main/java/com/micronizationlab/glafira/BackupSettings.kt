@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
@@ -305,7 +304,7 @@ fun BackupSettingsSection() {
                         enabled = !busy,
                         modifier = Modifier
                             .weight(1f)
-                            .clearAndSetSemantics {
+                            .semantics(mergeDescendants = true) {
                                 contentDescription = "Создать резервную копию сейчас"
                                 role = Role.Button
                                 if (busy) disabled()
