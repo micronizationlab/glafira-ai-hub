@@ -198,7 +198,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
         } finally {
             archive.delete()
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
         }
     }
 
