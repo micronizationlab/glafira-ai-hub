@@ -33,7 +33,19 @@ The network handle, account ID and invitation token are separate concepts. A hum
 - Bounded relay cost and explicit observability of direct/relay route selection.
 - Clear separation between rendezvous/signaling, durable messaging, and transport.
 
-## 3. Options considered
+## 3. Free-only infrastructure constraint
+
+GLAFIRA Connect must not require a paid Matrix homeserver, paid STUN/TURN provider, rented VPS, metered signaling API or mandatory subscription. Open-source software is preferred, but an open-source server still needs compute, storage, bandwidth and maintenance; software being free does not make hosting free.
+
+- First evaluate whether an existing owner-controlled device/network can host the required services without new spending, and document its uptime, inbound reachability, storage, backup and bandwidth limits.
+- A public community/free-tier homeserver or relay may be used only as an optional, replaceable best-effort path after checking its current terms, regional availability, quotas, privacy and account restrictions. Do not treat it as guaranteed infrastructure or a durable single point of failure.
+- The client must support relay-disabled operation and explain when direct P2P is unavailable. Direct P2P is opportunistic and cannot be promised through CGNAT/firewalls.
+- Prototype signaling may use a manual out-of-band exchange for test SDP/metadata if this avoids deploying a paid service; this is not a production-scale rendezvous solution.
+- If no free, owner-controlled or explicitly approved infrastructure is available, defer the dependent deployment/feature rather than introduce a paid dependency.
+
+This constraint is a release gate, not an optimization to revisit after implementation.
+
+## 4. Options considered
 
 ### Option A — Matrix-only messaging
 
@@ -97,7 +109,7 @@ A native service could combine identity, event sync and signaling. It would stil
 
 **Assessment:** defer. Reconsider only if the hybrid prototype demonstrates a material blocker (licensing, resource footprint, operational cost or integration limits) that cannot be solved by configuration or a supported SDK. Never implement bespoke cryptographic primitives.
 
-## 4. Proposed direction
+## 5. Proposed direction
 
 **Recommend Option C: Matrix for durable conversation state and E2EE; WebRTC DataChannel as an optional adaptive direct transport.** This is a recommendation for prototype validation, not authorization to start production runtime implementation.
 
@@ -151,7 +163,7 @@ Use at-least-once transport with idempotent receiver processing. Define exact AC
 - No plaintext message content in Directory/rendezvous/TURN logs. Avoid logging raw IPs beyond narrowly scoped operational security needs and documented retention.
 - Never grant the other owner's GLAFIRA access to memory, files, credentials or unrelated conversations by connecting a chat.
 
-## 5. Cross-platform contract
+## 6. Cross-platform contract
 
 Keep the application-facing contract platform-neutral. Android, Windows Desktop/Agent and future iOS implement adapters for:
 - invitation parse / canonical validation / signature verification / expiry / revocation;
@@ -167,7 +179,7 @@ Keep the application-facing contract platform-neutral. Android, Windows Desktop/
 
 No platform may become a second authority for owner identity, policy or permissions. Core remains the owner-scoped task and approval authority.
 
-## 6. Prototype plan and acceptance gates
+## 7. Prototype plan and acceptance gates
 
 ### Prototype 1 — invitation and identity (no production chat)
 - Generate a signed, expiring invitation on Android over cellular data.
@@ -196,7 +208,7 @@ No platform may become a second authority for owner identity, policy or permissi
 - Exact-head Android and Windows tests pass; iOS contract/SDK feasibility is documented before claiming parity.
 - Relay usage, cost, battery and mobile-data behavior are measurable and owner-controllable.
 
-## 7. Evidence and references
+## 8. Evidence and references
 
 - [Matrix Client-Server API specification](https://spec.matrix.org/latest/client-server-api/) — rooms, sync and optional E2EE; cross-signing guidance is in the current spec.
 - [Matrix Rust SDK repository](https://github.com/matrix-org/matrix-rust-sdk) — SDK layers for client API, UI, and crypto; repository states it supports embedding through Kotlin, Swift, JavaScript and Node bindings. Pin and validate versions; binding API stability must be tested.
@@ -204,12 +216,12 @@ No platform may become a second authority for owner identity, policy or permissi
 - [MDN: WebRTC session lifetime and ICE restart](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Session_lifetime) — describes ICE restart when a peer changes between cellular and Wi-Fi and continuity while the new path is established.
 - [MDN: RTCPeerConnection.restartIce()](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/restartIce) — API semantics and renegotiation behavior.
 
-## 8. Consequences and open questions for owner review
+## 9. Consequences and open questions for owner review
 
 1. Approve or reject the hybrid recommendation before runtime implementation.
-2. Choose the initial Matrix deployment model: one controlled GLAFIRA homeserver, hosted service, or a later federated network. Federation is not required for the first private MVP.
+2. Choose a free-only initial Matrix deployment model: an owner-controlled existing device if operationally viable, or an optional community/free-tier server with verified limits and replaceability. Do not assume a paid hosted service or new rented server. Federation is not required for the first private MVP.
 3. Decide whether WebRTC direct transport initially carries only presence/typing/live sessions and file transfer, or also live chat payloads mirrored to Matrix.
-4. Approve a default relay policy and per-owner mobile-data/relay budget controls.
+4. Approve a free-only relay policy and per-owner mobile-data/relay budget controls. A paid TURN/STUN/signaling service is out of scope unless the owner explicitly changes the no-paid-resources rule.
 5. Decide invite lifetime, one-time-use semantics and whether QR/deep-link is included alongside copyable text.
 6. Define data retention and metadata minimization for Directory, rendezvous, homeserver and TURN.
 7. Validate SDK license, maintenance, release cadence, binary footprint and platform binding stability before dependency adoption.
