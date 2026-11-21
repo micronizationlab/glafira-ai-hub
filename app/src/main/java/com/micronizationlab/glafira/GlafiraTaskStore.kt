@@ -889,7 +889,6 @@ class GlafiraTaskStore(context: Context) :
         val ownsTransaction = !db.inTransaction()
         if (ownsTransaction) db.beginTransaction()
         try {
-            val task = queryTask(db, taskId) ?: return false
             val values = ContentValues().apply {
                 put("state", nextState.databaseValue)
                 put("updated_at", nowMillis)
