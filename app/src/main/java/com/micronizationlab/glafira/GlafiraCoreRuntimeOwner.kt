@@ -17,7 +17,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     // Stable per-installation identity; this is not an owner grant or task-ownership lease.
     val installationIdentity = AndroidCoreInstallationIdentityStore(appContext).loadOrCreate()
 
-    val taskStore = GlafiraTaskStore(appContext)
+    val taskStore = GlafiraTaskStore(appContext, installationIdentity.coreId)
     val traceStore = GlafiraCoreTraceStore(taskStore)
     private val ownerApprovalStore = GlafiraCoreOwnerApprovalStore(taskStore)
     // Pairing approval writes device credentials into this same encrypted approval DB.

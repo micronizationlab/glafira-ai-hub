@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `74bbcf1de935cc1ea8832a2ae53b828ce62ef979` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
+**Baseline main for this ledger revision:** `b4a6a4d5bff305e768b20741030db614f6e6919b` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -390,3 +390,21 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - **Superseded candidates:** PRs #315, #316 and #317 were closed without merge to avoid stale or duplicate branches. Their relevant deltas were consolidated into #320/#321; earlier failed emulator assertions are not acceptance evidence.
 
 **Open work:** #260 (full Core failure matrix), #262 (provider/coordinator reconciliation), #258/#266 (owner-generation and signed cross-Core handoff), and step 22 (full Trace producer/atomicity/recovery coverage) remain open. No complete program step is marked complete solely because one implementation slice has merged.
+
+
+## Execution ledger update — 2026-11-21 13:48 UTC
+
+**Verified main baseline:** `b4a6a4d5bff305e768b20741030db614f6e6919b`.
+
+- **Canonical task ownership metadata — merged, execution fencing still pending.** PR #342 supersedes stale PR #334 and is merged as `b4a6a4d5bff305e768b20741030db614f6e6919b`. It ports per-task `owner_core_id`, monotonic `owner_generation`, state-version tracking, payload digest/risk metadata, legacy-task quarantine and portable-restore authority reset onto current main. Exact-head run `44907702267`: Android JVM tests, Shared Contract conformance, managed Android emulator instrumentation, Debug APK packaging and exact-head CI summary all passed. Windows Hub, Windows Agent, iOS and workflow-lint jobs were skipped by change-aware selection and are not claimed as passes.
+- **Stale-owner execution fence — NOT implemented by #342.** Audit after merge confirms the current Core queue still needs owner-aware claim, transition, recovery, network-resume, expiry/dependency mutation and result-commit guards. The executor currently claims a plain task and later mutates it using task ID/state only. The next implementation must carry an immutable `ownerCoreId + ownerGeneration` execution token from claim through every Core state/result mutation. Do not reuse Windows Hub/Agent `leaseId/fencingToken`; those remain a separate execution domain. Cross-Core failover remains disabled.
+- **Step 16 / issue #260 — partial.** Existing merged slices include result/claim transactional failure injection, provider UNKNOWN quarantine and classification, Core result idempotency, Backup/Restore rollback, and Hub progress/result/claim/cancellation journal rollback tests. Remaining gaps include the complete Core handler/progress/result/outbox/ACK/restart matrix, exact receiver ACK reconciliation and stale-owner generation fencing. No full completion claim.
+- **Step 17 / issue #262 — partial.** Merged coverage includes typed provider outcome classification, durable pending-delivery UNKNOWN quarantine, NOT_SENT retry distinction, REJECTED 429 Retry-After, auth rejection and partial-composite UNKNOWN preservation. Full provider coordinator checkpoint/reconciliation and no-replay acceptance remain open.
+- **Step 18 / issues #258/#266 — partial.** Android and Windows installation identities and installation-backed ownership-transfer signing are present; PR #342 now supplies per-task owner metadata. Remote-key trust/revocation, signed handoff acceptance, replay inbox/outbox, atomic generation CAS and stale-owner execution fencing remain pending.
+- **Step 21 — portable Backup/Restore foundation remains merged.** PR #308 and subsequent rollback/unknown-table tests remain the current baseline; cross-platform and physical-device restore acceptance remains open.
+- **Step 22 — Trace remains partial.** PR #320 lifecycle producers and PR #335 approval events are merged. Full producer coverage, process-death reconciliation and end-to-end atomicity remain open.
+- **PR #340 — accessibility blocker remains resolved.** Its exact-head run `44906440204` passed Android JVM, managed emulator, APK and exact-head summary.
+
+**Next parallel work:** (1) implement Core execution-token fencing on top of #342 without touching the Hub lease model; (2) continue issue #260 failure-injection coverage in independent test-only slices; (3) continue issue #262 provider/coordinator reconciliation; (4) preserve the four-app and physical-device gates as explicitly unverified until tested.
+
+**Acceptance discipline:** skipped platform jobs are not passes; metadata persistence is not execution fencing; no automatic cross-Core failover is enabled.

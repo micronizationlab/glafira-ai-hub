@@ -255,7 +255,14 @@ fun BackupSettingsSection() {
                 if (folderUri != null && passphrase.length < 12) {
                     Text("Для ручного и автоматического копирования задай пароль не короче 12 символов. Кнопка остаётся доступной и объяснит, чего не хватает.", color = Tx, fontSize = 10.sp)
                 }
-                manualBackupGuidance?.let { Text(it, color = Tx, fontSize = 11.sp) }
+                manualBackupGuidance?.let { guidance ->
+                    Text(
+                        guidance,
+                        color = Tx,
+                        fontSize = 11.sp,
+                        modifier = Modifier.semantics { contentDescription = guidance }
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = {
@@ -289,7 +296,9 @@ fun BackupSettingsSection() {
                             }
                         },
                         enabled = !busy,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Создать резервную копию сейчас" }
                     ) { Text("Сохранить сейчас") }
                     OutlinedButton(
                         onClick = {
