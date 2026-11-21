@@ -157,6 +157,7 @@ public struct BridgePairingView: View {
                 credentialStore: KeychainBridgeCredentialStore()
             )
             credentialText = ""
+            NotificationCenter.default.post(name: .glafiraBridgeCredentialDidChange, object: nil)
             status = "Ключ успешно сохранён в защищённый Keychain после биометрического подтверждения. Approval ID и Ticket ID совпали."
         } catch {
             status = "Пакет не импортирован: \(error.localizedDescription)"
