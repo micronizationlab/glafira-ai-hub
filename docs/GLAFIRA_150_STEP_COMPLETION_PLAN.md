@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `35a2ef4ff141c70a6e325073243dc84f98c80d1a` (refresh before each integration).  
+**Baseline main for this ledger revision:** `81e05f7ce7660350c584218a55f3cd62b3d9ef98` (refresh before each integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -206,7 +206,7 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `35a2ef4ff141c70a6e325073243dc84f98c80d1a`.
+**Refreshed main after this wave:** `81e05f7ce7660350c584218a55f3cd62b3d9ef98`.
 
 ### Verified complete
 
@@ -219,6 +219,7 @@
 - Step 72: strict lease validation and handler-aware claim filtering landed (PR #230 merged as `1a1b7cc5e9a5123362b6abe725302ecfc8fda46c`); PR #232 made the handler allowlist mandatory for every claim (merged as `60ba9b5a95eefaaed351c3f769a6c725a27b35d5`).
 - Steps 73, 75, 79, 81 and 83: DPAPI lease/result journal, Worker lifecycle registration, server-confirmed lease renewal, cancellation on renewal failure, terminal result outbox, exact ACK identity/digest validation and restart recovery are merged in PR #238 (`b439177d6c71bebcbb8e4a6a17fd36ded39fdc26`). Exact-head Windows Agent tests: 67 passed, 0 failed; Windows Hub tests/build, shared contract conformance and x64 packages passed.
 - Step 80: complete. PR #244 (`b007837cf0e87d843774316c3712c41c8f2c8074`) adds DPAPI-backed progress outbox, write-ahead progress persistence, exact progress ACK checks and restart flush before handler resume. Exact-head Windows Agent tests: 72 passed, 0 failed; shared contract and x64 packages passed.
+- Step 83 / terminal result restart: PR #250 (`81e05f7ce7660350c584218a55f3cd62b3d9ef98`) reconstructs a new polling coordinator after terminal result persistence and lost ACK; the exact result is retried from the DPAPI journal without re-executing the handler. Exact-head Windows Agent tests: 72 passed, 0 failed; shared contracts and x64 packages passed.
 - Step 74: bounded idle/failure polling backoff and pause-on-disconnect/revoke behavior merged in PR #242 (`195a45e430b271d3303a3cdca5bbf01dbb241485`). Exact-head Windows Agent tests: 68 passed, 0 failed; compile, shared contracts and x64 packages passed.
 - Step 111: native iOS Xcode project/simulator target builds in CI (PR #237).
 
@@ -226,6 +227,7 @@
 
 - Step 5: PR #240 added v7→v9 and v8→v9 Core migration coverage; existing v3–v6 cases are also present. PR #245 adds v1/v2 upgrade coverage and is awaiting exact-head emulator acceptance. Keep step 5 open until that run passes.
 - Step 10: PR #247 adds explicit missing-predecessor and duplicate-edge tests at store, planner and durable-plan boundaries; Android JVM and emulator validation are pending.
+- Step 16: failure-injection coverage is improved by PR #244 progress-ACK restart tests and PR #250 terminal-result process-restart tests, but the full crash matrix across every Core/provider/trace boundary is still open.
 - Step 9: complete. PR #240's independent-connection cancellation-vs-result-commit race passed on managed emulator.
 - Step 15: complete. Current Core restart tests cover queued, running safe-read, uncertain-write, waiting-for-network, waiting-for-owner, retry-scheduled and terminal tasks across reopen/recovery; PR #240's emulator run executed the regression suite.
 - Step 76: no production Windows Agent task handler is registered. The Agent remains connected but intentionally does not claim work. The next safe handler must match a real Core task type/capability and have a bounded, useful result contract; do not add a fake generic executor.
@@ -237,6 +239,7 @@
 - Dual-Core authority is per task, not one global writable queue. PR #243 (this ledger's companion) adds the normative ownership/handoff/fencing contract; implementation and two-device acceptance remain open.
 - PR #225 merged as `0c9c1f26f146e853b84bf3891387ac9ff67223b8`: opt-in automatic speech for newly delivered Agent replies, operationId-based duplicate suppression, and persistent missing-cloud-folder backup guidance. Exact-head Android JVM, debug APK and managed-emulator acceptance passed.
 - PR #237 merged as `077579b818f3b2bf3179f0b3f9ea12b5f010f978`: macOS CI builds the actual native `ios/GLAFIRA.xcodeproj` Simulator app target in addition to Swift BridgeKit tests; exact-head iOS app and contract jobs passed. Physical iPhone acceptance remains open.
+- PR #248 merged as `91b18fa9aec641edea1440413c092d6ea8678b30`: Windows Desktop Control Center footer now accurately reports implemented Agent transport and the remaining handler/Core handoff gaps.
 - PR #227 merged as `14fba6f6a4e83dfba5a7177b4d25cea846d433c3`: restore regression proves RUNNING tasks return to owner review and source-device leases/nodes do not transfer.
 - PR #229 merged as `d11afe70372f0dcf6215671ae317a2150711cad1`: this 150-step plan is the ordered execution ledger.
 - Historical Core PRs #71/#104/#119/#122 are not merge candidates as stacks; current main contains newer versions of overlapping concurrency, maintenance, dependency, fairness and durable plan code. Issue #91 remains open for remaining Core acceptance gaps.
