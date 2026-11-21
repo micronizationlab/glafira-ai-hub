@@ -17,7 +17,7 @@
 
 ### P0 — Core: единственная очередь и authority
 
-1. [ ] Снять baseline main SHA, open PR/issues, CI runs и артефакты.
+1. [x] Снять baseline main SHA, open PR/issues, CI runs и артефакты.
 2. [ ] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
 3. [ ] Сверить PR #71/#104/#119/#122 с main и выделить только уникальные Core изменения.
 4. [ ] Зафиксировать единый task state machine и допустимые переходы.
@@ -45,8 +45,8 @@
 
 ### P1 — Android instrumentation и общий Bridge
 
-26. [ ] Проверить AndroidJUnit4 suite в main и CI selection для Core/Bridge изменений.
-27. [ ] Подтвердить, что managed emulator реально выполняет тесты и JUnit XML не пуст.
+26. [x] Проверить AndroidJUnit4 suite в main и CI selection для Core/Bridge изменений.
+27. [x] Подтвердить, что managed emulator реально выполняет тесты и JUnit XML не пуст.
 28. [ ] Сохранить/портировать исторические TaskPlan instrumentation cases, не заменять smoke-only.
 29. [ ] Утвердить canonical versioned Task/Result/Lease/Agent schemas.
 30. [ ] Создать общие golden fixtures для Kotlin, Swift и C#.
@@ -96,8 +96,8 @@
 
 ### P2 — Windows Agent: безопасный worker
 
-71. [ ] Закончить типизированный lease envelope: type/idempotency/payload hash/risk/approval/expiry.
-72. [ ] Проверить strict metadata validation и capability subset.
+71. [x] Закончить типизированный lease envelope: type/idempotency/payload hash/risk/approval/expiry.
+72. [x] Проверить strict metadata validation и capability subset.
 73. [ ] Добавить durable local lease journal с atomic persistence.
 74. [ ] Подключить polling loop с bounded backoff и pause on disconnect/revoke.
 75. [ ] Подключить AgentTaskHandlerRegistry к реальному worker lifecycle.
@@ -203,3 +203,25 @@
 - Windows: complete a typed read-only task cycle with durable lease and result ACK.
 - Android: preserve emulator suite; close Bridge/queue/backup/voice release regressions after dependencies.
 - iOS: preserve BridgeKit/native target; progress authenticated UI/task flows in parallel.
+
+## Execution ledger — 2026-11-21
+
+### Verified complete
+
+- Step 1: baseline captured at `85fb70c16d900a8d4f66bd6fec59593de491da12`; refreshed before later merges.
+- Steps 26–27: AndroidJUnit4 suite is selected by CI; managed emulator executed instrumentation tests, JUnit reports were non-empty and diagnostics uploaded (PR #227 exact-head run `44841507909`).
+- Step 71: full typed lease metadata delivered to Agent (PR #228 merged as `0950bf33b2a7779e1b5addf64a56ea2a5c0fb2ce`).
+- Step 72: strict lease validation and handler-aware claim filtering landed (PR #230 merged as `1a1b7cc5e9a5123362b6abe725302ecfc8fda46c`). Follow-up PR #232 makes the handler allowlist mandatory for every claim; do not regress this fail-closed requirement.
+
+### In progress
+
+- Step 73: DPAPI-protected active-lease journal and durable terminal-result outbox in PR #231. Initial Windows CI exposed that System.Text.Json cannot deserialize `IReadOnlySet<string>`; a dedicated converter was added in commit `832e7f0e9b74e38c447b67f63291c45a29614b6b`. The exact-head rerun is pending.
+- Android voice delivery PR #225: JVM tests and debug APK pass on head `c9a5039d760c28a8f78eff25107f2a7c0ae42aa3`; the emulator suite is still running. The unrelated backup guidance selector was corrected from content-description lookup to visible-text lookup.
+- PR #232: server now rejects unfiltered legacy task claims; exact-head Windows CI is pending.
+
+### Integration decisions
+
+- PR #227 merged as `14fba6f6a4e83dfba5a7177b4d25cea846d433c3`: restore regression proves RUNNING tasks return to owner review and source-device leases/nodes do not transfer.
+- PR #229 merged as `d11afe70372f0dcf6215671ae317a2150711cad1`: this 150-step plan is the current ordered execution ledger.
+- PR #230 merged after Windows Agent, Windows Desktop Hub and shared contract tests passed on its exact head.
+- Historical Core PRs #71/#104/#119 are not merge candidates as stacks; current main contains newer versions of the overlapping concurrency, maintenance, dependency and fairness code. Issue #91 remains open for the remaining Core acceptance gaps.
