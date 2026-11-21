@@ -17,7 +17,7 @@ Before doing any project work, every invited ChatGPT/AI account must:
 3. Read [the engineering roadmap](docs/IMPLEMENTATION_ROADMAP.md).
 4. Read [the mandatory dispatcher rule](docs/ENGINEERING_DISPATCHER_OPERATING_RULE.md).
 5. Read [Action Pool A](docs/ENGINEERING_ACTION_POOL_A.md), then inspect the current issues and open PRs directly on GitHub.
-6. Read the specific issue/specification and relevant code before claiming or changing a task.
+6. Read the [shared task board](docs/coordination/TASK_BOARD.md), then read the specific issue/specification and relevant code before claiming or changing a task.
 7. Register using a unique participant file under `docs/coordination/participants/<participant-id>.md` based on [the participant template](docs/coordination/PARTICIPANT_TEMPLATE.md). Do not edit another participant's file.
 8. Check for conflicts and dependencies before starting. If registration cannot be committed, identify yourself in a GitHub issue/PR comment and do not assume a task is reserved.
 
