@@ -38,6 +38,8 @@ public interface IAgentExecutionJournal
         string taskId, string leaseId, long fencingToken, CancellationToken cancellationToken);
     Task<bool> ClearExpiredActiveLeaseAsync(
         string taskId, string leaseId, long fencingToken, long nowEpochMs, CancellationToken cancellationToken);
+    Task<bool> DiscardStaleActiveLeaseAsync(
+        string taskId, string leaseId, long fencingToken, CancellationToken cancellationToken);
     Task<bool> DiscardStaleResultAsync(
         string taskId, string leaseId, long fencingToken, CancellationToken cancellationToken);
 }
@@ -240,6 +242,32 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             if (active.LeaseId != leaseId || active.FencingToken != fencingToken)
                 throw new InvalidDataException("AGENT_ACTIVE_LEASE_IDENTITY_MISMATCH");
             if (active.LeaseExpiresAtEpochMs > nowEpochMs) return false;
+            var next = snapshot with
+            {
+                ActiveLeases = snapshot.ActiveLeases.Where(item => item.TaskId != taskId).ToArray()
+            };
+            await WriteSnapshotAsync(next, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<bool> DiscardStaleActiveLeaseAsync(
+        string taskId,
+        string leaseId,
+        long fencingToken,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(taskId) || string.IsNullOrWhiteSpace(leaseId) || fencingToken <= 0)
+            throw new ArgumentException("A complete task/lease/fence identity is required.");
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var snapshot = await ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            var active = snapshot.ActiveLeases.SingleOrDefault(item => item.TaskId == taskId);
+            if (active is null) return false;
+            if (active.LeaseId != leaseId || active.FencingToken != fencingToken)
+                throw new InvalidDataException("AGENT_STALE_ACTIVE_LEASE_IDENTITY_MISMATCH");
             var next = snapshot with
             {
                 ActiveLeases = snapshot.ActiveLeases.Where(item => item.TaskId != taskId).ToArray()
