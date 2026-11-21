@@ -630,7 +630,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         val recovered = requireNotNull(store.getTask("handler-failure-recovery"))
         assertEquals(GlafiraTaskState.RETRY_SCHEDULED, recovered.state)
         assertEquals(3_000L, recovered.retryAtMillis)
-        assertEquals("CORE_PROCESS_RESTART", recovered.lastError)
+        assertEquals("CORE_EXECUTION_INTERRUPTED", recovered.lastError)
         assertEquals(
             listOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING, GlafiraTaskState.RETRY_SCHEDULED),
             store.taskHistory("handler-failure-recovery", "project").map { it.toState }.reversed()
