@@ -394,20 +394,6 @@ class GlafiraTaskStore(context: Context) :
                 SQLiteDatabase.CONFLICT_IGNORE
             )
             if (insertedId != -1L) {
-                coreTraceStore.appendInTransaction(
-                    db,
-                    GlafiraCoreTraceDraft(
-                        projectId = task.projectId,
-                        taskId = task.taskId,
-                        correlationId = task.taskId,
-                        occurredAtMillis = task.createdAtMillis,
-                        actorType = GlafiraCoreTraceActorType.CORE,
-                        actorId = "core",
-                        component = "CoreTaskStore",
-                        eventType = GlafiraCoreTraceEventType.TASK_CREATED,
-                        actionCode = "TASK_CREATED"
-                    )
-                )
                 if (ownsTransaction) db.setTransactionSuccessful()
                 return GlafiraTaskEnqueueResult(task, true)
             }
@@ -839,20 +825,6 @@ class GlafiraTaskStore(context: Context) :
                 arrayOf(taskId, candidate.state.databaseValue)
             )
             check(changed == 1) { "Task claim lost its transactional state check." }
-            coreTraceStore.appendInTransaction(
-                db,
-                GlafiraCoreTraceDraft(
-                    projectId = candidate.projectId,
-                    taskId = candidate.taskId,
-                    correlationId = candidate.taskId,
-                    occurredAtMillis = nowMillis,
-                    actorType = GlafiraCoreTraceActorType.CORE,
-                    actorId = "core",
-                    component = "CoreTaskStore",
-                    eventType = GlafiraCoreTraceEventType.TASK_STARTED,
-                    actionCode = "TASK_STARTED"
-                )
-            )
             db.setTransactionSuccessful()
             return queryTask(db, taskId)
         } finally {
@@ -933,29 +905,6 @@ class GlafiraTaskStore(context: Context) :
                 args
             )
             if (changed != 1) return false
-            val traceType = when (nextState) {
-                GlafiraTaskState.QUEUED, GlafiraTaskState.RETRY_SCHEDULED -> GlafiraCoreTraceEventType.TASK_QUEUED
-                GlafiraTaskState.RUNNING -> GlafiraCoreTraceEventType.TASK_STARTED
-                GlafiraTaskState.WAITING_FOR_OWNER, GlafiraTaskState.WAITING_FOR_NETWORK -> GlafiraCoreTraceEventType.TASK_PAUSED
-                GlafiraTaskState.SUCCEEDED -> GlafiraCoreTraceEventType.TASK_SUCCEEDED
-                GlafiraTaskState.FAILED -> GlafiraCoreTraceEventType.TASK_FAILED
-                GlafiraTaskState.CANCELLED -> GlafiraCoreTraceEventType.TASK_CANCELLED
-            }
-            coreTraceStore.appendInTransaction(
-                db,
-                GlafiraCoreTraceDraft(
-                    projectId = task.projectId,
-                    taskId = task.taskId,
-                    correlationId = task.taskId,
-                    occurredAtMillis = nowMillis,
-                    actorType = GlafiraCoreTraceActorType.CORE,
-                    actorId = "core",
-                    component = "CoreTaskStore",
-                    eventType = traceType,
-                    actionCode = "TASK_STATE_CHANGED",
-                    resultStatus = nextState.databaseValue
-                )
-            )
             if (ownsTransaction) db.setTransactionSuccessful()
             return true
         } finally {
