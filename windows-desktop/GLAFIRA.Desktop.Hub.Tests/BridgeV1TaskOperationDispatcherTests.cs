@@ -80,6 +80,13 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
         Assert.Equal("ACCEPTED", response.Status);
         Assert.Equal("true", response.Result["available"]);
         Assert.Equal("task-0001", response.Result["taskId"]);
+        Assert.Equal("web.research", response.Result["taskType"]);
+        Assert.Equal("idem-task-01", response.Result["idempotencyKey"]);
+        Assert.Equal("payload://task-0001", response.Result["payloadRef"]);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(_payload)).ToLowerInvariant(), response.Result["payloadSha256"]);
+        Assert.Equal("ReadOnly", response.Result["effectRisk"]);
+        Assert.Equal("none", response.Result["approvalRef"]);
+        Assert.True(long.Parse(response.Result["leaseExpiresAtEpochMs"]) > now.ToUnixTimeMilliseconds());
         Assert.Equal("RESEARCHER", response.Result["executor"]);
         Assert.Equal("web.research", Assert.Single(JsonSerializer.Deserialize<string[]>(response.Result["requiredCapabilities"])!));
         Assert.False(string.IsNullOrWhiteSpace(response.Result["leaseId"]));
