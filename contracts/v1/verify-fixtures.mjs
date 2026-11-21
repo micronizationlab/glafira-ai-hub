@@ -67,7 +67,7 @@ const ownershipCanonicalFields = [
   "oldOwnerCoreId", "newOwnerCoreId", "oldOwnerGeneration", "newOwnerGeneration",
   "stateVersion", "payloadSha256", "idempotencyKey", "effectRisk", "approvalRef",
   "issuedAt", "expiresAt", "signingKeyEpoch", "signingPublicKeySha256",
-  "signatureAlgorithm"
+  "signatureAlgorithm", "signatureFormat"
 ];
 const ownershipCanonical = ownershipCanonicalFields
   .map(key => transfer[key] === null ? "null" : String(transfer[key]))
