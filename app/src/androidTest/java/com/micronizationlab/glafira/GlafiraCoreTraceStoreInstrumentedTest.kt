@@ -332,15 +332,15 @@ class GlafiraCoreTraceStoreInstrumentedTest {
         """.trimIndent())
         assertThrows(SQLiteException::class.java) {
             taskStore.reviewDryRunPreview(
-                taskId, plan.planHash, GlafiraDryRunReviewStatus.APPROVED, 5_000L
+                taskId, plan.planHash, GlafiraDryRunReviewStatus.ACKNOWLEDGED, 5_000L
             )
         }
         assertEquals(GlafiraDryRunReviewStatus.PENDING, taskStore.dryRunPreview(taskId)?.reviewStatus)
         db.execSQL("DROP TRIGGER fail_dry_run_review_trace")
         assertTrue(taskStore.reviewDryRunPreview(
-            taskId, plan.planHash, GlafiraDryRunReviewStatus.APPROVED, 6_000L
+            taskId, plan.planHash, GlafiraDryRunReviewStatus.ACKNOWLEDGED, 6_000L
         ))
-        assertEquals(GlafiraDryRunReviewStatus.APPROVED, taskStore.dryRunPreview(taskId)?.reviewStatus)
+        assertEquals(GlafiraDryRunReviewStatus.ACKNOWLEDGED, taskStore.dryRunPreview(taskId)?.reviewStatus)
         val events = traceStore.query(
             GlafiraCoreTraceQuery(projectId, taskId = taskId),
             GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
