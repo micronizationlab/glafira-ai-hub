@@ -30,6 +30,7 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
         Assert.Equal("ENROLLED", response.Status);
         Assert.Null(response.ErrorCode);
         Assert.Equal("agent-01", response.AgentId);
+        Assert.Equal(ticket.TicketId, response.EnrollmentId);
         Assert.Equal(HubId, response.DesktopHubId);
         Assert.Equal(LocalEndpoint.AbsoluteUri, response.Endpoint);
         Assert.Equal(TlsPin, response.TlsCertificateSha256);

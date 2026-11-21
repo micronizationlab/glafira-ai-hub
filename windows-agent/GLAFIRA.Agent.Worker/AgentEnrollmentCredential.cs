@@ -16,7 +16,10 @@ public sealed record AgentEnrollmentCredential(
     string SharedSecretBase64,
     IReadOnlySet<string> Scopes,
     DateTimeOffset EnrolledAt,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt)
+{
+    public string EnrollmentId { get; init; } = AgentId;
+}
 
 public interface IAgentCredentialStore
 {
@@ -32,6 +35,8 @@ public static class AgentEnrollmentCredentialPolicy
         ArgumentNullException.ThrowIfNull(credential);
         if (!IsIdentity(credential.AgentId))
             throw new ArgumentException("Agent ID must be a bounded ASCII identifier.", nameof(credential));
+        if (!IsIdentity(credential.EnrollmentId))
+            throw new ArgumentException("Enrollment ID must be a bounded ASCII identifier.", nameof(credential));
         if (!IsIdentity(credential.DesktopHubId))
             throw new ArgumentException("Desktop Hub ID must be a bounded ASCII identifier.", nameof(credential));
         if (credential.Endpoint is null || !credential.Endpoint.IsAbsoluteUri ||

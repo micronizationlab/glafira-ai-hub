@@ -32,6 +32,7 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
         var loaded = await store.LoadAsync(default);
         Assert.NotNull(loaded);
         Assert.Equal(credential.AgentId, loaded.AgentId);
+        Assert.Equal(credential.EnrollmentId, loaded.EnrollmentId);
         Assert.Equal(credential.DesktopHubId, loaded.DesktopHubId);
         Assert.Equal(credential.Endpoint, loaded.Endpoint);
         Assert.Equal(credential.TlsCertificateSha256, loaded.TlsCertificateSha256);
@@ -174,7 +175,10 @@ public sealed class DpapiAgentCredentialStoreTests : IDisposable
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),
         new HashSet<string>(StringComparer.Ordinal) { "task.claim", "task.result" },
         _now.AddMinutes(-1),
-        _now.AddDays(30));
+        _now.AddDays(30))
+    {
+        EnrollmentId = "enrollment-01"
+    };
 
     private static X509Certificate2 CreateCertificate(string dnsName)
     {

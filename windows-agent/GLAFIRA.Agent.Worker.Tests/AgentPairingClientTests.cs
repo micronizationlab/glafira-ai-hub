@@ -24,6 +24,7 @@ public sealed class AgentPairingClientTests
         var credential = await client.EnrollAsync(Attempt());
 
         Assert.Same(credential, store.Saved);
+        Assert.Equal(Attempt().TicketId, credential.EnrollmentId);
         Assert.Equal("desktop-hub-01", credential.DesktopHubId);
         Assert.Equal(32, Convert.FromBase64String(credential.SharedSecretBase64).Length);
         Assert.Equal(["desktop.task.claim", "desktop.task.result"], credential.Scopes.Order());
@@ -32,6 +33,7 @@ public sealed class AgentPairingClientTests
 
     [Theory]
     [InlineData("agentId", "other-agent")]
+    [InlineData("enrollmentId", "fedcba9876543210fedcba9876543210")]
     [InlineData("endpoint", "https://192.168.10.6:8443/bridge/v1")]
     [InlineData("tlsCertificateSha256", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")]
     public async Task IdentityEndpointOrPinMismatchIsNeverSaved(string field, string replacement)
@@ -143,6 +145,7 @@ public sealed class AgentPairingClientTests
         ["status"] = "ENROLLED",
         ["errorCode"] = null,
         ["agentId"] = "agent-01",
+        ["enrollmentId"] = Attempt().TicketId,
         ["desktopHubId"] = "desktop-hub-01",
         ["endpoint"] = Endpoint.AbsoluteUri,
         ["tlsCertificateSha256"] = Pin,

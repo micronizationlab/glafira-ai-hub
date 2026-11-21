@@ -229,9 +229,31 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
         if (StringComparer.Ordinal.Equals(agentId, PairingAgentId))
             ClearPairingTicket();
-        var revoked = _store.RevokeAgent(agentId, DateTimeOffset.UtcNow);
+        var now = DateTimeOffset.UtcNow;
+        var enrollmentId = _pairingTickets.GetActiveEnrollmentId(agentId);
+        AgentRevocationDecision? decision = null;
+        var revoked = false;
+        if (enrollmentId is not null)
+        {
+            decision = _pairingTickets.RevokeAgent(new AgentRevocationRequest(
+                1,
+                "revoke-" + Guid.NewGuid().ToString("N"),
+                enrollmentId,
+                agentId,
+                "desktop-owner",
+                now,
+                AgentRevocationReason.OWNER_REQUEST));
+            revoked = decision.Status is AgentRevocationStatus.REVOKED or AgentRevocationStatus.ALREADY_REVOKED;
+        }
+        else
+        {
+            // Clean up scheduler-only legacy rows that predate generation-bound enrollment.
+            revoked = _store.RevokeAgent(agentId, now);
+        }
         PairingStatus = revoked
-            ? $"Доступ {agentId} отозван. На Agent удалите старый credential."
+            ? decision?.RequiresOwnerReconciliation == true
+                ? $"Доступ {agentId} отозван; незавершённая запись требует проверки результата владельцем."
+                : $"Доступ {agentId} отозван. Agent удалит старый credential после подтверждения Hub."
             : $"Активный credential {agentId} не найден.";
         return revoked;
     }
@@ -248,7 +270,9 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             result.Ticket,
             endpoint,
             result.RevokedExistingEnrollment
-                ? "Старый credential отозван; создан новый одноразовый код."
+                ? result.RevocationDecision?.RequiresOwnerReconciliation == true
+                    ? "Старый credential отозван; активная запись требует проверки владельцем; создан новый одноразовый код."
+                    : "Старый credential отозван; создан новый одноразовый код."
                 : "Активный credential не найден; создан новый одноразовый код.");
         return PairingInvitationText;
     }

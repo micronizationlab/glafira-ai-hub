@@ -41,6 +41,7 @@ public sealed class AgentPairingClient
         string Status,
         string? ErrorCode,
         string? AgentId,
+        string? EnrollmentId,
         string? DesktopHubId,
         string? Endpoint,
         string? TlsCertificateSha256,
@@ -138,7 +139,8 @@ public sealed class AgentPairingClient
         PairingResponse response)
     {
         if (response.Version != 1 || response.Status != "ENROLLED" || response.ErrorCode is not null ||
-            response.AgentId != attempt.AgentId || response.DesktopHubId is null ||
+            response.AgentId != attempt.AgentId || response.EnrollmentId != attempt.TicketId ||
+            response.DesktopHubId is null ||
             response.Endpoint is null || response.TlsCertificateSha256 != attempt.ExpectedTlsCertificateSha256 ||
             response.SharedSecretBase64 is null || response.Scopes is null ||
             response.EnrolledAtEpochMs is null || response.ExpiresAtEpochMs is null)
@@ -172,7 +174,10 @@ public sealed class AgentPairingClient
             response.SharedSecretBase64,
             new HashSet<string>(response.Scopes, StringComparer.Ordinal),
             enrolledAt,
-            expiresAt);
+            expiresAt)
+        {
+            EnrollmentId = response.EnrollmentId
+        };
         try
         {
             AgentEnrollmentCredentialPolicy.Validate(credential, _timeProvider.GetUtcNow());

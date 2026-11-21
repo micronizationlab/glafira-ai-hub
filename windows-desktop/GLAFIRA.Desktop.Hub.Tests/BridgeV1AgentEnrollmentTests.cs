@@ -28,6 +28,7 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
         Assert.True(result.Accepted);
         var enrollment = Assert.IsType<BridgeV1AgentEnrollmentCredential>(result.Credential);
         Assert.Equal("agent-01", enrollment.AgentId);
+        Assert.Equal(ticket.TicketId, enrollment.EnrollmentId);
         Assert.Equal(HubId, enrollment.DesktopHubId);
         Assert.Equal(Endpoint, enrollment.Endpoint);
         Assert.Equal(TlsPin, enrollment.TlsCertificateSha256);
@@ -244,6 +245,82 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
 
         Assert.NotNull(await resolver.ResolveAsync("agent-01", default));
     }
+
+    [Fact]
+    public async Task ExactGenerationRevocationSettlesLeasesAndIsDurablyIdempotent()
+    {
+        var hubStore = new DesktopHubStore(_databasePath, _protector);
+        var pairingStore = CreateStore();
+        var ticket = pairingStore.CreateForAgent(
+            "agent-01", ["desktop.task.claim", "desktop.task.result"], TimeSpan.FromMinutes(1));
+        var enrollment = Assert.IsType<BridgeV1AgentEnrollmentCredential>(
+            (await EnrollAsync(pairingStore, ticket, "agent-01")).Credential);
+        var now = _clock.GetUtcNow();
+        hubStore.RegisterPendingAgent("agent-01", "agent-01", now);
+        Assert.True(hubStore.ConfigureAgentApproval("agent-01", ["research"], 2));
+        Assert.True(hubStore.Heartbeat("agent-01", ["research"], 2, now));
+        hubStore.Enqueue(CreateTask("read-only", HubTaskEffectRisk.ReadOnly), now);
+        hubStore.Enqueue(CreateTask("external", HubTaskEffectRisk.ExternalSideEffect), now);
+        var readLease = Assert.IsType<HubTaskLease>(
+            hubStore.ClaimNext("agent-01", now, TimeSpan.FromMinutes(1)));
+        var externalLease = Assert.IsType<HubTaskLease>(
+            hubStore.ClaimNext("agent-01", now, TimeSpan.FromMinutes(1)));
+        var request = new AgentRevocationRequest(
+            1, "revoke-0001", enrollment.EnrollmentId, "agent-01", "owner-device-01",
+            now.AddSeconds(1), AgentRevocationReason.OWNER_REQUEST);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+
+        var decision = pairingStore.RevokeAgent(request);
+        var repeated = pairingStore.RevokeAgent(request);
+
+        Assert.Equal(AgentRevocationStatus.REVOKED, decision.Status);
+        Assert.Equal(decision, repeated);
+        Assert.Equal(Math.Max(readLease.FencingToken, externalLease.FencingToken),
+            decision.LastAcceptedFencingToken);
+        Assert.Equal(AgentActiveLeaseDisposition.OUTCOME_UNKNOWN, decision.ActiveLeaseDisposition);
+        Assert.True(decision.RequiresOwnerReconciliation);
+        Assert.Equal(HubTaskState.Queued, hubStore.GetTaskState("read-only"));
+        Assert.Equal(HubTaskState.OutcomeUnknown, hubStore.GetTaskState("external"));
+        Assert.False(hubStore.IsAgentOwnerApproved("agent-01"));
+        var resolver = new DpapiSqliteHubCredentialResolver(_databasePath, _protector, _clock);
+        Assert.Null(await resolver.ResolveAsync("agent-01", default));
+        Assert.Contains(hubStore.GetTaskHistory("read-only"),
+            item => item.EventCode == "AGENT_REVOKED_READ_ONLY_REQUEUED");
+        Assert.Contains(hubStore.GetTaskHistory("external"),
+            item => item.EventCode == "AGENT_REVOKED_OUTCOME_UNKNOWN");
+    }
+
+    [Fact]
+    public async Task StaleEnrollmentGenerationConflictsWithoutRevokingCurrentCredential()
+    {
+        var hubStore = new DesktopHubStore(_databasePath, _protector);
+        var pairingStore = CreateStore();
+        var ticket = pairingStore.CreateForAgent(
+            "agent-01", ["desktop.task.claim"], TimeSpan.FromMinutes(1));
+        var enrollment = Assert.IsType<BridgeV1AgentEnrollmentCredential>(
+            (await EnrollAsync(pairingStore, ticket, "agent-01")).Credential);
+        hubStore.RegisterPendingAgent("agent-01", "agent-01", _clock.GetUtcNow());
+        var request = new AgentRevocationRequest(
+            1, "revoke-stale", "stale-enrollment", "agent-01", "owner-device-01",
+            _clock.GetUtcNow(), AgentRevocationReason.OWNER_REQUEST);
+
+        var decision = pairingStore.RevokeAgent(request);
+
+        Assert.Equal(AgentRevocationStatus.CONFLICT, decision.Status);
+        Assert.Null(decision.RevokedAt);
+        Assert.Equal(AgentActiveLeaseDisposition.NONE, decision.ActiveLeaseDisposition);
+        Assert.True(decision.RequiresOwnerReconciliation);
+        Assert.Equal(enrollment.EnrollmentId, pairingStore.GetActiveEnrollmentId("agent-01"));
+        var resolver = new DpapiSqliteHubCredentialResolver(_databasePath, _protector, _clock);
+        var credential = await resolver.ResolveAsync("agent-01", default);
+        Assert.NotNull(credential);
+        CryptographicOperations.ZeroMemory(credential.HmacSecret);
+    }
+
+    private static HubTaskRequest CreateTask(string id, HubTaskEffectRisk risk) => new(
+        id, "project-a", "idem-" + id, "research.search", "payload://" + id,
+        new string('a', 64), ["research"], [], risk,
+        risk == HubTaskEffectRisk.ExternalSideEffect ? "owner-approval-1" : null);
 
     private BridgeV1PairingTicketStore CreateStore() =>
         new(_databasePath, _clock, _protector);

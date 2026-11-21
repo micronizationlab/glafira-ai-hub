@@ -13,6 +13,7 @@ public sealed record BridgeV1PairingResponse(
     string Status,
     string? ErrorCode,
     string? AgentId,
+    string? EnrollmentId,
     string? DesktopHubId,
     string? Endpoint,
     string? TlsCertificateSha256,
@@ -30,6 +31,7 @@ public sealed record BridgeV1PairingResponse(
         null,
         null,
         null,
+        null,
         [],
         null,
         null);
@@ -39,6 +41,7 @@ public sealed record BridgeV1PairingResponse(
         "ENROLLED",
         null,
         credential.AgentId,
+        credential.EnrollmentId,
         credential.DesktopHubId,
         credential.Endpoint.AbsoluteUri,
         credential.TlsCertificateSha256,
