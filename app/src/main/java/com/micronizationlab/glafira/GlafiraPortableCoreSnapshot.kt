@@ -216,7 +216,10 @@ internal class GlafiraPortableCoreSnapshot(
                 actorType = GlafiraCoreTraceActorType.CORE,
                 actorId = "core",
                 component = "TaskStore",
-                eventType = traceEventTypeForTaskState(row.getString("to_state")),
+                eventType = traceEventTypeForTaskHistory(
+                    if (row.isNull("from_state")) null else row.getString("from_state"),
+                    row.getString("to_state")
+                ),
                 actionCode = "task.state.changed",
                 targetType = if (taskId == null) null else "TASK",
                 targetId = taskId,
