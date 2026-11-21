@@ -67,8 +67,18 @@ internal class GlafiraPortableCoreSnapshot(
     fun readVerified(file: File): JSONObject {
         require(file.length() in 1..MAX_BYTES.toLong()) { "Недопустимый размер снимка Core." }
         val bytes = file.readBytes()
-        return try { JSONObject(String(bytes, Charsets.UTF_8)).also(::validate) }
-        finally { bytes.fill(0) }
+        return try {
+            migrateLegacySnapshot(JSONObject(String(bytes, Charsets.UTF_8))).also(::validate)
+        } finally { bytes.fill(0) }
+    }
+
+    private fun migrateLegacySnapshot(snapshot: JSONObject): JSONObject {
+        if (snapshot.optInt("version", -1) == LEGACY_VERSION) {
+            val tables = snapshot.getJSONObject("tables")
+            if (!tables.has(TRACE)) tables.put(TRACE, JSONArray())
+            snapshot.put("version", VERSION)
+        }
+        return snapshot
     }
 
     fun checkRestoreSupported(snapshot: JSONObject) = validate(snapshot)
@@ -80,6 +90,8 @@ internal class GlafiraPortableCoreSnapshot(
         val db = store.writableDatabase
         db.beginTransaction()
         try {
+            // Restore is the sole controlled replacement path for the append-only trace table.
+            GlafiraCoreTraceStore.dropAppendOnlyTriggers(db)
             NON_PORTABLE.filter { exists(db, it) }.forEach { db.delete(it, null, null) }
             TABLES.asReversed().forEach { db.delete(it.name, null, null) }
             TABLES.forEach { table ->
@@ -118,6 +130,7 @@ internal class GlafiraPortableCoreSnapshot(
                 })
             }
             db.rawQuery("PRAGMA foreign_key_check", null).use { require(!it.moveToFirst()) { "Нарушены связи снимка Core." } }
+            GlafiraCoreTraceStore.createAppendOnlyTriggers(db)
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
@@ -149,6 +162,7 @@ internal class GlafiraPortableCoreSnapshot(
                     NODES -> row.getString("plan_id") + ":" + row.getString("task_id")
                     DEPENDENCIES -> row.getString("task_id") + ":" + row.getString("depends_on_task_id")
                     HISTORY -> row.getLong("event_id").toString()
+                    TRACE -> row.getString("event_id")
                     else -> row.getString("task_id")
                 }
                 require(identity.isNotBlank() && identities.add(identity)) { "Повторная запись Core." }
@@ -163,6 +177,41 @@ internal class GlafiraPortableCoreSnapshot(
                     require(row.getLong("created_at") > 0 && row.getLong("updated_at") >= row.getLong("created_at"))
                 } else if (table.name == PLANS) {
                     planProjects[row.getString("plan_id")] = row.getString("project_id")
+                } else if (table.name == TRACE) {
+                    val project = row.getString("project_id")
+                    require(GlafiraCoreTraceEvent.isSafeIdentifier(project))
+                    val taskId = row.get("task_id")
+                    if (taskId !== JSONObject.NULL) {
+                        require(projects[taskId as String] == project) { "Trace event task/project mismatch." }
+                    }
+                    require(GlafiraCoreTraceEvent.isSafeIdentifier(row.getString("event_id")))
+                    require(GlafiraCoreTraceEvent.isSafeIdentifier(row.getString("correlation_id")))
+                    require(GlafiraCoreTraceEvent.isSafeIdentifier(row.getString("actor_id")))
+                    require(GlafiraCoreTraceEvent.isSafeIdentifier(row.getString("component")))
+                    require(GlafiraCoreTraceEvent.isSafeCode(row.getString("action_code")))
+                    require(row.getLong("occurred_at") > 0L)
+                    require(row.getLong("redaction_applied") == 1L && row.getLong("secret_values_stored") == 0L)
+                    GlafiraCoreTraceActorType.valueOf(row.getString("actor_type"))
+                    GlafiraCoreTraceEventType.valueOf(row.getString("event_type"))
+                    GlafiraCoreTraceDataClassification.valueOf(row.getString("data_classification"))
+                    row.optString("parent_event_id").takeIf { it.isNotEmpty() }?.let {
+                        require(GlafiraCoreTraceEvent.isSafeIdentifier(it))
+                    }
+                    listOf("target_type", "result_status", "error_code").forEach { column ->
+                        row.optString(column).takeIf { it.isNotEmpty() }?.let {
+                            require(GlafiraCoreTraceEvent.isSafeCode(it))
+                        }
+                    }
+                    listOf("target_id", "approval_ref").forEach { column ->
+                        row.optString(column).takeIf { it.isNotEmpty() }?.let {
+                            require(GlafiraCoreTraceEvent.isSafeIdentifier(it))
+                        }
+                    }
+                    val evidence = JSONArray(row.getString("evidence_refs"))
+                    require(evidence.length() <= GlafiraCoreTraceEvent.MAX_EVIDENCE_REFS)
+                    for (index in 0 until evidence.length()) {
+                        require(GlafiraCoreTraceEvent.isSafeIdentifier(evidence.getString(index)))
+                    }
                 } else {
                     val project = projects[row.getString("task_id")] ?: error("Запись без исходной задачи.")
                     if (row.has("project_id")) require(project == row.getString("project_id"))
@@ -205,7 +254,8 @@ internal class GlafiraPortableCoreSnapshot(
     companion object {
         const val PATH = ".glafira-core-snapshot/core-portable-v2.json"
         private const val FORMAT = "GLAFIRA_PORTABLE_CORE"
-        private const val VERSION = 2
+        private const val VERSION = 3
+        private const val LEGACY_VERSION = 2
         private const val MAX_BYTES = 128 * 1024 * 1024
         private const val MAX_ROWS = 100_000
         private const val MAX_FIELD_CHARS = 1024 * 1024
@@ -215,13 +265,14 @@ internal class GlafiraPortableCoreSnapshot(
         private const val DEPENDENCIES = "core_task_dependencies"
         private const val PREVIEWS = "core_dry_run_previews"
         private const val HISTORY = "core_task_history"
+        private const val TRACE = GlafiraCoreTraceStore.TABLE
         private val TERMINAL = setOf("succeeded", "failed", "cancelled")
         private val NON_PORTABLE = listOf(
             "core_action_approvals", "core_desktop_leases", "core_desktop_nodes",
             GlafiraCoreLiveRunStore.TABLE
         )
-        private val NULLABLE = setOf("deadline_at", "retry_at", "last_error", "result_ciphertext", "error_code", "reviewed_at", "from_state", "reason")
-        private val NUMBERS = setOf("event_id", "ordinal", "created_at", "updated_at", "attempt_count", "deadline_at", "retry_at", "completed_at", "reviewed_at", "changed_at")
+        private val NULLABLE = setOf("deadline_at", "retry_at", "last_error", "result_ciphertext", "error_code", "reviewed_at", "from_state", "reason", "task_id", "parent_event_id", "target_type", "target_id", "result_status", "approval_ref", "duration_ms")
+        private val NUMBERS = setOf("event_id", "ordinal", "created_at", "updated_at", "attempt_count", "deadline_at", "retry_at", "completed_at", "reviewed_at", "changed_at", "occurred_at", "redaction_applied", "secret_values_stored", "duration_ms")
         private val TABLES = listOf(
             Table(TASKS, listOf("task_id", "project_id", "task_type", "payload_ciphertext", "origin", "priority", "state", "created_at", "updated_at", "attempt_count", "deadline_at", "idempotency_key", "required_scopes", "retry_at", "last_error"), "payload_ciphertext"),
             Table(PLANS, listOf("plan_id", "project_id", "idempotency_key", "created_at", "updated_at")),
@@ -230,7 +281,8 @@ internal class GlafiraPortableCoreSnapshot(
             Table("core_desktop_results", listOf("task_id", "result_ciphertext", "error_code", "completed_at"), "result_ciphertext"),
             Table("core_task_results", listOf("task_id", "result_ciphertext", "completed_at"), "result_ciphertext"),
             Table(PREVIEWS, listOf("task_id", "project_id", "tool_id", "risk", "simulation_status", "plan_hash", "plan_ciphertext", "created_at", "review_status", "reviewed_at"), "plan_ciphertext"),
-            Table(HISTORY, listOf("event_id", "task_id", "project_id", "from_state", "to_state", "changed_at", "attempt_count", "reason"))
+            Table(HISTORY, listOf("event_id", "task_id", "project_id", "from_state", "to_state", "changed_at", "attempt_count", "reason")),
+            Table(TRACE, listOf("event_id", "project_id", "task_id", "parent_event_id", "correlation_id", "occurred_at", "actor_type", "actor_id", "component", "event_type", "action_code", "target_type", "target_id", "result_status", "error_code", "approval_ref", "evidence_refs", "data_classification", "redaction_applied", "secret_values_stored", "duration_ms"))
         )
     }
 }
