@@ -273,6 +273,56 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         }
     }
 
+    @Test fun cancellationVsCompletionRaceHasExactlyOneDurableWinner() {
+        store.enqueue(task("cancel-complete-race"))
+        assertNotNull(store.claimNext(2_000))
+        val secondStore = GlafiraTaskStore(context)
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val completion = pool.submit<Boolean> {
+                start.await()
+                store.persistCoreTaskResult(
+                    "cancel-complete-race",
+                    setOf(GlafiraTaskState.RUNNING),
+                    "completed-before-cancel",
+                    3_000
+                )
+            }
+            val cancellation = pool.submit<Boolean> {
+                start.await()
+                secondStore.transition(
+                    "cancel-complete-race",
+                    setOf(GlafiraTaskState.RUNNING),
+                    GlafiraTaskState.RETRY_SCHEDULED,
+                    3_000,
+                    retryAtMillis = 3_000,
+                    lastError = "EXECUTION_CANCELLED"
+                )
+            }
+            start.countDown()
+            val completed = completion.get(15, TimeUnit.SECONDS)
+            val cancelled = cancellation.get(15, TimeUnit.SECONDS)
+
+            assertNotEquals("Exactly one compare-and-set must win", completed, cancelled)
+            val task = requireNotNull(store.getTask("cancel-complete-race"))
+            if (completed) {
+                assertEquals(GlafiraTaskState.SUCCEEDED, task.state)
+                assertEquals(
+                    "completed-before-cancel",
+                    store.coreTaskResult("cancel-complete-race", "project")?.result
+                )
+            } else {
+                assertEquals(GlafiraTaskState.RETRY_SCHEDULED, task.state)
+                assertNull(store.coreTaskResult("cancel-complete-race", "project"))
+                assertEquals("EXECUTION_CANCELLED", task.lastError)
+            }
+        } finally {
+            pool.shutdownNow()
+            secondStore.close()
+        }
+    }
+
     @Test fun processRestartRecoveryRequeuesSafeReadsButQuarantinesUnknownWrites() {
         store.enqueue(task("restart-read", "project.read"))
         store.enqueue(task("restart-write", "message.send"))
