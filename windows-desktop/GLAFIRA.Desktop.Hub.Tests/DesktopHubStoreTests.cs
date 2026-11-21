@@ -356,7 +356,8 @@ public sealed class DesktopHubStoreTests : IDisposable
         var agentId = "agent-cancel-risk";
         var taskId = "leased-risk-cancel-" + risk;
         _store.RegisterAgent(new HubAgentRegistration(agentId, "device-cancel-risk", ["research"], 1, true), now);
-        _store.Enqueue(CreateTask(taskId, risk: risk), now);
+        var approval = risk == HubTaskEffectRisk.ExternalSideEffect ? "approval-" + taskId : null;
+        _store.Enqueue(CreateTask(taskId, risk: risk, approval: approval), now);
         var lease = _store.ClaimNext(agentId, now, TimeSpan.FromMinutes(1));
         Assert.NotNull(lease);
 
