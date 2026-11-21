@@ -166,6 +166,34 @@ class GlafiraTaskOwnershipInstrumentedTest {
             put("progress_percent", 25)
             put("updated_at", 1_500L)
         })
+        db.insertOrThrow("core_desktop_nodes", null, ContentValues().apply {
+            put("device_id", "legacy-device")
+            put("last_seen_at", 1_500L)
+            put("capabilities_json", "[]")
+            put("max_parallel_tasks", 1)
+        })
+        GlafiraCoreOwnerApprovalStore(legacy)
+        db.insertOrThrow("core_action_approvals", null, ContentValues().apply {
+            put("task_id", item.taskId)
+            put("project_id", item.projectId)
+            put("tool_id", item.taskType)
+            put("action_hash", "a".repeat(64))
+            put("requested_scopes", "[]")
+            put("requested_at", 1_000L)
+            put("expires_at", 9_000L)
+            put("status", "APPROVED")
+        })
+        GlafiraCoreLiveRunStore.createSchema(db)
+        db.insertOrThrow(GlafiraCoreLiveRunStore.TABLE, null, ContentValues().apply {
+            put("task_id", item.taskId)
+            put("project_id", item.projectId)
+            put("tool_id", item.taskType)
+            put("plan_hash", "b".repeat(64))
+            put("action_hash", "c".repeat(64))
+            put("approved_at", 1_000L)
+            put("expires_at", 9_000L)
+            put("approved_session_id", "legacy-session-01")
+        })
         db.execSQL("DROP TRIGGER IF EXISTS core_task_ownership_state_version")
         db.execSQL("DROP TABLE core_task_ownership")
         db.execSQL("PRAGMA user_version = 10")
@@ -183,6 +211,21 @@ class GlafiraTaskOwnershipInstrumentedTest {
             arrayOf(item.taskId)
         ).use { it.moveToFirst() }
         assertFalse("Legacy executor lease must be revoked before owner review", staleLeaseExists)
+        val staleNodeExists = migrated.readableDatabase.rawQuery(
+            "SELECT 1 FROM core_desktop_nodes WHERE device_id = ?",
+            arrayOf("legacy-device")
+        ).use { it.moveToFirst() }
+        assertFalse("Legacy paired-node metadata must be cleared", staleNodeExists)
+        val staleApprovalExists = migrated.readableDatabase.rawQuery(
+            "SELECT 1 FROM core_action_approvals WHERE task_id = ?",
+            arrayOf(item.taskId)
+        ).use { it.moveToFirst() }
+        assertFalse("Legacy owner approvals must be cleared", staleApprovalExists)
+        val staleLiveGrantExists = migrated.readableDatabase.rawQuery(
+            "SELECT 1 FROM core_live_run_grants WHERE task_id = ?",
+            arrayOf(item.taskId)
+        ).use { it.moveToFirst() }
+        assertFalse("Legacy LIVE grants must be cleared", staleLiveGrantExists)
     }
 
     @Test
