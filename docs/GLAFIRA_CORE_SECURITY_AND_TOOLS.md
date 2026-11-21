@@ -5,6 +5,8 @@
 - The owner is the business and security authority.
 - Glafira is the single coordinator and owner of task orchestration.
 - OpenAI, DeepSeek, GigaChat and other LLMs are peer reasoning providers. No provider has authority over Glafira.
+- Yandex Cloud and Yandex API services are permitted integration/provider options when a supported adapter, valid credentials and owner-approved scopes are available. Their absence from the current implementation is an adapter gap, not a product-level prohibition.
+- No cloud/model vendor is mandatory. Provider availability, routing and data sharing are configured independently; one provider's missing adapter must not disable unrelated providers or local Core operation.
 - Specialist agents are roles. Providers are replaceable model backends. A role must not be permanently coupled to one vendor.
 - Glafira chooses whether to answer directly, consult peers, delegate a specialist task, or use an external tool. It owns the final synthesis and reports uncertainty.
 
