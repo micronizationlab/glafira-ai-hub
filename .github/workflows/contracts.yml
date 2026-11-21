@@ -121,3 +121,31 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Compile generated C# models
         run: dotnet run --project contracts/v1/verification/csharp/Glafira.GeneratedContracts.csproj --configuration Release
+
+
+  build-native-ios-app:
+    name: Build native GLAFIRA iOS app for Simulator
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Show Apple toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+      - name: Run BridgeKit unit tests
+        working-directory: ios/GlafiraBridgeKit
+        run: swift test
+      - name: Build native GLAFIRA app for iOS Simulator
+        run: |
+          xcodebuild \
+            -project ios/GLAFIRA.xcodeproj \
+            -scheme GLAFIRA \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/GLAFIRA-iOS-DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Verify simulator app bundle exists
+        run: |
+          test -d "$RUNNER_TEMP/GLAFIRA-iOS-DerivedData/Build/Products/Debug-iphonesimulator/GLAFIRA.app"
