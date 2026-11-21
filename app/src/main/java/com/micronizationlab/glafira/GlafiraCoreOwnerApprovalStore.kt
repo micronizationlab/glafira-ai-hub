@@ -61,6 +61,34 @@ class GlafiraCoreOwnerApprovalStore(
     }
 
     @Synchronized
+    override fun peekApprovalGrant(
+        task: GlafiraTask,
+        actionSummary: String,
+        nowMillis: Long
+    ): ToolApprovalGrant? {
+        if (actionSummary.isBlank()) return null
+        val hash = GlafiraToolRegistry.actionHash(task, actionSummary)
+        return db.query(
+            "core_action_approvals",
+            arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at"),
+            "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val row = ApprovalRow(
+                cursor.getString(0), cursor.getString(1), cursor.getString(2),
+                cursor.getString(3), cursor.getLong(4), cursor.getLong(5)
+            )
+            if (row.status == APPROVED && row.projectId == task.projectId &&
+                row.toolId == task.taskType && row.actionHash == hash &&
+                row.approvedAt <= nowMillis && row.grantExpiresAt > nowMillis
+            ) ToolApprovalGrant(
+                row.projectId, row.toolId, row.actionHash,
+                row.approvedAt, row.grantExpiresAt, task.taskId
+            ) else null
+        }
+    }
+
+    @Synchronized
     override fun requestApproval(task: GlafiraTask, actionSummary: String, nowMillis: Long): Boolean {
         if (actionSummary.isBlank() || nowMillis <= 0L) return false
         val definition = GlafiraToolRegistry.find(task.taskType) ?: return false
