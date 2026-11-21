@@ -23,14 +23,17 @@ import java.util.UUID
  * Keystore. A portable backup/restore therefore cannot clone this installation identity.
  * This identity is not an owner account identity and does not itself grant authorization.
  */
-class AndroidCoreInstallationIdentityStore(context: Context) {
-    private val identityFile = File(context.applicationContext.noBackupFilesDir, IDENTITY_FILE)
+class AndroidCoreInstallationIdentityStore internal constructor(
+    context: Context,
+    private val identityFile: File = File(context.applicationContext.noBackupFilesDir, IDENTITY_FILE),
+    private val keyAliasPrefix: String = KEY_ALIAS_PREFIX
+) {
     private val keyStore: KeyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
 
     fun loadOrCreate(): CoreInstallationIdentity = synchronized(PROCESS_LOCK) {
         if (!identityFile.exists()) {
             // If metadata was intentionally removed or lost, never silently reuse a leftover key.
-            keyStore.aliases().toList().filter { it.startsWith(KEY_ALIAS_PREFIX) }
+            keyStore.aliases().toList().filter { it.startsWith(keyAliasPrefix) }
                 .forEach(keyStore::deleteEntry)
             val keyPair = createKeyPair(1)
             val identity = CoreInstallationIdentity(
@@ -130,7 +133,7 @@ class AndroidCoreInstallationIdentityStore(context: Context) {
         }
     }
 
-    private fun keyAlias(epoch: Long) = "$KEY_ALIAS_PREFIX$epoch"
+    private fun keyAlias(epoch: Long) = "$keyAliasPrefix$epoch"
 
     companion object {
         // Synchronize across store instances: runtime initialization and tests may construct
