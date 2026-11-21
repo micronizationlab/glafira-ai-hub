@@ -68,7 +68,7 @@ public sealed class AgentTaskPollingCoordinator
         var lease = await _transport.ClaimNextAsync(
             credential,
             _runtimeState.Capabilities,
-            Math.Max(1, Math.Min(_runtimeState.MaxParallelTasks, 1)),
+            1, // First runtime slice is deliberately single-flight; scale only after outbox stress tests.
             _handlers.RegisteredTaskTypes,
             cancellationToken).ConfigureAwait(false);
         if (lease is null) return false;
@@ -88,7 +88,7 @@ public sealed class AgentTaskPollingCoordinator
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         using var renewalCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var renewalTask = RenewWhileRunningAsync(credential, lease, renewalCancellation.Token);
+        var renewalTask = RenewWhileRunningAsync(credential, lease, renewalCancellation);
         AgentTaskResult result;
         Exception? renewalFailure = null;
         try
@@ -120,14 +120,28 @@ public sealed class AgentTaskPollingCoordinator
     private async Task RenewWhileRunningAsync(
         AgentEnrollmentCredential credential,
         AgentTaskLease lease,
-        CancellationToken cancellationToken)
+        CancellationTokenSource executionCancellation)
     {
+        var cancellationToken = executionCancellation.Token;
         while (true)
         {
             await Task.Delay(_renewInterval, _timeProvider, cancellationToken).ConfigureAwait(false);
-            await _transport.SendTaskUpdateAsync(
-                credential, lease, "RUNNING", 50, "Registered handler is still running",
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _transport.SendTaskUpdateAsync(
+                    credential, lease, "RUNNING", 50, "Registered handler is still running",
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // If the Hub cannot extend the lease, stop local work before its authority expires.
+                executionCancellation.Cancel();
+                throw;
+            }
         }
     }
 
