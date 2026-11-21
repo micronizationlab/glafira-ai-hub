@@ -284,11 +284,12 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
         if (snapshot.ActiveLeases is null || snapshot.PendingResults is null ||
             snapshot.ActiveLeases.Count > MaximumActiveLeases ||
             snapshot.PendingResults.Count > MaximumPendingResults ||
-            snapshot.ActiveLeases.Select(item => item.TaskId).Distinct(StringComparer.Ordinal).Count() != snapshot.ActiveLeases.Count ||
-            snapshot.PendingResults.Select(item => item.Lease.TaskId).Distinct(StringComparer.Ordinal).Count() != snapshot.PendingResults.Count ||
             snapshot.ActiveLeases.Any(item => item is null) ||
-            snapshot.PendingResults.Any(item => item is null))
+            snapshot.PendingResults.Any(item => item is null || item.Lease is null))
             throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_STRUCTURE_INVALID");
+        if (snapshot.ActiveLeases.Select(item => item.TaskId).Distinct(StringComparer.Ordinal).Count() != snapshot.ActiveLeases.Count ||
+            snapshot.PendingResults.Select(item => item.Lease.TaskId).Distinct(StringComparer.Ordinal).Count() != snapshot.PendingResults.Count)
+            throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_DUPLICATE_TASK");
         foreach (var lease in snapshot.ActiveLeases) ValidateLease(lease);
         foreach (var result in snapshot.PendingResults) ValidatePendingResult(result);
         if (snapshot.ActiveLeases.Any(active => snapshot.PendingResults.Any(pending => pending.Lease.TaskId == active.TaskId)))
