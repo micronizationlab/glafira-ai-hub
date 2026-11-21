@@ -195,33 +195,20 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
 
     private fun migrateCoreTaskOwnership(db: SQLiteDatabase) {
         createCoreTaskOwnershipSchema(db)
-        val coreId = ownerCoreId ?: return
-        db.rawQuery(
-            "SELECT task_id, project_id, task_type, payload_ciphertext, idempotency_key, created_at, updated_at " +
-                "FROM $TABLE_TASKS ORDER BY created_at ASC, task_id ASC",
-            null
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                val taskId = cursor.getString(0)
-                val projectId = cursor.getString(1)
-                val taskType = cursor.getString(2)
-                val payload = GlafiraTaskPayloadCrypto.decrypt(cursor.getString(3), "$taskId|$projectId")
-                val digest = sha256(payload)
-                db.insertOrThrow(TABLE_OWNERSHIP, null, ContentValues().apply {
-                    put("task_id", taskId)
-                    put("project_id", projectId)
-                    put("owner_core_id", coreId)
-                    put("owner_generation", 1)
-                    put("state_version", 0)
-                    put("payload_sha256", digest)
-                    put("idempotency_key", cursor.getString(4))
-                    put("effect_risk", effectRiskFor(taskType))
-                    putNull("approval_ref")
-                    put("created_at", cursor.getLong(5))
-                    put("updated_at", cursor.getLong(6))
-                })
-            }
-        }
+
+        // v10 did not bind the task database to the noBackup installation identity.
+        // After reinstall/restore, the current Core ID may be new; never infer that it
+        // owns legacy rows. Quarantine interrupted work for explicit owner review.
+        db.execSQL(
+            "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+                "WHERE state NOT IN ('succeeded', 'failed', 'cancelled', ?)",
+            arrayOf(
+                GlafiraTaskState.WAITING_FOR_OWNER.databaseValue,
+                System.currentTimeMillis(),
+                "LEGACY_TASK_OWNER_REVIEW_REQUIRED",
+                GlafiraTaskState.WAITING_FOR_OWNER.databaseValue
+            )
+        )
     }
 
     private fun insertTaskOwnershipRecord(
