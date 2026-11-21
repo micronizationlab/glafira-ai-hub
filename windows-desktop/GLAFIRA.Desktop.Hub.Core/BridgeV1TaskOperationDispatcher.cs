@@ -95,21 +95,18 @@ public sealed class BridgeV1TaskOperationDispatcher(
                 .SetEquals(agent.Capabilities))
             return Failure("AGENT_CAPABILITY_MISMATCH");
 
-        IReadOnlyCollection<string>? supportedTaskTypes = null;
-        if (request.Payload.TryGetValue("taskTypes", out var taskTypesJson))
-        {
-            string[] parsedTypes;
-            try { parsedTypes = JsonSerializer.Deserialize<string[]>(taskTypesJson) ?? []; }
-            catch (JsonException) { return Failure("AGENT_TASK_TYPE_MISMATCH"); }
-            if (parsedTypes.Length is < 1 or > 64 ||
-                parsedTypes.Any(type => string.IsNullOrWhiteSpace(type) || type.Length > 96 ||
-                    !System.Text.RegularExpressions.Regex.IsMatch(type, "^[a-z][a-z0-9_.-]*$")) ||
-                parsedTypes.Distinct(StringComparer.Ordinal).Count() != parsedTypes.Length)
-                return Failure("AGENT_TASK_TYPE_MISMATCH");
-            supportedTaskTypes = parsedTypes;
-        }
+        if (!request.Payload.TryGetValue("taskTypes", out var taskTypesJson))
+            return Failure("AGENT_TASK_TYPE_REQUIRED");
+        string[] parsedTypes;
+        try { parsedTypes = JsonSerializer.Deserialize<string[]>(taskTypesJson) ?? []; }
+        catch (JsonException) { return Failure("AGENT_TASK_TYPE_MISMATCH"); }
+        if (parsedTypes.Length is < 1 or > 64 ||
+            parsedTypes.Any(type => string.IsNullOrWhiteSpace(type) || type.Length > 96 ||
+                !System.Text.RegularExpressions.Regex.IsMatch(type, "^[a-z][a-z0-9_.-]*$")) ||
+            parsedTypes.Distinct(StringComparer.Ordinal).Count() != parsedTypes.Length)
+            return Failure("AGENT_TASK_TYPE_MISMATCH");
 
-        var lease = store.ClaimNext(agent.AgentId, now, _leaseDuration, supportedTaskTypes);
+        var lease = store.ClaimNext(agent.AgentId, now, _leaseDuration, parsedTypes);
         if (lease is null)
             return Accepted(new Dictionary<string, string> { ["available"] = "false" });
 
