@@ -18,6 +18,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     val installationIdentity = AndroidCoreInstallationIdentityStore(appContext).loadOrCreate()
 
     val taskStore = GlafiraTaskStore(appContext)
+    val traceStore = GlafiraCoreTraceStore(taskStore)
     private val ownerApprovalStore = GlafiraCoreOwnerApprovalStore(taskStore)
     // Pairing approval writes device credentials into this same encrypted approval DB.
     // Reading from the legacy SharedPreferences store would make newly paired devices
