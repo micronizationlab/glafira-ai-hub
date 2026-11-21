@@ -139,7 +139,7 @@ public sealed class BridgeV1TaskOperationDispatcher(
                 ["payloadRef"] = lease.PayloadRef,
                 ["payloadSha256"] = lease.PayloadSha256,
                 ["effectRisk"] = lease.EffectRisk.ToString(),
-                ["approvalRef"] = lease.ApprovalRef ?? "none",
+                ["approvalRef"] = lease.ApprovalRef ?? string.Empty,
                 ["leaseExpiresAtEpochMs"] = lease.ExpiresAt.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
                 ["parentTaskId"] = fields.ParentTaskId,
                 ["subtaskId"] = fields.SubtaskId,
