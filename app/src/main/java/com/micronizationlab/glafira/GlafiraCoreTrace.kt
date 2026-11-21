@@ -17,6 +17,18 @@ enum class GlafiraCoreTraceEventType {
     BACKUP_STARTED, BACKUP_VERIFIED, RESTORE_STARTED, RESTORE_SUCCEEDED, RESTORE_FAILED
 }
 
+internal fun traceEventTypeForTaskState(state: String): GlafiraCoreTraceEventType = when (state.lowercase()) {
+    "queued" -> GlafiraCoreTraceEventType.TASK_QUEUED
+    "running" -> GlafiraCoreTraceEventType.TASK_STARTED
+    "waiting_for_network" -> GlafiraCoreTraceEventType.TASK_WAITING_FOR_NETWORK
+    "waiting_for_owner" -> GlafiraCoreTraceEventType.TASK_WAITING_FOR_OWNER
+    "retry_scheduled" -> GlafiraCoreTraceEventType.TASK_RETRY_SCHEDULED
+    "succeeded" -> GlafiraCoreTraceEventType.TASK_SUCCEEDED
+    "failed" -> GlafiraCoreTraceEventType.TASK_FAILED
+    "cancelled" -> GlafiraCoreTraceEventType.TASK_CANCELLED
+    else -> GlafiraCoreTraceEventType.TASK_STATE_CHANGED
+}
+
 enum class GlafiraCoreTraceActorType { OWNER, CORE, AGENT, PROVIDER, DEVICE, SYSTEM }
 enum class GlafiraCoreTraceDataClassification { PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED }
 
