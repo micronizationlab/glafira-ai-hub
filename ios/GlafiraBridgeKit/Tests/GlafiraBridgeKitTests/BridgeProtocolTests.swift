@@ -141,5 +141,47 @@ final class BridgeProtocolTests: XCTestCase {
             payload: ["conversationId": "  "]
         )
         XCTAssertEqual(BridgeProtocol.validate(blank, nowEpochMs: 1_050_000), .invalidPayloadValue)
+
+        let unicodeIdentifier = BridgeRequest(
+            requestId: "request-0001",
+            idempotencyKey: "idem-000001",
+            deviceId: "device-ядро",
+            projectId: "project-001",
+            operation: .projectRead,
+            issuedAtEpochMs: 1_000_000,
+            expiresAtEpochMs: 1_120_000
+        )
+        XCTAssertEqual(
+            BridgeProtocol.validate(unicodeIdentifier, nowEpochMs: 1_050_000),
+            .invalidIdentifier
+        )
+    }
+
+    func testOwnershipReadRequiresExactTransferIdAndAcceptsDefaultProject() {
+        let valid = BridgeRequest(
+            requestId: "request-owner-01",
+            idempotencyKey: "idem-owner-0001",
+            deviceId: "device-0001",
+            projectId: "default",
+            operation: .ownershipTransferRead,
+            issuedAtEpochMs: 1_000_000,
+            expiresAtEpochMs: 1_120_000,
+            payload: ["transferId": "transfer-owner-0001"]
+        )
+        XCTAssertNil(BridgeProtocol.validate(valid, nowEpochMs: 1_050_000))
+        let malformed = BridgeRequest(
+            requestId: valid.requestId,
+            idempotencyKey: valid.idempotencyKey,
+            deviceId: valid.deviceId,
+            projectId: valid.projectId,
+            operation: valid.operation,
+            issuedAtEpochMs: valid.issuedAtEpochMs,
+            expiresAtEpochMs: valid.expiresAtEpochMs,
+            payload: ["transferId": "bad id"]
+        )
+        XCTAssertEqual(
+            BridgeProtocol.validate(malformed, nowEpochMs: 1_050_000),
+            .invalidPayloadValue
+        )
     }
 }

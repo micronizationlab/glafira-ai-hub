@@ -105,6 +105,15 @@ claims when protected local history has no room.
 
 `dual-core-ownership.schema.json` defines the first language-neutral wire shape for a canonical task ownership record and an explicit signed transfer between two Core installations. The transfer binds the exact task/project, old and new Core IDs, current and next owner generation, canonical state version, immutable payload digest, idempotency key, effect-risk class, approval reference, nonce, validity window, signing-key epoch and public-key fingerprint.
 
+The owner-facing read path is the signed Bridge v1 `OWNERSHIP_TRANSFER_READ` operation.
+It requires the dedicated `ownership.read` device scope and an exact `transferId` payload.
+The Windows Hub returns either `{available:false}` or the exact persisted flat transfer
+envelope. Every successful response includes the original `protocolVersion` and `requestId`;
+clients must reject a mismatched response, unexpected result fields, a different project or
+transfer ID, and any envelope whose old-owner key is not independently trusted. The response
+never supplies or upgrades that trust anchor. Android and iOS remain read-side projections and
+cannot issue transfers or leases.
+
 ### Mandatory semantic checks
 
 JSON Schema validates field types and bounds. The shared fixture verifier additionally enforces invariants that JSON Schema cannot express portably:

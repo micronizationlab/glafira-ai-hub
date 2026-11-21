@@ -6,6 +6,7 @@ public enum BridgeOperation: String, Codable, CaseIterable, Sendable {
     case conversationRead = "CONVERSATION_READ"
     case conversationAppend = "CONVERSATION_APPEND"
     case approvalRequest = "APPROVAL_REQUEST"
+    case ownershipTransferRead = "OWNERSHIP_TRANSFER_READ"
 }
 
 public enum BridgeStatus: String, Codable, Sendable {
@@ -99,7 +100,8 @@ public enum BridgeProtocol {
         .projectRead: [],
         .conversationRead: ["conversationId"],
         .conversationAppend: ["conversationId", "messageText"],
-        .approvalRequest: ["toolId", "actionSummary"]
+        .approvalRequest: ["toolId", "actionSummary"],
+        .ownershipTransferRead: ["transferId"]
     ]
 
     public static func validate(
@@ -108,8 +110,11 @@ public enum BridgeProtocol {
     ) -> BridgeValidationError? {
         guard request.protocolVersion == currentVersion else { return .unsupportedVersion }
 
-        guard [request.requestId, request.idempotencyKey, request.deviceId, request.projectId]
-            .allSatisfy(isValidIdentifier) else { return .invalidIdentifier }
+        guard [request.requestId, request.idempotencyKey, request.deviceId]
+            .allSatisfy(isValidIdentifier),
+              request.projectId == "default" || isValidIdentifier(request.projectId) else {
+            return .invalidIdentifier
+        }
 
         let (ttl, overflow) = request.expiresAtEpochMs.subtractingReportingOverflow(request.issuedAtEpochMs)
         guard !overflow,
@@ -135,6 +140,11 @@ public enum BridgeProtocol {
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             $0.utf16.count <= maximumPayloadUTF16Units
         }) else { return .invalidPayloadValue }
+
+        if request.operation == .ownershipTransferRead,
+           !isValidIdentifier(request.payload["transferId"] ?? "") {
+            return .invalidPayloadValue
+        }
 
         return nil
     }
@@ -185,9 +195,10 @@ public enum BridgeProtocol {
         let units = value.utf16.count
         guard (8...128).contains(units) else { return false }
         return value.unicodeScalars.allSatisfy {
-            $0.value <= 0xFFFF &&
-            (CharacterSet.alphanumerics.contains($0) ||
-             $0 == "-" || $0 == "_" || $0 == ".")
+            (0x30...0x39).contains($0.value) ||
+            (0x41...0x5A).contains($0.value) ||
+            (0x61...0x7A).contains($0.value) ||
+            $0 == "-" || $0 == "_" || $0 == "."
         }
     }
 

@@ -5,7 +5,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /** Typed Bridge envelope. It is not a network listener or a device-pairing implementation. */
-enum class GlafiraBridgeOperation { PROJECT_READ, CONVERSATION_READ, CONVERSATION_APPEND, APPROVAL_REQUEST, DESKTOP_TASK_CLAIM, DESKTOP_TASK_RESULT }
+enum class GlafiraBridgeOperation { PROJECT_READ, CONVERSATION_READ, CONVERSATION_APPEND, APPROVAL_REQUEST, OWNERSHIP_TRANSFER_READ, DESKTOP_TASK_CLAIM, DESKTOP_TASK_RESULT }
 enum class GlafiraBridgeStatus { ACCEPTED, PENDING_APPROVAL, SUCCEEDED, FAILED, CANCELLED }
 
 data class GlafiraBridgeRequest(
@@ -46,7 +46,8 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.CONVERSATION_READ to setOf("conversationId"),
         GlafiraBridgeOperation.CONVERSATION_APPEND to setOf("conversationId", "messageText"),
         GlafiraBridgeOperation.APPROVAL_REQUEST to setOf("toolId", "actionSummary"),
-        GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to setOf("capabilities", "maxParallelTasks"),
+        GlafiraBridgeOperation.OWNERSHIP_TRANSFER_READ to setOf("transferId"),
+        GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to setOf("capabilities", "maxParallelTasks", "taskTypes"),
         GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "ownerCoreId", "ownerGeneration", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode")
     )
     private val allowedFields = requiredFields
@@ -146,6 +147,10 @@ object GlafiraBridgeProtocol {
                 progress == null || progress !in 0..100 ||
                 request.payload["state"] !in setOf("ACCEPTED", "RUNNING", "SUCCEEDED", "FAILED")
             ) return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
+        } else if (request.operation == GlafiraBridgeOperation.OWNERSHIP_TRANSFER_READ &&
+            !isIdentifier(request.payload["transferId"].orEmpty())
+        ) {
+            return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
         }
         return null
     }

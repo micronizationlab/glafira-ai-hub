@@ -114,6 +114,7 @@ public enum MobileOwnershipSyncError: Error, Equatable, Sendable {
     case previousOwnerMismatch
     case previousStateMismatch
     case invalidPersistedState
+    case invalidBridgeResponse
 }
 
 /// Durable owner-facing read model for signed task ownership changes.
@@ -160,6 +161,46 @@ public actor MobileOwnershipSyncStore {
 
     public func projection(taskId: String, projectId: String) -> MobileOwnershipProjection? {
         records[Self.key(taskId: taskId, projectId: projectId)]
+    }
+
+    /// Correlates a scoped Hub read response before applying its signed envelope.
+    /// The trusted key is deliberately supplied out-of-band and never read from the response.
+    public func applyBridgeResponse(
+        _ response: BridgeResponse,
+        for request: BridgeRequest,
+        trustedKey: MobileOwnershipTrustedSigningKey,
+        now: Date = Date()
+    ) throws -> MobileOwnershipSyncResult? {
+        guard request.operation == .ownershipTransferRead,
+              BridgeProtocol.validate(
+                request,
+                nowEpochMs: Int64(now.timeIntervalSince1970 * 1_000)
+              ) == nil,
+              response.protocolVersion == BridgeProtocol.currentVersion,
+              response.requestId == request.requestId,
+              response.status == .accepted,
+              response.errorCode == nil else {
+            throw MobileOwnershipSyncError.invalidBridgeResponse
+        }
+        switch response.result["available"] {
+        case "false":
+            guard Set(response.result.keys) == Set(["available"]) else {
+                throw MobileOwnershipSyncError.invalidBridgeResponse
+            }
+            return nil
+        case "true":
+            guard Set(response.result.keys) == Set(["available", "envelope"]),
+                  let envelopeText = response.result["envelope"],
+                  let envelopeData = envelopeText.data(using: .utf8),
+                  let transfer = try? MobileOwnershipTransferEnvelope.decodeStrict(envelopeData),
+                  transfer.transferId == request.payload["transferId"],
+                  transfer.projectId == request.projectId else {
+                throw MobileOwnershipSyncError.invalidBridgeResponse
+            }
+            return try apply(transfer, trustedKey: trustedKey, now: now)
+        default:
+            throw MobileOwnershipSyncError.invalidBridgeResponse
+        }
     }
 
     @discardableResult

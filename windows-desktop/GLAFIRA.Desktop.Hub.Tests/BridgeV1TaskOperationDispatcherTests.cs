@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using GLAFIRA.Desktop.Core.Ownership;
 using GLAFIRA.Desktop.Hub.Core;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -49,6 +50,44 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
         var agent = Assert.Single(_store.GetAgents(now.AddSeconds(2)));
         Assert.True(agent.OwnerApproved);
         Assert.True(agent.IsOnline);
+    }
+
+    [Fact]
+    public async Task OwnershipTransferReadIsCorrelatedProjectScopedAndDoesNotRequireAgentAuthority()
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 18, 0, 0, TimeSpan.Zero);
+        _store.Enqueue(new HubTaskRequest(
+            "ownership-task-0001", "project-0001", "windows-core-0001", 1,
+            "ownership-idem-0001", "web.research", "payload://ownership-task-0001",
+            new string('a', 64), ["web.research"], [], HubTaskEffectRisk.ReadOnly, null), now);
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var publicKey = signingKey.ExportSubjectPublicKeyInfo();
+        var issuer = new DesktopHubOwnershipTransferIssuer(
+            _store, "windows-core-0001", 1, publicKey,
+            Convert.ToHexString(SHA256.HashData(publicKey)).ToLowerInvariant(),
+            payload => CoreOwnershipTransferCryptography.Sign(signingKey, payload));
+        var envelope = issuer.Issue(
+            "ownership-task-0001", "android-core-0001", now.AddSeconds(1), TimeSpan.FromMinutes(5));
+        var request = Request(
+            BridgeV1Operation.OWNERSHIP_TRANSFER_READ,
+            new Dictionary<string, string> { ["transferId"] = envelope.Payload.TransferId });
+        var dispatcher = CreateDispatcher(_payload);
+
+        var response = await dispatcher.DispatchAsync(request, now.AddSeconds(2));
+
+        Assert.Equal(1, response.ProtocolVersion);
+        Assert.Equal(request.RequestId, response.RequestId);
+        Assert.Equal("ACCEPTED", response.Status);
+        Assert.Equal("true", response.Result["available"]);
+        Assert.Equal(envelope.ToWireJson(), response.Result["envelope"]);
+
+        var otherProject = await dispatcher.DispatchAsync(request with
+        {
+            RequestId = "request-owner-other-01",
+            ProjectId = "project-other-01"
+        }, now.AddSeconds(3));
+        Assert.Equal("false", otherProject.Result["available"]);
+        Assert.Single(otherProject.Result);
     }
 
     [Fact]

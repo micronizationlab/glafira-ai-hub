@@ -117,6 +117,49 @@ class GlafiraMobileOwnershipSyncAdapter(
     private val store: GlafiraMobileOwnershipProjectionStore,
     private val trustedKeys: GlafiraOwnershipTrustedKeyResolver
 ) {
+    /**
+     * Correlates the authenticated Hub response before parsing the signed envelope.
+     * The signing key still comes only from trustedKeys, never from the response.
+     */
+    fun applyBridgeResponse(
+        request: GlafiraBridgeRequest,
+        response: GlafiraBridgeResponse,
+        now: Instant = Instant.now()
+    ): GlafiraOwnershipSyncResult? {
+        require(request.operation == GlafiraBridgeOperation.OWNERSHIP_TRANSFER_READ &&
+            GlafiraBridgeProtocol.validate(request, now.toEpochMilli()) == null) {
+            "OWNERSHIP_BRIDGE_REQUEST_INVALID"
+        }
+        require(response.protocolVersion == GlafiraBridgeProtocol.CURRENT_VERSION &&
+            response.requestId == request.requestId &&
+            response.status == GlafiraBridgeStatus.ACCEPTED &&
+            response.errorCode == null) {
+            "OWNERSHIP_BRIDGE_RESPONSE_CORRELATION_INVALID"
+        }
+        return when (response.result["available"]) {
+            "false" -> {
+                require(response.result.keys == setOf("available")) {
+                    "OWNERSHIP_BRIDGE_RESPONSE_FIELDS_INVALID"
+                }
+                null
+            }
+            "true" -> {
+                require(response.result.keys == setOf("available", "envelope")) {
+                    "OWNERSHIP_BRIDGE_RESPONSE_FIELDS_INVALID"
+                }
+                val envelope = GlafiraOwnershipTransferEnvelope.parse(
+                    response.result.getValue("envelope")
+                )
+                require(envelope.payload.transferId == request.payload["transferId"] &&
+                    envelope.payload.projectId == request.projectId) {
+                    "OWNERSHIP_BRIDGE_RESPONSE_BINDING_INVALID"
+                }
+                apply(envelope, now)
+            }
+            else -> throw IllegalArgumentException("OWNERSHIP_BRIDGE_RESPONSE_AVAILABILITY_INVALID")
+        }
+    }
+
     @Synchronized
     fun apply(
         envelope: GlafiraOwnershipTransferEnvelope,

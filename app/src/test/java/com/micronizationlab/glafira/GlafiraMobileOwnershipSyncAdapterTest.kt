@@ -8,6 +8,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class GlafiraMobileOwnershipSyncAdapterTest {
@@ -93,8 +94,73 @@ class GlafiraMobileOwnershipSyncAdapterTest {
         }
     }
 
+    @Test
+    fun bridgeResponseIsCorrelatedProjectBoundAndUsesOutOfBandTrustKey() {
+        val now = Instant.parse("2026-11-21T12:01:00Z")
+        val envelope = signed(payload())
+        val request = ownershipReadRequest(envelope.payload.transferId)
+        val response = GlafiraBridgeResponse(
+            protocolVersion = 1,
+            requestId = request.requestId,
+            status = GlafiraBridgeStatus.ACCEPTED,
+            result = mapOf(
+                "available" to "true",
+                "envelope" to wireJson(envelope).toString()
+            )
+        )
+        val store = MemoryStore()
+
+        val applied = adapter(store).applyBridgeResponse(request, response, now)
+
+        assertNotNull(applied)
+        assertEquals("desktop-core-01", applied!!.projection.ownerCoreId)
+        val rejectedStore = MemoryStore()
+        assertThrows(IllegalArgumentException::class.java) {
+            adapter(rejectedStore).applyBridgeResponse(
+                request,
+                response.copy(requestId = "request-owner-read-02"),
+                now
+            )
+        }
+        assertNull(rejectedStore.value)
+    }
+
+    @Test
+    fun bridgeUnavailableResponseMustHaveExactFieldsAndDoesNotMutateProjection() {
+        val now = Instant.parse("2026-11-21T12:01:00Z")
+        val request = ownershipReadRequest("transfer-0001")
+        val store = MemoryStore()
+        val response = GlafiraBridgeResponse(
+            1, request.requestId, GlafiraBridgeStatus.ACCEPTED,
+            mapOf("available" to "false")
+        )
+
+        assertNull(adapter(store).applyBridgeResponse(request, response, now))
+        assertNull(store.value)
+        assertThrows(IllegalArgumentException::class.java) {
+            adapter(store).applyBridgeResponse(
+                request,
+                response.copy(result = response.result + ("envelope" to "{}")),
+                now
+            )
+        }
+    }
+
     private fun adapter(store: MemoryStore) =
         GlafiraMobileOwnershipSyncAdapter(store, trustedResolver())
+
+    private fun ownershipReadRequest(transferId: String) = GlafiraBridgeRequest(
+        protocolVersion = 1,
+        requestId = "request-owner-read-01",
+        idempotencyKey = "idem-owner-read-01",
+        deviceId = "device-0001",
+        projectId = "project-0001",
+        operation = GlafiraBridgeOperation.OWNERSHIP_TRANSFER_READ,
+        issuedAtEpochMs = Instant.parse("2026-11-21T12:00:00Z").toEpochMilli(),
+        expiresAtEpochMs = Instant.parse("2026-11-21T12:05:00Z").toEpochMilli(),
+        payload = mapOf("transferId" to transferId),
+        signatureHex = "0".repeat(64)
+    )
 
     private fun trustedResolver() = GlafiraOwnershipTrustedKeyResolver { owner, epoch, digest ->
         keyPair.public.takeIf {

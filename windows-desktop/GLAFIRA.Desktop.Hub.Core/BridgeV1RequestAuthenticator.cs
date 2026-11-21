@@ -9,6 +9,7 @@ public enum BridgeV1Operation
     CONVERSATION_READ,
     CONVERSATION_APPEND,
     APPROVAL_REQUEST,
+    OWNERSHIP_TRANSFER_READ,
     DESKTOP_TASK_CLAIM,
     DESKTOP_TASK_RESULT,
     DESKTOP_AGENT_HEARTBEAT
@@ -64,6 +65,7 @@ public sealed class BridgeV1RequestAuthenticator(
             [BridgeV1Operation.CONVERSATION_READ] = "conversation.read",
             [BridgeV1Operation.CONVERSATION_APPEND] = "conversation.append",
             [BridgeV1Operation.APPROVAL_REQUEST] = "approval.request",
+            [BridgeV1Operation.OWNERSHIP_TRANSFER_READ] = "ownership.read",
             [BridgeV1Operation.DESKTOP_TASK_CLAIM] = "desktop.task.claim",
             [BridgeV1Operation.DESKTOP_TASK_RESULT] = "desktop.task.result",
             [BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT] = "desktop.task.claim"
@@ -76,7 +78,8 @@ public sealed class BridgeV1RequestAuthenticator(
             [BridgeV1Operation.CONVERSATION_READ] = new HashSet<string>(["conversationId"], StringComparer.Ordinal),
             [BridgeV1Operation.CONVERSATION_APPEND] = new HashSet<string>(["conversationId", "messageText"], StringComparer.Ordinal),
             [BridgeV1Operation.APPROVAL_REQUEST] = new HashSet<string>(["toolId", "actionSummary"], StringComparer.Ordinal),
-            [BridgeV1Operation.DESKTOP_TASK_CLAIM] = new HashSet<string>(["capabilities", "maxParallelTasks"], StringComparer.Ordinal),
+            [BridgeV1Operation.OWNERSHIP_TRANSFER_READ] = new HashSet<string>(["transferId"], StringComparer.Ordinal),
+            [BridgeV1Operation.DESKTOP_TASK_CLAIM] = new HashSet<string>(["capabilities", "maxParallelTasks", "taskTypes"], StringComparer.Ordinal),
             [BridgeV1Operation.DESKTOP_TASK_RESULT] = new HashSet<string>(
                 ["taskId", "ownerCoreId", "ownerGeneration", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode"],
                 StringComparer.Ordinal),
@@ -233,6 +236,11 @@ public sealed class BridgeV1RequestAuthenticator(
                 progress is < 0 or > 100 ||
                 request.Payload["state"] is not ("ACCEPTED" or "RUNNING" or "SUCCEEDED" or "FAILED"))
                 return BridgeV1AdmissionFailure.InvalidEnvelope;
+        }
+        else if (request.Operation == BridgeV1Operation.OWNERSHIP_TRANSFER_READ &&
+                 !IsIdentifier(request.Payload["transferId"]))
+        {
+            return BridgeV1AdmissionFailure.InvalidEnvelope;
         }
 
         return BridgeV1AdmissionFailure.None;

@@ -7,7 +7,11 @@ namespace GLAFIRA.Desktop.Hub.Core;
 public sealed record BridgeV1DispatchResponse(
     string Status,
     IReadOnlyDictionary<string, string> Result,
-    string? ErrorCode = null);
+    string? ErrorCode = null)
+{
+    public int ProtocolVersion { get; init; } = 1;
+    public string RequestId { get; init; } = string.Empty;
+}
 
 /// <summary>
 /// Resolves a task payload from the Hub's internal content store. Implementations
@@ -37,34 +41,60 @@ public sealed class BridgeV1TaskOperationDispatcher(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        BridgeV1DispatchResponse Correlate(BridgeV1DispatchResponse response) => response with
+        {
+            ProtocolVersion = request.ProtocolVersion,
+            RequestId = request.RequestId
+        };
+
+        if (request.Operation == BridgeV1Operation.OWNERSHIP_TRANSFER_READ)
+            return Correlate(ReadOwnershipTransfer(request));
         if (request.Operation is not (BridgeV1Operation.DESKTOP_TASK_CLAIM or BridgeV1Operation.DESKTOP_TASK_RESULT or BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT))
-            return Failure("OPERATION_NOT_IMPLEMENTED");
+            return Correlate(Failure("OPERATION_NOT_IMPLEMENTED"));
 
         var agents = store.GetAgents(now).Where(agent =>
             StringComparer.Ordinal.Equals(agent.DeviceId, request.DeviceId)).ToArray();
-        if (agents.Length != 1) return Failure("AGENT_NOT_REGISTERED");
+        if (agents.Length != 1) return Correlate(Failure("AGENT_NOT_REGISTERED"));
         var agent = agents[0];
-        if (!agent.OwnerApproved) return Failure("AGENT_NOT_OWNER_APPROVED");
+        if (!agent.OwnerApproved) return Correlate(Failure("AGENT_NOT_OWNER_APPROVED"));
 
         // The authenticated device may refresh liveness, but cannot alter its approved
         // capabilities or concurrency ceiling through an ordinary task request.
         if (!store.Heartbeat(agent.AgentId, agent.Capabilities, agent.MaxParallelTasks, now))
-            return Failure("AGENT_NOT_REGISTERED");
+            return Correlate(Failure("AGENT_NOT_REGISTERED"));
 
         if (request.Operation == BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT)
         {
-            return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+            return Correlate(Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["agentId"] = agent.AgentId,
                 ["ownerApproved"] = "true",
                 ["capabilities"] = JsonSerializer.Serialize(agent.Capabilities),
                 ["maxParallelTasks"] = agent.MaxParallelTasks.ToString(CultureInfo.InvariantCulture)
-            });
+            }));
         }
 
-        return request.Operation == BridgeV1Operation.DESKTOP_TASK_CLAIM
+        var dispatched = request.Operation == BridgeV1Operation.DESKTOP_TASK_CLAIM
             ? await ClaimAsync(request, agent, now, cancellationToken)
             : CompleteOrReport(request, agent, now);
+        return Correlate(dispatched);
+    }
+
+    private BridgeV1DispatchResponse ReadOwnershipTransfer(BridgeV1SignedRequest request)
+    {
+        if (!request.Payload.TryGetValue("transferId", out var transferId))
+            return Failure("OWNERSHIP_TRANSFER_ID_REQUIRED");
+        var transfer = store.GetOwnershipTransfer(transferId);
+        if (transfer is null || !StringComparer.Ordinal.Equals(transfer.ProjectId, request.ProjectId))
+            return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["available"] = "false"
+            });
+        return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["available"] = "true",
+            ["envelope"] = transfer.EnvelopeJson
+        });
     }
 
     private async ValueTask<BridgeV1DispatchResponse> ClaimAsync(

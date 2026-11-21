@@ -133,6 +133,77 @@ final class MobileOwnershipSyncStoreTests: XCTestCase {
         XCTAssertThrowsError(try MobileOwnershipSyncStore(directory: directory))
     }
 
+    func testBridgeResponseIsCorrelatedProjectBoundAndUsesOutOfBandTrustKey() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-21T12:01:00Z"))
+        let transfer = try signedTransfer()
+        let request = ownershipReadRequest(transferId: transfer.transferId)
+        let envelope = String(decoding: try JSONEncoder().encode(transfer), as: UTF8.self)
+        let response = BridgeResponse(
+            protocolVersion: 1,
+            requestId: request.requestId,
+            status: .accepted,
+            result: ["available": "true", "envelope": envelope]
+        )
+        let store = try MobileOwnershipSyncStore(directory: directory)
+
+        let applied = try await store.applyBridgeResponse(
+            response, for: request, trustedKey: trustedKey(), now: now
+        )
+
+        XCTAssertEqual(applied?.projection.ownerCoreId, "desktop-core-01")
+        let isolated = directory.appendingPathComponent("mismatch", isDirectory: true)
+        let rejectedStore = try MobileOwnershipSyncStore(directory: isolated)
+        let mismatched = BridgeResponse(
+            protocolVersion: 1,
+            requestId: "request-owner-read-02",
+            status: .accepted,
+            result: response.result
+        )
+        do {
+            _ = try await rejectedStore.applyBridgeResponse(
+                mismatched, for: request, trustedKey: trustedKey(), now: now
+            )
+            XCTFail("Mismatched response correlation must fail")
+        } catch {
+            XCTAssertEqual(error as? MobileOwnershipSyncError, .invalidBridgeResponse)
+        }
+        let rejectedProjection = await rejectedStore.projection(
+            taskId: "task-000001", projectId: "project-0001"
+        )
+        XCTAssertNil(rejectedProjection)
+    }
+
+    func testBridgeUnavailableResponseRequiresExactFieldsAndDoesNotMutate() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-21T12:01:00Z"))
+        let request = ownershipReadRequest(transferId: "transfer-0001")
+        let store = try MobileOwnershipSyncStore(directory: directory)
+        let unavailable = BridgeResponse(
+            protocolVersion: 1,
+            requestId: request.requestId,
+            status: .accepted,
+            result: ["available": "false"]
+        )
+
+        let missing = try await store.applyBridgeResponse(
+            unavailable, for: request, trustedKey: trustedKey(), now: now
+        )
+        XCTAssertNil(missing)
+        let extra = BridgeResponse(
+            protocolVersion: 1,
+            requestId: request.requestId,
+            status: .accepted,
+            result: ["available": "false", "envelope": "{}"]
+        )
+        do {
+            _ = try await store.applyBridgeResponse(
+                extra, for: request, trustedKey: trustedKey(), now: now
+            )
+            XCTFail("Unexpected result fields must fail")
+        } catch {
+            XCTAssertEqual(error as? MobileOwnershipSyncError, .invalidBridgeResponse)
+        }
+    }
+
     private func signedTransfer(
         transferId: String = "transfer-0001",
         nonce: String = "nonce-000001",
@@ -177,6 +248,20 @@ final class MobileOwnershipSyncStoreTests: XCTestCase {
             signingKeyEpoch: 3,
             signingPublicKeySha256: fingerprint(publicKey),
             derEncodedPublicKey: publicKey
+        )
+    }
+
+    private func ownershipReadRequest(transferId: String) -> BridgeRequest {
+        BridgeRequest(
+            requestId: "request-owner-read-01",
+            idempotencyKey: "idem-owner-read-01",
+            deviceId: "device-0001",
+            projectId: "project-0001",
+            operation: .ownershipTransferRead,
+            issuedAtEpochMs: 1_795_262_400_000,
+            expiresAtEpochMs: 1_795_262_700_000,
+            payload: ["transferId": transferId],
+            signatureHex: String(repeating: "0", count: 64)
         )
     }
 
