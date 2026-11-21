@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `195a45e430b271d3303a3cdca5bbf01dbb241485` (refresh before each integration).  
+**Baseline main for this ledger revision:** `b007837cf0e87d843774316c3712c41c8f2c8074` (refresh before each integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -206,22 +206,25 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `195a45e430b271d3303a3cdca5bbf01dbb241485`.
+**Refreshed main after this wave:** `b007837cf0e87d843774316c3712c41c8f2c8074`.
 
 ### Verified complete
 
 - Step 1: baseline captured and refreshed at each integration; this ledger revision starts from main `195a45e430b271d3303a3cdca5bbf01dbb241485`.
 - Steps 6–7, 10–12 and 15: current Core has independent-connection/concurrent-claim, duplicate-claim, DAG cycle/cross-project/dependency-join, project fairness and process-restart recovery instrumentation coverage. Exact Core acceptance remains dependent on the managed emulator and the remaining failure-injection/trace cases.
 - Steps 26–27: AndroidJUnit4 suite is selected by CI; managed emulator executed instrumentation tests, JUnit reports were non-empty and diagnostics uploaded (PR #227 exact-head run `44841507909`).
+- Step 9: complete. PR #240 (`a3a460caf7ab4b50d763ce87bf4e5f0f9ddd2421`) adds independent SQLite connection race coverage between result commit and cancellation recovery. Exact-head Android instrumentation: 66 tests, 0 failures/errors/skips; Android JVM, APK and shared contracts passed.
 - Step 71: full typed lease metadata delivered to Agent (PR #228 merged as `0950bf33b2a7779e1b5addf64a56ea2a5c0fb2ce`).
 - Step 72: strict lease validation and handler-aware claim filtering landed (PR #230 merged as `1a1b7cc5e9a5123362b6abe725302ecfc8fda46c`); PR #232 made the handler allowlist mandatory for every claim (merged as `60ba9b5a95eefaaed351c3f769a6c725a27b35d5`).
-- Steps 73, 75, 79–81 and 83: DPAPI lease/result journal, Worker lifecycle registration, server-confirmed lease renewal, cancellation on renewal failure, durable result outbox, exact ACK identity/digest validation and restart recovery are merged in PR #238 (`b439177d6c71bebcbb8e4a6a17fd36ded39fdc26`). Exact-head Windows Agent tests: 67 passed, 0 failed; Windows Hub tests/build, shared contract conformance and x64 packages passed.
+- Steps 73, 75, 79, 81 and 83: DPAPI lease/result journal, Worker lifecycle registration, server-confirmed lease renewal, cancellation on renewal failure, terminal result outbox, exact ACK identity/digest validation and restart recovery are merged in PR #238 (`b439177d6c71bebcbb8e4a6a17fd36ded39fdc26`). Exact-head Windows Agent tests: 67 passed, 0 failed; Windows Hub tests/build, shared contract conformance and x64 packages passed.
+- Step 80: complete. PR #244 (`b007837cf0e87d843774316c3712c41c8f2c8074`) adds DPAPI-backed progress outbox, write-ahead progress persistence, exact progress ACK checks and restart flush before handler resume. Exact-head Windows Agent tests: 72 passed, 0 failed; shared contract and x64 packages passed.
 - Step 74: bounded idle/failure polling backoff and pause-on-disconnect/revoke behavior merged in PR #242 (`195a45e430b271d3303a3cdca5bbf01dbb241485`). Exact-head Windows Agent tests: 68 passed, 0 failed; compile, shared contracts and x64 packages passed.
 - Step 111: native iOS Xcode project/simulator target builds in CI (PR #237).
 
 ### In progress
 
-- Step 5 and 9: PR #240 adds v7→v9 and v8→v9 Core migration coverage plus a two-connection cancellation-vs-result-commit race. Android JVM and APK jobs passed; managed emulator acceptance is still running on exact head `60ce76a9bd11c37df8ef0123382399ce63c06d93`. Do not mark these complete until the emulator test actually executes and passes.
+- Step 5: PR #240 added v7→v9 and v8→v9 Core migration coverage, but v1/v2 acceptance remains open in PR #245; existing v3–v6 cases plus v7/v8 are covered. Do not mark step 5 complete until PR #245 emulator acceptance passes.
+- Step 9: complete. PR #240's independent-connection cancellation-vs-result-commit race passed on managed emulator.
 - Step 76: no production Windows Agent task handler is registered. The Agent remains connected but intentionally does not claim work. The next safe handler must match a real Core task type/capability and have a bounded, useful result contract; do not add a fake generic executor.
 - Steps 77–78 and 82, 84–90: payload/handler isolation, sandbox/resource limits, unknown-outcome classification, owner pause/preemption, tray state, credential rotation/revocation, installer/service lifecycle, fleet harness and physical two-PC acceptance remain open.
 - iOS step 113 is partial: PR #241 displays paired-device identifiers from Keychain metadata after import (`41d2ca035450a7b2709d70425401153f5fae1ea1`); it correctly says “key saved”, not “connected”. Projects, authenticated Core session and live data are still placeholders.
