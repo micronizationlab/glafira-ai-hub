@@ -42,6 +42,11 @@ class GlafiraTaskStore(context: Context) :
                 arrayOf(projectId)).use {
                 check(!it.moveToFirst()) { "Сначала завершите или отмените задачи проекта в очереди Core." }
             }
+            val traceExists = db.rawQuery(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                arrayOf(GlafiraCoreTraceStore.TABLE)
+            ).use { it.moveToFirst() }
+            if (traceExists) GlafiraCoreTraceStore.purgeProjectForOwnerDeletion(db, projectId)
             db.delete(TABLE_TASKS, "project_id = ?", arrayOf(projectId))
             db.delete("core_task_plans", "project_id = ?", arrayOf(projectId))
             val approvalsExist = db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_action_approvals'", null)
