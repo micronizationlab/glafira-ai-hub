@@ -175,6 +175,32 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
     }
 
     @Test
+    fun legacyApprovalWithoutOwnerMetadataFailsClosedWithoutCrashing() {
+        val original = task("approval-legacy-null-owner")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        val summary = "Send a test message to test@example.invalid"
+        assertTrue(approvals.requestApproval(running, summary, 3_000L))
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                original.taskId,
+                setOf("communications.send"),
+                authenticatedOwnerSession(),
+                4_000L
+            )
+        )
+        taskStore.writableDatabase.execSQL(
+            "UPDATE core_action_approvals SET owner_core_id = NULL, owner_generation = NULL WHERE task_id = ?",
+            arrayOf(original.taskId)
+        )
+        val queued = requireNotNull(taskStore.getTask(original.taskId))
+        assertTrue(approvals.grantedScopes(queued).isEmpty())
+        assertNull(approvals.peekApprovalGrant(queued, summary, 4_100L))
+        assertNull(approvals.approvalGrant(queued, summary, 4_101L))
+    }
+
+    @Test
     fun stalePendingApprovalIsExpiredAndCanBeReRequestedByTheNewGeneration() {
         val original = task("approval-stale-pending")
         taskStore.enqueue(original)
