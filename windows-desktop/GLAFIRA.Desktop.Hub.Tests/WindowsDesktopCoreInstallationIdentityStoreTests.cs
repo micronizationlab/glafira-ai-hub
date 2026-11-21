@@ -11,6 +11,7 @@ public sealed class WindowsDesktopCoreInstallationIdentityStoreTests : IDisposab
 {
     private readonly string _identityPath = Path.Combine(
         Path.GetTempPath(), "glafira-desktop-core-identity-" + Guid.NewGuid().ToString("N") + ".dpapi");
+    private readonly List<(string CoreId, long Epoch)> _keysToDelete = [];
 
     [Fact]
     public void LoadOrCreatePersistsStableCoreIdAndNonExportableSigningIdentity()
@@ -18,6 +19,7 @@ public sealed class WindowsDesktopCoreInstallationIdentityStoreTests : IDisposab
         var store = new WindowsDesktopCoreInstallationIdentityStore(_identityPath);
         var first = store.LoadOrCreate();
         var second = store.LoadOrCreate();
+        _keysToDelete.Add((first.CoreId, first.KeyEpoch));
         var payload = Encoding.UTF8.GetBytes("GLAFIRA desktop core identity proof v1");
         var signature = store.Sign(payload);
 
@@ -49,6 +51,7 @@ public sealed class WindowsDesktopCoreInstallationIdentityStoreTests : IDisposab
         var beforeSignature = store.Sign(beforePayload);
 
         var rotated = store.RotateKey();
+        _keysToDelete.Add((rotated.CoreId, rotated.KeyEpoch));
         var afterPayload = Encoding.UTF8.GetBytes("after rotation");
         var afterSignature = store.Sign(afterPayload);
 
@@ -78,6 +81,7 @@ public sealed class WindowsDesktopCoreInstallationIdentityStoreTests : IDisposab
     {
         var store = new WindowsDesktopCoreInstallationIdentityStore(_identityPath);
         var original = store.LoadOrCreate();
+        _keysToDelete.Add((original.CoreId, original.KeyEpoch));
         var protectedMetadata = File.ReadAllBytes(_identityPath);
         protectedMetadata[protectedMetadata.Length / 2] ^= 0x5A;
         File.WriteAllBytes(_identityPath, protectedMetadata);
@@ -90,6 +94,21 @@ public sealed class WindowsDesktopCoreInstallationIdentityStoreTests : IDisposab
 
     public void Dispose()
     {
+        foreach (var (coreId, epoch) in _keysToDelete)
+        {
+            try
+            {
+                using var key = CngKey.Open(
+                    "GLAFIRA.Desktop.Core." + coreId + ".E" + epoch,
+                    CngProvider.MicrosoftSoftwareKeyStorageProvider);
+                key.Delete();
+            }
+            catch (CryptographicException)
+            {
+                // A prior rotation may already have retired this key.
+            }
+        }
+
         foreach (var path in new[] { _identityPath, _identityPath + ".tmp" })
         {
             if (File.Exists(path))
