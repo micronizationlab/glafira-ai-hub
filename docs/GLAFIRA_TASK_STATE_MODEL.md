@@ -39,6 +39,7 @@ Terminal states are immutable. `WAITING_FOR_OWNER` is intentionally overloaded t
 - `Leased`
 - `Succeeded`
 - `Failed`
+- `Cancelled`
 - `OutcomeUnknown`
 
 Progress (`RUNNING`, percentage and message) is recorded as lease/task events; it is not a separate terminal Hub state. Lease ID, fencing token, attempts, expiry and owner approval are stored separately.
@@ -69,7 +70,7 @@ A handler's `SUCCEEDED` / `FAILED` / `CANCELLED` outcome is an execution result,
 | `RETRY_SCHEDULED` | `Queued` with bounded retry metadata, if delegated again | Core remains retry-policy authority; preserve idempotency key and generation rules |
 | `SUCCEEDED` | `Succeeded` | Core commits only after exact result identity/digest validation and durable ACK |
 | `FAILED` | `Failed` | Failure is known, not merely an expired lease |
-| `CANCELLED` | Current Hub model has no distinct `Cancelled` state | **Gap:** cancellation needs an explicit Hub state/event and owner-authorized propagation; do not encode user cancellation as a generic Agent failure |
+| `CANCELLED` | `Cancelled` | Owner cancellation of queued or leased ReadOnly work; the active lease is deleted/fenced and delayed Agent progress/results are rejected |
 
 Hub `OutcomeUnknown` must map to the owning Core's `WAITING_FOR_OWNER` plus the exact `CORE_EXECUTION_OUTCOME_UNKNOWN` reason until the Core model introduces a first-class state. This avoids treating every owner wait as an unknown external effect.
 
@@ -88,10 +89,10 @@ Hub `OutcomeUnknown` must map to the owning Core's `WAITING_FOR_OWNER` plus the 
 
 ## 5. Required implementation gaps
 
-- Add an explicit Hub `Cancelled` state and owner-authorized cancellation event/propagation; do not treat Agent-local cancellation as owner cancellation.
 - Make `WAITING_FOR_OWNER` reason codes a closed, validated enum so approval-required, restore-review, dry-run and unknown-outcome cases cannot be conflated.
 - Preserve exact owner Core ID and ownership generation in Hub task, lease, event and result records.
 - Add a canonical mapping layer between owning Core state and Hub delegated-execution state; reject illegal mappings and stale generations.
+- Complete owner-generation-aware cancellation propagation across Core→Hub→Agent; the current local Desktop owner path is implemented, but cross-Core cancellation handoff is not.
 - Reconcile Hub terminal results into the owning Core's durable inbox and commit canonical result + state + trace atomically.
 - Keep Agent local journal states separate from Core/Hub business task states.
 - Add cross-layer conformance fixtures covering every state mapping, legal transition, illegal transition, retryability and unknown-outcome rule.
