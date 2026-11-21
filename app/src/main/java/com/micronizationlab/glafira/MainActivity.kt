@@ -423,7 +423,7 @@ fun ContactList(
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
                     .clickable { onSettingsClick() }
-                    .semantics { contentDescription = "Открыть настройки" },
+                    .semantics(mergeDescendants = true) { contentDescription = "Открыть настройки" },
                 contentAlignment = Alignment.Center
             ) {
                 Text("⚙", fontSize = 12.sp)
