@@ -179,6 +179,9 @@ class GlafiraCoreTraceSqliteInstrumentedTest {
                 arrayOf("atomic-task")
             )
         }
+        assertThrows(Exception::class.java) {
+            store.writableDatabase.delete("core_trace_events", "task_id = ?", arrayOf("atomic-task"))
+        }
 
         store.writableDatabase.execSQL("""
             CREATE TRIGGER trace_test_inject_task_started_failure
