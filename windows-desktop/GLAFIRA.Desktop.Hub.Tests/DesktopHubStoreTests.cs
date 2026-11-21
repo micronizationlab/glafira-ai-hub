@@ -312,6 +312,118 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void OwnerCanCancelQueuedTaskAndItCannotBeClaimed()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-cancel", "device-cancel", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("queued-cancel"), now);
+
+        Assert.True(_store.CancelTask("queued-cancel", now.AddSeconds(1)));
+        Assert.Equal(HubTaskState.Cancelled, _store.GetTaskState("queued-cancel"));
+        Assert.Null(_store.ClaimNext("agent-cancel", now.AddSeconds(2), TimeSpan.FromMinutes(1)));
+        Assert.False(_store.CancelTask("queued-cancel", now.AddSeconds(3)));
+
+        var last = _store.GetTaskHistory("queued-cancel").Last();
+        Assert.Equal(HubTaskState.Cancelled, last.State);
+        Assert.Equal("TASK_CANCELLED_OWNER_REQUEST", last.EventCode);
+    }
+
+    [Fact]
+    public void OwnerCancellationFencesAnActiveReadOnlyLease()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-cancel-read", "device-cancel-read", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("leased-read-cancel", risk: HubTaskEffectRisk.ReadOnly), now);
+        var lease = _store.ClaimNext("agent-cancel-read", now, TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+
+        Assert.True(_store.CancelTask("leased-read-cancel", now.AddSeconds(1)));
+        Assert.Equal(HubTaskState.Cancelled, _store.GetTaskState("leased-read-cancel"));
+        Assert.False(_store.ReportProgress("agent-cancel-read", lease.TaskId, lease.LeaseId,
+            lease.FencingToken, 50, "late progress", now.AddSeconds(2)));
+        Assert.False(_store.Complete("agent-cancel-read", lease.TaskId, lease.LeaseId,
+            lease.FencingToken, succeeded: true, now.AddSeconds(3)));
+        Assert.Equal("TASK_CANCELLED_OWNER_REQUEST",
+            _store.GetTaskHistory("leased-read-cancel").Last().EventCode);
+    }
+
+    [Theory]
+    [InlineData(HubTaskEffectRisk.LocalWrite)]
+    [InlineData(HubTaskEffectRisk.ExternalSideEffect)]
+    public void CancellingLeasedNonReadOnlyTaskBecomesOutcomeUnknown(HubTaskEffectRisk risk)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var agentId = "agent-cancel-risk";
+        var taskId = "leased-risk-cancel-" + risk;
+        _store.RegisterAgent(new HubAgentRegistration(agentId, "device-cancel-risk", ["research"], 1, true), now);
+        var approval = risk == HubTaskEffectRisk.ExternalSideEffect ? "approval-" + taskId : null;
+        _store.Enqueue(CreateTask(taskId, risk: risk, approval: approval), now);
+        var lease = _store.ClaimNext(agentId, now, TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+
+        Assert.True(_store.CancelTask(taskId, now.AddSeconds(1)));
+
+        Assert.Equal(HubTaskState.OutcomeUnknown, _store.GetTaskState(taskId));
+        Assert.False(_store.ReportProgress(agentId, lease.TaskId, lease.LeaseId,
+            lease.FencingToken, 50, "late progress", now.AddSeconds(2)));
+        Assert.False(_store.Complete(agentId, lease.TaskId, lease.LeaseId,
+            lease.FencingToken, succeeded: true, now.AddSeconds(3)));
+        Assert.Empty(_store.RecoverExpiredLeases(now.AddMinutes(2)));
+        var last = _store.GetTaskHistory(taskId).Last();
+        Assert.Equal(HubTaskState.OutcomeUnknown, last.State);
+        Assert.Equal("TASK_CANCELLED_OUTCOME_UNKNOWN", last.EventCode);
+    }
+
+    [Fact]
+    public async Task OwnerCancellationAndAgentCompletionRaceHaveExactlyOneDurableWinner()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-cancel-race", "device-cancel-race", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("cancel-race"), now);
+        var lease = _store.ClaimNext("agent-cancel-race", now, TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+        var secondStore = new DesktopHubStore(_databasePath);
+
+        var cancel = Task.Run(() => _store.CancelTask("cancel-race", now.AddSeconds(1)));
+        var complete = Task.Run(() => secondStore.Complete(
+            "agent-cancel-race", lease.TaskId, lease.LeaseId, lease.FencingToken,
+            succeeded: true, now.AddSeconds(1), result: "read-only result"));
+        await Task.WhenAll(cancel, complete);
+
+        Assert.NotEqual(cancel.Result, complete.Result);
+        var state = _store.GetTaskState("cancel-race")
+            ?? throw new InvalidOperationException("Cancellation race task disappeared.");
+        Assert.Contains(state, new[] { HubTaskState.Cancelled, HubTaskState.Succeeded });
+        var history = _store.GetTaskHistory("cancel-race");
+        Assert.Equal(1, history.Count(item => item.State is HubTaskState.Cancelled or HubTaskState.Succeeded));
+        if (state == HubTaskState.Cancelled)
+        {
+            Assert.Null(_store.GetTaskResult("cancel-race"));
+            Assert.Equal("TASK_CANCELLED_OWNER_REQUEST", history[^1].EventCode);
+        }
+        else
+        {
+            Assert.NotNull(_store.GetTaskResult("cancel-race"));
+            Assert.Equal("TASK_SUCCEEDED", history[^1].EventCode);
+        }
+    }
+
+    [Fact]
+    public void OwnerCannotCancelAlreadyTerminalTask()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-cancel-terminal", "device-cancel-terminal", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("terminal-cancel"), now);
+        var lease = _store.ClaimNext("agent-cancel-terminal", now, TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+        Assert.True(_store.Complete("agent-cancel-terminal", lease.TaskId, lease.LeaseId,
+            lease.FencingToken, succeeded: true, now.AddSeconds(1)));
+
+        Assert.False(_store.CancelTask("terminal-cancel", now.AddSeconds(2)));
+        Assert.Equal(HubTaskState.Succeeded, _store.GetTaskState("terminal-cancel"));
+    }
+
+    [Fact]
     public void ExpiredLeaseRecoveryIsRecordedInTaskHistory()
     {
         var now = DateTimeOffset.UtcNow;

@@ -34,6 +34,33 @@ public partial class MainWindow : Window
         if (sender is DataGrid grid && grid.SelectedItem is HubTaskSnapshot task)
             _viewModel.LoadTaskHistory(task);
     }
+    private void CancelSelectedTask_Click(object sender, RoutedEventArgs e)
+    {
+        if (TasksGrid.SelectedItem is not HubTaskSnapshot task)
+        {
+            MessageBox.Show("Сначала выберите задачу.", "GLAFIRA Core",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var warning = task.State == HubTaskState.Leased && task.EffectRisk != HubTaskEffectRisk.ReadOnly
+            ? "Задача уже выполняется и имеет риск записи/внешнего эффекта. Мы остановим дальнейшую работу Agent, но не будем предполагать, что эффект не произошёл: состояние станет OutcomeUnknown и потребует сверки. Продолжить?"
+            : "Отменить выбранную задачу? Поздние сообщения Agent будут отклонены по lease/fencing.";
+        var answer = MessageBox.Show(
+            warning, "Подтверждение отмены", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+
+        try
+        {
+            _viewModel.CancelSelectedTask(task.TaskId);
+        }
+        catch (InvalidOperationException error)
+        {
+            MessageBox.Show(error.Message, "GLAFIRA Core",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void RefreshBridgeAddresses_Click(object sender, RoutedEventArgs e) =>
         _bridgeHost.RefreshAvailableAddresses();
 

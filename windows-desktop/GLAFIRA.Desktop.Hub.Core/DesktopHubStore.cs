@@ -473,6 +473,85 @@ public sealed class DesktopHubStore
             selected.EffectRisk, selected.ApprovalRef);
     }
 
+    /// <summary>
+    /// Applies an explicit local-owner cancellation. A queued task is safely cancelled.
+    /// A leased ReadOnly task is fenced and cancelled; a leased write/side-effect task
+    /// becomes OutcomeUnknown because cancellation cannot prove the effect did not occur.
+    /// </summary>
+    public bool CancelTask(string taskId, DateTimeOffset now)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+
+        HubTaskState current;
+        HubTaskEffectRisk risk;
+        string? agentId;
+        string? leaseId;
+        long? fencingToken;
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = """
+                SELECT t.state, t.effect_risk, l.agent_id, l.lease_id, l.fencing_token
+                FROM Tasks t LEFT JOIN Leases l ON l.task_id = t.task_id
+                WHERE t.task_id = $task;
+                """;
+            read.Parameters.AddWithValue("$task", taskId);
+            using var reader = read.ExecuteReader();
+            if (!reader.Read())
+            {
+                transaction.Commit();
+                return false;
+            }
+            if (!Enum.TryParse(reader.GetString(0), out current))
+                throw new InvalidDataException("HUB_TASK_STATE_INVALID");
+            risk = (HubTaskEffectRisk)reader.GetInt32(1);
+            agentId = reader.IsDBNull(2) ? null : reader.GetString(2);
+            leaseId = reader.IsDBNull(3) ? null : reader.GetString(3);
+            fencingToken = reader.IsDBNull(4) ? null : reader.GetInt64(4);
+        }
+
+        if (current is not (HubTaskState.Queued or HubTaskState.Leased))
+        {
+            transaction.Commit();
+            return false;
+        }
+
+        var next = current == HubTaskState.Leased && risk != HubTaskEffectRisk.ReadOnly
+            ? HubTaskState.OutcomeUnknown
+            : HubTaskState.Cancelled;
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText = "UPDATE Tasks SET state = $state WHERE task_id = $task AND state = $current;";
+            update.Parameters.AddWithValue("$state", next.ToString());
+            update.Parameters.AddWithValue("$task", taskId);
+            update.Parameters.AddWithValue("$current", current.ToString());
+            if (update.ExecuteNonQuery() != 1)
+            {
+                transaction.Rollback();
+                return false;
+            }
+        }
+
+        // Removing the lease fences every delayed progress/result update from the Agent.
+        using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            delete.CommandText = "DELETE FROM Leases WHERE task_id = $task;";
+            delete.Parameters.AddWithValue("$task", taskId);
+            delete.ExecuteNonQuery();
+        }
+
+        var eventCode = next == HubTaskState.Cancelled
+            ? "TASK_CANCELLED_OWNER_REQUEST"
+            : "TASK_CANCELLED_OUTCOME_UNKNOWN";
+        AppendTaskEvent(connection, transaction, taskId, next, now, agentId, leaseId, fencingToken, eventCode);
+        transaction.Commit();
+        return true;
+    }
+
     public bool Complete(
         string agentId,
         string taskId,
