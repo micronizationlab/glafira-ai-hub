@@ -69,9 +69,9 @@ public sealed class WindowsDpapiAgentDataProtector : IAgentLocalDataProtector
 }
 
 /// <summary>
-/// Durable write-ahead journal for claimed leases and terminal results awaiting Hub ACK.
+/// Durable write-ahead journal for active leases, progress and terminal results awaiting Hub ACK.
 /// It contains no enrollment secret. Every snapshot is DPAPI LocalMachine protected and
-/// atomically replaced; a result is removed only after the exact lease/fence ACK is verified.
+/// atomically replaced; progress/results are removed only after exact lease/fence ACK validation.
 /// </summary>
 public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
 {
