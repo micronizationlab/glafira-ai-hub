@@ -205,9 +205,24 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
         val restoredTask = requireNotNull(taskStore.getTask(original.taskId))
         val actionSummary = "Send a test message to test@example.invalid"
         assertTrue(approvals.grantedScopes(restoredTask).isEmpty())
-        // Device scopes from a Bridge credential cannot make a legacy owner row valid.
         assertNull(approvals.peekApprovalGrant(restoredTask, actionSummary, now + 4L))
         assertNull(approvals.approvalGrant(restoredTask, actionSummary, now + 4L))
+
+        // Simulate a Bridge credential supplying the known device scope. The owner row itself
+        // must still be rejected, rather than letting device authority bypass a legacy extra scope.
+        val bridgeBackedSource = object : GlafiraTaskGrantSource {
+            override fun grantedScopes(task: GlafiraTask) = setOf("communications.send")
+            override fun approvalGrant(task: GlafiraTask, summary: String, nowMillis: Long) =
+                approvals.approvalGrant(task, summary, nowMillis)
+            override fun peekApprovalGrant(task: GlafiraTask, summary: String, nowMillis: Long) =
+                approvals.peekApprovalGrant(task, summary, nowMillis)
+            override fun requestApproval(task: GlafiraTask, summary: String, nowMillis: Long) = false
+        }
+        assertNotEquals(
+            GlafiraTaskAuthorizationStatus.AUTHORIZED,
+            RegistryBackedGlafiraTaskAuthorizer(bridgeBackedSource)
+                .authorize(restoredTask, now + 5L).status
+        )
     }
 
     @Test
