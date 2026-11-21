@@ -162,6 +162,47 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun portableRestoreInsertFailureRollsBackDatabaseAndKeepsCurrentQueue() = runBlocking {
+        store.enqueue(task("backup-result-task"))
+        assertEquals("backup-result-task", store.claimNext(nowMillis = 2_500L)?.taskId)
+        assertTrue(store.persistCoreTaskResult(
+            "backup-result-task",
+            setOf(GlafiraTaskState.RUNNING),
+            "known-good-result",
+            3_000L
+        ))
+
+        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
+        val archive = coordinator.create(passphrase)
+        try {
+            store.enqueue(task("created-after-backup"))
+            store.writableDatabase.execSQL("""
+                CREATE TRIGGER inject_portable_restore_result_failure
+                BEFORE INSERT ON core_task_results
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected-portable-restore-result-failure');
+                END
+            """.trimIndent())
+
+            assertThrows(Exception::class.java) {
+                runBlocking { coordinator.restore(archive, passphrase) }
+            }
+
+            assertEquals(
+                "known-good-result",
+                store.coreTaskResult("backup-result-task", "backup-project")?.result
+            )
+            assertEquals("created-after-backup", store.getTask("created-after-backup")?.taskId)
+            assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
+        } finally {
+            archive.delete()
+            passphrase.fill('\\u0000')
+        }
+    }
+
+    @Test
     fun wrongPassphraseLeavesCurrentCoreQueueUntouched() = runBlocking {
         store.enqueue(task("must-remain"))
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
