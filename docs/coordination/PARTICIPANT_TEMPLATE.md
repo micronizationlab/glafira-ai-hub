@@ -58,6 +58,14 @@ Target: 20 complete cycles × 150 evidence-backed actions = 3,000 actions.
 | 19 | not started | 0/150 | | | |
 | 20 | not started | 0/150 | | | |
 
+### Per-cycle capacity and parallel portfolio ledger
+
+Before implementation begins in each cycle, record the capacity audit and the number of independent workstreams selected. Repeat the analysis for every cycle; do not copy a fixed concurrency number.
+
+| Cycle | Repository/CI/dependency audit | Safe parallel workstreams available | Workstreams selected and owners | Why other candidates were deferred | Evidence / outcome |
+|---:|---|---:|---|---|---|
+| 01 | | | | | |
+
 ### Action evidence ledger
 
 Append one row per action. Use stable IDs such as `C01-A001`. Link to commits, PRs, issues, test reports or reproducible research notes. Do not count duplicates or unsupported claims.
@@ -83,9 +91,22 @@ For each cycle, record:
 |---|---|---|---|---|
 | | | | | |
 
+## Mandatory whole-project audit after cycle 20
+
+Do not start a 21st cycle automatically. Stop the loop and record:
+- [ ] Current main, all relevant branches, active/stale PRs and commit history inspected.
+- [ ] Historical Android APK/builds and other available platform builds compared with current source and feature coverage.
+- [ ] Old issues, specifications, handoffs, owner requests and prior discussions checked for requirements/ideas never captured in code, tests or backlog.
+- [ ] 150-step plan, Action Pool, roadmap, task board and participant records reconciled.
+- [ ] Free-only/no-required-paid-resource constraint and current owner priorities audited.
+- [ ] Evidence-linked gap report prepared, including recovered requirements, useful legacy work, regressions, missing features, risks and proposed next actions.
+- [ ] No historical branch/build discarded and no changes merged without required owner approval.
+
+Audit report link:
+
 ## Final report to participant owner
 
-Complete only after cycle 20:
+Complete only after cycle 20 and the mandatory audit:
 - 20 cycles complete: yes/no (link evidence)
 - Total distinct completed actions:
 - Merged contributions:
