@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `b4a6a4d5bff305e768b20741030db614f6e6919b` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
+**Baseline main for this ledger revision:** `0649b3a24592e2ccd73b6997db04e2664f055be4` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -408,3 +408,16 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 **Next parallel work:** (1) implement Core execution-token fencing on top of #342 without touching the Hub lease model; (2) continue issue #260 failure-injection coverage in independent test-only slices; (3) continue issue #262 provider/coordinator reconciliation; (4) preserve the four-app and physical-device gates as explicitly unverified until tested.
 
 **Acceptance discipline:** skipped platform jobs are not passes; metadata persistence is not execution fencing; no automatic cross-Core failover is enabled.
+
+
+## Execution ledger update — 2026-11-21 14:40 UTC
+
+**Verified main baseline:** `0649b3a24592e2ccd73b6997db04e2664f055be4` (PR #343; canonical ownership metadata is present, but runtime execution fencing remains under validation).
+
+- **Owner-generation execution fence / PR #347 — not merged.** Exact-head run `44912132854`, attempt 2, on `be1d81586cd506176db712494ec77f6364faac83`: Android JVM, Debug APK and Shared Contract checks passed; managed Android emulator acceptance failed 1 of 117 instrumentation tests. The failure is `BackupSettingsSmokeTest.manualBackupActionRemainsEnabledAndExplainsMissingFolder`. No merge until corrected and exact-head CI passes.
+- **Android accessibility follow-up / issue #350.** Diagnostics show UiAutomator found the Settings and backup action nodes with `clickable: false` and logged clicks on non-clickable nodes; the expected missing-folder guidance was not exposed. The existing UI handler appears to set guidance, so inspect Compose accessibility/action semantics and prove the handler executes. Do not weaken the regression assertion. Issue #138 and PR #347 contain the evidence and follow-up.
+- **Communications autonomy / issues #348 and #349.** Owner explicitly approved autonomous routine commercial communications without per-message approval, with escalation for complaints, refunds, uncertain facts, legal/reputational matters, out-of-band discounts, financial commitments and destructive/high-impact actions. #348 covers Telegram Business/Managed Bots and Instagram Professional APIs; #349 adds the MAX business Bot API. All three connectors must remain official-API-only, least-privilege, bot/account scoped, auditable, revocable and subject to owner-dependent OAuth/verification/consent steps. These are requirements/issues, not completed integrations.
+- **MAX onboarding constraints.** The MAX connector must verify current business-profile eligibility and platform bot limits at runtime; owner-only verification, bot moderation and consent steps cannot be bypassed. Never expose bot tokens in prompts, logs, telemetry, Git or plaintext backups.
+- **Parallel P0 continuation.** Keep #260 failure-injection matrix, #266 durable result outbox/exact ACK, and #258 owner identity/credential autonomy/ownership handoff active. Do not count issue creation, documentation, skipped CI jobs or partial platform checks as implementation completion.
+
+**Acceptance discipline:** PR #347 remains open and blocked by the emulator failure. The communications work is scoped but not implemented. Skipped platform jobs are not passes; no automatic cross-Core failover or unrestricted personal-account access is implied.
