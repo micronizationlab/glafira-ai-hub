@@ -26,8 +26,8 @@ data class GlafiraOwnershipTransferSigningPayload(
     val expiresAt: String,
     val signingKeyEpoch: Long,
     val signingPublicKeySha256: String,
-    val signatureAlgorithm: String = ALGORITHM,
-    val signatureFormat: String = SIGNATURE_FORMAT
+    val signatureAlgorithm: String = "ECDSA_P256_SHA256",
+    val signatureFormat: String = "IEEE_P1363_FIXED_64"
 )
 
 /**
@@ -91,16 +91,21 @@ internal object GlafiraCoreOwnershipTransferCryptography {
         payload: GlafiraOwnershipTransferSigningPayload,
         publicKey: PublicKey,
         signatureP1363: ByteArray
-    ): Boolean = try {
-        if (signatureP1363.size != 64 || fingerprint(publicKey) != payload.signingPublicKeySha256) {
-            return false
+    ): Boolean {
+        return try {
+            if (signatureP1363.size != 64 ||
+                fingerprint(publicKey) != payload.signingPublicKeySha256
+            ) {
+                false
+            } else {
+                val verifier = Signature.getInstance("SHA256withECDSA")
+                verifier.initVerify(publicKey)
+                verifier.update(canonicalBytes(payload))
+                verifier.verify(p1363ToDer(signatureP1363))
+            }
+        } catch (_: Exception) {
+            false
         }
-        val verifier = Signature.getInstance("SHA256withECDSA")
-        verifier.initVerify(publicKey)
-        verifier.update(canonicalBytes(payload))
-        verifier.verify(p1363ToDer(signatureP1363))
-    } catch (_: Exception) {
-        false
     }
 
     fun fingerprint(publicKey: PublicKey): String =
