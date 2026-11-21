@@ -152,6 +152,12 @@ class GlafiraCoreTraceSqliteInstrumentedTest {
             eventTypes = setOf(GlafiraCoreTraceEventType.POLICY_CHECKED),
             taskIds = setOf("two")
         ).events.isEmpty())
+        assertTrue(query(
+            taskId = "two",
+            eventTypes = setOf(GlafiraCoreTraceEventType.POLICY_CHECKED),
+            afterEventId = first.nextCursor,
+            taskIds = setOf("two")
+        ).events.isEmpty())
         assertThrows(SecurityException::class.java) {
             trace.query(
                 GlafiraCoreTraceQuery(projectId = "another-project"),
