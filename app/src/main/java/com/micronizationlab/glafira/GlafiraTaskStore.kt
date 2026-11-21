@@ -30,8 +30,9 @@ private data class StoredDesktopLease(
  */
 class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
-    GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraCoreTaskResultPersistence {
+    GlafiraTaskQueue, GlafiraOwnedDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraOwnedCoreTaskResultPersistence, GlafiraTaskOwnershipExecutionFence {
     private val appContext = context.applicationContext
+    override val ownershipFencingEnabled: Boolean get() = ownerCoreId != null
 
     init {
         require(ownerCoreId == null || ownerCoreId.matches(Regex("^[A-Za-z0-9._-]{8,128}$"))) {
@@ -331,6 +332,22 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         expectedStates: Set<GlafiraTaskState>,
         plan: GlafiraDryRunPlan,
         nowMillis: Long
+    ): Boolean = persistDryRunPreviewInternal(null, taskId, expectedStates, plan, nowMillis)
+
+    @Synchronized
+    override fun persistDryRunPreviewOwned(
+        token: GlafiraTaskOwnershipExecutionToken,
+        expectedStates: Set<GlafiraTaskState>,
+        plan: GlafiraDryRunPlan,
+        nowMillis: Long
+    ): Boolean = persistDryRunPreviewInternal(token, token.taskId, expectedStates, plan, nowMillis)
+
+    private fun persistDryRunPreviewInternal(
+        token: GlafiraTaskOwnershipExecutionToken?,
+        taskId: String,
+        expectedStates: Set<GlafiraTaskState>,
+        plan: GlafiraDryRunPlan,
+        nowMillis: Long
     ): Boolean {
         require(taskId == plan.taskId && taskId.isNotBlank())
         require(plan.planHash.matches(Regex("[0-9a-f]{64}")))
@@ -341,6 +358,16 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         val db = writableDatabase
         db.beginTransaction()
         try {
+            if (token != null && (token.taskId != taskId || token.ownerCoreId != ownerCoreId)) return false
+            if (ownerCoreId != null) {
+                val currentOwner = db.query(TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation"),
+                    "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getLong(1)
+                } ?: return false
+                if (currentOwner.first != ownerCoreId ||
+                    (token != null && currentOwner.second != token.ownerGeneration)
+                ) return false
+            }
             val existingHash = db.query(
                 GlafiraDryRunPreviewSchema.TABLE, arrayOf("plan_hash"),
                 "task_id = ?", arrayOf(taskId), null, null, null, "1"
@@ -359,8 +386,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                         put("updated_at", nowMillis)
                         put("last_error", "DRY_RUN_PREVIEW_STORED")
                     },
-                    "task_id = ? AND state IN ($placeholders)",
-                    arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray()
+                    "task_id = ? AND state IN ($placeholders)" +
+                        if (token != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ?)"
+                        else if (ownerCoreId != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
+                        else "",
+                    arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray() +
+                        if (token != null) arrayOf(token.ownerCoreId, token.ownerGeneration.toString())
+                        else if (ownerCoreId != null) arrayOf(ownerCoreId) else emptyArray()
                 )
                 if (changed != 1) return false
                 db.update(
@@ -403,8 +435,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     put("updated_at", nowMillis)
                     put("last_error", "DRY_RUN_PREVIEW_STORED")
                 },
-                "task_id = ? AND state IN ($placeholders)",
-                arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray()
+                "task_id = ? AND state IN ($placeholders)" +
+                        if (token != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ?)"
+                        else if (ownerCoreId != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
+                        else "",
+                    arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray() +
+                        if (token != null) arrayOf(token.ownerCoreId, token.ownerGeneration.toString())
+                        else if (ownerCoreId != null) arrayOf(ownerCoreId) else emptyArray()
             )
             if (changed != 1) return false
             val inserted = db.insertOrThrow(
@@ -950,13 +987,18 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
 
     /** Called only from WorkManager's connected-network wakeup, never from claimNext. */
     @Synchronized
-    fun resumeWaitingForNetwork(nowMillis: Long = System.currentTimeMillis()): Int =
-        writableDatabase.update(TABLE_TASKS, ContentValues().apply {
+    fun resumeWaitingForNetwork(nowMillis: Long = System.currentTimeMillis()): Int {
+        val ownerClause = if (ownerCoreId == null) "" else
+            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
+        val args = arrayOf(GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue, DESKTOP_TASK_TYPE) +
+            if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
+        return writableDatabase.update(TABLE_TASKS, ContentValues().apply {
             put("state", GlafiraTaskState.QUEUED.databaseValue)
             put("updated_at", nowMillis)
             putNull("retry_at")
             put("last_error", "NETWORK_AVAILABLE")
-        }, "state = ? AND task_type != ?", arrayOf(GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue, DESKTOP_TASK_TYPE))
+        }, "state = ? AND task_type != ?$ownerClause", args)
+    }
 
     @Synchronized
     fun hasWaitingForNetworkTasks(): Boolean = readableDatabase.rawQuery(
@@ -971,13 +1013,17 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
     ).use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null }
 
     private fun expirePendingTasks(db: SQLiteDatabase, nowMillis: Long) {
+        val ownerClause = if (ownerCoreId == null) "" else
+            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
+        val args = arrayOf(nowMillis.toString()) +
+            if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
         db.update(TABLE_TASKS, ContentValues().apply {
             put("state", GlafiraTaskState.FAILED.databaseValue)
             put("updated_at", nowMillis)
             putNull("retry_at")
             put("last_error", "TASK_DEADLINE_EXPIRED")
-        }, "state IN ('queued','waiting_for_network','waiting_for_owner','retry_scheduled') AND deadline_at <= ? AND (last_error IS NULL OR last_error NOT IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN'))",
-            arrayOf(nowMillis.toString()))
+        }, "state IN ('queued','waiting_for_network','waiting_for_owner','retry_scheduled') AND deadline_at <= ? AND (last_error IS NULL OR last_error NOT IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN'))$ownerClause",
+            args)
     }
 
     /**
@@ -985,7 +1031,20 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
      * A worker crash after this point is recovered by a later Core recovery pass.
      */
     @Synchronized
-    override fun claimNext(nowMillis: Long): GlafiraTask? {
+    override fun claimNext(nowMillis: Long): GlafiraTask? =
+        claimNextInternal(nowMillis, requireOwnershipToken = false)?.task
+
+    @Synchronized
+    override fun claimNextOwned(nowMillis: Long): GlafiraOwnedTaskClaim? {
+        if (ownerCoreId == null) return null
+        return claimNextInternal(nowMillis, requireOwnershipToken = true)
+    }
+
+    /** Claim and capture owner generation in the same SQLite transaction. */
+    private fun claimNextInternal(
+        nowMillis: Long,
+        requireOwnershipToken: Boolean
+    ): GlafiraOwnedTaskClaim? {
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -996,12 +1055,12 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     "WHERE state IN (?, ?) AND task_type != ? " +
                     "AND (retry_at IS NULL OR retry_at <= ?) " +
                     "AND (deadline_at IS NULL OR deadline_at >= ?) " +
+                    "AND (? = '' OR EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own " +
+                    "WHERE own.task_id = t.task_id AND own.owner_core_id = ?)) " +
                     "AND NOT EXISTS (SELECT 1 FROM $TABLE_DEPENDENCIES d " +
                     "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
                     "WHERE d.task_id = t.task_id AND p.state != ?) " +
                     "ORDER BY " +
-                    // Bound per-project monopolization: prefer the project with fewer
-                    // active Core tasks, then the project whose last dispatch is oldest.
                     "(SELECT COUNT(*) FROM $TABLE_TASKS active " +
                     "WHERE active.project_id = t.project_id AND active.state = ?) ASC, " +
                     "COALESCE((SELECT MAX(h.changed_at) FROM core_task_history h " +
@@ -1013,6 +1072,8 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     DESKTOP_TASK_TYPE,
                     nowMillis.toString(),
                     nowMillis.toString(),
+                    ownerCoreId.orEmpty(),
+                    ownerCoreId.orEmpty(),
                     GlafiraTaskState.SUCCEEDED.databaseValue,
                     GlafiraTaskState.RUNNING.databaseValue,
                     GlafiraTaskState.RUNNING.databaseValue
@@ -1026,21 +1087,36 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
 
             val candidate = queryTask(db, taskId)
                 ?: throw IllegalStateException("Claim candidate disappeared inside a transaction.")
-            val values = ContentValues().apply {
-                put("state", GlafiraTaskState.RUNNING.databaseValue)
-                put("updated_at", nowMillis)
-                put("attempt_count", candidate.attemptCount + 1)
-                putNull("retry_at")
-            }
             val changed = db.update(
                 TABLE_TASKS,
-                values,
+                ContentValues().apply {
+                    put("state", GlafiraTaskState.RUNNING.databaseValue)
+                    put("updated_at", nowMillis)
+                    put("attempt_count", candidate.attemptCount + 1)
+                    putNull("retry_at")
+                },
                 "task_id = ? AND state = ?",
                 arrayOf(taskId, candidate.state.databaseValue)
             )
             check(changed == 1) { "Task claim lost its transactional state check." }
+
+            val owner = db.query(
+                TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation"),
+                "task_id = ?", arrayOf(taskId), null, null, null, "1"
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getLong(1)
+            }
+            if (requireOwnershipToken && (owner == null || owner.first != ownerCoreId || owner.second <= 0L)) {
+                return null
+            }
             db.setTransactionSuccessful()
-            return queryTask(db, taskId)
+            val task = queryTask(db, taskId)!!
+            val token = GlafiraTaskOwnershipExecutionToken(
+                taskId = taskId,
+                ownerCoreId = owner?.first ?: ownerCoreId ?: "legacy-core-queue",
+                ownerGeneration = owner?.second ?: 1L
+            )
+            return GlafiraOwnedTaskClaim(task, token)
         } finally {
             db.endTransaction()
         }
@@ -1061,14 +1137,27 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val interrupted = db.query(TABLE_TASKS, null, "state = ? AND task_type != ?",
-                arrayOf(GlafiraTaskState.RUNNING.databaseValue, DESKTOP_TASK_TYPE),
-                null, null, null).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.toTask()) } }
+            val ownerClause = if (ownerCoreId == null) "" else
+                " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
+            val selectionArgs = arrayOf(GlafiraTaskState.RUNNING.databaseValue, DESKTOP_TASK_TYPE) +
+                if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
+            val interrupted = db.query(TABLE_TASKS, null, "state = ? AND task_type != ?$ownerClause",
+                selectionArgs, null, null, null).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.toTask()) } }
             for (task in interrupted) {
                 val decision = GlafiraTaskRecoveryPolicy.interrupted(task, maxRetries)
-                transition(task.taskId, setOf(GlafiraTaskState.RUNNING), decision.state, nowMillis,
-                    retryAtMillis = if (decision.state == GlafiraTaskState.RETRY_SCHEDULED) nowMillis else null,
-                    lastError = decision.reason)
+                val ownership = taskOwnership(task.taskId, task.projectId)
+                if (ownerCoreId != null && ownership != null) {
+                    transitionOwned(
+                        GlafiraTaskOwnershipExecutionToken(task.taskId, ownership.ownerCoreId, ownership.ownerGeneration),
+                        setOf(GlafiraTaskState.RUNNING), decision.state, nowMillis,
+                        retryAtMillis = if (decision.state == GlafiraTaskState.RETRY_SCHEDULED) nowMillis else null,
+                        lastError = decision.reason
+                    )
+                } else if (ownerCoreId == null) {
+                    transition(task.taskId, setOf(GlafiraTaskState.RUNNING), decision.state, nowMillis,
+                        retryAtMillis = if (decision.state == GlafiraTaskState.RETRY_SCHEDULED) nowMillis else null,
+                        lastError = decision.reason)
+                }
             }
             db.setTransactionSuccessful()
             return interrupted.size
@@ -1089,15 +1178,36 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         nowMillis: Long,
         retryAtMillis: Long?,
         lastError: String?
+    ): Boolean = transitionInternal(null, taskId, expectedStates, nextState, nowMillis, retryAtMillis, lastError)
+
+    @Synchronized
+    override fun transitionOwned(
+        token: GlafiraTaskOwnershipExecutionToken,
+        expectedStates: Set<GlafiraTaskState>,
+        nextState: GlafiraTaskState,
+        nowMillis: Long,
+        retryAtMillis: Long?,
+        lastError: String?
+    ): Boolean = transitionInternal(token, token.taskId, expectedStates, nextState, nowMillis, retryAtMillis, lastError)
+
+    private fun transitionInternal(
+        token: GlafiraTaskOwnershipExecutionToken?,
+        taskId: String,
+        expectedStates: Set<GlafiraTaskState>,
+        nextState: GlafiraTaskState,
+        nowMillis: Long,
+        retryAtMillis: Long?,
+        lastError: String?
     ): Boolean {
         require(nowMillis > 0L && (retryAtMillis == null || retryAtMillis >= nowMillis))
         require(expectedStates.isNotEmpty()) { "At least one expected task state is required." }
         require(expectedStates.all { GlafiraTaskPolicy.canTransition(it, nextState) }) {
             "The requested GLAFIRA task state transition is not allowed."
         }
-        require(
-            (nextState == GlafiraTaskState.RETRY_SCHEDULED) == (retryAtMillis != null)
-        ) { "Only retry_scheduled tasks may have a retry timestamp." }
+        require((nextState == GlafiraTaskState.RETRY_SCHEDULED) == (retryAtMillis != null)) {
+            "Only retry_scheduled tasks may have a retry timestamp."
+        }
+        if (token != null && (token.taskId != taskId || token.ownerCoreId != ownerCoreId)) return false
 
         val values = ContentValues().apply {
             put("state", nextState.databaseValue)
@@ -1106,15 +1216,21 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             if (lastError.isNullOrBlank()) putNull("last_error") else put("last_error", lastError.take(2000))
         }
         val placeholders = expectedStates.joinToString(",") { "?" }
-        val args = arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray()
+        val ownerGuard = when {
+            token != null -> " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ?)"
+            ownerCoreId != null -> " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
+            else -> ""
+        }
+        val args = arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray() +
+            when {
+                token != null -> arrayOf(token.ownerCoreId, token.ownerGeneration.toString())
+                ownerCoreId != null -> arrayOf(ownerCoreId)
+                else -> emptyArray()
+            }
         return writableDatabase.update(
-            TABLE_TASKS,
-            values,
-            "task_id = ? AND state IN ($placeholders)",
-            args
+            TABLE_TASKS, values, "task_id = ? AND state IN ($placeholders)$ownerGuard", args
         ) == 1
     }
-
 
     /**
      * Atomically stores an encrypted handler result and marks the Core task succeeded.
@@ -1122,6 +1238,22 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
      */
     @Synchronized
     override fun persistCoreTaskResult(
+        taskId: String,
+        expectedStates: Set<GlafiraTaskState>,
+        result: String,
+        nowMillis: Long
+    ): Boolean = persistCoreTaskResultInternal(null, taskId, expectedStates, result, nowMillis)
+
+    @Synchronized
+    override fun persistCoreTaskResultOwned(
+        token: GlafiraTaskOwnershipExecutionToken,
+        expectedStates: Set<GlafiraTaskState>,
+        result: String,
+        nowMillis: Long
+    ): Boolean = persistCoreTaskResultInternal(token, token.taskId, expectedStates, result, nowMillis)
+
+    private fun persistCoreTaskResultInternal(
+        token: GlafiraTaskOwnershipExecutionToken?,
         taskId: String,
         expectedStates: Set<GlafiraTaskState>,
         result: String,
@@ -1134,6 +1266,16 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         db.beginTransaction()
         try {
             val task = queryTask(db, taskId) ?: return false
+            if (token != null && (token.taskId != taskId || token.ownerCoreId != ownerCoreId)) return false
+            if (ownerCoreId != null) {
+                val currentOwner = db.query(TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation"),
+                    "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getLong(1)
+                } ?: return false
+                if (currentOwner.first != ownerCoreId ||
+                    (token != null && currentOwner.second != token.ownerGeneration)
+                ) return false
+            }
             val existingResult = db.query(
                 TABLE_CORE_RESULTS, arrayOf("result_ciphertext"),
                 "task_id = ?", arrayOf(taskId), null, null, null, "1"
@@ -1163,8 +1305,14 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     putNull("retry_at")
                     putNull("last_error")
                 },
-                "task_id = ? AND state = ?",
-                arrayOf(taskId, GlafiraTaskState.RUNNING.databaseValue)
+                "task_id = ? AND state = ?" + if (token != null) {
+                    " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ?)"
+                } else if (ownerCoreId != null) {
+                    " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
+                } else "",
+                arrayOf(taskId, GlafiraTaskState.RUNNING.databaseValue) +
+                    if (token != null) arrayOf(token.ownerCoreId, token.ownerGeneration.toString())
+                    else if (ownerCoreId != null) arrayOf(ownerCoreId) else emptyArray()
             )
             if (changed != 1) return false
             db.insertOrThrow(
@@ -1299,16 +1447,18 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             put("last_error", "DEPENDENCY_FAILED")
             putNull("retry_at")
         }
+        val ownerClause = if (ownerCoreId == null) "" else
+            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
         val selection = "state IN (?, ?) AND task_id IN (" +
             "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
             "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
-            "WHERE p.state IN (?, ?))"
+            "WHERE p.state IN (?, ?))$ownerClause"
         val args = arrayOf(
             GlafiraTaskState.QUEUED.databaseValue,
             GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
             GlafiraTaskState.FAILED.databaseValue,
             GlafiraTaskState.CANCELLED.databaseValue
-        )
+        ) + if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
         while (db.update(TABLE_TASKS, values, selection, args) > 0) {
             // Iterate so failure propagates to grandchildren in the same transaction.
         }
