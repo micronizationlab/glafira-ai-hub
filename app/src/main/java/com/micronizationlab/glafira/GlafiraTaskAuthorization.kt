@@ -13,6 +13,8 @@ data class GlafiraTaskAuthorizationResult(
 interface GlafiraTaskGrantSource {
     fun grantedScopes(task: GlafiraTask): Set<String>
     fun approvalGrant(task: GlafiraTask, actionSummary: String, nowMillis: Long): ToolApprovalGrant?
+    /** Read-only inspection; must never consume a one-use approval grant. */
+    fun peekApprovalGrant(task: GlafiraTask, actionSummary: String, nowMillis: Long): ToolApprovalGrant? = null
     fun requestApproval(task: GlafiraTask, actionSummary: String, nowMillis: Long): Boolean
 }
 
@@ -46,7 +48,7 @@ class RegistryBackedGlafiraTaskAuthorizer(
             )
         }
         val grant = if (!missingScopes && (requiresApproval || actionSummary.isNotBlank())) {
-            grants.approvalGrant(task, actionSummary, nowMillis)
+            grants.peekApprovalGrant(task, actionSummary, nowMillis)
         } else null
         val decision = GlafiraToolRegistry.authorize(definition, task, actionSummary, grant, nowMillis)
         return when {
