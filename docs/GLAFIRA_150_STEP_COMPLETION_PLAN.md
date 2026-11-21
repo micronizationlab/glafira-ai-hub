@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `81e05f7ce7660350c584218a55f3cd62b3d9ef98` (refresh before each integration).  
+**Baseline main for this ledger revision:** `2fdd9002e5e9e114c43a0b2b7b3b68b28c41c85b` (refresh before each integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -18,8 +18,8 @@
 ### P0 — Core: ownership и queue kernels
 
 1. [x] Снять baseline main SHA, open PR/issues, CI runs и артефакты.
-2. [ ] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
-3. [ ] Сверить PR #71/#104/#119/#122 с main и выделить только уникальные Core изменения.
+2. [x] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
+3. [x] Сверить PR #71/#104/#119/#122 с main и выделить только уникальные Core изменения.
 4. [ ] Зафиксировать единый task state machine и допустимые переходы.
 5. [ ] Проверить все SQLite migrations на upgrade с поддерживаемых версий.
 6. [x] Проверить concurrent claim из независимых SQLite connections.
@@ -206,10 +206,11 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `81e05f7ce7660350c584218a55f3cd62b3d9ef98`.
+**Refreshed main after this wave:** `2fdd9002e5e9e114c43a0b2b7b3b68b28c41c85b`.
 
 ### Verified complete
 
+- Steps 2–3: historical recovery-stack map and file/commit reconciliation are documented in `docs/CORE_RECOVERY_STACK_RECONCILIATION.md`. PRs #71/#104/#119/#122 are confirmed as stale/diverged stacks; their useful Core concurrency, dependency, fairness and task-plan features are already represented in mainline code. The obsolete Android-hosted Desktop task claim/result path is intentionally not transplanted because it conflicts with the current Windows Hub / dual-Core ownership architecture.
 - Step 15: non-terminal restart behavior is covered across queued, running safe-read, uncertain-write, waiting-for-network, waiting-for-owner and retry-scheduled states; terminal states remain immutable after reopen.
 - Step 1: baseline captured and refreshed at each integration; this ledger revision starts from main `195a45e430b271d3303a3cdca5bbf01dbb241485`.
 - Steps 6–7, 10–12 and 15: current Core has independent-connection/concurrent-claim, duplicate-claim, DAG cycle/cross-project/dependency-join, project fairness and process-restart recovery instrumentation coverage. Exact Core acceptance remains dependent on the managed emulator and the remaining failure-injection/trace cases.
