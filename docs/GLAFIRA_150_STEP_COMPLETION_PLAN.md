@@ -421,3 +421,27 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - **Parallel P0 continuation.** Keep #260 failure-injection matrix, #266 durable result outbox/exact ACK, and #258 owner identity/credential autonomy/ownership handoff active. Do not count issue creation, documentation, skipped CI jobs or partial platform checks as implementation completion.
 
 **Acceptance discipline:** PR #347 remains open and blocked by the emulator failure. The communications work is scoped but not implemented. Skipped platform jobs are not passes; no automatic cross-Core failover or unrestricted personal-account access is implied.
+
+
+## Execution ledger update — 2026-11-21 20:30 UTC
+
+**Fresh exact-head CI audit:**
+- PR #379 head `79464fdd82aeed5d4371d40d2567ab1b77082613`: dispatcher and exact-head summary passed; all platform jobs were skipped because the change is documentation-only. This is not Android/Windows/iOS validation.
+- PR #380 head `6d2f9f524419634cdfc45e8e757cd0f8a4400dd`: Android JVM, shared contracts, managed emulator acceptance and Android debug APK passed. Windows Desktop, Windows Agent, iOS and workflow lint were skipped. The PR covers approval/grant ownership fencing only; #381 execution/result fencing remains open.
+- PR #382 head `ee8dce1a5a603d0fc96befad6c16e06416f5ff67`: Android JVM, shared contracts, managed emulator acceptance and Android debug APK passed. Windows Desktop, Windows Agent, iOS and workflow lint were skipped. Durable runtime config is a slice, not full Core recovery acceptance.
+- PR #385 head `77b6fc9eb8132ebc0e17110f5703a28db14b938d`: dispatcher and exact-head summary passed; all platform jobs skipped (documentation-only). Banking-vault policy documentation is not vault implementation.
+- PR #386 head `a773348ebad430459863ca82e0b2f45b17f2d0dd`: dispatcher and exact-head summary passed; all platform jobs skipped (documentation-only). External contributor guidance is not CI governance enforcement.
+
+**Additional source audits and follow-ups:**
+- #381: confirmed executor claim and all later Core state/result mutations still use task ID/state-only APIs; immutable owner-generation claim token must flow through success, failure, retry, waiting, cancellation, timeout, DRY_RUN and recovery.
+- #384: Windows Agent result envelope remains metadata-only; no bounded typed payload writer is evidenced. Desktop Bridge lease/fencing is a separate execution domain and does not satisfy the Agent artifact contract.
+- #378: current `GlafiraTaskStore.onConfigure()` explicitly enables foreign keys but does not explicitly set journal mode or busy timeout. Actual PRAGMA values and contention must be measured before changing journal/storage strategy.
+- #137/#123: Android Bridge still intentionally fails closed for approval queue and Desktop claim/result operations until durable Core queue admission/reconciliation is connected. Do not remove these guards.
+- #375: no verified Yandex Cloud Foundation Models adapter/capability registry found in source search. Yandex Disk and Yandex Cloud remain distinct integrations.
+- #372: accessibility action acceptance is separate from provider read-back and clean-device restore. New issue #387 tracks provider/failure-injection/clean-device acceptance.
+- #383: banking passwords remain allowed only inside the encrypted local vault; biometric vault unlock is not transaction consent and must not bypass OTP/passkey/step-up.
+- #377: no heartbeat-only ownership takeover; signed monotonic-generation transfer and explicit reconnect reconciliation remain required.
+
+**Governance:** repository branch protection was previously confirmed disabled and the GitHub integration cannot change rulesets. Keep changes in reviewed PRs; do not merge risky changes while required checks/review are not enforced.
+
+**Counting rule:** PR creation, issue creation, documentation-only CI, skipped jobs and partial platform checks do not complete a program step. Keep the 150-step checklist unchanged until each step's full acceptance criteria are met.
