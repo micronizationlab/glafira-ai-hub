@@ -175,7 +175,7 @@ A conversation between two accounts does not merge their memories or silently tr
 
 ### Mother competence contribution setting
 
-Add a third-page Settings control named **“Участвовать в развитии проекта GLAFIRA”**. The owner requested ON as the default for new installations/accounts. The setting must explain precisely what may be submitted and provide a clear OFF state.
+Add a third-page Settings control named **“Участвовать в развитии проекта GLAFIRA”**. The owner requested ON as the default. If no saved choice exists, initialize ON on both new and existing installations during upgrade; once the owner explicitly switches it OFF, preserve that choice across app updates, restores and device migration rather than silently resetting it. The setting must explain precisely what may be submitted and provide a clear OFF state.
 
 ON permits the client, during suitable idle windows, to propose a bounded competence package to GLAFIRA-Mother / Update Center. It is not blanket consent to upload private user data. Eligible proposal contents may include generalized skill workflows, schemas, non-identifying evaluation cases, benchmark results, provenance, license/rights declaration, compatibility metadata and integrity hashes.
 
