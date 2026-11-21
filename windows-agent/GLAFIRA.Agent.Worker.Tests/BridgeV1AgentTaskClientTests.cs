@@ -31,6 +31,10 @@ public sealed class BridgeV1AgentTaskClientTests
                 result = new Dictionary<string, string>
                 {
                     ["available"] = "true", ["taskId"] = "task-001", ["projectId"] = "default",
+                    ["taskType"] = "web.research", ["idempotencyKey"] = "idem-task-001",
+                    ["payloadRef"] = "payload://task-001", ["payloadSha256"] = new string('a', 64),
+                    ["effectRisk"] = "ReadOnly", ["approvalRef"] = "",
+                    ["leaseExpiresAtEpochMs"] = _now.AddMinutes(2).ToUnixTimeMilliseconds().ToString(),
                     ["parentTaskId"] = "parent-001", ["subtaskId"] = "sub-001",
                     ["title"] = "Research", ["instruction"] = "Analyze supplied material",
                     ["executor"] = "RESEARCHER", ["requiredCapabilities"] = "[\"web.research\"]",
@@ -47,6 +51,21 @@ public sealed class BridgeV1AgentTaskClientTests
 
         Assert.NotNull(lease);
         Assert.Equal("task-001", lease.TaskId);
+        Assert.Equal("web.research", lease.TaskType);
+        Assert.Equal("idem-task-001", lease.IdempotencyKey);
+        Assert.Equal("payload://task-001", lease.PayloadRef);
+        Assert.Equal(new string('a', 64), lease.PayloadSha256);
+        Assert.Equal("ReadOnly", lease.EffectRisk);
+        Assert.Null(lease.ApprovalRef);
+        Assert.Equal(_now.AddMinutes(2).ToUnixTimeMilliseconds(), lease.LeaseExpiresAtEpochMs);
+        var envelope = lease.ToEnvelope();
+        Assert.Equal("web.research", envelope.TaskType);
+        Assert.Equal("idem-task-001", envelope.IdempotencyKey);
+        Assert.Equal("payload://task-001", envelope.PayloadRef);
+        Assert.Equal("Analyze supplied material", envelope.Instruction);
+        Assert.Equal("RESEARCHER", envelope.Executor);
+        Assert.Equal("lease-0001", envelope.LeaseId);
+        Assert.Equal(42, envelope.FencingToken);
         Assert.Equal("lease-0001", lease.LeaseId);
         Assert.Equal(42, lease.FencingToken);
         Assert.Equal("DESKTOP_TASK_CLAIM", operation);
@@ -116,7 +135,9 @@ public sealed class BridgeV1AgentTaskClientTests
         Assert.Null(handler.LastRequestUri);
     }
 
-    private AgentTaskLease Lease() => new("task-001", "default", "parent-001", "sub-001",
+    private AgentTaskLease Lease() => new("task-001", "default", "web.research", "idem-task-001",
+        "payload://task-001", new string('a', 64), "ReadOnly", null,
+        _now.AddMinutes(2).ToUnixTimeMilliseconds(), "parent-001", "sub-001",
         "Research", "Analyze", "RESEARCHER", new HashSet<string> { "web.research" },
         _now.ToUnixTimeMilliseconds(), _now.AddMinutes(5).ToUnixTimeMilliseconds(),
         10, "lease-0001", 42);

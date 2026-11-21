@@ -44,6 +44,7 @@ public sealed record HubTaskLease(
     long FencingToken,
     DateTimeOffset ExpiresAt,
     string TaskType,
+    string IdempotencyKey,
     string PayloadRef,
     string PayloadSha256,
     HubTaskEffectRisk EffectRisk,
