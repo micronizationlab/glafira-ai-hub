@@ -41,18 +41,19 @@ class BackupSettingsSmokeTest {
                 device.wait(Until.hasObject(By.desc("Открыть настройки")), 20_000))
             device.findObject(By.desc("Открыть настройки")).click()
 
-            var saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
+            var saveButton = device.findObject(By.text("Сохранить сейчас"))
             repeat(8) {
                 if (saveButton == null) {
                     device.swipe(
                         device.displayWidth / 2, device.displayHeight * 3 / 4,
                         device.displayWidth / 2, device.displayHeight / 4, 12
                     )
-                    saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
+                    saveButton = device.findObject(By.text("Сохранить сейчас"))
                 }
             }
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
             assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
+            assertTrue("Manual backup action is not exposed as clickable", saveButton!!.isClickable)
             saveButton!!.click()
             device.waitForIdle()
             val guidance = device.wait(
