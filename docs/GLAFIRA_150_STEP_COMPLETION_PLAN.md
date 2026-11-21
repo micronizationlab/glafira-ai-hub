@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `2fdd9002e5e9e114c43a0b2b7b3b68b28c41c85b` (refresh before each integration).  
+**Baseline main for this ledger revision:** `2f0f29e5c0cc67d55e7f366fc3510a5955ce6f97` (refresh before each integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -21,7 +21,7 @@
 2. [x] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
 3. [x] Сверить PR #71/#104/#119/#122 с main и выделить только уникальные Core изменения.
 4. [ ] Зафиксировать единый task state machine и допустимые переходы.
-5. [ ] Проверить все SQLite migrations на upgrade с поддерживаемых версий.
+5. [x] Проверить все SQLite migrations на upgrade с поддерживаемых версий.
 6. [x] Проверить concurrent claim из независимых SQLite connections.
 7. [x] Доказать отсутствие двойной выдачи task при конкуренции N workers.
 8. [ ] Разделить maintenance gate и locks отдельных задач.
@@ -206,10 +206,11 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `2fdd9002e5e9e114c43a0b2b7b3b68b28c41c85b`.
+**Refreshed main after this wave:** `2f0f29e5c0cc67d55e7f366fc3510a5955ce6f97`.
 
 ### Verified complete
 
+- Step 5: SQLite upgrade coverage spans every supported predecessor version v1–v8 into v9. PR #245 exact-head emulator run `44851572341`: 68 test cases, 0 failures, 0 errors, 0 skipped.
 - Steps 2–3: historical recovery-stack map and file/commit reconciliation are documented in `docs/CORE_RECOVERY_STACK_RECONCILIATION.md`. PRs #71/#104/#119/#122 are confirmed as stale/diverged stacks; their useful Core concurrency, dependency, fairness and task-plan features are already represented in mainline code. The obsolete Android-hosted Desktop task claim/result path is intentionally not transplanted because it conflicts with the current Windows Hub / dual-Core ownership architecture.
 - Step 15: non-terminal restart behavior is covered across queued, running safe-read, uncertain-write, waiting-for-network, waiting-for-owner and retry-scheduled states; terminal states remain immutable after reopen.
 - Step 1: baseline captured and refreshed at each integration; this ledger revision starts from main `195a45e430b271d3303a3cdca5bbf01dbb241485`.
@@ -226,7 +227,7 @@
 
 ### In progress
 
-- Step 5: PR #240 added v7→v9 and v8→v9 Core migration coverage; existing v3–v6 cases are also present. PR #245 adds v1/v2 upgrade coverage and is awaiting exact-head emulator acceptance. Keep step 5 open until that run passes.
+- Step 5: complete. PR #240 added v7→v9 and v8→v9 migration cases; PR #245 added v1/v2. Existing v3–v6 cases plus the new v1/v2/v7/v8 cases all passed exact-head managed Android emulator acceptance. PR #245 merged as `b564771b8116b487bb6adceb3055c4192cc29d98`; its emulator report contained 68 cases, 0 failures, 0 errors and 0 skipped.
 - Step 10: PR #247 adds explicit missing-predecessor and duplicate-edge tests at store, planner and durable-plan boundaries; Android JVM and emulator validation are pending.
 - Step 16: failure-injection coverage is improved by PR #244 progress-ACK restart tests and PR #250 terminal-result process-restart tests, but the full crash matrix across every Core/provider/trace boundary is still open.
 - Step 9: complete. PR #240's independent-connection cancellation-vs-result-commit race passed on managed emulator.
