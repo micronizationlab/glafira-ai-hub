@@ -12,9 +12,29 @@ import org.junit.runner.RunWith
 import java.security.KeyFactory
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 
 @RunWith(AndroidJUnit4::class)
 class AndroidCoreInstallationIdentityInstrumentedTest {
+
+    @Test
+    fun concurrentStoreInstancesObserveOneStableIdentity() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val executor = Executors.newFixedThreadPool(8)
+        try {
+            val futures = (1..32).map {
+                executor.submit(Callable {
+                    AndroidCoreInstallationIdentityStore(context).loadOrCreate()
+                })
+            }
+            val identities = futures.map { it.get() }
+            assertTrue(identities.all { it == identities.first() })
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
     @Test
     fun identityIsStableSignsLocallyAndRotatesWithMonotonicEpoch() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
