@@ -230,6 +230,46 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
     }
 
     @Test
+    fun ownerGrantExpiryNeverOutlivesTheTaskDeadline() {
+        val now = System.currentTimeMillis()
+        val deadline = now + 30_000L
+        val original = task("approval-deadline").copy(
+            createdAtMillis = now,
+            updatedAtMillis = now,
+            deadlineAtMillis = deadline
+        )
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(now + 1L))
+        assertTrue(approvals.requestApproval(
+            running,
+            "Send a test message to test@example.invalid",
+            now + 2L
+        ))
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                original.taskId,
+                setOf("communications.send"),
+                authenticatedOwnerSession(),
+                now + 3L
+            )
+        )
+
+        val queued = requireNotNull(taskStore.getTask(original.taskId))
+        val grant = requireNotNull(approvals.approvalGrant(
+            queued,
+            "Send a test message to test@example.invalid",
+            now + 4L
+        ))
+        assertEquals(deadline, grant.expiresAt)
+        assertNull(approvals.approvalGrant(
+            queued,
+            "Send a test message to test@example.invalid",
+            deadline + 1L
+        ))
+    }
+
+    @Test
     fun consumedOwnerSessionCannotApproveTwice() {
         val original = task("approval-session-once")
         taskStore.enqueue(original)
