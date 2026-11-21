@@ -19,13 +19,13 @@ Do not interpret "50 actions" as permission to make 50 simultaneous conflicting 
 
 ## 2. Priority and dependency order
 
-1. **P0 — Core correctness, durability, safety and execution foundation.**
-2. **P1 — Android instrumentation suite, Android Core/Bridge conformance and Bridge reliability.** The Android instrumentation suite is explicitly a Priority 1 deliverable; it must exist in `main`, be selected by CI for relevant changes, execute on a managed emulator, and publish non-empty JUnit reports.
-3. **P2 — Windows Desktop control center, authoritative Desktop Hub Bridge host, Desktop ↔ Windows Agent enrollment, scheduling and lifecycle.**
-4. **P3 — Oldest unfinished / abandoned work and release blockers**, ranked immediately after Core and evaluated continuously, not forgotten because newer tasks exist.
-5. **P4 — Android user-facing functionality, backup/council, voice/STT/TTS, iOS and platform reliability.**
-6. **P5 — Specialist agents, connectors, project workspaces, GCU/GLF economics and production integrations.**
-7. **External project research and commercial strategy** (including Project Token/Clover) proceeds in parallel whenever it does not consume a blocking engineering resource or displace P0–P3.
+1. **P1 — GLAFIRA Core correctness, durability, safety and execution authority.**
+2. **P2 — Backup & Recovery:** encrypted portable backup, integrity verification, restore, interrupted-restore recovery and verified off-device copies.
+3. **P3 — Runtime / Bridge / Desktop:** Android instrumentation and cross-platform contract conformance; authenticated Bridge pairing, durable ingress/outbox, ACK, fencing, heartbeat and reconnect; Windows Desktop Hub and Windows Agent lifecycle/scheduling. Within P3, Bridge contracts/pairing precede production fleet execution, and Desktop host/scheduler precedes full Agent-fleet acceptance.
+4. **P4 — Android UX, voice, specialist agents and optional expansions:** Council/task queue UI, STT/TTS, iOS parity, roles and connectors.
+5. **P5 — GCU/GLF economics, VPN/commercial integrations and Project Token/Clover.** Research may proceed in parallel only when it does not displace P1–P3 or introduce a required paid dependency.
+
+Old or abandoned work is a cross-cutting obligation: continuously revisit it and assign its actual P1–P5 priority based on current dependencies and owner value. Do not park all old work in a separate priority tier.
 
 A higher-priority item waiting on CI, review, hardware, a dependency, or a conflicting file is not a reason to idle. Descend the priority list and start the highest-priority independent item available. When a slot opens, restart evaluation at P0.
 
