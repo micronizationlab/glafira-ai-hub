@@ -382,20 +382,42 @@ class GlafiraTaskStore(context: Context) :
     @Synchronized
     override fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
         GlafiraTaskPolicy.validate(task)
-        val values = task.toContentValues()
-        val insertedId = writableDatabase.insertWithOnConflict(
-            TABLE_TASKS,
-            null,
-            values,
-            SQLiteDatabase.CONFLICT_IGNORE
-        )
-        if (insertedId != -1L) {
-            return GlafiraTaskEnqueueResult(task, true)
-        }
+        val db = writableDatabase
+        val ownsTransaction = !db.inTransaction()
+        if (ownsTransaction) db.beginTransaction()
+        try {
+            val insertedId = db.insertWithOnConflict(
+                TABLE_TASKS,
+                null,
+                task.toContentValues(),
+                SQLiteDatabase.CONFLICT_IGNORE
+            )
+            if (insertedId != -1L) {
+                GlafiraCoreTraceStore(this).appendInTransaction(
+                    db,
+                    GlafiraCoreTraceDraft(
+                        projectId = task.projectId,
+                        taskId = task.taskId,
+                        correlationId = task.taskId,
+                        occurredAtMillis = task.createdAtMillis,
+                        actorType = GlafiraCoreTraceActorType.CORE,
+                        actorId = "core",
+                        component = "CoreTaskStore",
+                        eventType = GlafiraCoreTraceEventType.TASK_CREATED,
+                        actionCode = "TASK_CREATED"
+                    )
+                )
+                if (ownsTransaction) db.setTransactionSuccessful()
+                return GlafiraTaskEnqueueResult(task, true)
+            }
 
-        val existing = findByIdempotency(task.projectId, task.idempotencyKey)
-            ?: throw IllegalStateException("Task ID already exists with a different idempotency key.")
-        return GlafiraTaskEnqueueResult(existing, false)
+            val existing = findByIdempotency(task.projectId, task.idempotencyKey)
+                ?: throw IllegalStateException("Task ID already exists with a different idempotency key.")
+            if (ownsTransaction) db.setTransactionSuccessful()
+            return GlafiraTaskEnqueueResult(existing, false)
+        } finally {
+            if (ownsTransaction) db.endTransaction()
+        }
     }
 
     /** Adds predecessor edges to an existing queued task atomically. */
@@ -816,6 +838,20 @@ class GlafiraTaskStore(context: Context) :
                 arrayOf(taskId, candidate.state.databaseValue)
             )
             check(changed == 1) { "Task claim lost its transactional state check." }
+            GlafiraCoreTraceStore(this).appendInTransaction(
+                db,
+                GlafiraCoreTraceDraft(
+                    projectId = candidate.projectId,
+                    taskId = candidate.taskId,
+                    correlationId = candidate.taskId,
+                    occurredAtMillis = nowMillis,
+                    actorType = GlafiraCoreTraceActorType.CORE,
+                    actorId = "core",
+                    component = "CoreTaskStore",
+                    eventType = GlafiraCoreTraceEventType.TASK_STARTED,
+                    actionCode = "TASK_STARTED"
+                )
+            )
             db.setTransactionSuccessful()
             return queryTask(db, taskId)
         } finally {
@@ -876,20 +912,54 @@ class GlafiraTaskStore(context: Context) :
             (nextState == GlafiraTaskState.RETRY_SCHEDULED) == (retryAtMillis != null)
         ) { "Only retry_scheduled tasks may have a retry timestamp." }
 
-        val values = ContentValues().apply {
-            put("state", nextState.databaseValue)
-            put("updated_at", nowMillis)
-            if (retryAtMillis == null) putNull("retry_at") else put("retry_at", retryAtMillis)
-            if (lastError.isNullOrBlank()) putNull("last_error") else put("last_error", lastError.take(2000))
+        val db = writableDatabase
+        val ownsTransaction = !db.inTransaction()
+        if (ownsTransaction) db.beginTransaction()
+        try {
+            val task = queryTask(db, taskId) ?: return false
+            val values = ContentValues().apply {
+                put("state", nextState.databaseValue)
+                put("updated_at", nowMillis)
+                if (retryAtMillis == null) putNull("retry_at") else put("retry_at", retryAtMillis)
+                if (lastError.isNullOrBlank()) putNull("last_error") else put("last_error", lastError.take(2000))
+            }
+            val placeholders = expectedStates.joinToString(",") { "?" }
+            val args = arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray()
+            val changed = db.update(
+                TABLE_TASKS,
+                values,
+                "task_id = ? AND state IN ($placeholders)",
+                args
+            )
+            if (changed != 1) return false
+            val traceType = when (nextState) {
+                GlafiraTaskState.QUEUED, GlafiraTaskState.RETRY_SCHEDULED -> GlafiraCoreTraceEventType.TASK_QUEUED
+                GlafiraTaskState.RUNNING -> GlafiraCoreTraceEventType.TASK_STARTED
+                GlafiraTaskState.WAITING_FOR_OWNER, GlafiraTaskState.WAITING_FOR_NETWORK -> GlafiraCoreTraceEventType.TASK_PAUSED
+                GlafiraTaskState.SUCCEEDED -> GlafiraCoreTraceEventType.TASK_SUCCEEDED
+                GlafiraTaskState.FAILED -> GlafiraCoreTraceEventType.TASK_FAILED
+                GlafiraTaskState.CANCELLED -> GlafiraCoreTraceEventType.TASK_CANCELLED
+            }
+            GlafiraCoreTraceStore(this).appendInTransaction(
+                db,
+                GlafiraCoreTraceDraft(
+                    projectId = task.projectId,
+                    taskId = task.taskId,
+                    correlationId = task.taskId,
+                    occurredAtMillis = nowMillis,
+                    actorType = GlafiraCoreTraceActorType.CORE,
+                    actorId = "core",
+                    component = "CoreTaskStore",
+                    eventType = traceType,
+                    actionCode = "TASK_STATE_CHANGED",
+                    resultStatus = nextState.databaseValue
+                )
+            )
+            if (ownsTransaction) db.setTransactionSuccessful()
+            return true
+        } finally {
+            if (ownsTransaction) db.endTransaction()
         }
-        val placeholders = expectedStates.joinToString(",") { "?" }
-        val args = arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray()
-        return writableDatabase.update(
-            TABLE_TASKS,
-            values,
-            "task_id = ? AND state IN ($placeholders)",
-            args
-        ) == 1
     }
 
 
@@ -952,6 +1022,21 @@ class GlafiraTaskStore(context: Context) :
                     put("result_ciphertext", ciphertext)
                     put("completed_at", nowMillis)
                 }
+            )
+            GlafiraCoreTraceStore(this).appendInTransaction(
+                db,
+                GlafiraCoreTraceDraft(
+                    projectId = task.projectId,
+                    taskId = task.taskId,
+                    correlationId = task.taskId,
+                    occurredAtMillis = nowMillis,
+                    actorType = GlafiraCoreTraceActorType.CORE,
+                    actorId = "core",
+                    component = "CoreTaskStore",
+                    eventType = GlafiraCoreTraceEventType.TASK_SUCCEEDED,
+                    actionCode = "TASK_RESULT_COMMITTED",
+                    resultStatus = "succeeded"
+                )
             )
             db.setTransactionSuccessful()
             return true
