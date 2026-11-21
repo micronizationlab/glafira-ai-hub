@@ -107,6 +107,32 @@ final class MobileOwnershipSyncStoreTests: XCTestCase {
         XCTAssertThrowsError(try MobileOwnershipTransferEnvelope.decodeStrict(unknown))
     }
 
+    func testPersistedHighRiskProjectionWithoutApprovalFailsClosed() throws {
+        let record: [String: Any] = [
+            "taskId": "task-000001",
+            "projectId": "project-0001",
+            "ownerCoreId": "desktop-core-01",
+            "ownerGeneration": 8,
+            "stateVersion": 42,
+            "payloadSha256": String(repeating: "a", count: 64),
+            "idempotencyKey": "idem-000001",
+            "effectRisk": "DESTRUCTIVE",
+            "approvalRef": NSNull(),
+            "lastTransferId": "transfer-0001",
+            "lastNonce": "nonce-000001",
+            "updatedAtEpochMs": 1_800_000_000_000
+        ]
+        let data = try JSONSerialization.data(withJSONObject: [
+            "schemaVersion": 1,
+            "records": [record]
+        ])
+        try data.write(to: directory.appendingPathComponent(
+            "mobile-ownership-projection-v1.json"
+        ))
+
+        XCTAssertThrowsError(try MobileOwnershipSyncStore(directory: directory))
+    }
+
     private func signedTransfer(
         transferId: String = "transfer-0001",
         nonce: String = "nonce-000001",

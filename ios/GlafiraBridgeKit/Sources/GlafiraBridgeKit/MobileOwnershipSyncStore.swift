@@ -322,7 +322,8 @@ private enum MobileOwnershipTransferValidation {
             projection.ownerGeneration > 0 && projection.stateVersion >= 0 &&
             projection.updatedAtEpochMs > 0 && validDigest(projection.payloadSha256) &&
             risks.contains(projection.effectRisk) &&
-            (projection.approvalRef == nil || validIdentifier(projection.approvalRef!))
+            (projection.approvalRef == nil || validIdentifier(projection.approvalRef!)) &&
+            (!highRisks.contains(projection.effectRisk) || projection.approvalRef != nil)
     }
 
     static func validPersistedShape(_ data: Data) -> Bool {
