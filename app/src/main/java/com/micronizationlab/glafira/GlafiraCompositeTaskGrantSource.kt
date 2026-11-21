@@ -28,6 +28,12 @@ internal class GlafiraCompositeTaskGrantSource(
         nowMillis: Long
     ): ToolApprovalGrant? = ownerApprovals.approvalGrant(task, actionSummary, nowMillis)
 
+    override fun peekApprovalGrant(
+        task: GlafiraTask,
+        actionSummary: String,
+        nowMillis: Long
+    ): ToolApprovalGrant? = ownerApprovals.peekApprovalGrant(task, actionSummary, nowMillis)
+
     override fun requestApproval(
         task: GlafiraTask,
         actionSummary: String,

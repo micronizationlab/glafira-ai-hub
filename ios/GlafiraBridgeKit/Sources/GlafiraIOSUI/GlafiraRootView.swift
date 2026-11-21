@@ -1,11 +1,12 @@
 import SwiftUI
 import GlafiraBridgeKit
 
-/// Native adaptive iPhone/iPad shell. Live project data is supplied later by the
-/// authenticated Core repository; this view intentionally contains no mock projects.
+/// Native adaptive iPhone/iPad client. Live project data is supplied by the
+/// authoritative Windows Hub; this view intentionally contains no mock projects.
 public struct GlafiraRootView: View {
     @State private var pairedDeviceIds: [String] = []
     @State private var credentialStatus = "Проверяем локальные учётные данные…"
+    @StateObject private var workspace = GlafiraWorkspaceViewModel()
 
     public init() {}
 
@@ -20,16 +21,15 @@ public struct GlafiraRootView: View {
                         Label(deviceId, systemImage: "iphone")
                             .font(.subheadline)
                     }
-                    NavigationLink {
-                        BridgePairingView()
-                    } label: {
-                        Label("Сопряжение Android", systemImage: "iphone.and.arrow.right.inward")
-                    }
+                    Label("Сопряжение через Windows Hub", systemImage: "desktopcomputer.and.arrow.down")
+                    Text("iPhone остаётся клиентом. Одноразовый допуск и отзыв устройства подтверждаются владельцем на Windows Hub.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Рабочее пространство") {
                     NavigationLink {
-                        GlafiraProjectsPlaceholderView()
+                        GlafiraProjectsView(model: workspace)
                     } label: {
                         Label("Проекты", systemImage: "folder")
                     }
@@ -52,7 +52,10 @@ public struct GlafiraRootView: View {
             GlafiraWelcomeView(hasPairedDevice: !pairedDeviceIds.isEmpty)
         }
         .navigationSplitViewStyle(.balanced)
-        .task { refreshCredentialState() }
+        .task {
+            refreshCredentialState()
+            await workspace.reload()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .glafiraBridgeCredentialDidChange)) { _ in
             refreshCredentialState()
         }
@@ -95,8 +98,8 @@ private struct GlafiraWelcomeView: View {
                 .foregroundStyle(.secondary)
 
             Text(hasPairedDevice
-                 ? "Ключ хранится в Keychain. Проекты и диалоги появятся после подключения к доступному Core."
-                 : "После безопасного сопряжения здесь появятся ваши проекты и диалоги.")
+                 ? "Ключ хранится в Keychain. Проекты и диалоги загружаются только из авторитетного Windows Hub."
+                 : "После безопасного сопряжения с Windows Hub здесь появятся разрешённые проекты и диалоги.")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -108,14 +111,191 @@ private struct GlafiraWelcomeView: View {
     }
 }
 
-private struct GlafiraProjectsPlaceholderView: View {
+private struct GlafiraProjectsView: View {
+    @ObservedObject var model: GlafiraWorkspaceViewModel
+
     var body: some View {
-        ContentPlaceholder(
-            title: "Проекты",
-            message: "Список проектов загрузится из GLAFIRA CORE после защищённого подключения.",
-            symbol: "folder"
-        )
+        Group {
+            if model.projects.isEmpty {
+                ContentPlaceholder(
+                    title: "Проекты",
+                    message: model.status,
+                    symbol: "folder"
+                )
+            } else {
+                List(model.projects) { project in
+                    NavigationLink {
+                        GlafiraProjectConversationsView(model: model, project: project)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(project.name)
+                                .font(.headline)
+                            Text("Диалогов: \(project.conversationCount) · ожидают: \(project.pendingCount)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if project.conflictCount > 0 {
+                                Label("Нужно разрешить конфликт: \(project.conflictCount)", systemImage: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                    .accessibilityLabel("Открыть проект \(project.name)")
+                }
+            }
+        }
+        .task { await model.reload() }
         .navigationTitle("Проекты")
+    }
+}
+
+private struct GlafiraProjectConversationsView: View {
+    @ObservedObject var model: GlafiraWorkspaceViewModel
+    let project: MobileWorkspaceProjectSummary
+    @State private var conversations: [MobileConversationSummary] = []
+
+    var body: some View {
+        Group {
+            if conversations.isEmpty {
+                ContentPlaceholder(
+                    title: project.name,
+                    message: "Для этого проекта пока нет синхронизированных диалогов.",
+                    symbol: "bubble.left.and.bubble.right"
+                )
+            } else {
+                List(conversations) { conversation in
+                    NavigationLink {
+                        GlafiraConversationView(model: model, project: project, summary: conversation)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(conversation.title)
+                                .font(.headline)
+                            Text("Сообщений: \(conversation.messageCount) · ожидают: \(conversation.pendingCount)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if conversation.conflictCount > 0 {
+                                Label("Конфликт версии — требуется решение владельца", systemImage: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                    .accessibilityLabel("Открыть диалог \(conversation.title)")
+                }
+            }
+        }
+        .task { conversations = await model.conversations(projectId: project.id) }
+        .navigationTitle(project.name)
+    }
+}
+
+private struct GlafiraConversationView: View {
+    @ObservedObject var model: GlafiraWorkspaceViewModel
+    let project: MobileWorkspaceProjectSummary
+    let summary: MobileConversationSummary
+    @State private var conversation: MobileConversation?
+    @State private var outbox: [MobileOutboxEntry] = []
+    @State private var draft = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            List {
+                if let conversation {
+                    ForEach(conversation.messages) { message in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(message.isOwner ? "Вы" : summary.title)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text(message.text)
+                            if message.origin == .ownerOffline {
+                                Label("Ожидает синхронизации", systemImage: "clock.arrow.circlepath")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+
+                let conflicts = outbox.filter { $0.state == .requiresOwnerResolution }
+                if !conflicts.isEmpty {
+                    Section("Конфликты") {
+                        ForEach(conflicts) { entry in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(entry.text)
+                                    .lineLimit(3)
+                                Text("Windows Hub изменил диалог после создания этого сообщения.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                HStack {
+                                    Button("Повторить поверх текущей версии") {
+                                        Task { await resolve(entry, choice: .rebaseOntoCurrentRemoteVersion) }
+                                    }
+                                    Button("Отменить локальное", role: .destructive) {
+                                        Task { await resolve(entry, choice: .discardLocalMessage) }
+                                    }
+                                }
+                                .font(.caption)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    TextField("Сообщение для офлайн-очереди", text: $draft, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                    Button("В очередь") {
+                        Task { await queueDraft() }
+                    }
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                              outbox.contains { $0.state == .requiresOwnerResolution })
+                }
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else {
+                    Text("Сообщение сохраняется локально и не отправляется повторно без точного ACK Windows Hub.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+        }
+        .task { await reload() }
+        .navigationTitle(summary.title)
+    }
+
+    private func reload() async {
+        conversation = await model.conversation(
+            projectId: project.id,
+            conversationId: summary.conversationId
+        )
+        outbox = await model.outbox(projectId: project.id, conversationId: summary.conversationId)
+    }
+
+    private func queueDraft() async {
+        guard let conversation else { return }
+        let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+        errorMessage = await model.queueOfflineMessage(
+            projectId: project.id,
+            conversationId: summary.conversationId,
+            title: summary.title,
+            remoteVersion: conversation.remoteVersion,
+            text: message
+        )
+        if errorMessage == nil { draft = "" }
+        await reload()
+    }
+
+    private func resolve(_ entry: MobileOutboxEntry, choice: MobileConflictChoice) async {
+        errorMessage = await model.resolveConflict(operationId: entry.operationId, choice: choice)
+        await reload()
     }
 }
 

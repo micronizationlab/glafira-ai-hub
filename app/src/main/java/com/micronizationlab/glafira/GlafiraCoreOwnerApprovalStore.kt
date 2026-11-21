@@ -54,9 +54,39 @@ class GlafiraCoreOwnerApprovalStore(
         ).use { cursor ->
             if (!cursor.moveToFirst()) emptySet()
             else {
-                val json = JSONArray(cursor.getString(0))
-                buildSet { for (i in 0 until json.length()) add(json.getString(i)) }
+                val scopesJson = cursor.getString(0)
+                if (!hasExactRegisteredScopes(task, scopesJson)) emptySet()
+                else parseRequestedScopes(scopesJson).orEmpty()
             }
+        }
+    }
+
+    @Synchronized
+    override fun peekApprovalGrant(
+        task: GlafiraTask,
+        actionSummary: String,
+        nowMillis: Long
+    ): ToolApprovalGrant? {
+        if (actionSummary.isBlank()) return null
+        val hash = GlafiraToolRegistry.actionHash(task, actionSummary)
+        return db.query(
+            "core_action_approvals",
+            arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at", "requested_scopes"),
+            "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val row = ApprovalRow(
+                cursor.getString(0), cursor.getString(1), cursor.getString(2),
+                cursor.getString(3), cursor.getLong(4), cursor.getLong(5), cursor.getString(6)
+            )
+            if (row.status == APPROVED && row.projectId == task.projectId &&
+                row.toolId == task.taskType && row.actionHash == hash &&
+                hasExactRegisteredScopes(task, row.requestedScopesJson) &&
+                row.approvedAt <= nowMillis && row.grantExpiresAt > nowMillis
+            ) ToolApprovalGrant(
+                row.projectId, row.toolId, row.actionHash,
+                row.approvedAt, row.grantExpiresAt, task.taskId
+            ) else null
         }
     }
 
@@ -66,6 +96,7 @@ class GlafiraCoreOwnerApprovalStore(
         val definition = GlafiraToolRegistry.find(task.taskType) ?: return false
         val hash = GlafiraToolRegistry.actionHash(task, actionSummary)
         val requestedScopes = (definition.requiredScopes + task.requiredScopes).sorted()
+        if (requestedScopes.isEmpty() || requestedScopes.any { !GlafiraToolRegistry.isKnownScope(it) }) return false
         val database = db
         var queued = false
         database.beginTransaction()
@@ -141,16 +172,17 @@ class GlafiraCoreOwnerApprovalStore(
         try {
             val row = db.query(
                 "core_action_approvals",
-                arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at"),
+                arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at", "requested_scopes"),
                 "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
             ).use { cursor ->
                 if (!cursor.moveToFirst()) null else ApprovalRow(
                     cursor.getString(0), cursor.getString(1), cursor.getString(2),
-                    cursor.getString(3), cursor.getLong(4), cursor.getLong(5)
+                    cursor.getString(3), cursor.getLong(4), cursor.getLong(5), cursor.getString(6)
                 )
             }
             if (row != null && row.status == APPROVED && row.projectId == task.projectId &&
                 row.toolId == task.taskType && row.actionHash == hash &&
+                hasExactRegisteredScopes(task, row.requestedScopesJson) &&
                 row.approvedAt <= nowMillis && row.grantExpiresAt > nowMillis
             ) {
                 val consumed = db.update(
@@ -261,7 +293,8 @@ class GlafiraCoreOwnerApprovalStore(
                     val required = definition.requiredScopes + task.requiredScopes
                     val validSelection = selectedScopes == required && selectedScopes.isNotEmpty() &&
                         selectedScopes.all { scope ->
-                            scope.length <= 96 && scope.all { it.isLetterOrDigit() || it in "._-" }
+                            GlafiraToolRegistry.isKnownScope(scope) &&
+                                scope.length <= 96 && scope.all { it.isLetterOrDigit() || it in "._-" }
                         }
                     if (!validSelection) {
                         result = GlafiraCoreOwnerApprovalMutation.INVALID_SCOPE_SELECTION
@@ -269,7 +302,7 @@ class GlafiraCoreOwnerApprovalStore(
                         val approved = db.update("core_action_approvals", ContentValues().apply {
                             put("status", APPROVED)
                             put("approved_at", nowMillis)
-                            put("grant_expires_at", safeAdd(nowMillis, GRANT_TTL_MILLIS))
+                            put("grant_expires_at", minOf(safeAdd(nowMillis, GRANT_TTL_MILLIS), task.deadlineAtMillis ?: Long.MAX_VALUE))
                             put("decided_by", ownerSession.sessionId)
                         }, "task_id = ? AND status = ? AND action_hash = ?",
                             arrayOf(taskId, PENDING, hash))
@@ -347,8 +380,31 @@ class GlafiraCoreOwnerApprovalStore(
 
     private data class ApprovalRow(
         val projectId: String, val toolId: String, val actionHash: String,
-        val status: String, val approvedAt: Long, val grantExpiresAt: Long
+        val status: String, val approvedAt: Long, val grantExpiresAt: Long,
+        val requestedScopesJson: String
     )
+
+    private fun expectedRegisteredScopes(task: GlafiraTask): Set<String>? {
+        val definition = GlafiraToolRegistry.find(task.taskType) ?: return null
+        val required = definition.requiredScopes + task.requiredScopes
+        return required.takeIf { it.isNotEmpty() && it.all(GlafiraToolRegistry::isKnownScope) }
+    }
+
+    private fun parseRequestedScopes(json: String): Set<String>? = runCatching {
+        val array = JSONArray(json)
+        buildSet {
+            for (index in 0 until array.length()) {
+                val scope = array.getString(index)
+                require(scope.isNotBlank() && add(scope))
+            }
+        }
+    }.getOrNull()
+
+    private fun hasExactRegisteredScopes(task: GlafiraTask, json: String): Boolean {
+        val expected = expectedRegisteredScopes(task) ?: return false
+        val stored = parseRequestedScopes(json) ?: return false
+        return stored == expected && stored.all(GlafiraToolRegistry::isKnownScope)
+    }
     private data class PendingRow(
         val taskId: String, val actionHash: String, val scopesJson: String,
         val requestedAt: Long, val expiresAt: Long

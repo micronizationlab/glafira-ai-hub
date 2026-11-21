@@ -905,6 +905,47 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask(write.taskId)?.state)
     }
 
+    @Test fun dryRunApprovalInspectionDoesNotConsumePersistentOneUseGrant() {
+        val actionSummary = "Send the approved customer update"
+        val queued = task("dry-run-owner-grant", "message.send").copy(
+            payload = org.json.JSONObject().put("actionSummary", actionSummary).toString()
+        )
+        val now = System.currentTimeMillis()
+        store.enqueue(queued)
+        assertNotNull(store.claimNext(now + 1L))
+
+        val approvals = GlafiraCoreOwnerApprovalStore(store)
+        assertTrue(approvals.requestApproval(queued, actionSummary, now + 2L))
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                queued.taskId,
+                setOf("communications.send"),
+                ownerSession(),
+                now + 3L
+            )
+        )
+
+        val current = requireNotNull(store.getTask(queued.taskId))
+        val authorizer = RegistryBackedGlafiraTaskAuthorizer(approvals)
+        assertEquals(
+            GlafiraTaskAuthorizationStatus.AUTHORIZED,
+            authorizer.inspectForDryRun(current, now + 4L).status
+        )
+        assertEquals(
+            GlafiraTaskAuthorizationStatus.AUTHORIZED,
+            authorizer.inspectForDryRun(current, now + 5L).status
+        )
+        assertNotNull(approvals.peekApprovalGrant(current, actionSummary, now + 5L))
+
+        // Only the real execution authorization consumes the one-use approval.
+        assertEquals(
+            GlafiraTaskAuthorizationStatus.AUTHORIZED,
+            authorizer.authorize(current, now + 6L).status
+        )
+        assertNull(approvals.peekApprovalGrant(current, actionSummary, now + 7L))
+    }
+
     private fun ownerSession(): GlafiraCoreOwnerSession {
         val constructor = GlafiraCoreOwnerSession::class.java.getDeclaredConstructor(
             String::class.java,
