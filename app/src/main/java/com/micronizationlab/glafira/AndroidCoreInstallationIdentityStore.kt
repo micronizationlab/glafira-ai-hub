@@ -65,6 +65,9 @@ class AndroidCoreInstallationIdentityStore internal constructor(
     fun rotateKey(): CoreInstallationIdentity = synchronized(PROCESS_LOCK) {
         val current = loadOrCreate()
         val nextEpoch = Math.addExact(current.keyEpoch, 1L)
+        // A crash before metadata commit may leave this unreferenced alias behind.
+        // The current metadata still points to keyEpoch, so the next epoch is safe to replace.
+        keyStore.deleteEntry(keyAlias(nextEpoch))
         val pair = createKeyPair(nextEpoch)
         val next = CoreInstallationIdentity(
             coreId = current.coreId,
