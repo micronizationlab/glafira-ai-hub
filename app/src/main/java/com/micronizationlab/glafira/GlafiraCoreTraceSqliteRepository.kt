@@ -122,19 +122,29 @@ class GlafiraCoreTraceSqliteRepository(
             args += it.toString()
         }
         query.afterEventId?.let { eventId ->
-            val sequence = db.query(
+            val cursorInfo = db.query(
                 TABLE,
-                arrayOf("sequence_id"),
+                arrayOf("sequence_id", "task_id"),
                 "project_id = ? AND event_id = ?",
                 arrayOf(query.projectId, eventId),
                 null,
                 null,
                 null,
                 "1"
-            ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
-                ?: return@synchronized GlafiraCoreTracePage(emptyList())
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null
+                else Pair(cursor.getLong(0), if (cursor.isNull(1)) null else cursor.getString(1))
+            } ?: return@synchronized GlafiraCoreTracePage(emptyList())
+            val cursorTaskId = cursorInfo.second
+            val cursorMatchesQuery = query.taskId == null || cursorTaskId == query.taskId
+            val cursorAllowedByAccess = access.taskIds == null ||
+                (cursorTaskId == null && access.allowProjectEvents) ||
+                (cursorTaskId != null && cursorTaskId in access.taskIds)
+            if (!cursorMatchesQuery || !cursorAllowedByAccess) {
+                return@synchronized GlafiraCoreTracePage(emptyList())
+            }
             where += "sequence_id > ?"
-            args += sequence.toString()
+            args += cursorInfo.first.toString()
         }
 
         val fetched = db.query(
