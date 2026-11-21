@@ -36,6 +36,8 @@ public interface IAgentExecutionJournal
     Task PersistCompletedResultAsync(AgentPendingResult result, CancellationToken cancellationToken);
     Task<bool> AcknowledgeResultAsync(
         string taskId, string leaseId, long fencingToken, CancellationToken cancellationToken);
+    Task<bool> ClearExpiredActiveLeaseAsync(
+        string taskId, string leaseId, long fencingToken, long nowEpochMs, CancellationToken cancellationToken);
 }
 
 /// <summary>Machine-bound DPAPI protection for the Agent's local execution journal.</summary>
@@ -198,6 +200,35 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             var next = snapshot with
             {
                 PendingResults = snapshot.PendingResults.Where(item => item.Lease.TaskId != taskId).ToArray()
+            };
+            await WriteSnapshotAsync(next, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<bool> ClearExpiredActiveLeaseAsync(
+        string taskId,
+        string leaseId,
+        long fencingToken,
+        long nowEpochMs,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(taskId) || string.IsNullOrWhiteSpace(leaseId) ||
+            fencingToken <= 0 || nowEpochMs <= 0)
+            throw new ArgumentException("A complete task/lease/fence/time identity is required.");
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var snapshot = await ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            var active = snapshot.ActiveLeases.SingleOrDefault(item => item.TaskId == taskId);
+            if (active is null) return false;
+            if (active.LeaseId != leaseId || active.FencingToken != fencingToken)
+                throw new InvalidDataException("AGENT_ACTIVE_LEASE_IDENTITY_MISMATCH");
+            if (active.LeaseExpiresAtEpochMs > nowEpochMs) return false;
+            var next = snapshot with
+            {
+                ActiveLeases = snapshot.ActiveLeases.Where(item => item.TaskId != taskId).ToArray()
             };
             await WriteSnapshotAsync(next, cancellationToken).ConfigureAwait(false);
             return true;
