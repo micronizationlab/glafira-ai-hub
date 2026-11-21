@@ -13,7 +13,7 @@
 |---|---|---|---|---|---|---|
 | P2 | PR #369, Issue #350, stacked on PR #352 → #347 | Backup button accessibility semantics and emulator regression assertion only | `fix/android-backup-button-merged-semantics-352` | #352 on #347; exact-head emulator acceptance | CI queued/running at last check | `d6e3d8306acd432fed3f4d3de916641388b098eb` |
 | P1 audit | Issue #366, PR #347 | Review ownership-generation bypasses; no production edit yet | audit only | #347 must gain complete handoff and all mutation paths must be fenced | Findings recorded in #366 | `be1d81586cd506176db712494ec77f6364faac83` |
-| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Changes committed; validation pending | latest branch tip to be refreshed |
+| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Changes committed; docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform checks skipped as expected | `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd` |
 
 ## 150-step program tracker
 
@@ -21,7 +21,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 | Cycle | Status | Completed actions | Evidence index / PRs | Validation summary | Open blockers |
 |---:|---|---:|---|---|---|
-| 01 | partial | 5/150 | PR #369; PR #362; Issue #350; Issue #366; PR #347 | Repository state and logs inspected; #369 CI pending; #362 docs CI pending after latest commits | Core generation handoff incomplete; backup emulator regression pending |
+| 01 | partial | 6/150 | PR #369; PR #362; Issue #350; Issue #366; Issue #370; PR #347 | Repository state and logs inspected; #369 CI pending; #362 docs CI pending after latest commits | Core generation handoff incomplete; backup emulator regression pending |
 
 ## Cycle 01 — capacity audit and parallel portfolio
 
@@ -46,8 +46,11 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 ## Cycle close-out
 
-Cycle 01 remains partial. Do not mark complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
+Cycle 01 remains partial (6/150). PR #362 docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform jobs were skipped, not passed. PR #369 exact-head CI for `b46a1d8496a63a40718192d37571b1ca7359a0de` is still running; the previous head failed Kotlin compilation because of an invalid import, which was removed in the current head. Do not mark the cycle complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
 
 ## Whole-project audit after cycle 20
 
 Not started. Must inspect historical builds, stale branches/PRs, forgotten requirements, roadmap consistency and remaining release gaps after cycle 20; do not start cycle 21 automatically.
+
+
+| C01-A006 | P1 security | Confirmed `main` has branch protection disabled and opened a focused admin-configuration issue. The issue specifies required PR review, exact-head checks, no force-push/direct-push and future CODEOWNERS after collaborator identities are known. | https://github.com/micronizationlab/glafira-ai-hub/issues/370 | Read-only configuration inspection; no settings changed because this requires repository-admin authorization. | complete |
