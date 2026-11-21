@@ -35,19 +35,16 @@ If this file conflicts with an older snapshot document, follow the current owner
 
 ## 3. Current owner priority order
 
-Use the current [Engineering Roadmap](docs/IMPLEMENTATION_ROADMAP.md) and [Dispatcher Operating Rule](docs/ENGINEERING_DISPATCHER_OPERATING_RULE.md) as authoritative. Current execution order:
+The owner's currently confirmed execution hierarchy is:
 
-1. **P0 — GLAFIRA Core:** durable ownership/state, SQLite concurrency, bounded workers, dependency scheduling, cancellation, crash recovery, idempotency, result delivery/ACK, audit and policy.
-2. **P1 — Android instrumentation and Bridge:** managed-emulator instrumentation in CI; authenticated pairing; versioned Task/Result/Lease contracts; fencing, durable delivery, ACK, heartbeat, reconnect and recovery.
-3. **P2 — Windows Desktop and Windows Agent:** laptop-first Desktop control center, authoritative Desktop Hub, enrollment/revocation, scheduler, worker service and end-to-end Desktop ↔ Agent acceptance.
-4. **P3 — Oldest unfinished work and release blockers:** inspect historical issues/PRs continuously; port useful work safely rather than abandoning it.
-5. **P4 — Android user-facing functionality, Backup/Recovery, voice and iOS/platform reliability:** preserve the exact dependencies and gates in the current roadmap.
-6. **P5 — Specialist agents, connectors, workspaces, GCU/GLF economics and production integrations.**
-7. External research may proceed in parallel when it does not consume a blocking engineering resource or displace P0–P3.
+1. **P1 — GLAFIRA Core:** durable ownership/state, SQLite concurrency, bounded workers, dependency scheduling, cancellation, crash recovery, idempotency, result delivery/ACK, audit and policy.
+2. **P2 — Backup & Recovery:** encrypted portable backups, integrity verification, restore, interrupted-restore recovery and verified off-device copies.
+3. **P3 — Runtime / Bridge / Desktop:** Android instrumentation and Bridge contracts/pairing; Windows Desktop Hub; Windows Agent; durable delivery, fencing, heartbeat, reconnect and end-to-end acceptance. Respect dependencies inside this group: shared Bridge contracts and authenticated pairing precede production fleet execution; Desktop host/scheduler precedes full Agent-fleet acceptance.
+4. **P4 — Specialist agents and optional expansions:** specialist roles, connectors, voice extensions, GCU/GLF economics, VPN/marketplace integrations and other deferred modules. Independent research may continue in parallel only when it does not displace P1–P3.
 
-The owner's earlier shorthand "Core, then Backup & Recovery, then Bridge/Desktop" is reflected in the roadmap's detailed dependency and current active work order. If a newer direct owner instruction changes the order, central GLAFIRA must update this file and the roadmap/dispatcher consistently.
+**Priority consistency:** issue [#363](https://github.com/micronizationlab/glafira-ai-hub/issues/363) tracks reconciliation of older roadmap/dispatcher/action-pool snapshots with this owner-confirmed hierarchy. Until that reconciliation PR is reviewed, invited collaborators must follow this section for dispatch. Preserve detailed technical acceptance criteria and dependencies from existing specifications; reorder work, do not discard it.
 
-A higher-priority task waiting for CI, review, hardware or a conflicting file is not a reason to idle. Start the highest-priority independent action available, then rescan from P0 when a slot opens.
+A higher-priority task waiting for CI, review, hardware or a conflicting file is not a reason to idle. Start the highest-priority independent action available, then rescan from P1 when a slot opens.
 
 ## 4. Maximum safe multitasking
 
