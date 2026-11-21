@@ -162,7 +162,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    @Test
     fun exportRejectsUnknownCoreTablesInsteadOfSilentlyOmittingThem() = runBlocking {
         store.writableDatabase.execSQL(
             "CREATE TABLE core_future_sensitive (id TEXT PRIMARY KEY, secret TEXT NOT NULL)"
@@ -219,6 +218,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
+    @Test
     fun wrongPassphraseLeavesCurrentCoreQueueUntouched() = runBlocking {
         store.enqueue(task("must-remain"))
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
