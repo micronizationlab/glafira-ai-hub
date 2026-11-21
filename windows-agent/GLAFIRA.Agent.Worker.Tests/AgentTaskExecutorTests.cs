@@ -12,6 +12,7 @@ public sealed class AgentTaskExecutorTests
     private static AgentRuntimeState ReadyState()
     {
         var state = new AgentRuntimeState();
+        state.SetOwnerProfile(["research"], maxParallelTasks: 1);
         state.SetStatus(AgentServiceStatus.Ready);
         return state;
     }
@@ -53,6 +54,24 @@ public sealed class AgentTaskExecutorTests
         var result = await executor.ExecuteAsync(Envelope("task-3"), CancellationToken.None);
 
         Assert.Equal("AGENT_NOT_READY", result.ErrorCode);
+        Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public async Task RejectsTaskWhoseCapabilitiesWereNotApprovedByOwner()
+    {
+        var handler = new TestHandler("research.search", (task, _) =>
+            Task.FromResult(new AgentTaskResult(task.TaskId, "SUCCEEDED")));
+        await using var executor = new AgentTaskExecutor(
+            new AgentTaskHandlerRegistry([handler]), ReadyState());
+        var unauthorized = Envelope("task-unauthorized") with
+        {
+            RequiredCapabilities = new HashSet<string> { "research", "system.shell" }
+        };
+
+        var result = await executor.ExecuteAsync(unauthorized, CancellationToken.None);
+
+        Assert.Equal("TASK_CAPABILITY_NOT_APPROVED", result.ErrorCode);
         Assert.Equal(0, handler.Calls);
     }
 
