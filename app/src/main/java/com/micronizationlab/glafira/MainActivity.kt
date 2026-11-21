@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
@@ -540,6 +541,10 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     val context = LocalContext.current
     var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.n)) }
     val historyKey = "${project.id}_${agent.n}"
+    var selectedPhotoUri by remember(historyKey) { mutableStateOf<Uri?>(null) }
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri -> selectedPhotoUri = uri }
     var messages by remember(historyKey) { mutableStateOf(loadHistory(context, historyKey)) }
     var pendingMessages by remember(historyKey) { mutableStateOf(emptyList<PendingMessage>()) }
     var historyInitialized by remember(historyKey) { mutableStateOf(false) }
@@ -883,11 +888,41 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             }
 
             if (!isSearching) {
-                Row(Modifier.fillMaxWidth().background(GrD).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.fillMaxWidth().background(GrD)) {
+                    selectedPhotoUri?.let {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "ФОТО ВЫБРАНО · обработка изображения ещё не подключена",
+                                color = Tx,
+                                fontSize = 10.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                "✕",
+                                color = Red,
+                                modifier = Modifier.clickable { selectedPhotoUri = null }.padding(horizontal = 8.dp)
+                            )
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier.size(36.dp).border(1.dp, if (isListening) Red else Gr, RoundedCornerShape(2.dp)).clickable { startVoiceInput() },
                         contentAlignment = Alignment.Center
                     ) { Text(if (isListening) "🔴" else "🎤", fontSize = 16.sp) }
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        Modifier.size(36.dp).border(1.dp, Gr, RoundedCornerShape(2.dp)).clickable {
+                            photoPickerLauncher.launch(
+                                androidx.activity.result.PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        },
+                        contentAlignment = Alignment.Center
+                    ) { Text("🖼️", fontSize = 16.sp) }
                     Spacer(Modifier.width(6.dp))
                     TextField(
                         value = inputText,
@@ -907,6 +942,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                         },
                         contentAlignment = Alignment.Center
                     ) { Text("➤", color = Gr, fontSize = 16.sp) }
+                    }
                 }
             }
         }
