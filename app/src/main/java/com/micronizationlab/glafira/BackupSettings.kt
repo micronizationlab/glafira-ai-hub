@@ -298,7 +298,6 @@ fun BackupSettingsSection() {
                         enabled = !busy,
                         modifier = Modifier
                             .weight(1f)
-                            .semantics { contentDescription = "Создать резервную копию сейчас" }
                     ) { Text("Сохранить сейчас") }
                     OutlinedButton(
                         onClick = {
