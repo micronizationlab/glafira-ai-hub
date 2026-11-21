@@ -279,6 +279,20 @@ class GlafiraCoreTraceStore(private val taskStore: GlafiraTaskStore) : GlafiraCo
             createAppendOnlyTriggers(db)
         }
 
+        /**
+         * The only deletion exception to Trace append-only storage: explicit owner project deletion.
+         * The caller must hold Core maintenance and the surrounding SQLite transaction.
+         */
+        internal fun purgeProjectForOwnerDeletion(db: SQLiteDatabase, projectId: String) {
+            check(db.inTransaction()) { "TRACE_PURGE_TRANSACTION_REQUIRED" }
+            dropAppendOnlyTriggers(db)
+            try {
+                db.delete(TABLE, "project_id = ?", arrayOf(projectId))
+            } finally {
+                createAppendOnlyTriggers(db)
+            }
+        }
+
         internal fun dropAppendOnlyTriggers(db: SQLiteDatabase) {
             db.execSQL("DROP TRIGGER IF EXISTS core_trace_events_no_update")
             db.execSQL("DROP TRIGGER IF EXISTS core_trace_events_no_delete")
