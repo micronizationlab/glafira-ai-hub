@@ -139,6 +139,38 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals("injected-claim-history-failure", store.claimNext(3_000)?.taskId)
     }
 
+    @Test fun repeatedCoreResultCommitIsIdempotentAndConflictingResultFailsClosed() {
+        store.enqueue(task("idempotent-core-result"))
+        assertEquals("idempotent-core-result", store.claimNext(2_000)?.taskId)
+
+        assertTrue(store.persistCoreTaskResult(
+            "idempotent-core-result",
+            setOf(GlafiraTaskState.RUNNING),
+            "canonical-result",
+            3_000L
+        ))
+        assertTrue(store.persistCoreTaskResult(
+            "idempotent-core-result",
+            setOf(GlafiraTaskState.RUNNING),
+            "canonical-result",
+            4_000L
+        ))
+
+        assertThrows(IllegalStateException::class.java) {
+            store.persistCoreTaskResult(
+                "idempotent-core-result",
+                setOf(GlafiraTaskState.RUNNING),
+                "conflicting-result",
+                5_000L
+            )
+        }
+
+        assertEquals("canonical-result", store.coreTaskResult("idempotent-core-result", "project")?.result)
+        assertEquals(1, store.taskHistory("idempotent-core-result", "project")
+            .count { it.toState == GlafiraTaskState.SUCCEEDED })
+        assertEquals(GlafiraTaskState.SUCCEEDED, store.getTask("idempotent-core-result")?.state)
+    }
+
     @Test fun injectedResultInsertFailureRollsBackStateResultAndHistoryTogether() {
         store.enqueue(task("injected-result-failure"))
         assertNotNull(store.claimNext(2_000))
