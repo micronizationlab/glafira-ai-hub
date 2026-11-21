@@ -43,6 +43,10 @@ public sealed class AgentTaskExecutor : IAsyncDisposable
             return Failed(task.TaskId, "INVALID_TASK_ENVELOPE");
         if (_runtimeState.Status != AgentServiceStatus.Ready)
             return Failed(task.TaskId, "AGENT_NOT_READY");
+        var ownerApprovedCapabilities = _runtimeState.Capabilities;
+        if (task.RequiredCapabilities.Any(capability =>
+                !ownerApprovedCapabilities.Contains(capability, StringComparer.Ordinal)))
+            return Failed(task.TaskId, "TASK_CAPABILITY_NOT_APPROVED");
         if (!_handlers.TryResolve(task.TaskType, out var handler) || handler is null)
             return Failed(task.TaskId, "NO_AGENT_HANDLER");
         if (!_active.TryAdd(task.TaskId, 0))
@@ -96,7 +100,9 @@ public sealed class AgentTaskExecutor : IAsyncDisposable
         System.Text.RegularExpressions.Regex.IsMatch(
             task.PayloadSha256, "^[a-fA-F0-9]{64}$") &&
         task.RequiredCapabilities is not null &&
-        task.RequiredCapabilities.Count <= 64;
+        task.RequiredCapabilities.Count <= 64 &&
+        task.RequiredCapabilities.All(capability =>
+            !string.IsNullOrWhiteSpace(capability) && capability.Length <= 128);
 
     private static AgentTaskResult Failed(string taskId, string code) =>
         new(taskId, "FAILED", ErrorCode: code);
