@@ -305,15 +305,10 @@ fun BackupSettingsSection() {
                         modifier = Modifier
                             .weight(1f)
                             .semantics(mergeDescendants = true) {
+                                // Preserve the Material Button's native clickable semantics.
+                                // Adding a second synthetic onClick here caused UiAutomator
+                                // to expose the merged node as non-clickable on API 35.
                                 contentDescription = "Создать резервную копию сейчас"
-                                role = Role.Button
-                                if (busy) disabled()
-                                onClick(label = "Создать резервную копию сейчас") {
-                                    if (busy) false else {
-                                        onManualBackupClick()
-                                        true
-                                    }
-                                }
                             }
                     ) { Text("Сохранить сейчас") }
                     OutlinedButton(
