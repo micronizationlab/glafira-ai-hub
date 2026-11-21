@@ -5,6 +5,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 import java.io.File
 
 /** Logical data only: source-device ciphertext, leases and authority are never portable. */
@@ -121,6 +122,26 @@ internal class GlafiraPortableCoreSnapshot(
                 })
             }
             db.rawQuery("PRAGMA foreign_key_check", null).use { require(!it.moveToFirst()) { "Нарушены связи снимка Core." } }
+            val traceRepository = GlafiraCoreTraceSqliteRepository(store)
+            val restoreTime = maxOf(1L, System.currentTimeMillis())
+            taskProjects(tables).values.toSet().filter(GlafiraCoreTraceEvent::isSafeIdentifier).forEach { projectId ->
+                val eventId = UUID.randomUUID().toString()
+                traceRepository.append(GlafiraCoreTraceDraft(
+                    eventId = eventId,
+                    projectId = projectId,
+                    correlationId = "restore-$eventId",
+                    occurredAtMillis = restoreTime,
+                    actorType = GlafiraCoreTraceActorType.CORE,
+                    actorId = "core",
+                    component = "PortableCoreSnapshot",
+                    eventType = GlafiraCoreTraceEventType.RESTORE_SUCCEEDED,
+                    actionCode = "core.restore.completed",
+                    targetType = "PROJECT",
+                    targetId = projectId,
+                    resultStatus = "RESTORED",
+                    dataClassification = GlafiraCoreTraceDataClassification.INTERNAL
+                ))
+            }
             } finally {
                 store.setTaskHistoryTraceTriggerEnabled(db, enabled = true)
                 store.setTraceMutationProtectionEnabled(db, enabled = true)
