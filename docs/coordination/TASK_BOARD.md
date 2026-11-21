@@ -14,6 +14,7 @@
 
 | Priority | Workstream | Reference | Next safe action / acceptance |
 |---|---|---|---|
+| P1 security | Main branch protection, required reviews and technical ownership boundaries | [Issue #370](https://github.com/micronizationlab/glafira-ai-hub/issues/370) | Repository API currently reports `main.protected=false`; owner/admin must enable a ruleset, required review and appropriate exact-head checks before broad collaborator write access. |
 | P1 | Core owner-generation fencing and atomic ownership handoff | [Issue #366](https://github.com/micronizationlab/glafira-ai-hub/issues/366), [PR #347](https://github.com/micronizationlab/glafira-ai-hub/pull/347) | Add a production CAS handoff API; bind approvals, maintenance wakeups, expiry, transitions and result writes to owner ID + generation; test stale owner N after N→N+1 handoff. PR #347 has an emulator blocker and is not merge-ready. |
 | P1 | Core durable result outbox and explicit ACK | [Issue #266](https://github.com/micronizationlab/glafira-ai-hub/issues/266), [Issue #258](https://github.com/micronizationlab/glafira-ai-hub/issues/258) | Verify current ownership-generation prerequisite, exact delivery identity/digest, restart-safe retry and duplicate ACK handling. |
 | P1 | Core failure-injection matrix | [Issue #260](https://github.com/micronizationlab/glafira-ai-hub/issues/260) | Refresh current issue list; identify exact open Core failure-matrix issue and run logs before claiming. |
