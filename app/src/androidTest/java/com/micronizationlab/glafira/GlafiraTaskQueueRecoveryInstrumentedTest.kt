@@ -368,7 +368,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         }
 
         store = GlafiraTaskStore(context)
-        assertEquals(9, store.readableDatabase.version)
+        assertEquals(10, store.readableDatabase.version)
         assertNotNull(store.getTask("legacy-v1"))
         listOf(
             "core_desktop_leases", "core_desktop_results", "core_desktop_nodes",
@@ -407,7 +407,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         }
 
         store = GlafiraTaskStore(context)
-        assertEquals(9, store.readableDatabase.version)
+        assertEquals(10, store.readableDatabase.version)
         assertNotNull(store.getTask("legacy-v2"))
         assertTrue(store.readableDatabase.rawQuery(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_live_run_grants'",
