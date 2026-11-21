@@ -109,6 +109,44 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(listOf("second"), store.listTasks(projectId = "second-project").map { it.taskId })
     }
 
+    @Test fun injectedResultInsertFailureRollsBackStateResultAndHistoryTogether() {
+        store.enqueue(task("injected-result-failure"))
+        assertNotNull(store.claimNext(2_000))
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER inject_core_result_insert_failure
+            BEFORE INSERT ON core_task_results
+            BEGIN
+                SELECT RAISE(ABORT, 'injected-result-write-failure');
+            END
+        """.trimIndent())
+
+        val failure = runCatching {
+            store.persistCoreTaskResult(
+                "injected-result-failure",
+                setOf(GlafiraTaskState.RUNNING),
+                "must-not-commit",
+                3_000
+            )
+        }.exceptionOrNull()
+
+        assertNotNull("The injected database failure must reach the caller", failure)
+        assertEquals(GlafiraTaskState.RUNNING, store.getTask("injected-result-failure")?.state)
+        assertNull(store.coreTaskResult("injected-result-failure", "project"))
+        assertEquals(
+            listOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING),
+            store.taskHistory("injected-result-failure", "project").map { it.toState }.reversed()
+        )
+
+        store.close()
+        store = GlafiraTaskStore(context)
+        assertEquals(GlafiraTaskState.RUNNING, store.getTask("injected-result-failure")?.state)
+        assertNull(store.coreTaskResult("injected-result-failure", "project"))
+        assertEquals(
+            listOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING),
+            store.taskHistory("injected-result-failure", "project").map { it.toState }.reversed()
+        )
+    }
+
     @Test fun historyIsRolledBackWithFailedResultTransaction() {
         store.enqueue(task("rollback"))
         store.claimNext(2_000)
