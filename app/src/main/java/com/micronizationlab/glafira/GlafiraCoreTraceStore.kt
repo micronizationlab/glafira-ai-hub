@@ -345,7 +345,7 @@ class GlafiraCoreTraceStore(private val taskStore: GlafiraTaskStore) : GlafiraCo
                             WHEN 'cancelled' THEN 'TASK_CANCELLED'
                             ELSE 'TASK_FAILED'
                         END,
-                        'TASK_STATE_CHANGED', NULL, NULL, NEW.state, NULL, NULL, '[]', 'INTERNAL', 1, 0, NULL
+                        'TASK_STATE_CHANGED', NULL, NULL, replace(NEW.state, '_', '-'), NULL, NULL, '[]', 'INTERNAL', 1, 0, NULL
                     );
                 END
             """.trimIndent())
