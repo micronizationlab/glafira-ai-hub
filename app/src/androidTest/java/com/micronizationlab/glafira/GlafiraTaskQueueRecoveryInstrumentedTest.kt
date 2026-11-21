@@ -109,6 +109,36 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(listOf("second"), store.listTasks(projectId = "second-project").map { it.taskId })
     }
 
+    @Test fun injectedClaimHistoryFailureRollsBackClaimAndAttemptCountTogether() {
+        store.enqueue(task("injected-claim-history-failure"))
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER inject_core_claim_history_failure
+            BEFORE INSERT ON core_task_history
+            WHEN NEW.to_state = 'running'
+            BEGIN
+                SELECT RAISE(ABORT, 'injected-claim-history-failure');
+            END
+        """.trimIndent())
+
+        val failure = runCatching { store.claimNext(2_000) }.exceptionOrNull()
+        assertNotNull("The injected history failure must abort the claim", failure)
+        val afterFailure = requireNotNull(store.getTask("injected-claim-history-failure"))
+        assertEquals(GlafiraTaskState.QUEUED, afterFailure.state)
+        assertEquals(0, afterFailure.attemptCount)
+        assertEquals(listOf(GlafiraTaskState.QUEUED),
+            store.taskHistory("injected-claim-history-failure", "project").map { it.toState })
+        store.writableDatabase.execSQL("DROP TRIGGER inject_core_claim_history_failure")
+
+        store.close()
+        store = GlafiraTaskStore(context)
+        val reopened = requireNotNull(store.getTask("injected-claim-history-failure"))
+        assertEquals(GlafiraTaskState.QUEUED, reopened.state)
+        assertEquals(0, reopened.attemptCount)
+        assertEquals(listOf(GlafiraTaskState.QUEUED),
+            store.taskHistory("injected-claim-history-failure", "project").map { it.toState })
+        assertEquals("injected-claim-history-failure", store.claimNext(3_000)?.taskId)
+    }
+
     @Test fun injectedResultInsertFailureRollsBackStateResultAndHistoryTogether() {
         store.enqueue(task("injected-result-failure"))
         assertNotNull(store.claimNext(2_000))
