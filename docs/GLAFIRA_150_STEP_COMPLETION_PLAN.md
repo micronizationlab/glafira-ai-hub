@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `4d1ab98a334bc0fa60d17a2c8466512329a419b8` (refresh before each integration).  
+**Baseline main for this ledger revision:** `894a0ace84c045692c9fb21df6538cc4d6086d61` (refresh before each integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -206,7 +206,7 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `4d1ab98a334bc0fa60d17a2c8466512329a419b8`.
+**Refreshed main after this wave:** `894a0ace84c045692c9fb21df6538cc4d6086d61`.
 
 ### Verified complete
 
@@ -232,7 +232,7 @@
 ### In progress
 
 - Step 4: state mapping is documented in `docs/GLAFIRA_TASK_STATE_MODEL.md`, but code consolidation remains open: Hub has no distinct `Cancelled` state, Core `WAITING_FOR_OWNER` carries multiple reason classes, and canonical result reconciliation is not yet wired.
-- Step 80 compatibility: PR #254 adds a regression proving old DPAPI journals without `PendingProgresses` still load and upgrade; exact-head Windows Agent CI is pending.
+- Step 80 compatibility: complete. PR #254 (`894a0ace84c045692c9fb21df6538cc4d6086d61`) proves old DPAPI journals without `PendingProgresses` still load and upgrade on write. Exact-head Windows Agent tests: 73 passed, 0 failed; compile, shared contract conformance and Windows packages passed.
 - Step 5: complete. PR #240 added v7→v9 and v8→v9 migration cases; PR #245 added v1/v2. Existing v3–v6 cases plus the new v1/v2/v7/v8 cases all passed exact-head managed Android emulator acceptance. PR #245 merged as `b564771b8116b487bb6adceb3055c4192cc29d98`; its emulator report contained 68 cases, 0 failures, 0 errors and 0 skipped.
 - Step 16: failure-injection coverage is improved by PR #244 progress-ACK restart tests and PR #250 terminal-result process-restart tests, but the full crash matrix across every Core/provider/trace boundary is still open.
 - Step 9: complete. PR #240's independent-connection cancellation-vs-result-commit race passed on managed emulator.
