@@ -77,3 +77,26 @@ public sealed record HubTaskEventSnapshot(
     int? ProgressPercent = null, string? ProgressMessage = null);
 
 public sealed record HubTaskResult(string? Result, string? ErrorCode, DateTimeOffset CompletedAt);
+
+public sealed record HubOwnershipTransferSource(
+    string TaskId,
+    string ProjectId,
+    string OwnerCoreId,
+    long OwnerGeneration,
+    long StateVersion,
+    string PayloadSha256,
+    string IdempotencyKey,
+    HubTaskEffectRisk EffectRisk,
+    string? ApprovalRef);
+
+public sealed record HubOwnershipTransferSnapshot(
+    string TransferId,
+    string TaskId,
+    string ProjectId,
+    string OldOwnerCoreId,
+    string NewOwnerCoreId,
+    long OldOwnerGeneration,
+    long NewOwnerGeneration,
+    DateTimeOffset IssuedAt,
+    DateTimeOffset ExpiresAt,
+    string EnvelopeJson);

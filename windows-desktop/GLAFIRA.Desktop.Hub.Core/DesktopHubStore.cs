@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using GLAFIRA.Desktop.Core.Ownership;
 using Microsoft.Data.Sqlite;
 
 namespace GLAFIRA.Desktop.Hub.Core;
@@ -326,52 +327,166 @@ public sealed class DesktopHubStore
         transaction.Commit();
     }
 
-    /// <summary>
-    /// Atomically advances authoritative task ownership. A leased task cannot transfer:
-    /// its current Agent lease is bound to the old owner generation and must settle first.
-    /// </summary>
-    public bool TransferQueuedTaskOwnership(
-        string taskId,
-        string expectedOwnerCoreId,
-        long expectedOwnerGeneration,
-        string newOwnerCoreId,
-        long newOwnerGeneration,
-        DateTimeOffset now)
+    /// <summary>Returns the exact immutable task fields that must be covered by an ownership signature.</summary>
+    public HubOwnershipTransferSource? GetQueuedOwnershipTransferSource(string taskId)
     {
         ValidateIdentifier(taskId, nameof(taskId));
-        ValidateOwnerCoreId(expectedOwnerCoreId, nameof(expectedOwnerCoreId));
-        ValidateOwnerCoreId(newOwnerCoreId, nameof(newOwnerCoreId));
-        if (expectedOwnerGeneration <= 0 || expectedOwnerGeneration == long.MaxValue ||
-            newOwnerGeneration != expectedOwnerGeneration + 1)
-            throw new ArgumentOutOfRangeException(nameof(newOwnerGeneration));
-        if (StringComparer.Ordinal.Equals(expectedOwnerCoreId, newOwnerCoreId))
-            throw new ArgumentException("Ownership transfer requires a different Core ID.", nameof(newOwnerCoreId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT task_id, project_id, owner_core_id, owner_generation, fencing_token,
+                   payload_sha256, idempotency_key, effect_risk, approval_ref
+            FROM Tasks WHERE task_id = $task AND state = 'Queued';
+            """;
+        command.Parameters.AddWithValue("$task", taskId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new HubOwnershipTransferSource(
+            reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3),
+            reader.GetInt64(4), reader.GetString(5), reader.GetString(6),
+            (HubTaskEffectRisk)reader.GetInt32(7), reader.IsDBNull(8) ? null : reader.GetString(8));
+    }
 
+    /// <summary>
+    /// Verifies and atomically applies a Desktop Core signed ownership transition.
+    /// The trusted public key is supplied by the local installation identity, never by the envelope.
+    /// </summary>
+    public bool ApplySignedQueuedTaskOwnershipTransfer(
+        SignedOwnershipTransferEnvelope envelope,
+        ReadOnlySpan<byte> trustedOldOwnerPublicKey,
+        DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        var payload = envelope.Payload;
+        byte[] signature;
+        try
+        {
+            signature = Convert.FromBase64String(envelope.SignatureBase64);
+        }
+        catch (FormatException error)
+        {
+            throw new ArgumentException("OWNERSHIP_TRANSFER_SIGNATURE_ENCODING_INVALID", nameof(envelope), error);
+        }
+        if (signature.Length != 64 ||
+            !StringComparer.Ordinal.Equals(Convert.ToBase64String(signature), envelope.SignatureBase64) ||
+            !CoreOwnershipTransferCryptography.Verify(payload, trustedOldOwnerPublicKey, signature))
+            throw new InvalidOperationException("OWNERSHIP_TRANSFER_SIGNATURE_INVALID");
+
+        var issuedAt = DateTimeOffset.Parse(payload.IssuedAt, System.Globalization.CultureInfo.InvariantCulture);
+        var expiresAt = DateTimeOffset.Parse(payload.ExpiresAt, System.Globalization.CultureInfo.InvariantCulture);
+        if (now < issuedAt || now >= expiresAt)
+            throw new InvalidOperationException("OWNERSHIP_TRANSFER_OUTSIDE_VALIDITY_WINDOW");
+
+        var envelopeJson = envelope.ToWireJson();
         using var connection = Open();
         using var transaction = connection.BeginTransaction(deferred: false);
-        using var update = connection.CreateCommand();
-        update.Transaction = transaction;
-        update.CommandText = """
-            UPDATE Tasks
-            SET owner_core_id = $newOwner, owner_generation = $newGeneration
-            WHERE task_id = $task AND state = 'Queued'
-              AND owner_core_id = $expectedOwner AND owner_generation = $expectedGeneration;
-            """;
-        update.Parameters.AddWithValue("$newOwner", newOwnerCoreId);
-        update.Parameters.AddWithValue("$newGeneration", newOwnerGeneration);
-        update.Parameters.AddWithValue("$task", taskId);
-        update.Parameters.AddWithValue("$expectedOwner", expectedOwnerCoreId);
-        update.Parameters.AddWithValue("$expectedGeneration", expectedOwnerGeneration);
-        if (update.ExecuteNonQuery() != 1)
+
+        using (var replay = connection.CreateCommand())
         {
-            transaction.Commit();
-            return false;
+            replay.Transaction = transaction;
+            replay.CommandText = "SELECT envelope_json FROM OwnershipTransfers WHERE transfer_id = $transfer;";
+            replay.Parameters.AddWithValue("$transfer", payload.TransferId);
+            if (replay.ExecuteScalar() is string existing)
+            {
+                if (!StringComparer.Ordinal.Equals(existing, envelopeJson))
+                    throw new InvalidOperationException("OWNERSHIP_TRANSFER_IDEMPOTENCY_CONFLICT");
+                transaction.Commit();
+                return true;
+            }
         }
-        AppendTaskEvent(connection, transaction, taskId, HubTaskState.Queued, now,
-            null, null, null, "TASK_OWNER_TRANSFERRED");
+
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText = """
+                UPDATE Tasks
+                SET owner_core_id = $newOwner, owner_generation = $newGeneration
+                WHERE task_id = $task AND project_id = $project AND state = 'Queued'
+                  AND owner_core_id = $oldOwner AND owner_generation = $oldGeneration
+                  AND fencing_token = $stateVersion AND payload_sha256 = $payloadSha
+                  AND idempotency_key = $idempotency AND effect_risk = $risk
+                  AND (($approval IS NULL AND approval_ref IS NULL) OR approval_ref = $approval);
+                """;
+            update.Parameters.AddWithValue("$newOwner", payload.NewOwnerCoreId);
+            update.Parameters.AddWithValue("$newGeneration", payload.NewOwnerGeneration);
+            update.Parameters.AddWithValue("$task", payload.TaskId);
+            update.Parameters.AddWithValue("$project", payload.ProjectId);
+            update.Parameters.AddWithValue("$oldOwner", payload.OldOwnerCoreId);
+            update.Parameters.AddWithValue("$oldGeneration", payload.OldOwnerGeneration);
+            update.Parameters.AddWithValue("$stateVersion", payload.StateVersion);
+            update.Parameters.AddWithValue("$payloadSha", payload.PayloadSha256);
+            update.Parameters.AddWithValue("$idempotency", payload.IdempotencyKey);
+            update.Parameters.AddWithValue("$risk", (int)ParseOwnershipRisk(payload.EffectRisk));
+            update.Parameters.AddWithValue("$approval", (object?)payload.ApprovalRef ?? DBNull.Value);
+            if (update.ExecuteNonQuery() != 1)
+            {
+                transaction.Rollback();
+                return false;
+            }
+        }
+
+        using (var insert = connection.CreateCommand())
+        {
+            insert.Transaction = transaction;
+            insert.CommandText = """
+                INSERT INTO OwnershipTransfers(
+                    transfer_id, nonce, task_id, project_id,
+                    old_owner_core_id, new_owner_core_id,
+                    old_owner_generation, new_owner_generation,
+                    state_version, issued_at_ms, expires_at_ms, envelope_json)
+                VALUES(
+                    $transfer, $nonce, $task, $project,
+                    $oldOwner, $newOwner, $oldGeneration, $newGeneration,
+                    $stateVersion, $issued, $expires, $envelope);
+                """;
+            insert.Parameters.AddWithValue("$transfer", payload.TransferId);
+            insert.Parameters.AddWithValue("$nonce", payload.Nonce);
+            insert.Parameters.AddWithValue("$task", payload.TaskId);
+            insert.Parameters.AddWithValue("$project", payload.ProjectId);
+            insert.Parameters.AddWithValue("$oldOwner", payload.OldOwnerCoreId);
+            insert.Parameters.AddWithValue("$newOwner", payload.NewOwnerCoreId);
+            insert.Parameters.AddWithValue("$oldGeneration", payload.OldOwnerGeneration);
+            insert.Parameters.AddWithValue("$newGeneration", payload.NewOwnerGeneration);
+            insert.Parameters.AddWithValue("$stateVersion", payload.StateVersion);
+            insert.Parameters.AddWithValue("$issued", issuedAt.ToUnixTimeMilliseconds());
+            insert.Parameters.AddWithValue("$expires", expiresAt.ToUnixTimeMilliseconds());
+            insert.Parameters.AddWithValue("$envelope", envelopeJson);
+            insert.ExecuteNonQuery();
+        }
+
+        AppendTaskEvent(connection, transaction, payload.TaskId, HubTaskState.Queued, now,
+            null, null, null, "TASK_OWNER_TRANSFERRED_SIGNED");
         transaction.Commit();
         return true;
     }
+
+    public HubOwnershipTransferSnapshot? GetOwnershipTransfer(string transferId)
+    {
+        ValidateIdentifier(transferId, nameof(transferId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT transfer_id, task_id, project_id, old_owner_core_id, new_owner_core_id,
+                   old_owner_generation, new_owner_generation, issued_at_ms, expires_at_ms, envelope_json
+            FROM OwnershipTransfers WHERE transfer_id = $transfer;
+            """;
+        command.Parameters.AddWithValue("$transfer", transferId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new HubOwnershipTransferSnapshot(
+            reader.GetString(0), reader.GetString(1), reader.GetString(2),
+            reader.GetString(3), reader.GetString(4), reader.GetInt64(5), reader.GetInt64(6),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(8)), reader.GetString(9));
+    }
+
+    private static HubTaskEffectRisk ParseOwnershipRisk(string value) => value switch
+    {
+        "READ_ONLY" => HubTaskEffectRisk.ReadOnly,
+        "DRAFT" => HubTaskEffectRisk.LocalWrite,
+        "EXTERNAL_SIDE_EFFECT" => HubTaskEffectRisk.ExternalSideEffect,
+        _ => throw new InvalidOperationException("OWNERSHIP_TRANSFER_EFFECT_RISK_UNSUPPORTED_BY_HUB")
+    };
 
     public HubTaskLease? ClaimNext(
         string agentId,
@@ -1142,6 +1257,25 @@ public sealed class DesktopHubStore
                 depends_on_task_id TEXT NOT NULL REFERENCES Tasks(task_id),
                 PRIMARY KEY(task_id, depends_on_task_id)
             );
+
+            CREATE TABLE IF NOT EXISTS OwnershipTransfers(
+                transfer_id TEXT PRIMARY KEY,
+                nonce TEXT NOT NULL UNIQUE,
+                task_id TEXT NOT NULL REFERENCES Tasks(task_id) ON DELETE CASCADE,
+                project_id TEXT NOT NULL,
+                old_owner_core_id TEXT NOT NULL,
+                new_owner_core_id TEXT NOT NULL,
+                old_owner_generation INTEGER NOT NULL,
+                new_owner_generation INTEGER NOT NULL,
+                state_version INTEGER NOT NULL,
+                issued_at_ms INTEGER NOT NULL,
+                expires_at_ms INTEGER NOT NULL,
+                envelope_json TEXT NOT NULL,
+                UNIQUE(task_id, new_owner_generation)
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_OwnershipTransfers_Task
+                ON OwnershipTransfers(task_id, new_owner_generation);
 
             CREATE TABLE IF NOT EXISTS Leases(
                 lease_id TEXT PRIMARY KEY,
