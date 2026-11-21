@@ -83,6 +83,30 @@ public sealed class BridgeV1AgentClientTests
     }
 
     [Fact]
+    public async Task DefinitivePinnedHubRejectionFlowsFromHttpClientToCredentialDeletion()
+    {
+        var handler = new StubHandler(_ => Task.FromResult(JsonResponse(new
+        {
+            status = "FAILED",
+            errorCode = "CredentialNotFound",
+            result = new Dictionary<string, string>()
+        }, HttpStatusCode.Unauthorized)));
+        var client = CreateClient(handler);
+        var store = new RecordingCredentialStore();
+
+        var heartbeat = await client.SendHeartbeatAsync(Credential());
+        var deleted = await AgentCredentialRevocation.DeleteIfDefinitivelyRevokedAsync(
+            heartbeat.ErrorCode, store, CancellationToken.None);
+
+        Assert.False(heartbeat.Accepted);
+        Assert.Equal("CredentialNotFound", heartbeat.ErrorCode);
+        Assert.True(deleted);
+        Assert.Equal(1, store.DeleteCalls);
+        Assert.Equal(Endpoint.AbsolutePath, handler.LastRequestUri?.AbsolutePath);
+        Assert.Equal(Pin, _capturedTlsPin);
+    }
+
+    [Fact]
     public async Task MismatchedOrNonCanonicalOwnerProfileFailsClosed()
     {
         foreach (var result in new[]
@@ -204,6 +228,24 @@ public sealed class BridgeV1AgentClientTests
         {
             LastRequestUri = request.RequestUri;
             return await responder(request).ConfigureAwait(false);
+        }
+    }
+
+    private sealed class RecordingCredentialStore : IAgentCredentialStore
+    {
+        public int DeleteCalls { get; private set; }
+
+        public Task SaveAsync(AgentEnrollmentCredential credential, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<AgentEnrollmentCredential?> LoadAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<AgentEnrollmentCredential?>(null);
+
+        public Task DeleteAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            DeleteCalls++;
+            return Task.CompletedTask;
         }
     }
 

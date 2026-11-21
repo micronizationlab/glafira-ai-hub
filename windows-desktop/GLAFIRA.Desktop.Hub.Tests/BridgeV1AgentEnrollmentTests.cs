@@ -291,29 +291,39 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
     }
 
     [Fact]
-    public async Task StaleEnrollmentGenerationConflictsWithoutRevokingCurrentCredential()
+    public async Task RevokedGenerationCannotRevokeReplacementCredential()
     {
         var hubStore = new DesktopHubStore(_databasePath, _protector);
         var pairingStore = CreateStore();
-        var ticket = pairingStore.CreateForAgent(
+        var originalTicket = pairingStore.CreateForAgent(
             "agent-01", ["desktop.task.claim"], TimeSpan.FromMinutes(1));
-        var enrollment = Assert.IsType<BridgeV1AgentEnrollmentCredential>(
-            (await EnrollAsync(pairingStore, ticket, "agent-01")).Credential);
+        var original = Assert.IsType<BridgeV1AgentEnrollmentCredential>(
+            (await EnrollAsync(pairingStore, originalTicket, "agent-01")).Credential);
         hubStore.RegisterPendingAgent("agent-01", "agent-01", _clock.GetUtcNow());
-        var request = new AgentRevocationRequest(
-            1, "revoke-stale", "stale-enrollment", "agent-01", "owner-device-01",
-            _clock.GetUtcNow(), AgentRevocationReason.OWNER_REQUEST);
+        var initialRevocation = pairingStore.RevokeAgent(new AgentRevocationRequest(
+            1, "revoke-original", original.EnrollmentId, "agent-01", "owner-device-01",
+            _clock.GetUtcNow(), AgentRevocationReason.OWNER_REQUEST));
+        var replacementTicket = pairingStore.CreateForAgent(
+            "agent-01", ["desktop.task.result"], TimeSpan.FromMinutes(1));
+        var replacement = Assert.IsType<BridgeV1AgentEnrollmentCredential>(
+            (await EnrollAsync(pairingStore, replacementTicket, "agent-01")).Credential);
 
-        var decision = pairingStore.RevokeAgent(request);
+        var staleDecision = pairingStore.RevokeAgent(new AgentRevocationRequest(
+            1, "revoke-stale", original.EnrollmentId, "agent-01", "owner-device-01",
+            _clock.GetUtcNow(), AgentRevocationReason.OWNER_REQUEST));
 
-        Assert.Equal(AgentRevocationStatus.CONFLICT, decision.Status);
-        Assert.Null(decision.RevokedAt);
-        Assert.Equal(AgentActiveLeaseDisposition.NONE, decision.ActiveLeaseDisposition);
-        Assert.True(decision.RequiresOwnerReconciliation);
-        Assert.Equal(enrollment.EnrollmentId, pairingStore.GetActiveEnrollmentId("agent-01"));
+        Assert.Equal(AgentRevocationStatus.REVOKED, initialRevocation.Status);
+        Assert.NotEqual(original.EnrollmentId, replacement.EnrollmentId);
+        Assert.NotEqual(original.SharedSecretBase64, replacement.SharedSecretBase64);
+        Assert.Equal(AgentRevocationStatus.CONFLICT, staleDecision.Status);
+        Assert.Null(staleDecision.RevokedAt);
+        Assert.Equal(AgentActiveLeaseDisposition.NONE, staleDecision.ActiveLeaseDisposition);
+        Assert.True(staleDecision.RequiresOwnerReconciliation);
+        Assert.Equal(replacement.EnrollmentId, pairingStore.GetActiveEnrollmentId("agent-01"));
         var resolver = new DpapiSqliteHubCredentialResolver(_databasePath, _protector, _clock);
         var credential = await resolver.ResolveAsync("agent-01", default);
         Assert.NotNull(credential);
+        Assert.Equal(Convert.FromBase64String(replacement.SharedSecretBase64), credential.HmacSecret);
         CryptographicOperations.ZeroMemory(credential.HmacSecret);
     }
 
