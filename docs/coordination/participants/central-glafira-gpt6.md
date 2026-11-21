@@ -21,7 +21,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 | Cycle | Status | Completed actions | Evidence index / PRs | Validation summary | Open blockers |
 |---:|---|---:|---|---|---|
-| 01 | partial | 15/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
+| 01 | partial | 16/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
 
 ## Cycle 01 — capacity audit and parallel portfolio
 
@@ -70,3 +70,5 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 | C01-A015 | P3 | Audited the current Bridge/Desktop PR dependency stack and added a release-acceptance note to issue #138. Explicitly separated historical branch CI from current-main and two-Windows-machine evidence; listed pairing, TLS pin, durable ingress, reconnect/idempotency, result ACK and revocation acceptance. | https://github.com/micronizationlab/glafira-ai-hub/issues/138#issuecomment-7066022938 | Read-only audit plus issue update; no real-device acceptance claimed. | complete |
 
 | C01-A016 | P2 | Re-ran PR #372 after adding the missing Compose `semantics` import. Exact head `d005cc1fd8e023999db4d7f799ed2e550e3b09fb`: Android JVM and Shared Contract checks passed; managed emulator and debug APK jobs started. | https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44926868960 | JVM success; Shared Contracts success; emulator/APK in progress; other platform checks skipped. | in progress |
+
+| C01-A017 | P1 | Extended #366 after repository-wide search found no implemented Android Core ownership-transfer operation that increments `owner_generation`; documented the required transactional compare-and-swap, approval invalidation, Trace, stale-owner rejection and race/rollback tests. | https://github.com/micronizationlab/glafira-ai-hub/issues/366 | Source audit and acceptance criteria update; no transfer implementation claimed. | complete |
