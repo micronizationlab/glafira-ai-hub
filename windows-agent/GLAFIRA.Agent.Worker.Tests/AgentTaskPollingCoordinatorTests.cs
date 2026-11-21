@@ -90,7 +90,7 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
         Assert.True(await coordinator.PollOnceAsync(Credential(), CancellationToken.None));
 
         Assert.Equal(0, handler.Calls);
-        var terminal = Assert.Single(transport.Updates.Where(update => update.State == "FAILED"));
+        var terminal = Assert.Single(transport.Updates, update => update.State == "FAILED");
         var serialized = JsonSerializer.Deserialize<string>(terminal.ResultJson)!;
         var result = JsonSerializer.Deserialize<AgentTaskResult>(serialized)!;
         Assert.Equal("NON_READ_ONLY_TASK_DISABLED", result.ErrorCode);
