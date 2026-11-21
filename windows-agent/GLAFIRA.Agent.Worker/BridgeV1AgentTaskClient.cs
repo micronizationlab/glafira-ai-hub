@@ -79,29 +79,14 @@ public sealed class BridgeV1AgentTaskClient
         _handlerFactory = handlerFactory ?? throw new ArgumentNullException(nameof(handlerFactory));
     }
 
-    public Task<AgentTaskLease?> ClaimNextAsync(
-        AgentEnrollmentCredential credential,
-        IReadOnlyCollection<string> ownerApprovedCapabilities,
-        int maxParallelTasks,
-        CancellationToken cancellationToken = default) =>
-        ClaimNextCoreAsync(credential, ownerApprovedCapabilities, maxParallelTasks, null, cancellationToken);
-
-    public Task<AgentTaskLease?> ClaimNextAsync(
+    public async Task<AgentTaskLease?> ClaimNextAsync(
         AgentEnrollmentCredential credential,
         IReadOnlyCollection<string> ownerApprovedCapabilities,
         int maxParallelTasks,
         IReadOnlyCollection<string> supportedTaskTypes,
-        CancellationToken cancellationToken = default) =>
-        ClaimNextCoreAsync(credential, ownerApprovedCapabilities, maxParallelTasks,
-            supportedTaskTypes ?? throw new ArgumentNullException(nameof(supportedTaskTypes)), cancellationToken);
-
-    private async Task<AgentTaskLease?> ClaimNextCoreAsync(
-        AgentEnrollmentCredential credential,
-        IReadOnlyCollection<string> ownerApprovedCapabilities,
-        int maxParallelTasks,
-        IReadOnlyCollection<string>? supportedTaskTypes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(supportedTaskTypes);
         ValidateOwnerProfile(credential, ownerApprovedCapabilities, maxParallelTasks, "desktop.task.claim");
         string[]? normalizedTaskTypes = null;
         if (supportedTaskTypes is not null)

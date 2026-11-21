@@ -47,7 +47,8 @@ public sealed class BridgeV1AgentTaskClientTests
         var client = Client(handler);
 
         var lease = await client.ClaimNextAsync(Credential(),
-            new[] { "web.research", "document.analysis" }, 2);
+            new[] { "web.research", "document.analysis" }, 2,
+            new[] { "web.research", "analysis.document" });
 
         Assert.NotNull(lease);
         Assert.Equal("task-001", lease.TaskId);
@@ -101,7 +102,7 @@ public sealed class BridgeV1AgentTaskClientTests
             status = "ACCEPTED",
             result = new Dictionary<string, string> { ["available"] = "false" }
         }))));
-        Assert.Null(await client.ClaimNextAsync(Credential(), new[] { "web.research" }, 1));
+        Assert.Null(await client.ClaimNextAsync(Credential(), new[] { "web.research" }, 1, new[] { "web.research" }));
     }
 
     [Fact]
@@ -150,7 +151,7 @@ public sealed class BridgeV1AgentTaskClientTests
         var handler = new StubHandler(_ => throw new Xunit.Sdk.XunitException("Unexpected network call."));
         var credential = Credential() with { Scopes = new HashSet<string> { "desktop.task.result" } };
         await Assert.ThrowsAsync<InvalidDataException>(() =>
-            Client(handler).ClaimNextAsync(credential, new[] { "web.research" }, 1));
+            Client(handler).ClaimNextAsync(credential, new[] { "web.research" }, 1, new[] { "web.research" }));
         Assert.Null(handler.LastRequestUri);
     }
 
