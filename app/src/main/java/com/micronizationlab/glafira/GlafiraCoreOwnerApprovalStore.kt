@@ -284,7 +284,7 @@ class GlafiraCoreOwnerApprovalStore(
                     "core_action_approvals",
                     ContentValues().apply { put("status", CONSUMED) },
                     "task_id = ? AND status = ? AND action_hash = ? AND owner_core_id = ? AND owner_generation = ?",
-                    arrayOf(task.taskId, APPROVED, hash, row.ownerCoreId, row.ownerGeneration.toString())
+                    arrayOf(task.taskId, APPROVED, hash, row.ownerCoreId.orEmpty(), row.ownerGeneration.toString())
                 )
                 if (consumed == 1) {
                     appendApprovalTrace(
@@ -309,7 +309,7 @@ class GlafiraCoreOwnerApprovalStore(
                         putNull("grant_expires_at")
                     },
                     "task_id = ? AND status = ? AND owner_core_id = ? AND owner_generation = ?",
-                    arrayOf(task.taskId, APPROVED, row.ownerCoreId, row.ownerGeneration.toString())
+                    arrayOf(task.taskId, APPROVED, row.ownerCoreId.orEmpty(), row.ownerGeneration.toString())
                 )
             } else if (row != null && row.status == APPROVED && row.grantExpiresAt <= nowMillis) {
                 db.update("core_action_approvals", ContentValues().apply { put("status", EXPIRED) },
@@ -429,7 +429,7 @@ class GlafiraCoreOwnerApprovalStore(
                             put("grant_expires_at", minOf(safeAdd(nowMillis, GRANT_TTL_MILLIS), task.deadlineAtMillis ?: Long.MAX_VALUE))
                             put("decided_by", ownerSession.sessionId)
                         }, "task_id = ? AND status = ? AND action_hash = ? AND owner_core_id = ? AND owner_generation = ?",
-                            arrayOf(taskId, PENDING, hash, row.ownerCoreId, row.ownerGeneration.toString()))
+                            arrayOf(taskId, PENDING, hash, row.ownerCoreId.orEmpty(), row.ownerGeneration.toString()))
                         val requeued = db.update("core_tasks", ContentValues().apply {
                             put("state", GlafiraTaskState.QUEUED.databaseValue)
                             put("updated_at", nowMillis)
@@ -525,7 +525,7 @@ class GlafiraCoreOwnerApprovalStore(
         val projectId: String, val toolId: String, val actionHash: String,
         val status: String, val approvedAt: Long, val grantExpiresAt: Long,
         val requestedScopesJson: String,
-        val ownerCoreId: String,
+        val ownerCoreId: String?,
         val ownerGeneration: Long
     )
 
@@ -553,7 +553,7 @@ class GlafiraCoreOwnerApprovalStore(
     private data class PendingRow(
         val taskId: String, val actionHash: String, val scopesJson: String,
         val requestedAt: Long, val expiresAt: Long,
-        val ownerCoreId: String, val ownerGeneration: Long
+        val ownerCoreId: String?, val ownerGeneration: Long
     )
     private data class DecisionRow(
         val projectId: String, val toolId: String, val actionHash: String,
