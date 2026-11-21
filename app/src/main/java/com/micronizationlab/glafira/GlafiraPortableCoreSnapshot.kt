@@ -81,6 +81,7 @@ internal class GlafiraPortableCoreSnapshot(
         db.beginTransaction()
         try {
             store.setTaskHistoryTraceTriggerEnabled(db, enabled = false)
+            store.setTraceMutationProtectionEnabled(db, enabled = false)
             try {
                 NON_PORTABLE.filter { exists(db, it) }.forEach { db.delete(it, null, null) }
             TABLES.asReversed().forEach { db.delete(it.name, null, null) }
@@ -122,6 +123,7 @@ internal class GlafiraPortableCoreSnapshot(
             db.rawQuery("PRAGMA foreign_key_check", null).use { require(!it.moveToFirst()) { "Нарушены связи снимка Core." } }
             } finally {
                 store.setTaskHistoryTraceTriggerEnabled(db, enabled = true)
+                store.setTraceMutationProtectionEnabled(db, enabled = true)
             }
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
