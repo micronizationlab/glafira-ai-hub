@@ -223,6 +223,27 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
     }
 
     @Test
+    fun expiredOwnerApprovalIsRecordedAndTaskFailsClosed() {
+        val original = task("approval-trace-expired")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        assertTrue(approvals.requestApproval(
+            running,
+            "Send a test message to test@example.invalid",
+            3_000L
+        ))
+        val pending = approvals.pendingApprovals(3_001L).single()
+        assertTrue(approvals.pendingApprovals(pending.expiresAt).isEmpty())
+        assertEquals(GlafiraTaskState.FAILED, taskStore.getTask(original.taskId)?.state)
+        val expired = GlafiraCoreTraceStore(taskStore).query(
+            GlafiraCoreTraceQuery("approval-project", taskId = original.taskId),
+            GlafiraCoreTraceAccessContext("approval-project", taskIds = setOf(original.taskId))
+        ).events.single { it.eventType == GlafiraCoreTraceEventType.APPROVAL_EXPIRED }
+        assertEquals("OWNER_APPROVAL_EXPIRED", expired.actionCode)
+        assertEquals("expired", expired.resultStatus)
+    }
+
+    @Test
     fun approvalRejectsWrongScopeAndChangedActionHash() {
         val original = task()
         taskStore.enqueue(original)
