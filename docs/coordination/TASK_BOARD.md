@@ -26,6 +26,9 @@
 
 > The Core failure-matrix reference above is intentionally marked for refresh rather than guessing an issue number. Replace it with the verified current issue before assigning work.
 
+| P4 cross-cutting | GLAFIRA DESIGN — unified UI/UX system for Android, iOS, Desktop and Agent | [Coordination contract](../../GLAFIRA_COORDINATION.md#11-dedicated-cross-cutting-workstreams) | Reserve one design owner; define tokens, navigation, components, responsive screens and implementation specs. Preserve ICQ 2003 + modern Apple/macOS gloss direction. No Core/Bridge/runtime edits. |
+| P4 cross-cutting | GLAFIRA QA & Quality Intelligence | [Coordination contract](../../GLAFIRA_COORDINATION.md#11-dedicated-cross-cutting-workstreams) | Reserve one QA owner; maintain test matrix, exact-head CI/log review, regression/accessibility checks and release evidence. Do not weaken tests or silently change production behavior. |
+
 ## Active reservations
 
 No participant reservations are recorded in this initial board. Each invited participant must create their own `docs/coordination/participants/<participant-id>.md` file and reserve an exact task scope there. Central GLAFIRA reconciles conflicts.
