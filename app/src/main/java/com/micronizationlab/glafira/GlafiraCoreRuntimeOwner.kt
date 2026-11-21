@@ -19,7 +19,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     init {
         val legacyEnabled = if (legacyPreferences.contains(KEY_ENABLED)) {
-            legacyPreferences.getBoolean(KEY_ENABLED, false)
+            runCatching { legacyPreferences.getBoolean(KEY_ENABLED, false) }.getOrNull()
         } else null
         val legacyBudget = runCatching {
             if (!legacyPreferences.contains(KEY_BUDGET_WALL_CLOCK_MS) &&
