@@ -25,6 +25,12 @@ class VoiceDeliveryPolicyTest {
         assertFalse(shouldAutoSpeakAgentReply(reply, reply.copy(), true))
     }
 
+    @Test fun sameOperationIsNotReplayedWhenSnapshotMetadataChanges() {
+        val previous = message("answer", operationId = "op-1")
+        val changedSnapshot = previous.copy(time = "12:01")
+        assertFalse(shouldAutoSpeakAgentReply(previous, changedSnapshot, true))
+    }
+
     @Test fun newlyDeliveredAssistantReplyIsSpoken() {
         assertTrue(shouldAutoSpeakAgentReply(message("question", true), message("answer", operationId = "op-2"), true))
     }
