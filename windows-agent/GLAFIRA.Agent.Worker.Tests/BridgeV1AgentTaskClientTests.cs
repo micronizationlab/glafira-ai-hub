@@ -134,7 +134,7 @@ public sealed class BridgeV1AgentTaskClientTests
     [Fact]
     public async Task RunningProgressRequiresAndReturnsServerLeaseExpiry()
     {
-        var renewedExpiry = DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeMilliseconds();
+        var renewedExpiry = _now.AddMinutes(2).ToUnixTimeMilliseconds();
         var handler = new StubHandler(_ => Task.FromResult(Json(new
         {
             status = "SUCCEEDED",
