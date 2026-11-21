@@ -397,11 +397,11 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
             listOf(
                 "core_dry_run_previews", "core_task_history", "core_task_results",
                 "core_task_dependencies", "core_task_plan_nodes", "core_task_plans",
-                "core_live_run_grants"
+                "core_live_run_grants", "core_task_ownership"
             ).forEach { database.execSQL("DROP TABLE IF EXISTS $it") }
             listOf(
                 "core_task_history_insert", "core_task_history_transition",
-                "core_task_terminal_guard", "core_task_plan_updated"
+                "core_task_terminal_guard", "core_task_plan_updated", "core_task_ownership_state_version"
             ).forEach { database.execSQL("DROP TRIGGER IF EXISTS $it") }
             database.version = 2
         } finally {
@@ -439,7 +439,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(2, history.size)
     }
 
-    @Test fun versionSevenUpgradeAddsLeaseFencingWithoutDroppingLegacyRows() {
+    @Test fun versionSevenUpgradeAddsLeaseFencingThenQuarantinesLegacyAuthority() {
         store.enqueue(task("legacy-desktop").copy(taskType = GlafiraTaskStore.DESKTOP_TASK_TYPE))
         store.close()
         val database = android.database.sqlite.SQLiteDatabase.openDatabase(
@@ -510,6 +510,8 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         )
         try {
             database.execSQL("DROP TABLE IF EXISTS core_live_run_grants")
+            database.execSQL("DROP TABLE IF EXISTS core_task_ownership")
+            database.execSQL("DROP TRIGGER IF EXISTS core_task_ownership_state_version")
             database.version = 8
         } finally {
             database.close()
