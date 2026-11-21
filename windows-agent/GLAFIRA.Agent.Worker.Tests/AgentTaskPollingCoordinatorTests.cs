@@ -287,7 +287,7 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
             }
 
             var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson))).ToLowerInvariant();
-            var taskId = ReturnMismatchedAck && state is "SUCCEEDED" or "FAILED" ? "wrong-task" : lease.TaskId;
+            var taskId = ReturnMismatchedAck && (state is "SUCCEEDED" or "FAILED") ? "wrong-task" : lease.TaskId;
             var leaseExpiry = state is "ACCEPTED" or "RUNNING"
                 ? DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeMilliseconds()
                 : 0L;
