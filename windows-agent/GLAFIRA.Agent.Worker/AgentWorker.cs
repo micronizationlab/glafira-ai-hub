@@ -57,7 +57,7 @@ public sealed class AgentWorker(
         {
             var nextHeartbeat = DateTimeOffset.UtcNow.Add(HeartbeatInterval);
             var nextPoll = DateTimeOffset.UtcNow;
-            var pollDelay = MinimumPollDelay;
+            var pollDelay = AgentPollingBackoff.MinimumDelay;
             var wasReady = false;
             using var timer = new PeriodicTimer(PollTick);
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
@@ -87,7 +87,7 @@ public sealed class AgentWorker(
                 {
                     wasReady = true;
                     nextPoll = DateTimeOffset.UtcNow;
-                    pollDelay = MinimumPollDelay;
+                    pollDelay = AgentPollingBackoff.MinimumDelay;
                 }
                 if (DateTimeOffset.UtcNow < nextPoll)
                     continue;
