@@ -14,13 +14,14 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
+    private companion object { const val TEST_CORE_ID = "glafira-test-core-0001" }
     private lateinit var taskStore: GlafiraTaskStore
     private lateinit var approvals: GlafiraCoreOwnerApprovalStore
 
     @Before
     fun setUp() {
         context.deleteDatabase(DATABASE_NAME)
-        taskStore = GlafiraTaskStore(context)
+        taskStore = GlafiraTaskStore(context, TEST_CORE_ID)
         approvals = GlafiraCoreOwnerApprovalStore(taskStore)
     }
 
@@ -72,7 +73,7 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
         assertEquals(1, approvals.pendingApprovals(3_001L).size)
 
         taskStore.close()
-        taskStore = GlafiraTaskStore(context)
+        taskStore = GlafiraTaskStore(context, TEST_CORE_ID)
         approvals = GlafiraCoreOwnerApprovalStore(taskStore)
         val persisted = approvals.pendingApprovals(3_002L).single()
         assertEquals(original.taskId, persisted.task.taskId)
