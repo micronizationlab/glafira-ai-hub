@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace GLAFIRA.Agent.Worker;
 
@@ -62,11 +63,35 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
     private const int MaximumProtectedBytes = 1_048_576;
     private const int MaximumActiveLeases = 16;
     private const int MaximumPendingResults = 32;
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+
+    private static JsonSerializerOptions CreateJsonOptions()
     {
-        PropertyNameCaseInsensitive = false,
-        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow
-    };
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            PropertyNameCaseInsensitive = false,
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+        };
+        options.Converters.Add(new ReadOnlyStringSetConverter());
+        return options;
+    }
+
+    private sealed class ReadOnlyStringSetConverter : JsonConverter<IReadOnlySet<string>>
+    {
+        public override IReadOnlySet<string> Read(
+            ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var values = JsonSerializer.Deserialize<string[]>(ref reader, options) ?? [];
+            if (values.Any(string.IsNullOrWhiteSpace) ||
+                values.Distinct(StringComparer.Ordinal).Count() != values.Length)
+                throw new JsonException("Agent task capability set is invalid.");
+            return new HashSet<string>(values, StringComparer.Ordinal);
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer, IReadOnlySet<string> value, JsonSerializerOptions options) =>
+            JsonSerializer.Serialize(writer, value.Order(StringComparer.Ordinal).ToArray(), options);
+    }
 
     private readonly string _journalPath;
     private readonly IAgentLocalDataProtector _protector;
