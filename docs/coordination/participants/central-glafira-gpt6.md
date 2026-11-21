@@ -11,9 +11,9 @@
 
 | Priority | Issue / PR | Scope and files | Branch | Dependencies | Status | Exact head SHA |
 |---|---|---|---|---|---|---|
-| P2 | PR #369 / #372, Issues #350/#371, stacked #372 → #369 → #352 → #347 | Manual Backup accessibility action and emulator regression only | `fix/android-backup-explicit-accessibility-action-371` (#372); predecessor `fix/android-backup-button-merged-semantics-352` (#369) | #372 exact-head Android JVM/emulator/APK CI | #369 failed managed emulator: button node still reports not clickable; #372 adds explicit Button-role semantics action and is in CI | `d005cc1fd8e023999db4d7f799ed2e550e3b09fb` |
+| P2 | PR #372 / Issues #350/#371, stacked #372 → #369 → #352 → #347 | Manual Backup accessibility action and emulator regression only | `fix/android-backup-explicit-accessibility-action-371` (#372) | Exact-head Android JVM/emulator/APK CI | Latest head removes synthetic onClick override; JVM/shared/APK passed, emulator still running | `b108274f4835f13b0cedebceb2dae6a0008581e3` |
 | P1 audit | Issue #366, PR #347 | Review ownership-generation bypasses; no production edit yet | audit only | #347 must gain complete handoff and all mutation paths must be fenced | Findings recorded in #366 | `be1d81586cd506176db712494ec77f6364faac83` |
-| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Added external AI contributor onboarding and task-board lane; last verified docs-only head `f2d29c6b638385aa5c535d7cd06db28d23b210be` passed; subsequent ledger-only commits are pending exact-head validation | `f2d29c6b638385aa5c535d7cd06db28d23b210be` |
+| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Added external AI contributor onboarding and ten-lane task-board matrix; latest exact-head docs CI passed on `4643c74bef46ed4f909ad59acdfa5a01274e2714`; platform jobs skipped | `f2d29c6b638385aa5c535d7cd06db28d23b210be` |
 
 ## 150-step program tracker
 
@@ -21,7 +21,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 | Cycle | Status | Completed actions | Evidence index / PRs | Validation summary | Open blockers |
 |---:|---|---:|---|---|---|
-| 01 | partial | 17/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
+| 01 | partial | 29/150 | PR #372; PR #362; Issues #366, #370, #371, #373; PRs #347, #352, #353, #140, #364, #61, #62 | PR #372 latest head: Android JVM, shared contracts and APK passed; emulator in progress. PR #362 latest docs-only exact-head CI summary passed; platform jobs skipped. | Core ownership-generation bypasses remain; PR #372 emulator pending; main branch protection disabled |
 
 ## Cycle 01 — capacity audit and parallel portfolio
 
@@ -46,7 +46,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 ## Cycle close-out
 
-Cycle 01 remains partial (17/150 before the latest audit; now 20/150). PR #362 docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform jobs were skipped, not passed. PR #369 exact-head CI for `b46a1d8496a63a40718192d37571b1ca7359a0de` is still running; the previous head failed Kotlin compilation because of an invalid import, which was removed in the current head. Do not mark the cycle complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
+Cycle 01 remains partial (29/150). PR #362 latest docs-only exact-head run `44928923707` on `4643c74bef46ed4f909ad59acdfa5a01274e2714`: exact-head CI summary success; all platform jobs skipped because documentation-only. PR #372 latest exact-head run `44928573908` on `b108274f4835f13b0cedebceb2dae6a0008581e3`: Android JVM, shared contracts and Debug APK passed; managed emulator acceptance is still running. Do not mark the cycle complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
 
 ## Whole-project audit after cycle 20
 
@@ -80,4 +80,22 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 | C01-A019 | P1 | Расширил поиск прямых изменений `core_tasks.state`: обнаружен дополнительный путь в `GlafiraCoreLiveRunStore.approveReadOnlyRun()` — выдача LIVE grant и перевод задачи в QUEUED проверяют только task ID/state; сама таблица LIVE grants также не содержит owner generation. Зафиксировал также, что обычный `GlafiraTaskStore.transition()` остаётся state-only CAS, а state_version trigger — это учёт версии, не авторизация владельца. | https://github.com/micronizationlab/glafira-ai-hub/issues/366#issuecomment-7066110210 | Read-only audit; production changes not yet made. | complete |
 
 
-| C01-A020 | P2 | Получил логи PR #372 exact-head `d005cc1...`: 116/117 emulator tests passed, оставшийся failure — accessibility-проверка missing-folder guidance. Установил, что `clearAndSetSemantics` удаляет семантику потомков; заменил на `semantics(mergeDescendants = true)` с сохранением явных Button role/onClick. Создан новый exact-head run. | https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44927626370 ; commit `87589331cb1b40498cc9a42b4a3667aeedb830f7` | JVM/shared-contract jobs in progress at last check; emulator/APK not yet reported. Prior exact head failed emulator 1/117. | in progress |
+| C01-A020 | P2 | Получил логи PR #372 exact-head `87589331...`: Android JVM, shared contracts и Debug APK прошли; эмулятор выполнил 117 тестов и упал на `Manual backup action is not exposed as clickable`. Это не failure guidance: UiAutomator всё ещё видел merged Button node как non-clickable. | https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44927626370 ; head `87589331cb1b40498cc9a42b4a3667aeedb830f7` | Android JVM/shared/APK success; emulator 1/117 failure; Windows/iOS/workflow lint skipped. | complete |
+
+| C01-A021 | P2 | По полным логам точного emulator job #372 установил, что проблема именно в семантике клика: merged node кнопки остаётся non-clickable после добавления синтетического onClick. | https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44927626370 | 117 instrumentation tests executed; 1 failed at clickable assertion. | complete |
+
+| C01-A022 | P2 | Исправил Backup button semantics: удалил синтетический onClick и оставил нативное действие Material3 Button, сохранив merged content description. Изменение внесено отдельным коммитом в PR #372. | https://github.com/micronizationlab/glafira-ai-hub/commit/b108274f4835f13b0cedebceb2dae6a0008581e3 | Exact-head CI run 44928573908: JVM/shared/APK success; emulator still in progress. | in progress |
+
+| C01-A023 | P2 / QA | Проверил exact-head результаты PR #372 на b108274: Android JVM, Shared Contract Conformance и Debug APK package прошли; managed emulator ещё выполняет instrumentation suite. Отдельно подтвердил, что Windows/iOS/workflow-lint jobs были skipped, а не passed. | https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44928573908 | JVM success; shared contracts success; APK success; emulator in progress; unrelated platforms skipped. | in progress |
+
+| C01-A024 | P4 coordination | Добавил в task board обязательную матрицу всех десяти рабочих направлений с отдельными scope, текущими issue/PR ссылками, next actions и правилами переключения при блокировках. | PR #362; commit 0f607b2742b7022203545818a60425023abc6ac1 | Docs-only exact-head CI subsequently passed on later board head 4643c74; platform jobs skipped. | complete |
+
+| C01-A025 | P1 | Расширил Core ownership audit: проверил production runtime constructor и уточнил, что GlafiraCoreRuntimeOwner передаёт non-null installation Core ID; null-owner constructors найдены в instrumentation fixtures. Зафиксировал различие installation identity vs authenticated human owner account, не объявляя production unowned path подтверждённым. | https://github.com/micronizationlab/glafira-ai-hub/issues/366#issuecomment-7066326634 | Read-only source search and issue correction; no implementation claimed. | complete |
+
+| C01-A026 | P1 security | Проверил owner identity specification против runtime source: creator name/папа rule есть в normative spec; Android Core installation identity — отдельная криптографическая identity, а biometric session — краткоживущий локальный proof, не account identity. Зафиксировал разделение в #258. | https://github.com/micronizationlab/glafira-ai-hub/issues/258#issuecomment-7066294586 | Read-only code/spec audit; owner account binding and multi-account acceptance remain open. | complete |
+
+| C01-A027 | P3 Desktop/Agent | Проверил Windows Desktop host implementation: реальный HTTPS host, private-LAN binding, TLS identity, DPAPI resolver, replay guard, pairing endpoint, 5-minute ticket and revoke path already exist. Добавил в #123 корректировку устаревшего issue framing и следующий E2E gate: persistent Hub store, Agent lease/result, Desktop Core handoff, two-machine restart/reconnect/ACK. | https://github.com/micronizationlab/glafira-ai-hub/issues/123#issuecomment-7066302522 | Source audit only; two-machine acceptance not claimed. | complete |
+
+| C01-A028 | P4 Design | Зафиксировал фактический разрыв между текущим ранним WPF dashboard и утверждённым premium visual direction; создал отдельный изолированный design-only issue #373, разрешив только docs/design/** и запретив runtime/Core/Bridge edits. | https://github.com/micronizationlab/glafira-ai-hub/issues/95#issuecomment-7066303192 ; https://github.com/micronizationlab/glafira-ai-hub/issues/373 | Issue created; no design implementation or account owner falsely claimed. | complete |
+
+| C01-A029 | P4 Web/Communications | Связал Connect protocol lane с owner-approved issue #361 и draft ADR PR #364 (Matrix E2EE + optional WebRTC direct path/TURN fallback); task board now requires ADR review before runtime commitment. | PR #362 latest head 4643c74bef46ed4f909ad59acdfa5a01274e2714 | Exact-head docs CI run 44928923707 success; platform jobs skipped. | complete |
