@@ -576,3 +576,22 @@ The target differentiation is the combination of persistent owner-controlled pro
 This is a target-state description, not a current feature claim. The current build was characterized in a 2026-11-18 external technical review as an Android LLM-orchestration client with nascent multi-agent logic; Web/Browser Agent, Desktop Bridge and CRM were still planned. Every public claim must be gated by implementation and end-to-end acceptance.
 
 The proposed 500 RUB GLAFIRA subscription must be compared directly with multi-model aggregators such as Poe, whose published entry subscription starts at $4.99/month (about 409 RUB at the 2026-11-20 CBR rate before local tax/pricing) and uses capped compute points. GLAFIRA's premium over that entry price must be justified by operational workspaces, agents, local/desktop execution, service network value and transparent optional contribution rewards.
+
+
+### 16.8 Grok Bot and cloud-computer competitor
+
+Grok Bot is a direct competitor to the planned agent-workstation experience. Its published tiers include Premium at $30/month, Super at $100/month and Ultra at $200/month. Premium includes a persistent cloud computer, connected tool sign-in, scheduled routines, desktop/mobile access and weekly Bot usage; additional usage can be billed based on token cost. Bots on one account share one persistent cloud computer, including files, browser sessions and logins; isolation is per user, not per Bot. It can continue work while the user's laptop is closed and supports optional local-computer execution when the owner allows it.
+
+GLAFIRA must not claim that cloud-computer agents, parallel Bots, scheduled routines, mobile/desktop access or local execution with permission are unique. Its target distinction is provider-neutral model routing plus durable project/task state, owner-controlled local Windows Desktop/Agent fleet, independently owned opt-in participant devices, buyer-funded compute tasks, accepted-work reward settlement and the optional VPN/service plane. This is target-state positioning, not a current feature claim.
+
+At the proposed 500 RUB AI price, GLAFIRA is much cheaper than Grok Bot Premium (~2,458 RUB at the 2026-11-20 CBR reference rate) but more expensive than Poe's ~$4.99 entry tier (~409 RUB). The 500 RUB plan must state weekly/model usage limits and cannot imply unlimited cloud-agent execution.
+
+### 16.9 Contribution incentives and device-class economics
+
+- User value comes first: AI workspace and VPN must be useful even when the customer never contributes compute.
+- No tap-to-earn, check-ins, ad watching, artificial page views, fake engagement or 24/7 uptime rewards.
+- Smartphone contribution is opt-in, Wi-Fi-only, capped at 10% of available compute budget, and allowed only while charging, thermally safe and idle; yield immediately to the owner. These are ceilings, not guaranteed utilization or income.
+- PC/GPU contributions use a separate resource and reward curve. Salad's published GPU rates are active-job rates and exclude electricity and idle time; do not apply them to smartphones.
+- Honeygain/JumpTask demonstrates that payout thresholds and fees materially affect perceived reward value ($20 Honeygain-mode threshold vs $0.50 JumpTask-mode threshold, first JumpTask payout $1). GLAFIRA should make small accepted-work rewards visible and useful inside the ecosystem, subject to legal review, rather than promising cash conversion.
+- Reward only buyer-requested, verified, accepted work. No reward for idle time or unverified device benchmarks. Show measured incremental energy/data, acceptance evidence, reward formula version and spendable/reserved balance.
+- Before public launch, measure task demand, job occupancy, energy, bandwidth, device wear, verification and support costs per device class. No earnings claim until GLAFIRA has a representative pilot dataset.
