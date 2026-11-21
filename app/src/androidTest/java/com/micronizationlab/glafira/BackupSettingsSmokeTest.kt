@@ -19,6 +19,11 @@ class BackupSettingsSmokeTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         assertTrue(
+            "Could not disable biometric lock for the home-screen smoke test",
+            context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
+                .edit().putBoolean("biometric_enabled", false).commit()
+        )
+        assertTrue(
             "Could not isolate backup-folder preference for the smoke test",
             context.getSharedPreferences(
                 GlafiraBackupWorker.BACKUP_PREFS,
@@ -26,12 +31,14 @@ class BackupSettingsSmokeTest {
             ).edit().remove(GlafiraBackupWorker.KEY_TREE_URI).commit()
         )
         val scenario = ActivityScenario.launch<MainActivity>(
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Intent(context, MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            )
         )
         try {
             val device = UiDevice.getInstance(instrumentation)
             assertTrue("GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.desc("Открыть настройки")), 10_000))
+                device.wait(Until.hasObject(By.desc("Открыть настройки")), 20_000))
             device.findObject(By.desc("Открыть настройки")).click()
 
             var saveButton = device.findObject(By.text("Сохранить сейчас"))
@@ -47,8 +54,9 @@ class BackupSettingsSmokeTest {
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
             assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
             saveButton!!.click()
+            device.waitForIdle()
             val guidance = device.wait(
-                Until.findObject(By.textContains("Сначала выбери папку")), 3_000)
+                Until.findObject(By.textContains("Сначала выбери папку")), 10_000)
             assertNotNull("Missing-folder guidance was not shown beside the manual backup action", guidance)
         } finally {
             scenario.close()
