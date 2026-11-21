@@ -251,7 +251,7 @@ class GlafiraCoreTraceSqliteInstrumentedTest {
         val events = query(
             taskId = "legacy-task",
             eventTypes = setOf(
-                GlafiraCoreTraceEventType.TASK_QUEUED,
+                GlafiraCoreTraceEventType.TASK_CREATED,
                 GlafiraCoreTraceEventType.TASK_STARTED
             ),
             taskIds = setOf("legacy-task")
