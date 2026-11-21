@@ -67,6 +67,23 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task LeaseRenewalFailureCancelsHandlerAndPersistsTerminalFailure()
+    {
+        var state = ReadyState();
+        var handler = new TestHandler("web.research", blockUntilCancelled: true);
+        var transport = new FakeTransport(Lease()) { FailRenewalUpdates = 1 };
+        var journal = Journal();
+        var coordinator = Coordinator(state, [handler], transport, journal);
+
+        Assert.True(await coordinator.PollOnceAsync(Credential(), CancellationToken.None));
+
+        Assert.Equal(1, handler.Calls);
+        var terminal = Assert.Single(transport.Updates, update => update.State == "FAILED");
+        Assert.Equal("LEASE_RENEWAL_FAILED", terminal.ErrorCode);
+        Assert.Empty((await journal.LoadAsync(CancellationToken.None)).PendingResults);
+    }
+
+    [Fact]
     public async Task DoesNotClaimWhenNoTypedHandlerIsRegistered()
     {
         var transport = new FakeTransport(Lease());
@@ -223,17 +240,19 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
         public byte[] Unprotect(byte[] protectedBytes) => protectedBytes.ToArray();
     }
 
-    private sealed class TestHandler(string taskType) : IAgentTaskHandler
+    private sealed class TestHandler(string taskType, bool blockUntilCancelled = false) : IAgentTaskHandler
     {
         private int _calls;
         public string TaskType { get; } = taskType;
         public int Calls => Volatile.Read(ref _calls);
 
-        public Task<AgentTaskResult> ExecuteAsync(
+        public async Task<AgentTaskResult> ExecuteAsync(
             AgentTaskEnvelope task, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _calls);
-            return Task.FromResult(new AgentTaskResult(task.TaskId, "SUCCEEDED", "result://local", new string('b', 64)));
+            if (blockUntilCancelled)
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new AgentTaskResult(task.TaskId, "SUCCEEDED", "result://local", new string('b', 64));
         }
     }
 
@@ -243,6 +262,8 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
         public int ClaimCalls { get; private set; }
         public int FailTerminalUpdates { get; set; }
         public int RejectTerminalUpdates { get; set; }
+        public int FailRenewalUpdates { get; set; }
+        private int _runningAttempts;
         public int TerminalAttempts { get; private set; }
         public bool ReturnMismatchedAck { get; set; }
         public IReadOnlyList<string> LastSupportedTaskTypes { get; private set; } = [];
@@ -271,6 +292,15 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             Updates.Add(new RecordedUpdate(state, resultJson, errorCode));
+            if (state == "RUNNING")
+            {
+                _runningAttempts++;
+                if (_runningAttempts > 1 && FailRenewalUpdates > 0)
+                {
+                    FailRenewalUpdates--;
+                    throw new HttpRequestException("simulated lease renewal failure");
+                }
+            }
             if (state is "SUCCEEDED" or "FAILED")
             {
                 TerminalAttempts++;
