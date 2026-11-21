@@ -11,9 +11,9 @@
 
 | Priority | Issue / PR | Scope and files | Branch | Dependencies | Status | Exact head SHA |
 |---|---|---|---|---|---|---|
-| P2 | PR #369 / #372, Issues #350/#371, stacked #372 → #369 → #352 → #347 | Manual Backup accessibility action and emulator regression only | `fix/android-backup-explicit-accessibility-action-371` (#372); predecessor `fix/android-backup-button-merged-semantics-352` (#369) | #372 exact-head Android JVM/emulator/APK CI | #369 failed managed emulator: button node still reports not clickable; #372 adds explicit Button-role semantics action and is in CI | `6397a8b5fcad41340c3fb01b2ed9e2fdae889903` |
+| P2 | PR #369 / #372, Issues #350/#371, stacked #372 → #369 → #352 → #347 | Manual Backup accessibility action and emulator regression only | `fix/android-backup-explicit-accessibility-action-371` (#372); predecessor `fix/android-backup-button-merged-semantics-352` (#369) | #372 exact-head Android JVM/emulator/APK CI | #369 failed managed emulator: button node still reports not clickable; #372 adds explicit Button-role semantics action and is in CI | `d005cc1fd8e023999db4d7f799ed2e550e3b09fb` |
 | P1 audit | Issue #366, PR #347 | Review ownership-generation bypasses; no production edit yet | audit only | #347 must gain complete handoff and all mutation paths must be fenced | Findings recorded in #366 | `be1d81586cd506176db712494ec77f6364faac83` |
-| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Added external AI contributor onboarding and task-board lane; latest head `a130fae7c43f2f694d81b7089895b2d4c833581a`; exact-head docs CI passed | `a130fae7c43f2f694d81b7089895b2d4c833581a` |
+| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Added external AI contributor onboarding and task-board lane; latest head `f2d29c6b638385aa5c535d7cd06db28d23b210be`; exact-head docs-only CI passed (platform suites skipped) | `f2d29c6b638385aa5c535d7cd06db28d23b210be` |
 
 ## 150-step program tracker
 
@@ -46,7 +46,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 ## Cycle close-out
 
-Cycle 01 remains partial (6/150). PR #362 docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform jobs were skipped, not passed. PR #369 exact-head CI for `b46a1d8496a63a40718192d37571b1ca7359a0de` is still running; the previous head failed Kotlin compilation because of an invalid import, which was removed in the current head. Do not mark the cycle complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
+Cycle 01 remains partial (17/150 before the latest audit; now 18/150). PR #362 docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform jobs were skipped, not passed. PR #369 exact-head CI for `b46a1d8496a63a40718192d37571b1ca7359a0de` is still running; the previous head failed Kotlin compilation because of an invalid import, which was removed in the current head. Do not mark the cycle complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
 
 ## Whole-project audit after cycle 20
 
@@ -72,3 +72,6 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 | C01-A016 | P2 | Re-ran PR #372 after adding the missing Compose `semantics` import. Exact head `d005cc1fd8e023999db4d7f799ed2e550e3b09fb`: Android JVM and Shared Contract checks passed; managed emulator and debug APK jobs started. | https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44926868960 | JVM success; Shared Contracts success; emulator/APK in progress; other platform checks skipped. | in progress |
 
 | C01-A017 | P1 | Extended #366 after repository-wide search found no implemented Android Core ownership-transfer operation that increments `owner_generation`; documented the required transactional compare-and-swap, approval invalidation, Trace, stale-owner rejection and race/rollback tests. | https://github.com/micronizationlab/glafira-ai-hub/issues/366 | Source audit and acceptance criteria update; no transfer implementation claimed. | complete |
+
+
+| C01-A018 | P1 | Audited the complete Android owner-approval persistence schema and task-store identity creation. Confirmed `core_action_approvals` has no `owner_core_id`/`owner_generation` columns; request, pending expiry, approve, reject and grant consumption still use task/state predicates without generation fencing. Also found `GlafiraTaskStore` accepts a nullable owner ID and silently omits ownership rows when constructed without it; current approval instrumentation tests use that unowned constructor. Existing ownership-transfer cryptography and identity tests are only a signed-envelope/identity layer, not a SQLite owner-generation CAS/handoff. | https://github.com/micronizationlab/glafira-ai-hub/issues/366 ; source files `GlafiraCoreOwnerApprovalStore.kt`, `GlafiraTaskStore.kt`, `GlafiraCoreOwnershipTransferCryptography.kt`, `GlafiraCoreOwnerApprovalStoreInstrumentedTest.kt` | Read-only source/schema/test audit. No production change; exact fail-closed behavior and migration design still required. | complete |
