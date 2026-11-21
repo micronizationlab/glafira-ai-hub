@@ -66,6 +66,20 @@ public sealed class AgentExecutionJournalTests : IDisposable
     }
 
     [Fact]
+    public async Task SameLeaseCanPersistServerConfirmedRenewedExpiry()
+    {
+        var journal = CreateJournal();
+        var lease = Lease();
+        await journal.SaveActiveLeaseAsync(lease, CancellationToken.None);
+        var renewed = lease with { LeaseExpiresAtEpochMs = lease.LeaseExpiresAtEpochMs + 60_000 };
+
+        await journal.SaveActiveLeaseAsync(renewed, CancellationToken.None);
+
+        Assert.Equal(renewed.LeaseExpiresAtEpochMs,
+            Assert.Single((await journal.LoadAsync(CancellationToken.None)).ActiveLeases).LeaseExpiresAtEpochMs);
+    }
+
+    [Fact]
     public async Task ActiveLeaseCanBeClearedOnlyAfterItsExpiryAndExactFence()
     {
         var journal = CreateJournal();
@@ -84,6 +98,21 @@ public sealed class AgentExecutionJournalTests : IDisposable
             lease.TaskId, lease.LeaseId, lease.FencingToken,
             lease.LeaseExpiresAtEpochMs + 1, CancellationToken.None));
         Assert.Empty((await journal.LoadAsync(CancellationToken.None)).ActiveLeases);
+    }
+
+    [Fact]
+    public async Task StaleResultCanBeDiscardedOnlyWithExactLeaseFence()
+    {
+        var journal = CreateJournal();
+        var lease = Lease();
+        await journal.SaveActiveLeaseAsync(lease, CancellationToken.None);
+        await journal.PersistCompletedResultAsync(Pending(lease), CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            journal.DiscardStaleResultAsync(lease.TaskId, lease.LeaseId, lease.FencingToken + 1, CancellationToken.None));
+        Assert.True(await journal.DiscardStaleResultAsync(
+            lease.TaskId, lease.LeaseId, lease.FencingToken, CancellationToken.None));
+        Assert.Empty((await journal.LoadAsync(CancellationToken.None)).PendingResults);
     }
 
     [Fact]
