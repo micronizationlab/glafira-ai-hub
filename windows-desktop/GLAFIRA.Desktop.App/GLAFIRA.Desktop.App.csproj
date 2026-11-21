@@ -4,5 +4,8 @@
     <UseWPF>true</UseWPF><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../GLAFIRA.Desktop.Hub.Core/GLAFIRA.Desktop.Hub.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../GLAFIRA.Desktop.Hub.Core/GLAFIRA.Desktop.Hub.Core.csproj" />
+    <ProjectReference Include="../GLAFIRA.Desktop.Core/GLAFIRA.Desktop.Core.csproj" />
+  </ItemGroup>
 </Project>
