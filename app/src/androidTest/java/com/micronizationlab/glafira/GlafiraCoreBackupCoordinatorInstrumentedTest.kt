@@ -60,6 +60,22 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun exportRejectsUnknownCoreTablesInsteadOfSilentlyOmittingThem() = runBlocking {
+        store.writableDatabase.execSQL(
+            "CREATE TABLE core_future_sensitive (id TEXT PRIMARY KEY, secret TEXT NOT NULL)"
+        )
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { GlafiraCoreBackupCoordinator(context, store).create(passphrase) }
+            }
+        } finally {
+            store.writableDatabase.execSQL("DROP TABLE core_future_sensitive")
+            passphrase.fill('\\u0000')
+        }
+    }
+
+    @Test
     fun legacyArchiveWithoutCoreDatabaseIsRejectedBeforeRestore() = runBlocking {
         store.enqueue(task("existing-task"))
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
