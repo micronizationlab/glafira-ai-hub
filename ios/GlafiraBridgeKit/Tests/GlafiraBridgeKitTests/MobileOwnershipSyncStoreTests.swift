@@ -146,8 +146,13 @@ final class MobileOwnershipSyncStoreTests: XCTestCase {
         )
         let store = try MobileOwnershipSyncStore(directory: directory)
 
+        let pairedCredential = try BridgeDeviceCredential(
+            deviceId: request.deviceId,
+            hmacSecret: Data(repeating: 0x2A, count: 32),
+            ownershipTrustedSigningKey: trustedKey()
+        )
         let applied = try await store.applyBridgeResponse(
-            response, for: request, trustedKey: trustedKey(), now: now
+            response, for: request, pairedCredential: pairedCredential, now: now
         )
 
         XCTAssertEqual(applied?.projection.ownerCoreId, "desktop-core-01")
@@ -171,6 +176,19 @@ final class MobileOwnershipSyncStoreTests: XCTestCase {
             taskId: "task-000001", projectId: "project-0001"
         )
         XCTAssertNil(rejectedProjection)
+
+        let legacyCredential = try BridgeDeviceCredential(
+            deviceId: request.deviceId,
+            hmacSecret: Data(repeating: 0x2A, count: 32)
+        )
+        do {
+            _ = try await rejectedStore.applyBridgeResponse(
+                response, for: request, pairedCredential: legacyCredential, now: now
+            )
+            XCTFail("Legacy credential without a paired trust anchor must fail")
+        } catch {
+            XCTAssertEqual(error as? MobileOwnershipSyncError, .untrustedSigningKey)
+        }
     }
 
     func testBridgeUnavailableResponseRequiresExactFieldsAndDoesNotMutate() async throws {

@@ -80,6 +80,24 @@ public struct MobileOwnershipTrustedSigningKey: Equatable, Sendable {
     }
 }
 
+enum MobileOwnershipTrustValidation {
+    static func isValid(_ key: MobileOwnershipTrustedSigningKey) -> Bool {
+        guard (8...128).contains(key.ownerCoreId.utf8.count),
+              key.ownerCoreId.allSatisfy({
+                  $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == ".")
+              }),
+              key.signingKeyEpoch > 0,
+              key.signingPublicKeySha256.utf8.count == 64,
+              key.signingPublicKeySha256.allSatisfy({ $0.isHexDigit && !$0.isUppercase }),
+              SHA256.hash(data: key.derEncodedPublicKey).map({ String(format: "%02x", $0) }).joined() ==
+                key.signingPublicKeySha256,
+              (try? P256.Signing.PublicKey(derRepresentation: key.derEncodedPublicKey)) != nil else {
+            return false
+        }
+        return true
+    }
+}
+
 public struct MobileOwnershipProjection: Codable, Equatable, Sendable {
     public let taskId: String
     public let projectId: String
@@ -201,6 +219,26 @@ public actor MobileOwnershipSyncStore {
         default:
             throw MobileOwnershipSyncError.invalidBridgeResponse
         }
+    }
+
+    /// Uses the trust anchor stored atomically with the paired Bridge credential.
+    /// Legacy credentials deliberately fail closed until the owner re-pairs.
+    public func applyBridgeResponse(
+        _ response: BridgeResponse,
+        for request: BridgeRequest,
+        pairedCredential: BridgeDeviceCredential,
+        now: Date = Date()
+    ) throws -> MobileOwnershipSyncResult? {
+        guard pairedCredential.deviceId == request.deviceId,
+              let trustedKey = pairedCredential.ownershipTrustedSigningKey else {
+            throw MobileOwnershipSyncError.untrustedSigningKey
+        }
+        return try applyBridgeResponse(
+            response,
+            for: request,
+            trustedKey: trustedKey,
+            now: now
+        )
     }
 
     @discardableResult

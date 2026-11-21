@@ -5,8 +5,13 @@ import LocalAuthentication
 public struct BridgeDeviceCredential: Equatable, Sendable {
     public let deviceId: String
     public let hmacSecret: Data
+    public let ownershipTrustedSigningKey: MobileOwnershipTrustedSigningKey?
 
-    public init(deviceId: String, hmacSecret: Data) throws {
+    public init(
+        deviceId: String,
+        hmacSecret: Data,
+        ownershipTrustedSigningKey: MobileOwnershipTrustedSigningKey? = nil
+    ) throws {
         let units = deviceId.utf16.count
         guard (8...128).contains(units),
               deviceId.unicodeScalars.allSatisfy({
@@ -19,14 +24,21 @@ public struct BridgeDeviceCredential: Equatable, Sendable {
         guard hmacSecret.count == 32 else {
             throw BridgeCredentialStoreError.invalidSecret
         }
+        if let ownershipTrustedSigningKey,
+           !MobileOwnershipTrustValidation.isValid(ownershipTrustedSigningKey) {
+            throw BridgeCredentialStoreError.invalidOwnershipTrustAnchor
+        }
         self.deviceId = deviceId
         self.hmacSecret = hmacSecret
+        self.ownershipTrustedSigningKey = ownershipTrustedSigningKey
     }
 }
 
 public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
     case invalidDeviceIdentifier
     case invalidSecret
+    case invalidOwnershipTrustAnchor
+    case invalidStoredCredential
     case biometricProtectionUnavailable
     case credentialAlreadyExists
     case credentialNotFound
@@ -35,7 +47,8 @@ public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
     case keychainFailure(status: Int32)
 }
 
-/// Stores one paired-device HMAC secret as a device-only Keychain item.
+/// Stores one paired-device HMAC secret and its authenticated ownership trust anchor
+/// as one device-only Keychain item, so local revocation cannot leave stale trust behind.
 /// The item is bound to the currently enrolled biometric set; adding/removing
 /// biometrics invalidates access rather than silently weakening protection.
 public final class KeychainBridgeCredentialStore {
@@ -61,11 +74,12 @@ public final class KeychainBridgeCredentialStore {
             throw BridgeCredentialStoreError.biometricProtectionUnavailable
         }
 
+        let storedCredential = try BridgeCredentialPersistence.encode(credential)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: credential.deviceId,
-            kSecValueData as String: credential.hmacSecret,
+            kSecValueData as String: storedCredential,
             kSecAttrAccessControl as String: access,
             kSecUseDataProtectionKeychain as String: true
         ]
@@ -136,10 +150,10 @@ public final class KeychainBridgeCredentialStore {
                 ? BridgeCredentialStoreError.authenticationCancelled
                 : BridgeCredentialStoreError.authenticationFailed
         }
-        guard status == errSecSuccess, let secret = result as? Data else {
+        guard status == errSecSuccess, let storedCredential = result as? Data else {
             throw BridgeCredentialStoreError.keychainFailure(status: status)
         }
-        return try BridgeDeviceCredential(deviceId: deviceId, hmacSecret: secret)
+        return try BridgeCredentialPersistence.decode(storedCredential, expectedDeviceId: deviceId)
     }
 
     /// Deletes only the selected paired device credential. Callers must gate
@@ -163,6 +177,73 @@ public final class KeychainBridgeCredentialStore {
         guard status == errSecSuccess else {
             throw BridgeCredentialStoreError.keychainFailure(status: status)
         }
+    }
+}
+
+enum BridgeCredentialPersistence {
+    private struct StoredCredential: Codable {
+        let schemaVersion: Int
+        let deviceId: String
+        let hmacSecretBase64: String
+        let ownerCoreId: String
+        let ownershipSigningKeyEpoch: Int64
+        let ownershipSigningPublicKeySpkiBase64: String
+        let ownershipSigningPublicKeySha256: String
+    }
+
+    static func encode(_ credential: BridgeDeviceCredential) throws -> Data {
+        guard let trust = credential.ownershipTrustedSigningKey else {
+            // Preserve the legacy 32-byte format for credentials without ownership scope.
+            return credential.hmacSecret
+        }
+        let stored = StoredCredential(
+            schemaVersion: 2,
+            deviceId: credential.deviceId,
+            hmacSecretBase64: credential.hmacSecret.base64EncodedString(),
+            ownerCoreId: trust.ownerCoreId,
+            ownershipSigningKeyEpoch: trust.signingKeyEpoch,
+            ownershipSigningPublicKeySpkiBase64: trust.derEncodedPublicKey.base64EncodedString(),
+            ownershipSigningPublicKeySha256: trust.signingPublicKeySha256
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(stored)
+    }
+
+    static func decode(_ data: Data, expectedDeviceId: String) throws -> BridgeDeviceCredential {
+        if data.count == 32 {
+            return try BridgeDeviceCredential(deviceId: expectedDeviceId, hmacSecret: data)
+        }
+        guard (1...8_192).contains(data.count),
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(object.keys) == Set([
+                  "schemaVersion", "deviceId", "hmacSecretBase64", "ownerCoreId",
+                  "ownershipSigningKeyEpoch", "ownershipSigningPublicKeySpkiBase64",
+                  "ownershipSigningPublicKeySha256"
+              ]),
+              let stored = try? JSONDecoder().decode(StoredCredential.self, from: data),
+              stored.schemaVersion == 2,
+              stored.deviceId == expectedDeviceId,
+              let secret = Data(base64Encoded: stored.hmacSecretBase64), secret.count == 32,
+              secret.base64EncodedString() == stored.hmacSecretBase64,
+              let publicKey = Data(base64Encoded: stored.ownershipSigningPublicKeySpkiBase64),
+              publicKey.base64EncodedString() == stored.ownershipSigningPublicKeySpkiBase64 else {
+            throw BridgeCredentialStoreError.invalidStoredCredential
+        }
+        let trust = MobileOwnershipTrustedSigningKey(
+            ownerCoreId: stored.ownerCoreId,
+            signingKeyEpoch: stored.ownershipSigningKeyEpoch,
+            signingPublicKeySha256: stored.ownershipSigningPublicKeySha256,
+            derEncodedPublicKey: publicKey
+        )
+        guard MobileOwnershipTrustValidation.isValid(trust) else {
+            throw BridgeCredentialStoreError.invalidStoredCredential
+        }
+        return try BridgeDeviceCredential(
+            deviceId: expectedDeviceId,
+            hmacSecret: secret,
+            ownershipTrustedSigningKey: trust
+        )
     }
 }
 

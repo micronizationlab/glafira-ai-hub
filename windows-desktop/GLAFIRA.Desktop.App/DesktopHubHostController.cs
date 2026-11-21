@@ -15,6 +15,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     private const int HttpsPort = 8443;
     private readonly string _databasePath;
     private readonly string _ownerDeviceId;
+    private readonly BridgeV1OwnershipTrustAnchor _ownershipTrustAnchor;
     private readonly DesktopHubStore _store;
     private readonly BridgeV1HubIdentityStore _hubIdentityStore;
     private readonly BridgeV1TlsCertificateStore _tlsCertificateStore;
@@ -38,7 +39,10 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         string rootDirectory,
         string databasePath,
         DesktopHubStore store,
-        string ownerDeviceId)
+        string ownerDeviceId,
+        long ownershipSigningKeyEpoch,
+        string ownershipSigningPublicKeySpkiBase64,
+        string ownershipSigningPublicKeySha256)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
@@ -53,6 +57,11 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         var root = Path.GetFullPath(rootDirectory);
         _databasePath = Path.GetFullPath(databasePath);
         _ownerDeviceId = ownerDeviceId;
+        _ownershipTrustAnchor = new BridgeV1OwnershipTrustAnchor(
+            ownerDeviceId,
+            ownershipSigningKeyEpoch,
+            ownershipSigningPublicKeySpkiBase64,
+            ownershipSigningPublicKeySha256);
         _store = store;
         _hubIdentityStore = new BridgeV1HubIdentityStore(Path.Combine(root, "hub-id.txt"));
         _tlsCertificateStore = new BridgeV1TlsCertificateStore();
@@ -159,7 +168,11 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             var dispatcher = new BridgeV1TaskOperationDispatcher(_store, _payloadStore);
             var options = new BridgeV1HttpsHostOptions(hubId, addresses, HttpsPort);
             var pairingEndpoint = new BridgeV1PairingEndpoint(
-                _pairingTickets, _store, hubId, _tlsIdentity.FingerprintSha256);
+                _pairingTickets,
+                _store,
+                hubId,
+                _tlsIdentity.FingerprintSha256,
+                _ownershipTrustAnchor);
             _host = new BridgeV1HttpsHost(
                 options, _tlsIdentity, authenticator, dispatcher, pairingEndpoint);
             await _host.StartAsync(cancellationToken).ConfigureAwait(true);
@@ -308,6 +321,10 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             agentId = ticket.AgentId,
             endpoint = endpoint.AbsoluteUri,
             tlsCertificateSha256 = CertificateFingerprintSha256,
+            ownerCoreId = _ownershipTrustAnchor.OwnerCoreId,
+            ownershipSigningKeyEpoch = _ownershipTrustAnchor.SigningKeyEpoch,
+            ownershipSigningPublicKeySpkiBase64 = _ownershipTrustAnchor.SigningPublicKeySpkiBase64,
+            ownershipSigningPublicKeySha256 = _ownershipTrustAnchor.SigningPublicKeySha256,
             ticketId = ticket.TicketId,
             pairingCode = ticket.PairingCode,
             scopes = ticket.Scopes.Order(StringComparer.Ordinal),

@@ -13,6 +13,7 @@ public sealed class AgentPairingClientTests
     private const string Pin = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     private static readonly Uri Endpoint = new("https://192.168.10.5:8443/bridge/v1");
     private readonly DateTimeOffset _now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+    private static readonly byte[] OwnershipPublicKey = CreateOwnershipPublicKey();
 
     [Fact]
     public async Task ValidPinnedBundleIsSavedOnlyAfterCompleteValidation()
@@ -104,6 +105,24 @@ public sealed class AgentPairingClientTests
         Assert.Null(store.Saved);
     }
 
+    [Fact]
+    public async Task InvalidOwnershipSigningIdentityIsNeverAcceptedOrSaved()
+    {
+        foreach (var bundle in new[]
+        {
+            Bundle().With("ownershipSigningKeyEpoch", 0),
+            Bundle().With("ownershipSigningPublicKeySha256", new string('0', 64)),
+            Bundle().With("ownerCoreId", "bad core id")
+        })
+        {
+            var store = new RecordingStore();
+            var client = CreateClient(store, new StubHandler(_ => JsonResponse(bundle)));
+
+            await Assert.ThrowsAsync<InvalidDataException>(() => client.EnrollAsync(Attempt()));
+            Assert.Null(store.Saved);
+        }
+    }
+
     [Theory]
     [InlineData("http://192.168.10.5:8443/bridge/v1")]
     [InlineData("https://127.0.0.1:8443/bridge/v1")]
@@ -149,11 +168,22 @@ public sealed class AgentPairingClientTests
         ["desktopHubId"] = "desktop-hub-01",
         ["endpoint"] = Endpoint.AbsoluteUri,
         ["tlsCertificateSha256"] = Pin,
+        ["ownerCoreId"] = "owner-core-01",
+        ["ownershipSigningKeyEpoch"] = 7,
+        ["ownershipSigningPublicKeySpkiBase64"] = Convert.ToBase64String(OwnershipPublicKey),
+        ["ownershipSigningPublicKeySha256"] =
+            Convert.ToHexString(SHA256.HashData(OwnershipPublicKey)).ToLowerInvariant(),
         ["sharedSecretBase64"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(secretBytes)),
         ["scopes"] = scopes ?? ["desktop.task.claim", "desktop.task.result"],
         ["enrolledAtEpochMs"] = _now.ToUnixTimeMilliseconds(),
         ["expiresAtEpochMs"] = _now.AddDays(30).ToUnixTimeMilliseconds()
     };
+
+    private static byte[] CreateOwnershipPublicKey()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        return key.ExportSubjectPublicKeyInfo();
+    }
 
     private static HttpResponseMessage JsonResponse(object payload)
     {
@@ -201,5 +231,17 @@ public sealed class AgentPairingClientTests
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
+    }
+}
+
+internal static class AgentPairingTestDictionaryExtensions
+{
+    public static Dictionary<string, object?> With(
+        this Dictionary<string, object?> source,
+        string key,
+        object? value)
+    {
+        source[key] = value;
+        return source;
     }
 }
