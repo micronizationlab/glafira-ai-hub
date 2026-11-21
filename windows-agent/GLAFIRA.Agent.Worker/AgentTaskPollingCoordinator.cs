@@ -5,9 +5,10 @@ using System.Text.Json;
 namespace GLAFIRA.Agent.Worker;
 
 /// <summary>
-/// Coordinates one safe, typed Agent execution at a time. The active lease is journaled
-/// before execution; terminal output is journaled before transmission and retained until
-/// the Hub returns the exact lease/fencing ACK. Only ReadOnly handlers are executable.
+/// Coordinates one safe, typed Agent execution at a time. The active lease and each
+/// progress update are journaled before transmission; terminal output is journaled before
+/// transmission and retained until the Hub returns the exact lease/fencing ACK.
+/// Only ReadOnly handlers are executable.
 /// </summary>
 public sealed class AgentTaskPollingCoordinator
 {
