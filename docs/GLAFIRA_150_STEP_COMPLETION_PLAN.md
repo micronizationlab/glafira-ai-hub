@@ -98,7 +98,7 @@
 
 71. [x] Закончить типизированный lease envelope: type/idempotency/payload hash/risk/approval/expiry.
 72. [x] Проверить strict metadata validation и capability subset.
-73. [ ] Добавить durable local lease journal с atomic persistence.
+73. [x] Добавить durable local lease journal с atomic persistence.
 74. [ ] Подключить polling loop с bounded backoff и pause on disconnect/revoke.
 75. [ ] Подключить AgentTaskHandlerRegistry к реальному worker lifecycle.
 76. [ ] Добавить первый allowlisted read-only handler set; unknown type fails closed.
@@ -206,7 +206,7 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `be43fafc54cea117b7837f49b5c4b75d79662339`.
+**Refreshed main after this wave:** `92e34759378c7636bd148766e7553bd1e1fde29c`.
 
 ### Verified complete
 
@@ -217,7 +217,7 @@
 
 ### In progress
 
-- Step 73 remains open: PR #231 introduced the DPAPI journal, but the outbox must retain the complete lease envelope to reconstruct result submissions after restart. Follow-up PR #235 adds that missing envelope and identity checks; do not mark this step complete until its exact-head Windows tests and package pass and it is merged.
+- Step 73: complete. PR #231 added the DPAPI journal; PR #235 added the full lease envelope to every pending result so a restarted Agent can reconstruct the exact result submission. PR #235 merged as `92e34759378c7636bd148766e7553bd1e1fde29c` after exact-head Windows Agent tests/build, shared contracts and package validation passed.
 - Android voice delivery PR #225: JVM tests and debug APK pass on head `c9a5039d760c28a8f78eff25107f2a7c0ae42aa3`; the emulator suite is still running. The unrelated backup guidance selector was corrected from content-description lookup to visible-text lookup.
 - PR #232 merged after exact-head Windows Agent tests, Desktop Hub tests, shared contract conformance and both x64 package builds passed.
 
