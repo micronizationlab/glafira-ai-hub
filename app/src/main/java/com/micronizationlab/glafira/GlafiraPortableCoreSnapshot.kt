@@ -140,6 +140,10 @@ internal class GlafiraPortableCoreSnapshot(
         val tables = snapshot.getJSONObject("tables")
         require(tables.keys().asSequence().toSet() == TABLES.map { it.name }.toSet()) { "Неполный набор таблиц Core." }
         val projects = taskProjects(tables)
+        val traceProjects = mutableMapOf<String, String>()
+        forRows(tables, TRACE) { row ->
+            require(traceProjects.put(row.getString("event_id"), row.getString("project_id")) == null)
+        }
         val planProjects = mutableMapOf<String, String>()
         val idempotency = mutableSetOf<Pair<String, String>>()
         TABLES.forEach { table ->
@@ -200,7 +204,10 @@ internal class GlafiraPortableCoreSnapshot(
                     GlafiraCoreTraceEventType.valueOf(row.getString("event_type"))
                     GlafiraCoreTraceDataClassification.valueOf(row.getString("data_classification"))
                     if (!row.isNull("parent_event_id")) {
-                        require(GlafiraCoreTraceEvent.isSafeIdentifier(row.getString("parent_event_id")))
+                        val parentId = row.getString("parent_event_id")
+                        require(parentId != row.getString("event_id"))
+                        require(GlafiraCoreTraceEvent.isSafeIdentifier(parentId))
+                        require(traceProjects[parentId] == project) { "Trace parent event project mismatch." }
                     }
                     listOf("target_type", "result_status", "error_code").forEach { column ->
                         if (!row.isNull(column)) require(GlafiraCoreTraceEvent.isSafeCode(row.getString(column)))
