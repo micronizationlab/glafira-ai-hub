@@ -7,6 +7,11 @@ using System.Text.Json.Serialization;
 
 namespace GLAFIRA.Agent.Worker;
 
+public sealed record AgentPendingProgress(
+    AgentTaskLease Lease,
+    int ProgressPercent,
+    string ProgressMessage);
+
 public sealed record AgentPendingResult(
     AgentTaskLease Lease,
     string State,
@@ -20,6 +25,8 @@ public sealed record AgentExecutionJournalSnapshot(
     IReadOnlyList<AgentTaskLease> ActiveLeases,
     IReadOnlyList<AgentPendingResult> PendingResults)
 {
+    // Additive default preserves compatibility with already persisted v1 DPAPI snapshots.
+    public IReadOnlyList<AgentPendingProgress> PendingProgresses { get; init; } = [];
     public static AgentExecutionJournalSnapshot Empty { get; } = new([], []);
 }
 
@@ -33,6 +40,11 @@ public interface IAgentExecutionJournal
 {
     Task<AgentExecutionJournalSnapshot> LoadAsync(CancellationToken cancellationToken);
     Task SaveActiveLeaseAsync(AgentTaskLease lease, CancellationToken cancellationToken);
+    Task PersistProgressAsync(AgentPendingProgress progress, CancellationToken cancellationToken);
+    Task<bool> AcknowledgeProgressAsync(
+        string taskId, string leaseId, long fencingToken, CancellationToken cancellationToken);
+    Task<bool> DiscardStaleProgressAsync(
+        string taskId, string leaseId, long fencingToken, CancellationToken cancellationToken);
     Task PersistCompletedResultAsync(AgentPendingResult result, CancellationToken cancellationToken);
     Task<bool> AcknowledgeResultAsync(
         string taskId, string leaseId, long fencingToken, CancellationToken cancellationToken);
@@ -66,6 +78,7 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
     private const int MaximumProtectedBytes = 1_048_576;
     private const int MaximumActiveLeases = 16;
     private const int MaximumPendingResults = 32;
+    private const int MaximumPendingProgresses = 16;
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     private static JsonSerializerOptions CreateJsonOptions()
@@ -160,6 +173,88 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
         finally { _gate.Release(); }
     }
 
+    public async Task PersistProgressAsync(
+        AgentPendingProgress progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        ValidatePendingProgress(progress);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var snapshot = await ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            var active = snapshot.ActiveLeases.SingleOrDefault(item => item.TaskId == progress.Lease.TaskId);
+            if (active is null || active.LeaseId != progress.Lease.LeaseId ||
+                active.FencingToken != progress.Lease.FencingToken)
+                throw new InvalidDataException("AGENT_PROGRESS_WITHOUT_CURRENT_LEASE");
+            if (snapshot.PendingResults.Any(item => item.Lease.TaskId == progress.Lease.TaskId))
+                throw new InvalidDataException("AGENT_PROGRESS_AFTER_TERMINAL_RESULT");
+            var existing = snapshot.PendingProgresses.SingleOrDefault(item => item.Lease.TaskId == progress.Lease.TaskId);
+            if (existing is not null &&
+                (existing.Lease.LeaseId != progress.Lease.LeaseId ||
+                 existing.Lease.FencingToken != progress.Lease.FencingToken))
+                throw new InvalidDataException("AGENT_PENDING_PROGRESS_CONFLICT");
+            var nextProgresses = snapshot.PendingProgresses
+                .Where(item => item.Lease.TaskId != progress.Lease.TaskId)
+                .Append(progress).ToArray();
+            if (nextProgresses.Length > MaximumPendingProgresses)
+                throw new InvalidDataException("AGENT_PENDING_PROGRESS_LIMIT");
+            await WriteSnapshotAsync(snapshot with { PendingProgresses = nextProgresses }, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<bool> AcknowledgeProgressAsync(
+        string taskId,
+        string leaseId,
+        long fencingToken,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(taskId) || string.IsNullOrWhiteSpace(leaseId) || fencingToken <= 0)
+            throw new ArgumentException("A complete task/lease/fence identity is required.");
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var snapshot = await ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            var match = snapshot.PendingProgresses.SingleOrDefault(item => item.Lease.TaskId == taskId);
+            if (match is null) return false;
+            if (match.Lease.LeaseId != leaseId || match.Lease.FencingToken != fencingToken)
+                throw new InvalidDataException("AGENT_PROGRESS_ACK_IDENTITY_MISMATCH");
+            await WriteSnapshotAsync(snapshot with
+            {
+                PendingProgresses = snapshot.PendingProgresses.Where(item => item.Lease.TaskId != taskId).ToArray()
+            }, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<bool> DiscardStaleProgressAsync(
+        string taskId,
+        string leaseId,
+        long fencingToken,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(taskId) || string.IsNullOrWhiteSpace(leaseId) || fencingToken <= 0)
+            throw new ArgumentException("A complete task/lease/fence identity is required.");
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var snapshot = await ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            var match = snapshot.PendingProgresses.SingleOrDefault(item => item.Lease.TaskId == taskId);
+            if (match is null) return false;
+            if (match.Lease.LeaseId != leaseId || match.Lease.FencingToken != fencingToken)
+                throw new InvalidDataException("AGENT_STALE_PROGRESS_IDENTITY_MISMATCH");
+            await WriteSnapshotAsync(snapshot with
+            {
+                PendingProgresses = snapshot.PendingProgresses.Where(item => item.Lease.TaskId != taskId).ToArray()
+            }, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
     public async Task PersistCompletedResultAsync(
         AgentPendingResult result,
         CancellationToken cancellationToken)
@@ -190,7 +285,9 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             var next = snapshot with
             {
                 ActiveLeases = snapshot.ActiveLeases.Where(item => item.TaskId != result.Lease.TaskId).ToArray(),
-                PendingResults = snapshot.PendingResults.Append(result).ToArray()
+                PendingResults = snapshot.PendingResults.Append(result).ToArray(),
+                PendingProgresses = snapshot.PendingProgresses
+                    .Where(item => item.Lease.TaskId != result.Lease.TaskId).ToArray()
             };
             await WriteSnapshotAsync(next, cancellationToken).ConfigureAwait(false);
         }
@@ -244,7 +341,8 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             if (active.LeaseExpiresAtEpochMs > nowEpochMs) return false;
             var next = snapshot with
             {
-                ActiveLeases = snapshot.ActiveLeases.Where(item => item.TaskId != taskId).ToArray()
+                ActiveLeases = snapshot.ActiveLeases.Where(item => item.TaskId != taskId).ToArray(),
+                PendingProgresses = snapshot.PendingProgresses.Where(item => item.Lease.TaskId != taskId).ToArray()
             };
             await WriteSnapshotAsync(next, cancellationToken).ConfigureAwait(false);
             return true;
@@ -270,7 +368,8 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
                 throw new InvalidDataException("AGENT_STALE_ACTIVE_LEASE_IDENTITY_MISMATCH");
             var next = snapshot with
             {
-                ActiveLeases = snapshot.ActiveLeases.Where(item => item.TaskId != taskId).ToArray()
+                ActiveLeases = snapshot.ActiveLeases.Where(item => item.TaskId != taskId).ToArray(),
+                PendingProgresses = snapshot.PendingProgresses.Where(item => item.Lease.TaskId != taskId).ToArray()
             };
             await WriteSnapshotAsync(next, cancellationToken).ConfigureAwait(false);
             return true;
@@ -380,18 +479,27 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
 
     private static void ValidateSnapshot(AgentExecutionJournalSnapshot snapshot)
     {
-        if (snapshot.ActiveLeases is null || snapshot.PendingResults is null ||
+        if (snapshot.ActiveLeases is null || snapshot.PendingResults is null || snapshot.PendingProgresses is null ||
             snapshot.ActiveLeases.Count > MaximumActiveLeases ||
             snapshot.PendingResults.Count > MaximumPendingResults ||
+            snapshot.PendingProgresses.Count > MaximumPendingProgresses ||
             snapshot.ActiveLeases.Any(item => item is null) ||
-            snapshot.PendingResults.Any(item => item is null || item.Lease is null))
+            snapshot.PendingResults.Any(item => item is null || item.Lease is null) ||
+            snapshot.PendingProgresses.Any(item => item is null || item.Lease is null))
             throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_STRUCTURE_INVALID");
         if (snapshot.ActiveLeases.Select(item => item.TaskId).Distinct(StringComparer.Ordinal).Count() != snapshot.ActiveLeases.Count ||
-            snapshot.PendingResults.Select(item => item.Lease.TaskId).Distinct(StringComparer.Ordinal).Count() != snapshot.PendingResults.Count)
+            snapshot.PendingResults.Select(item => item.Lease.TaskId).Distinct(StringComparer.Ordinal).Count() != snapshot.PendingResults.Count ||
+            snapshot.PendingProgresses.Select(item => item.Lease.TaskId).Distinct(StringComparer.Ordinal).Count() != snapshot.PendingProgresses.Count)
             throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_DUPLICATE_TASK");
         foreach (var lease in snapshot.ActiveLeases) ValidateLease(lease);
         foreach (var result in snapshot.PendingResults) ValidatePendingResult(result);
-        if (snapshot.ActiveLeases.Any(active => snapshot.PendingResults.Any(pending => pending.Lease.TaskId == active.TaskId)))
+        foreach (var progress in snapshot.PendingProgresses) ValidatePendingProgress(progress);
+        if (snapshot.ActiveLeases.Any(active => snapshot.PendingResults.Any(pending => pending.Lease.TaskId == active.TaskId)) ||
+            snapshot.PendingProgresses.Any(progress =>
+                !snapshot.ActiveLeases.Any(active => active.TaskId == progress.Lease.TaskId &&
+                    active.LeaseId == progress.Lease.LeaseId && active.FencingToken == progress.Lease.FencingToken)) ||
+            snapshot.PendingProgresses.Any(progress =>
+                snapshot.PendingResults.Any(result => result.Lease.TaskId == progress.Lease.TaskId)))
             throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_DUPLICATE_TASK");
     }
 
@@ -404,6 +512,14 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             !System.Text.RegularExpressions.Regex.IsMatch(lease.PayloadSha256, "^[a-fA-F0-9]{64}$") ||
             lease.RequiredCapabilities is null || lease.RequiredCapabilities.Count > 16)
             throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_LEASE_INVALID");
+    }
+
+    private static void ValidatePendingProgress(AgentPendingProgress progress)
+    {
+        if (progress.Lease is null || progress.ProgressPercent is < 0 or > 99 ||
+            string.IsNullOrWhiteSpace(progress.ProgressMessage) || progress.ProgressMessage.Length > 512)
+            throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_PROGRESS_INVALID");
+        ValidateLease(progress.Lease);
     }
 
     private static void ValidatePendingResult(AgentPendingResult result)
