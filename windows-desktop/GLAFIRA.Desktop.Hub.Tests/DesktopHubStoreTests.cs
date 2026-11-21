@@ -145,6 +145,44 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void ExactDuplicateCompletionIsAcknowledgedAfterStoreRestartButConflictIsRejected()
+    {
+        var now = DateTimeOffset.UtcNow;
+        const string agentId = "agent-duplicate-ack";
+        const string taskId = "duplicate-ack-task";
+        const string acceptedResult = "durable accepted result";
+        _store.RegisterAgent(new HubAgentRegistration(agentId, "device-duplicate-ack", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask(taskId), now);
+
+        var lease = _store.ClaimNext(agentId, now.AddSeconds(1), TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+        Assert.True(_store.Complete(
+            agentId, taskId, lease.LeaseId, lease.FencingToken,
+            succeeded: true, now.AddSeconds(2), result: acceptedResult));
+
+        // Simulate a lost response to the Agent: the durable commit succeeded, but
+        // the sender did not observe its ACK before the Hub process restarted.
+        var reopened = new DesktopHubStore(_databasePath);
+        Assert.True(reopened.Complete(
+            agentId, taskId, lease.LeaseId, lease.FencingToken,
+            succeeded: true, now.AddMinutes(2), result: acceptedResult));
+
+        // The same lease identity with a different terminal outcome or payload is
+        // not an idempotent retry and must never replace the canonical result.
+        Assert.False(reopened.Complete(
+            agentId, taskId, lease.LeaseId, lease.FencingToken,
+            succeeded: false, now.AddMinutes(2), result: acceptedResult));
+        Assert.False(reopened.Complete(
+            agentId, taskId, lease.LeaseId, lease.FencingToken,
+            succeeded: true, now.AddMinutes(2), result: "conflicting result"));
+
+        Assert.Equal(HubTaskState.Succeeded, reopened.GetTaskState(taskId));
+        Assert.Equal(acceptedResult, reopened.GetTaskResult(taskId)?.Result);
+        Assert.Null(reopened.GetTaskResult(taskId)?.ErrorCode);
+        Assert.Single(reopened.GetTaskHistory(taskId), item => item.EventCode == "TASK_SUCCEEDED");
+    }
+
+    [Fact]
     public void StaleFencingTokenCannotCompleteReissuedLease()
     {
         var now = DateTimeOffset.UtcNow;

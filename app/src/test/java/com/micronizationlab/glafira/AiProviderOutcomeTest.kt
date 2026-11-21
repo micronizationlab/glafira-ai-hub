@@ -23,6 +23,40 @@ class AiProviderOutcomeTest {
         assertFalse(providerHttpFailure(503).error.canRetryAutomatically)
     }
 
+    @Test fun providerHttpStatusMatrixSeparatesExplicitRejectionsFromAmbiguousOutcomes() {
+        listOf(400, 401, 403, 404, 409, 422, 429).forEach { status ->
+            assertEquals("HTTP $status", AiRequestOutcome.REJECTED, providerHttpFailure(status).error.outcome)
+            assertFalse("HTTP $status", providerHttpFailure(status).error.outcome == AiRequestOutcome.UNKNOWN)
+        }
+        listOf(408, 500, 502, 503, 504, 599).forEach { status ->
+            val failure = providerHttpFailure(status)
+            assertEquals("HTTP $status", AiRequestOutcome.UNKNOWN, failure.error.outcome)
+            assertFalse("HTTP $status", failure.error.canRetryAutomatically)
+        }
+        assertEquals(AiProviderErrorCategory.AUTHENTICATION, providerHttpFailure(401).error.category)
+        assertEquals(AiProviderErrorCategory.AUTHENTICATION, providerHttpFailure(403).error.category)
+        assertEquals(AiProviderErrorCategory.MODEL_UNAVAILABLE, providerHttpFailure(404).error.category)
+    }
+
+    @Test fun preDispatchNetworkAndTimeoutAreRetryableButTlsAndPostDispatchFailuresAreNot() {
+        listOf(AiProviderErrorCategory.NETWORK, AiProviderErrorCategory.TIMEOUT).forEach { category ->
+            val failure = providerTransportFailure(category, modelPostAttempted = false, message = "before dispatch").error
+            assertEquals(AiRequestOutcome.NOT_SENT, failure.outcome)
+            assertTrue(failure.canRetryAutomatically)
+        }
+        val tlsBeforeDispatch = providerTransportFailure(
+            AiProviderErrorCategory.TLS, modelPostAttempted = false, message = "TLS failed"
+        ).error
+        assertEquals(AiRequestOutcome.NOT_SENT, tlsBeforeDispatch.outcome)
+        assertFalse(tlsBeforeDispatch.canRetryAutomatically)
+
+        listOf(AiProviderErrorCategory.NETWORK, AiProviderErrorCategory.TIMEOUT, AiProviderErrorCategory.TLS).forEach { category ->
+            val failure = providerTransportFailure(category, modelPostAttempted = true, message = "after dispatch").error
+            assertEquals(AiRequestOutcome.UNKNOWN, failure.outcome)
+            assertFalse(failure.canRetryAutomatically)
+        }
+    }
+
     @Test fun legacyNetworkFailureIsUnknownBecauseRequestMayHaveReachedProvider() {
         val result = classifyLegacyProviderResponse("Ошибка сети (OpenAI): connection reset")
         assertEquals(AiRequestOutcome.UNKNOWN, (result as AiProviderResult.Failure).error.outcome)

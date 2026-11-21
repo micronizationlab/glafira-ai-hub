@@ -82,7 +82,7 @@ fun deleteProjectHistory(context: Context, projectId: String): Int {
     val files = context.filesDir.listFiles().orEmpty()
     val historyKeys = files.map { it.name.substringBefore(".json") }
         .filter { it.startsWith("chat_${projectId}_") }.distinct().map { it.removePrefix("chat_") }
-    historyKeys.forEach { historyStore(context.filesDir, it).delete() }
+    historyKeys.forEach { deleteHistory(context, it) }
     val pinned = files.filter { it.name.startsWith("pinned_${projectId}_") }
     pinned.forEach { check(!it.exists() || it.delete()) { "Cannot delete ${it.name}" } }
     return historyKeys.size + pinned.size
@@ -90,7 +90,7 @@ fun deleteProjectHistory(context: Context, projectId: String): Int {
 
 // ===== 6. Очистка чата =====
 fun clearChat(context: Context, historyKey: String): Boolean = try {
-    historyStore(context.filesDir, historyKey).delete()
+    deleteHistory(context, historyKey)
     context.filesDir.listFiles().orEmpty().filter { it.name.startsWith("pinned_$historyKey.json") }.forEach {
         check(!it.exists() || it.delete()) { "Cannot delete ${it.name}" }
     }

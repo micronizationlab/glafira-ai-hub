@@ -44,39 +44,32 @@ object BackupArchive {
 
     fun create(context: Context, passphrase: CharArray): File {
         require(passphrase.size >= 12) { "Пароль резервной копии должен содержать не менее 12 символов." }
-        val sourceFiles = collectFiles(context.filesDir)
-        val totalBytes = sourceFiles.sumOf { it.length() }
-        require(totalBytes <= MAX_ARCHIVE_BYTES) { "Размер данных превышает допустимый размер резервной копии." }
-
-        val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
-        val key = deriveKey(passphrase, salt, KDF_ITERATIONS)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(TAG_BITS, ByteArray(IV_BYTES).also(SecureRandom()::nextBytes)))
-        }
-        val iv = cipher.iv
+        val portableRoot = File(context.cacheDir, "glafira-portable-history-${java.util.UUID.randomUUID()}")
         val output = File(context.cacheDir, "glafira-backup-${System.currentTimeMillis()}.glb")
-
-        val manifest = JSONObject().apply {
-            put("format", "GLAFIRA_BACKUP")
-            put("version", FORMAT_VERSION)
-            put("createdAt", java.time.Instant.now().toString())
-            put("appId", context.packageName)
-            put("fileCount", sourceFiles.size)
-            put("totalBytes", totalBytes)
-            put("excluded", JSONArray().put("API keys").put("OAuth tokens").put("device-bound Android Keystore keys"))
-            put("safePreferences", collectSafePreferences(context))
-            put("files", JSONArray().apply {
-                sourceFiles.forEach { file ->
-                    put(JSONObject().apply {
-                        put("path", file.relativeTo(context.filesDir).invariantSeparatorsPath)
-                        put("size", file.length())
-                        put("sha256", sha256(file))
-                    })
-                }
-            })
-        }
-
         try {
+            val sourceFiles = collectArchiveSources(context, portableRoot)
+            val totalBytes = sourceFiles.sumOf { it.file.length() }
+            require(totalBytes <= MAX_ARCHIVE_BYTES) { "Размер данных превышает допустимый размер резервной копии." }
+            val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
+            val key = deriveKey(passphrase, salt, KDF_ITERATIONS)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+                init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(TAG_BITS, ByteArray(IV_BYTES).also(SecureRandom()::nextBytes)))
+            }
+            val iv = cipher.iv
+            val manifest = JSONObject().apply {
+                put("format", "GLAFIRA_BACKUP")
+                put("version", FORMAT_VERSION)
+                put("createdAt", java.time.Instant.now().toString())
+                put("appId", context.packageName)
+                put("fileCount", sourceFiles.size)
+                put("totalBytes", totalBytes)
+                put("excluded", JSONArray().put("API keys").put("OAuth tokens").put("device-bound Android Keystore keys"))
+                put("safePreferences", collectSafePreferences(context))
+                put("files", JSONArray().apply { sourceFiles.forEach { source ->
+                    put(JSONObject().put("path", source.relativePath).put("size", source.file.length())
+                        .put("sha256", sha256(source.file)))
+                } })
+            }
             DataOutputStream(BufferedOutputStream(FileOutputStream(output))).use { header ->
                 header.write(MAGIC)
                 header.writeInt(FORMAT_VERSION)
@@ -90,10 +83,9 @@ object BackupArchive {
                     zip.putNextEntry(ZipEntry("manifest.json"))
                     zip.write(manifest.toString().toByteArray(Charsets.UTF_8))
                     zip.closeEntry()
-                    sourceFiles.forEach { file ->
-                        val relative = file.relativeTo(context.filesDir).invariantSeparatorsPath
-                        zip.putNextEntry(ZipEntry("data/$relative"))
-                        FileInputStream(file).use { it.copyTo(zip) }
+                    sourceFiles.forEach { source ->
+                        zip.putNextEntry(ZipEntry("data/${source.relativePath}"))
+                        FileInputStream(source.file).use { it.copyTo(zip) }
                         zip.closeEntry()
                     }
                 }
@@ -103,6 +95,8 @@ object BackupArchive {
         } catch (error: Exception) {
             output.delete()
             throw error
+        } finally {
+            portableRoot.deleteRecursively()
         }
     }
 
@@ -215,11 +209,12 @@ object BackupArchive {
     }
 
     private fun applyStaged(context: Context, files: List<StagedFile>, safePreferences: JSONObject) {
+        val preparedFiles = preparePortableHistories(context, files)
         val targetRoot = context.filesDir.canonicalFile
-        val restoredPaths = files.map { it.relativePath }.toSet()
+        val restoredPaths = preparedFiles.map { it.relativePath }.toSet()
 
         // Restore an exact snapshot: files created after the selected backup must not survive it.
-        files.forEach { staged ->
+        preparedFiles.forEach { staged ->
             val target = File(targetRoot, staged.relativePath).canonicalFile
             require(target.path.startsWith(targetRoot.path + File.separator)) { "Недопустимый путь в архиве." }
             target.parentFile?.mkdirs()
@@ -252,6 +247,7 @@ object BackupArchive {
     }
 
     private data class StagedFile(val relativePath: String, val file: File)
+    private data class ArchiveSource(val relativePath: String, val file: File)
     private data class StagedArchive(
         val directory: File,
         val files: List<StagedFile>,
@@ -456,6 +452,54 @@ object BackupArchive {
         }
         check(editor.commit()) { "Не удалось восстановить настройки приложения." }
     }
+
+    /**
+     * Device-bound chat ciphertext is never copied into a portable archive. Histories are
+     * decrypted inside the app, placed only in the passphrase-encrypted archive stream and then
+     * re-encrypted with the destination device key before restore activation.
+     */
+    private fun collectArchiveSources(context: Context, portableRoot: File): List<ArchiveSource> {
+        val root = context.filesDir
+        val regular = collectFiles(root).filterNot { isHistoryArtifact(it.name) }.map {
+            ArchiveSource(it.relativeTo(root).invariantSeparatorsPath, it)
+        }
+        val histories = root.listFiles().orEmpty()
+            .filter { it.isFile && it.name.startsWith("chat_") && it.name.endsWith(".json") }
+            .map { it.name.removePrefix("chat_").removeSuffix(".json") }
+            .distinct()
+            .sorted()
+            .map { key ->
+                val portable = File(portableRoot, portableHistoryEntryName(key)).canonicalFile
+                require(portable.path.startsWith(portableRoot.canonicalPath + File.separator))
+                portable.parentFile!!.mkdirs()
+                portable.writeText(encodeHistoryJson(loadHistory(context, key)))
+                ArchiveSource(portableHistoryEntryName(key), portable)
+            }
+        val result = regular + histories
+        require(result.map { it.relativePath }.distinct().size == result.size) { "Повторяющиеся пути резервной копии." }
+        require(result.size <= MAX_FILES) { "Слишком много файлов для резервной копии." }
+        return result.sortedBy { it.relativePath }
+    }
+
+    private fun preparePortableHistories(context: Context, files: List<StagedFile>): List<StagedFile> {
+        val portable = files.filter { it.relativePath.startsWith("portable-history/") }
+        if (portable.isEmpty()) return files
+        val regularPaths = files.filterNot { it in portable }.map { it.relativePath }.toSet()
+        val converted = portable.map { staged ->
+            val key = historyKeyFromPortableEntry(staged.relativePath)
+            val targetPath = "chat_$key.json"
+            require(targetPath !in regularPaths) { "Архив содержит две версии одной истории." }
+            val messages = decodeHistoryJson(staged.file.readText())
+            val encryptedDirectory = File(staged.file.parentFile, "device-encrypted").apply { mkdirs() }
+            encryptedHistoryStore(encryptedDirectory, key, HistoryCryptoRuntime.protector()).write(messages)
+            check(staged.file.delete()) { "Не удалось удалить переносимую plaintext-историю после перешифрования." }
+            StagedFile(targetPath, File(encryptedDirectory, targetPath))
+        }
+        return files.filterNot { it in portable } + converted
+    }
+
+    private fun isHistoryArtifact(name: String): Boolean =
+        name.startsWith("chat_") && (name.contains(".json") || name.contains(".json."))
 
     private fun collectFiles(root: File): List<File> {
         val result = mutableListOf<File>()

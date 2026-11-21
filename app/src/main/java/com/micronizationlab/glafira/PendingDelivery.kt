@@ -35,7 +35,7 @@ internal object PendingDeliveryRuntime {
 }
 
 internal fun appendPendingUserMessage(context: Context, message: PendingMessage): List<Msg> =
-    historyStore(context.filesDir, "${message.projectId}_${message.agentName}").update({ emptyList() }) { current ->
+    updateHistory(context, "${message.projectId}_${message.agentName}") { current ->
         if (current.any { it.operationId == message.id && it.isUser }) current
         else {
             // The old queue already wrote its user message before enqueueing. Adopt that row.

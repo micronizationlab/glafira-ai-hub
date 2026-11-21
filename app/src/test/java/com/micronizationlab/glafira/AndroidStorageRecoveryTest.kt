@@ -7,6 +7,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
+import javax.crypto.spec.SecretKeySpec
 
 class AndroidStorageRecoveryTest {
     @get:Rule val temporary = TemporaryFolder()
@@ -141,6 +142,74 @@ class AndroidStorageRecoveryTest {
         assertFalse(File(root, "chat_p_a.json.bak").exists())
     }
 
+    @Test fun plaintextHistoryMigrationPreservesMessagesAndRemovesCommittedPlaintext() {
+        val root = directory()
+        val key = "project_agent"
+        val secret = "legacy-sensitive-message"
+        File(root, "chat_$key.json").writeText(encodeHistoryJson(listOf(Msg(secret, true, "12:00"))))
+
+        val restored = encryptedHistoryStore(root, key, historyProtector(1)).read { emptyList() }
+
+        assertEquals(listOf(secret), restored.map { it.text })
+        listOf(File(root, "chat_$key.json"), File(root, "chat_$key.json.bak")).filter(File::exists).forEach {
+            assertFalse(it.readText().contains(secret))
+            assertTrue(it.readText().contains("GLAFIRA_ENCRYPTED_HISTORY"))
+        }
+    }
+
+    @Test fun encryptedHistoryRestartRetainsDataWithoutPlaintextGenerations() {
+        val root = directory()
+        val protector = historyProtector(2)
+        val store = encryptedHistoryStore(root, "p_a", protector)
+        store.write(listOf(Msg("first-secret", true, "")))
+        store.write(listOf(Msg("second-secret", false, "")))
+
+        assertEquals("second-secret", encryptedHistoryStore(root, "p_a", protector).read { emptyList() }.single().text)
+        listOf(File(root, "chat_p_a.json"), File(root, "chat_p_a.json.bak")).forEach {
+            assertFalse(it.readText().contains("first-secret"))
+            assertFalse(it.readText().contains("second-secret"))
+        }
+    }
+
+    @Test fun replacementDeviceKeyFailsClosedAndPreservesCiphertextEvidence() {
+        val root = directory()
+        encryptedHistoryStore(root, "p_a", historyProtector(3)).write(listOf(Msg("device-bound", true, "")))
+
+        val failure = runCatching {
+            encryptedHistoryStore(root, "p_a", historyProtector(4)).read { emptyList() }
+        }.exceptionOrNull()
+
+        assertNotNull(failure)
+        assertTrue(root.listFiles().orEmpty().any { it.name.startsWith("chat_p_a.json.corrupt-") })
+        assertTrue(root.listFiles().orEmpty().filter { it.name.startsWith("chat_p_a.json.corrupt-") }
+            .all { !it.readText().contains("device-bound") })
+    }
+
+    @Test fun historyCiphertextCannotBeMovedToAnotherConversation() {
+        val root = directory()
+        val protector = historyProtector(5)
+        encryptedHistoryStore(root, "project_a", protector).write(listOf(Msg("scoped", true, "")))
+        File(root, "chat_project_a.json").copyTo(File(root, "chat_project_b.json"))
+
+        assertNotNull(runCatching {
+            encryptedHistoryStore(root, "project_b", protector).read { emptyList() }
+        }.exceptionOrNull())
+    }
+
+    @Test fun failedHistoryMigrationLeavesOriginalPlaintextForRetry() {
+        val root = directory()
+        val file = File(root, "chat_p_a.json")
+        file.writeText(encodeHistoryJson(listOf(Msg("must-survive", true, ""))))
+        val failing = object : MemoryPayloadProtector {
+            override fun protect(memoryId: MemoryIdentifier, plaintext: ByteArray): String = error("injected")
+            override fun unprotect(memoryId: MemoryIdentifier, encoded: String): ByteArray = error("unused")
+        }
+
+        assertNotNull(runCatching { encryptedHistoryStore(root, "p_a", failing).read { emptyList() } }.exceptionOrNull())
+        assertTrue(file.readText().contains("must-survive"))
+        assertFalse(File(root, "chat_p_a.json.bak").exists())
+    }
+
     @Test fun concurrentEnqueueAndClaimPreserveNewOperations() {
         val root = directory()
         val store = PendingMessageStore(root, "session")
@@ -235,6 +304,10 @@ class AndroidStorageRecoveryTest {
     @Test fun historyKeysCannotEscapeStorageDirectory() {
         runCatching { historyStore(directory(), "../../outside") }.onSuccess { fail("Unsafe filename accepted") }
     }
+
+    private fun historyProtector(seed: Int): MemoryPayloadProtector = AesGcmMemoryPayloadProtector(
+        SecretKeySpec(ByteArray(32) { (it + seed).toByte() }, "AES")
+    )
 
     @Test fun restoredInFlightRequiresReviewEvenWithinSameProcess() {
         val store = PendingMessageStore(directory(), "session")
