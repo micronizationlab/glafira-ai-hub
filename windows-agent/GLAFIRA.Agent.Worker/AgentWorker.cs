@@ -18,7 +18,10 @@ public sealed class AgentWorker(
     AgentTaskPollingCoordinator taskPollingCoordinator) : BackgroundService
 {
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan PollTick = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MinimumPollDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MaximumIdlePollDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MaximumFailurePollDelay = TimeSpan.FromSeconds(60);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -56,7 +59,10 @@ public sealed class AgentWorker(
         try
         {
             var nextHeartbeat = DateTimeOffset.UtcNow.Add(HeartbeatInterval);
-            using var timer = new PeriodicTimer(PollInterval);
+            var nextPoll = DateTimeOffset.UtcNow;
+            var pollDelay = MinimumPollDelay;
+            var wasReady = false;
+            using var timer = new PeriodicTimer(PollTick);
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
                 if (credential is null)
@@ -65,29 +71,60 @@ public sealed class AgentWorker(
                     continue;
                 }
 
-                if (DateTimeOffset.UtcNow >= nextHeartbeat)
+                var now = DateTimeOffset.UtcNow;
+                if (now >= nextHeartbeat)
                 {
                     await SendHeartbeatAsync(credential, stoppingToken).ConfigureAwait(false);
                     nextHeartbeat = DateTimeOffset.UtcNow.Add(HeartbeatInterval);
                 }
 
-                if (runtimeState.Status == AgentServiceStatus.Ready &&
-                    taskHandlers.RegisteredTaskTypes.Count > 0)
+                var ready = runtimeState.Status == AgentServiceStatus.Ready &&
+                    taskHandlers.RegisteredTaskTypes.Count > 0;
+                if (!ready)
                 {
-                    try
+                    wasReady = false;
+                    continue; // No claims while disconnected, revoked, paused or awaiting approval.
+                }
+
+                if (!wasReady)
+                {
+                    wasReady = true;
+                    nextPoll = DateTimeOffset.UtcNow;
+                    pollDelay = MinimumPollDelay;
+                }
+                if (DateTimeOffset.UtcNow < nextPoll)
+                    continue;
+
+                try
+                {
+                    var worked = await taskPollingCoordinator.PollOnceAsync(credential, stoppingToken)
+                        .ConfigureAwait(false);
+                    pollDelay = worked
+                        ? MinimumPollDelay
+                        : TimeSpan.FromMilliseconds(Math.Min(
+                            MaximumIdlePollDelay.TotalMilliseconds,
+                            Math.Max(MinimumPollDelay.TotalMilliseconds, pollDelay.TotalMilliseconds * 2)));
+                    nextPoll = DateTimeOffset.UtcNow.Add(pollDelay);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or TaskCanceledException)
+                {
+                    logger.LogWarning(error,
+                        "GLAFIRA Agent {AgentId} task polling/execution failed; durable lease/outbox state remains journaled and retry is backed off.",
+                        credential.AgentId);
+                    pollDelay = TimeSpan.FromMilliseconds(Math.Min(
+                        MaximumFailurePollDelay.TotalMilliseconds,
+                        Math.Max(MinimumPollDelay.TotalMilliseconds, pollDelay.TotalMilliseconds * 2)));
+                    nextPoll = DateTimeOffset.UtcNow.Add(pollDelay);
+
+                    if (error is HttpRequestException or IOException or TaskCanceledException)
                     {
-                        await taskPollingCoordinator.PollOnceAsync(credential, stoppingToken)
-                            .ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or TaskCanceledException)
-                    {
-                        logger.LogWarning(error,
-                            "GLAFIRA Agent {AgentId} task polling/execution did not complete; durable lease/outbox state will be reconciled on the next poll.",
-                            credential.AgentId);
+                        runtimeState.ClearOwnerProfile();
+                        runtimeState.SetStatus(AgentServiceStatus.Paused);
+                        wasReady = false; // Heartbeat must re-establish owner-approved liveness before polling resumes.
                     }
                 }
             }
