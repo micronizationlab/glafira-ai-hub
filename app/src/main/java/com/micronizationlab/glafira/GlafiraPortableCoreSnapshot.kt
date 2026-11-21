@@ -151,7 +151,8 @@ internal class GlafiraPortableCoreSnapshot(
                 table.columns.forEach { column ->
                     val value = row.get(column)
                     when {
-                        value === JSONObject.NULL -> require(column in NULLABLE)
+                        value === JSONObject.NULL -> require(column in NULLABLE || (table.name == TRACE && column == "task_id"))
+                        column == "event_id" && table.name == TRACE -> require(value is String && value.length <= MAX_FIELD_CHARS)
                         column == "priority" -> require((value is Int || value is Long) && (value as Number).toLong() in -1000L..1000L)
                         column in NUMBERS -> require((value is Int || value is Long) && (value as Number).toLong() >= 0)
                         else -> require(value is String && value.length <= MAX_FIELD_CHARS)
@@ -194,18 +195,14 @@ internal class GlafiraPortableCoreSnapshot(
                     GlafiraCoreTraceActorType.valueOf(row.getString("actor_type"))
                     GlafiraCoreTraceEventType.valueOf(row.getString("event_type"))
                     GlafiraCoreTraceDataClassification.valueOf(row.getString("data_classification"))
-                    row.optString("parent_event_id").takeIf { it.isNotEmpty() }?.let {
-                        require(GlafiraCoreTraceEvent.isSafeIdentifier(it))
+                    if (!row.isNull("parent_event_id")) {
+                        require(GlafiraCoreTraceEvent.isSafeIdentifier(row.getString("parent_event_id")))
                     }
                     listOf("target_type", "result_status", "error_code").forEach { column ->
-                        row.optString(column).takeIf { it.isNotEmpty() }?.let {
-                            require(GlafiraCoreTraceEvent.isSafeCode(it))
-                        }
+                        if (!row.isNull(column)) require(GlafiraCoreTraceEvent.isSafeCode(row.getString(column)))
                     }
                     listOf("target_id", "approval_ref").forEach { column ->
-                        row.optString(column).takeIf { it.isNotEmpty() }?.let {
-                            require(GlafiraCoreTraceEvent.isSafeIdentifier(it))
-                        }
+                        if (!row.isNull(column)) require(GlafiraCoreTraceEvent.isSafeIdentifier(row.getString(column)))
                     }
                     val evidence = JSONArray(row.getString("evidence_refs"))
                     require(evidence.length() <= GlafiraCoreTraceEvent.MAX_EVIDENCE_REFS)
@@ -271,7 +268,7 @@ internal class GlafiraPortableCoreSnapshot(
             "core_action_approvals", "core_desktop_leases", "core_desktop_nodes",
             GlafiraCoreLiveRunStore.TABLE
         )
-        private val NULLABLE = setOf("deadline_at", "retry_at", "last_error", "result_ciphertext", "error_code", "reviewed_at", "from_state", "reason", "task_id", "parent_event_id", "target_type", "target_id", "result_status", "approval_ref", "duration_ms")
+        private val NULLABLE = setOf("deadline_at", "retry_at", "last_error", "result_ciphertext", "error_code", "reviewed_at", "from_state", "reason", "parent_event_id", "target_type", "target_id", "result_status", "approval_ref", "duration_ms")
         private val NUMBERS = setOf("event_id", "ordinal", "created_at", "updated_at", "attempt_count", "deadline_at", "retry_at", "completed_at", "reviewed_at", "changed_at", "occurred_at", "redaction_applied", "secret_values_stored", "duration_ms")
         private val TABLES = listOf(
             Table(TASKS, listOf("task_id", "project_id", "task_type", "payload_ciphertext", "origin", "priority", "state", "created_at", "updated_at", "attempt_count", "deadline_at", "idempotency_key", "required_scopes", "retry_at", "last_error"), "payload_ciphertext"),
