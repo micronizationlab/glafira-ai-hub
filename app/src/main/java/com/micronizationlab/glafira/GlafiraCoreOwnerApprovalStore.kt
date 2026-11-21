@@ -282,6 +282,19 @@ class GlafiraCoreOwnerApprovalStore(
                         row.approvedAt, row.grantExpiresAt, task.taskId
                     )
                 }
+            } else if (row != null && row.status == APPROVED &&
+                !ownershipMatches(task, row.ownerCoreId, row.ownerGeneration)
+            ) {
+                db.update(
+                    "core_action_approvals",
+                    ContentValues().apply {
+                        put("status", EXPIRED)
+                        putNull("approved_at")
+                        putNull("grant_expires_at")
+                    },
+                    "task_id = ? AND status = ? AND owner_core_id = ? AND owner_generation = ?",
+                    arrayOf(task.taskId, APPROVED, row.ownerCoreId, row.ownerGeneration)
+                )
             } else if (row != null && row.status == APPROVED && row.grantExpiresAt <= nowMillis) {
                 db.update("core_action_approvals", ContentValues().apply { put("status", EXPIRED) },
                     "task_id = ? AND status = ?", arrayOf(task.taskId, APPROVED))
