@@ -382,7 +382,8 @@ public sealed class DesktopHubStore
             command.Transaction = transaction;
             command.CommandText = """
                 SELECT t.task_id, t.project_id, t.task_type, t.payload_ref, t.payload_sha256,
-                       t.required_capabilities_json, t.effect_risk, t.approval_ref, t.fencing_token
+                       t.required_capabilities_json, t.effect_risk, t.approval_ref, t.fencing_token,
+                       t.idempotency_key
                 FROM Tasks t
                 WHERE t.state = 'Queued'
                   AND NOT EXISTS (
@@ -406,7 +407,7 @@ public sealed class DesktopHubStore
                     candidates.Add(new Candidate(
                         reader.GetString(0), reader.GetString(1), reader.GetString(2),
                         reader.GetString(3), reader.GetString(4), (HubTaskEffectRisk)reader.GetInt32(6),
-                        reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt64(8)));
+                        reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt64(8), reader.GetString(9)));
                     break;
                 }
             }
@@ -456,7 +457,7 @@ public sealed class DesktopHubStore
 
         return new HubTaskLease(
             selected.TaskId, selected.ProjectId, agentId, leaseId, nextFence, expires,
-            selected.TaskType, selected.PayloadRef, selected.PayloadSha256,
+            selected.TaskType, selected.IdempotencyKey, selected.PayloadRef, selected.PayloadSha256,
             selected.EffectRisk, selected.ApprovalRef);
     }
 
@@ -1060,5 +1061,6 @@ public sealed class DesktopHubStore
         string PayloadSha256,
         HubTaskEffectRisk EffectRisk,
         string? ApprovalRef,
-        long FencingToken);
+        long FencingToken,
+        string IdempotencyKey);
 }
