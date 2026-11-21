@@ -302,17 +302,19 @@ fun BackupSettingsSection() {
                     Button(
                         onClick = onManualBackupClick,
                         enabled = !busy,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        // Put the label on the Button's child so Material3's own clickable
-                        // semantics node merges it; an outer semantics wrapper is exposed
-                        // as a separate non-clickable node by UiAutomator on API 35.
-                        Text(
-                            "Сохранить сейчас",
-                            modifier = Modifier.semantics {
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics(mergeDescendants = true) {
+                                role = Role.Button
                                 contentDescription = "Создать резервную копию сейчас"
+                                onClick {
+                                    onManualBackupClick()
+                                    true
+                                }
+                                if (busy) disabled()
                             }
-                        )
+                    ) {
+                        Text("Сохранить сейчас")
                     }
                     OutlinedButton(
                         onClick = {
