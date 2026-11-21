@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `b007837cf0e87d843774316c3712c41c8f2c8074` (refresh before each integration).  
+**Baseline main for this ledger revision:** `35a2ef4ff141c70a6e325073243dc84f98c80d1a` (refresh before each integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -31,7 +31,7 @@
 12. [x] Добавить fairness/starvation bounds между проектами.
 13. [ ] Проверить bounded worker pool, backpressure и configurable concurrency.
 14. [ ] Проверить stale worker fencing после lease expiry и повторной выдачи.
-15. [ ] Добавить crash recovery для каждого non-terminal state.
+15. [x] Добавить crash recovery для каждого non-terminal state.
 16. [ ] Сделать failure injection между claim, handler, progress, result и ACK.
 17. [ ] Разделить provider outcomes: rejected, unsent, unknown; не replay-ить unknown blindly.
 18. [ ] Завершить durable result outbox с retry/backoff и explicit ACK.
@@ -206,10 +206,11 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `b007837cf0e87d843774316c3712c41c8f2c8074`.
+**Refreshed main after this wave:** `35a2ef4ff141c70a6e325073243dc84f98c80d1a`.
 
 ### Verified complete
 
+- Step 15: non-terminal restart behavior is covered across queued, running safe-read, uncertain-write, waiting-for-network, waiting-for-owner and retry-scheduled states; terminal states remain immutable after reopen.
 - Step 1: baseline captured and refreshed at each integration; this ledger revision starts from main `195a45e430b271d3303a3cdca5bbf01dbb241485`.
 - Steps 6–7, 10–12 and 15: current Core has independent-connection/concurrent-claim, duplicate-claim, DAG cycle/cross-project/dependency-join, project fairness and process-restart recovery instrumentation coverage. Exact Core acceptance remains dependent on the managed emulator and the remaining failure-injection/trace cases.
 - Steps 26–27: AndroidJUnit4 suite is selected by CI; managed emulator executed instrumentation tests, JUnit reports were non-empty and diagnostics uploaded (PR #227 exact-head run `44841507909`).
@@ -223,8 +224,10 @@
 
 ### In progress
 
-- Step 5: PR #240 added v7→v9 and v8→v9 Core migration coverage, but v1/v2 acceptance remains open in PR #245; existing v3–v6 cases plus v7/v8 are covered. Do not mark step 5 complete until PR #245 emulator acceptance passes.
+- Step 5: PR #240 added v7→v9 and v8→v9 Core migration coverage; existing v3–v6 cases are also present. PR #245 adds v1/v2 upgrade coverage and is awaiting exact-head emulator acceptance. Keep step 5 open until that run passes.
+- Step 10: PR #247 adds explicit missing-predecessor and duplicate-edge tests at store, planner and durable-plan boundaries; Android JVM and emulator validation are pending.
 - Step 9: complete. PR #240's independent-connection cancellation-vs-result-commit race passed on managed emulator.
+- Step 15: complete. Current Core restart tests cover queued, running safe-read, uncertain-write, waiting-for-network, waiting-for-owner, retry-scheduled and terminal tasks across reopen/recovery; PR #240's emulator run executed the regression suite.
 - Step 76: no production Windows Agent task handler is registered. The Agent remains connected but intentionally does not claim work. The next safe handler must match a real Core task type/capability and have a bounded, useful result contract; do not add a fake generic executor.
 - Steps 77–78 and 82, 84–90: payload/handler isolation, sandbox/resource limits, unknown-outcome classification, owner pause/preemption, tray state, credential rotation/revocation, installer/service lifecycle, fleet harness and physical two-PC acceptance remain open.
 - iOS step 113 is partial: PR #241 displays paired-device identifiers from Keychain metadata after import (`41d2ca035450a7b2709d70425401153f5fae1ea1`); it correctly says “key saved”, not “connected”. Projects, authenticated Core session and live data are still placeholders.
