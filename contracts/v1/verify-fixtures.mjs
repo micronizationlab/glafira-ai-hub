@@ -84,11 +84,13 @@ function assertInvalidOwnership(mutator, reason) {
 function assertInvalidOwnershipSemantics(mutator, reason) {
   const candidate = structuredClone(transfer);
   mutator(candidate);
+  const approvalValid =
+    !["EXTERNAL_SIDE_EFFECT", "FINANCIAL", "DESTRUCTIVE"].includes(candidate.effectRisk) ||
+    candidate.approvalRef !== null;
   const valid = candidate.oldOwnerCoreId !== candidate.newOwnerCoreId &&
     candidate.newOwnerGeneration === candidate.oldOwnerGeneration + 1 &&
     Date.parse(candidate.expiresAt) > Date.parse(candidate.issuedAt) &&
-    !(["EXTERNAL_SIDE_EFFECT", "FINANCIAL", "DESTRUCTIVE"].includes(candidate.effectRisk)) ||
-    candidate.approvalRef !== null;
+    approvalValid;
   assert.equal(valid, false, reason);
 }
 assertInvalidOwnership(item => { item.unreviewedField = true; },
