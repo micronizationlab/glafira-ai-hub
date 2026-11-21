@@ -293,6 +293,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             archive.delete()
             passphrase.fill('\u0000')
         }
+        Unit
     }
 
     @Test
