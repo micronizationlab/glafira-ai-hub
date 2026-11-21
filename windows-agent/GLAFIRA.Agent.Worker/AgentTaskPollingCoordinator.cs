@@ -84,9 +84,19 @@ public sealed class AgentTaskPollingCoordinator
         CancellationToken cancellationToken)
     {
         var leaseState = new ActiveLeaseState(lease);
-        var initialAck = await _transport.SendTaskUpdateAsync(
-            credential, leaseState.Current, "RUNNING", 0, "Agent started registered handler",
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+        AgentTaskUpdateAck initialAck;
+        try
+        {
+            initialAck = await _transport.SendTaskUpdateAsync(
+                credential, leaseState.Current, "RUNNING", 0, "Agent started registered handler",
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (InvalidDataException error) when (error.Message == "LEASE_FENCING_REJECTED")
+        {
+            await _journal.DiscardStaleActiveLeaseAsync(
+                lease.TaskId, lease.LeaseId, lease.FencingToken, cancellationToken).ConfigureAwait(false);
+            return;
+        }
         UpdateLeaseExpiry(leaseState, initialAck);
         await _journal.SaveActiveLeaseAsync(leaseState.Current, cancellationToken).ConfigureAwait(false);
 
