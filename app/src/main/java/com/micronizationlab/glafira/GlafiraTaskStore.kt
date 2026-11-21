@@ -269,6 +269,21 @@ class GlafiraTaskStore(context: Context) :
                     "task_id = ? AND plan_hash = ?",
                     arrayOf(taskId, plan.planHash)
                 )
+                coreTraceStore.appendInTransaction(
+                    db,
+                    GlafiraCoreTraceDraft(
+                        projectId = task.projectId,
+                        taskId = task.taskId,
+                        correlationId = task.taskId,
+                        occurredAtMillis = nowMillis,
+                        actorType = GlafiraCoreTraceActorType.CORE,
+                        actorId = "core",
+                        component = "CoreDryRunPlanner",
+                        eventType = GlafiraCoreTraceEventType.POLICY_CHECKED,
+                        actionCode = "DRY_RUN_PREVIEW_STORED",
+                        resultStatus = plan.simulationStatus.name
+                    )
+                )
                 db.setTransactionSuccessful()
                 return true
             }
@@ -307,6 +322,21 @@ class GlafiraTaskStore(context: Context) :
                 }
             )
             check(inserted != -1L)
+            coreTraceStore.appendInTransaction(
+                db,
+                GlafiraCoreTraceDraft(
+                    projectId = task.projectId,
+                    taskId = task.taskId,
+                    correlationId = task.taskId,
+                    occurredAtMillis = nowMillis,
+                    actorType = GlafiraCoreTraceActorType.CORE,
+                    actorId = "core",
+                    component = "CoreDryRunPlanner",
+                    eventType = GlafiraCoreTraceEventType.POLICY_CHECKED,
+                    actionCode = "DRY_RUN_PREVIEW_STORED",
+                    resultStatus = plan.simulationStatus.name
+                )
+            )
             db.setTransactionSuccessful()
             return true
         } finally {
