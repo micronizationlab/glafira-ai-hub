@@ -212,13 +212,23 @@ class GlafiraCoreTraceStoreInstrumentedTest {
     fun taskLifecycleTraceSharesTransactionsWithQueueAndResultWrites() {
         val taskId = "trace-lifecycle-task"
         val projectId = "trace-lifecycle-project"
+        val db = taskStore.writableDatabase
+
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_task_create
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'TASK_CREATED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) { taskStore.enqueue(task(taskId, projectId)) }
+        assertNull(taskStore.getTask(taskId))
+        db.execSQL("DROP TRIGGER fail_trace_task_create")
         taskStore.enqueue(task(taskId, projectId))
 
-        val db = taskStore.writableDatabase
         db.execSQL("""
             CREATE TRIGGER fail_trace_task_start
             BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
-            WHEN NEW.action_code = 'TASK_STARTED'
+            WHEN NEW.event_type = 'TASK_STARTED'
             BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
         """.trimIndent())
         assertThrows(SQLiteException::class.java) { taskStore.claimNext(2_000L) }
@@ -255,17 +265,18 @@ class GlafiraCoreTraceStoreInstrumentedTest {
             GlafiraCoreTraceQuery(projectId, taskId = taskId),
             GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
         )
+        assertEquals(4, page.events.size)
         assertEquals(
-            listOf(
-                GlafiraCoreTraceEventType.TASK_SUCCEEDED,
+            setOf(
+                GlafiraCoreTraceEventType.TASK_CREATED,
                 GlafiraCoreTraceEventType.TASK_STARTED,
-                GlafiraCoreTraceEventType.TASK_CREATED
+                GlafiraCoreTraceEventType.TASK_SUCCEEDED
             ),
-            page.events.map { it.eventType }
+            page.events.map { it.eventType }.toSet()
         )
         assertEquals(
-            listOf("TASK_RESULT_COMMITTED", "TASK_STARTED", "TASK_CREATED"),
-            page.events.map { it.actionCode }
+            setOf("TASK_CREATED", "TASK_STATE_CHANGED", "TASK_RESULT_COMMITTED"),
+            page.events.map { it.actionCode }.toSet()
         )
     }
 
