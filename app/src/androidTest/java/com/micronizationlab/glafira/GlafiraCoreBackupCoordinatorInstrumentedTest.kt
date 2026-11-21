@@ -113,6 +113,55 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun restoreResetsRunningTasksAndDropsSourceDeviceLeasesAndAuthority() = runBlocking {
+        store.enqueue(task("running-task"))
+        assertEquals("running-task", store.claimNext(nowMillis = 2_500L)?.taskId)
+        store.writableDatabase.insertOrThrow(
+            "core_desktop_leases", null,
+            android.content.ContentValues().apply {
+                put("task_id", "running-task")
+                put("device_id", "source-device")
+                put("lease_id", "source-lease")
+                put("fencing_token", 7L)
+                put("lease_expires_at", 9_000L)
+                put("attempt_count", 1)
+                put("updated_at", 2_500L)
+            }
+        )
+        store.writableDatabase.insertOrThrow(
+            "core_desktop_nodes", null,
+            android.content.ContentValues().apply {
+                put("device_id", "source-device")
+                put("last_seen_at", 2_500L)
+                put("capabilities_json", """["research"]""")
+                put("max_parallel_tasks", 1)
+            }
+        )
+
+        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
+        val archive = coordinator.create(passphrase)
+        try {
+            store.enqueue(task("temporary-task"))
+            coordinator.restore(archive, passphrase)
+
+            val restored = store.getTask("running-task")
+            assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, restored?.state)
+            assertEquals("RESTORED_REQUIRES_OWNER_REVIEW", restored?.lastError)
+            assertEquals(0, store.writableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM core_desktop_leases", null
+            ).use { it.moveToFirst(); it.getInt(0) })
+            assertEquals(0, store.writableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM core_desktop_nodes", null
+            ).use { it.moveToFirst(); it.getInt(0) })
+            assertNull(store.getTask("temporary-task"))
+        } finally {
+            archive.delete()
+            passphrase.fill('\u0000')
+        }
+    }
+
+    @Test
     fun wrongPassphraseLeavesCurrentCoreQueueUntouched() = runBlocking {
         store.enqueue(task("must-remain"))
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
