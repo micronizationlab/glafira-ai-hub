@@ -209,6 +209,85 @@ class GlafiraCoreTraceStoreInstrumentedTest {
     }
 
     @Test
+    fun taskLifecycleTraceSharesTransactionsWithQueueAndResultWrites() {
+        val taskId = "trace-lifecycle-task"
+        val projectId = "trace-lifecycle-project"
+        val db = taskStore.writableDatabase
+
+        assertThrows(IllegalArgumentException::class.java) {
+            taskStore.enqueue(task("unsafe task id", projectId))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            taskStore.enqueue(task("safe-task-id", "unsafe project id"))
+        }
+
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_task_create
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'TASK_CREATED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) { taskStore.enqueue(task(taskId, projectId)) }
+        assertNull(taskStore.getTask(taskId))
+        db.execSQL("DROP TRIGGER fail_trace_task_create")
+        taskStore.enqueue(task(taskId, projectId))
+
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_task_start
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'TASK_STARTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) { taskStore.claimNext(2_000L) }
+        assertEquals(GlafiraTaskState.QUEUED, taskStore.getTask(taskId)?.state)
+        assertEquals(0, taskStore.getTask(taskId)?.attemptCount)
+        db.execSQL("DROP TRIGGER fail_trace_task_start")
+
+        assertNotNull(taskStore.claimNext(3_000L))
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_result_commit
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.action_code = 'TASK_RESULT_COMMITTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) {
+            taskStore.persistCoreTaskResult(
+                taskId,
+                setOf(GlafiraTaskState.RUNNING),
+                "durable-result",
+                4_000L
+            )
+        }
+        assertEquals(GlafiraTaskState.RUNNING, taskStore.getTask(taskId)?.state)
+        assertNull(taskStore.coreTaskResult(taskId, projectId))
+        db.execSQL("DROP TRIGGER fail_trace_result_commit")
+
+        assertTrue(taskStore.persistCoreTaskResult(
+            taskId,
+            setOf(GlafiraTaskState.RUNNING),
+            "durable-result",
+            5_000L
+        ))
+        val page = traceStore.query(
+            GlafiraCoreTraceQuery(projectId, taskId = taskId),
+            GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
+        )
+        assertEquals(4, page.events.size)
+        assertEquals(
+            setOf(
+                GlafiraCoreTraceEventType.TASK_CREATED,
+                GlafiraCoreTraceEventType.TASK_STARTED,
+                GlafiraCoreTraceEventType.TASK_SUCCEEDED
+            ),
+            page.events.map { it.eventType }.toSet()
+        )
+        assertEquals(
+            setOf("TASK_CREATED", "TASK_STATE_CHANGED", "TASK_RESULT_COMMITTED"),
+            page.events.map { it.actionCode }.toSet()
+        )
+    }
+
+    @Test
     fun legacyV2PortableSnapshotWithoutTraceTableMigratesToEmptyTraceTable() {
         val tables = JSONObject().apply {
             listOf(
