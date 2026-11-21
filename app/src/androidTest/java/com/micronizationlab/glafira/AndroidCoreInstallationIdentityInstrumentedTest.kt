@@ -1,5 +1,7 @@
 package com.micronizationlab.glafira
 
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -14,8 +16,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.security.KeyFactory
+import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.Signature
+import java.security.spec.ECGenParameterSpec
 import java.security.spec.X509EncodedKeySpec
 import java.util.Properties
 import java.util.UUID
@@ -100,6 +104,34 @@ class AndroidCoreInstallationIdentityInstrumentedTest {
 
         assertNotEquals(previous.coreId, restored.coreId)
         assertEquals(1L, restored.keyEpoch)
+    }
+
+
+    @Test
+    fun rotationReplacesAnOrphanedNextEpochKeyFromAnInterruptedAttempt() {
+        val store = store()
+        val current = store.loadOrCreate()
+        val orphanAlias = "$keyAliasPrefix${current.keyEpoch + 1}"
+        val orphan = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore").run {
+            initialize(
+                KeyGenParameterSpec.Builder(
+                    orphanAlias,
+                    KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
+                )
+                    .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                    .setDigests(KeyProperties.DIGEST_SHA256)
+                    .setUserAuthenticationRequired(false)
+                    .build()
+            )
+            generateKeyPair()
+        }
+        val orphanPublicKey = Base64.encodeToString(orphan.public.encoded, Base64.NO_WRAP)
+
+        val rotated = store.rotateKey()
+
+        assertEquals(current.keyEpoch + 1, rotated.keyEpoch)
+        assertNotEquals(orphanPublicKey, rotated.publicKeyBase64)
+        assertEquals(rotated, store().loadOrCreate())
     }
 
     @Test
