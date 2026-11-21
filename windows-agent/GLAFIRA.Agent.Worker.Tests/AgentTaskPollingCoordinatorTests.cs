@@ -135,6 +135,22 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task ExplicitStaleLeaseRejectionDiscardsOnlyThatPendingResult()
+    {
+        var state = ReadyState();
+        var handler = new TestHandler("web.research");
+        var transport = new FakeTransport(Lease()) { RejectTerminalUpdates = 1 };
+        var journal = Journal();
+        var coordinator = Coordinator(state, [handler], transport, journal);
+
+        Assert.True(await coordinator.PollOnceAsync(Credential(), CancellationToken.None));
+
+        Assert.Equal(1, handler.Calls);
+        Assert.Empty((await journal.LoadAsync(CancellationToken.None)).PendingResults);
+        Assert.Equal(1, transport.TerminalAttempts);
+    }
+
+    [Fact]
     public async Task MismatchedHubAckLeavesResultInOutbox()
     {
         var state = ReadyState();
@@ -226,6 +242,7 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
         private readonly Queue<AgentTaskLease> _leases = new(leases);
         public int ClaimCalls { get; private set; }
         public int FailTerminalUpdates { get; set; }
+        public int RejectTerminalUpdates { get; set; }
         public int TerminalAttempts { get; private set; }
         public bool ReturnMismatchedAck { get; set; }
         public IReadOnlyList<string> LastSupportedTaskTypes { get; private set; } = [];
@@ -262,12 +279,20 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
                     FailTerminalUpdates--;
                     throw new HttpRequestException("simulated network interruption");
                 }
+                if (RejectTerminalUpdates > 0)
+                {
+                    RejectTerminalUpdates--;
+                    throw new InvalidDataException("LEASE_FENCING_REJECTED");
+                }
             }
 
             var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson))).ToLowerInvariant();
-            var taskId = ReturnMismatchedAck ? "wrong-task" : lease.TaskId;
+            var taskId = ReturnMismatchedAck && state is "SUCCEEDED" or "FAILED" ? "wrong-task" : lease.TaskId;
+            var leaseExpiry = state is "ACCEPTED" or "RUNNING"
+                ? DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeMilliseconds()
+                : 0L;
             return Task.FromResult(new AgentTaskUpdateAck(
-                taskId, lease.LeaseId, lease.FencingToken, state, digest));
+                taskId, lease.LeaseId, lease.FencingToken, state, digest, leaseExpiry));
         }
     }
 
