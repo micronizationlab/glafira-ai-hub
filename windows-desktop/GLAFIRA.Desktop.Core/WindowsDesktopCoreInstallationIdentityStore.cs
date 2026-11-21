@@ -141,7 +141,10 @@ public sealed class WindowsDesktopCoreInstallationIdentityStore
                 KeyName(identity.CoreId, identity.KeyEpoch),
                 CngProvider.MicrosoftSoftwareKeyStorageProvider);
             using var signer = new ECDsaCng(key);
-            return signer.SignData(data.ToArray(), HashAlgorithmName.SHA256);
+            return signer.SignData(
+                data.ToArray(),
+                HashAlgorithmName.SHA256,
+                DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
         }
         finally
         {
