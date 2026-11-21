@@ -282,6 +282,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 GlafiraCoreTraceAccessContext("backup-trace-project", allowProjectEvents = true)
             )
             assertEquals(listOf("backup-trace-before"), restored.events.map { it.eventId })
+            assertTrue(store.readableDatabase.rawQuery(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_created'",
+                null
+            ).use { it.moveToFirst() })
+            assertTrue(store.readableDatabase.rawQuery(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_state_changed'",
+                null
+            ).use { it.moveToFirst() })
             assertThrows(SQLiteException::class.java) {
                 store.writableDatabase.delete(
                     GlafiraCoreTraceStore.TABLE,
