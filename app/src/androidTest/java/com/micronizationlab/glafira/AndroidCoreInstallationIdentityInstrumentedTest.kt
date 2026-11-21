@@ -12,44 +12,50 @@ import org.junit.Before
 import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import java.util.Properties
+import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
 @RunWith(AndroidJUnit4::class)
 class AndroidCoreInstallationIdentityInstrumentedTest {
 
+    private val context
+        get() = InstrumentationRegistry.getInstrumentation().targetContext
+    private lateinit var identityFile: File
+    private lateinit var keyAliasPrefix: String
+
     @Before
-    fun clearIdentityState() = resetIdentityState()
+    fun createIsolatedIdentityState() {
+        val nonce = UUID.randomUUID().toString().replace("-", "")
+        identityFile = context.noBackupFilesDir.resolve("glafira_test_identity_$nonce.properties")
+        keyAliasPrefix = "glafira.test.core.installation.signing.$nonce."
+    }
 
     @After
-    fun removeIdentityState() = resetIdentityState()
-
-    private fun resetIdentityState() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
+    fun removeIsolatedIdentityState() {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val aliases = keyStore.aliases()
-        while (aliases.hasMoreElements()) {
-            val alias = aliases.nextElement()
-            if (alias.startsWith(KEY_ALIAS_PREFIX)) keyStore.deleteEntry(alias)
-        }
-        context.noBackupFilesDir.resolve(IDENTITY_FILE).delete()
-        context.noBackupFilesDir.resolve("$IDENTITY_FILE.tmp").delete()
+        val aliases = keyStore.aliases().toList().filter { it.startsWith(keyAliasPrefix) }
+        aliases.forEach(keyStore::deleteEntry)
+        identityFile.delete()
+        File(identityFile.parentFile, identityFile.name + ".tmp").delete()
     }
+
+    private fun store() = AndroidCoreInstallationIdentityStore(context, identityFile, keyAliasPrefix)
 
 
     @Test
     fun concurrentStoreInstancesObserveOneStableIdentity() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val executor = Executors.newFixedThreadPool(8)
         try {
             val futures = (1..32).map {
                 executor.submit(Callable {
-                    AndroidCoreInstallationIdentityStore(context).loadOrCreate()
+                    store().loadOrCreate()
                 })
             }
             val identities = futures.map { it.get() }
@@ -62,22 +68,20 @@ class AndroidCoreInstallationIdentityInstrumentedTest {
 
     @Test
     fun missingKeystorePrivateKeyFailsClosedWithoutReplacingInstallationIdentity() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val store = AndroidCoreInstallationIdentityStore(context)
+        val store = store()
         val identity = store.loadOrCreate()
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        keyStore.deleteEntry("$KEY_ALIAS_PREFIX${identity.keyEpoch}")
+        keyStore.deleteEntry("$keyAliasPrefix${identity.keyEpoch}")
 
         assertThrows(IllegalStateException::class.java) { store.loadOrCreate() }
-        assertTrue(context.noBackupFilesDir.resolve(IDENTITY_FILE).exists())
+        assertTrue(identityFile.exists())
     }
 
     @Test
     fun tamperedPublicKeyMetadataFailsClosed() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val store = AndroidCoreInstallationIdentityStore(context)
+        val store = store()
         store.loadOrCreate()
-        val identityFile = context.noBackupFilesDir.resolve(IDENTITY_FILE)
         val properties = Properties().apply {
             identityFile.inputStream().use(::load)
             setProperty("public_key", Base64.encodeToString(byteArrayOf(1, 2, 3), Base64.NO_WRAP))
@@ -92,9 +96,9 @@ class AndroidCoreInstallationIdentityInstrumentedTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val store = AndroidCoreInstallationIdentityStore(context)
         val previous = store.loadOrCreate()
-        context.noBackupFilesDir.resolve(IDENTITY_FILE).delete()
+        identityFile.delete()
 
-        val restored = AndroidCoreInstallationIdentityStore(context).loadOrCreate()
+        val restored = store().loadOrCreate()
 
         assertNotEquals(previous.coreId, restored.coreId)
         assertEquals(1L, restored.keyEpoch)
@@ -109,7 +113,7 @@ class AndroidCoreInstallationIdentityInstrumentedTest {
 
         assertEquals(first, second)
         assertTrue(first.keyEpoch > 0)
-        assertTrue(context.noBackupFilesDir.resolve("glafira_core_installation_identity.properties").exists())
+        assertTrue(identityFile.exists())
 
         val payload = "glafira-core-identity-test".toByteArray()
         val signature = store.sign(payload)
@@ -135,9 +139,5 @@ class AndroidCoreInstallationIdentityInstrumentedTest {
 
         val persisted = AndroidCoreInstallationIdentityStore(context).loadOrCreate()
         assertEquals(rotated, persisted)
-    }
-    companion object {
-        private const val IDENTITY_FILE = "glafira_core_installation_identity.properties"
-        private const val KEY_ALIAS_PREFIX = "glafira.core.installation.signing."
     }
 }
