@@ -55,7 +55,8 @@ class GlafiraCoreOwnerApprovalStore(
             if (!cursor.moveToFirst()) emptySet()
             else {
                 val json = JSONArray(cursor.getString(0))
-                buildSet { for (i in 0 until json.length()) add(json.getString(i)) }
+                val scopes = buildSet { for (i in 0 until json.length()) add(json.getString(i)) }
+                if (scopes.all(GlafiraToolRegistry::isKnownScope)) scopes else emptySet()
             }
         }
     }
@@ -66,6 +67,9 @@ class GlafiraCoreOwnerApprovalStore(
         val definition = GlafiraToolRegistry.find(task.taskType) ?: return false
         val hash = GlafiraToolRegistry.actionHash(task, actionSummary)
         val requestedScopes = (definition.requiredScopes + task.requiredScopes).sorted()
+        // Model/task payloads may request extra scopes, but only registered capabilities
+        // can enter an owner approval record.
+        if (requestedScopes.isEmpty() || requestedScopes.any { !GlafiraToolRegistry.isKnownScope(it) }) return false
         val database = db
         var queued = false
         database.beginTransaction()
@@ -261,7 +265,8 @@ class GlafiraCoreOwnerApprovalStore(
                     val required = definition.requiredScopes + task.requiredScopes
                     val validSelection = selectedScopes == required && selectedScopes.isNotEmpty() &&
                         selectedScopes.all { scope ->
-                            scope.length <= 96 && scope.all { it.isLetterOrDigit() || it in "._-" }
+                            GlafiraToolRegistry.isKnownScope(scope) &&
+                                scope.length <= 96 && scope.all { it.isLetterOrDigit() || it in "._-" }
                         }
                     if (!validSelection) {
                         result = GlafiraCoreOwnerApprovalMutation.INVALID_SCOPE_SELECTION
