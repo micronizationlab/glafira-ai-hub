@@ -14,7 +14,6 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
-    private companion object { const val TEST_CORE_ID = "glafira-test-core-0001" }
     private lateinit var taskStore: GlafiraTaskStore
     private lateinit var approvals: GlafiraCoreOwnerApprovalStore
 
@@ -556,5 +555,6 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
+        private const val TEST_CORE_ID = "glafira-test-core-0001"
     }
 }
