@@ -284,7 +284,7 @@ class GlafiraCoreOwnerApprovalStore(
                     "core_action_approvals",
                     ContentValues().apply { put("status", CONSUMED) },
                     "task_id = ? AND status = ? AND action_hash = ? AND owner_core_id = ? AND owner_generation = ?",
-                    arrayOf(task.taskId, APPROVED, hash, row.ownerCoreId, row.ownerGeneration)
+                    arrayOf(task.taskId, APPROVED, hash, row.ownerCoreId, row.ownerGeneration.toString())
                 )
                 if (consumed == 1) {
                     appendApprovalTrace(
@@ -309,7 +309,7 @@ class GlafiraCoreOwnerApprovalStore(
                         putNull("grant_expires_at")
                     },
                     "task_id = ? AND status = ? AND owner_core_id = ? AND owner_generation = ?",
-                    arrayOf(task.taskId, APPROVED, row.ownerCoreId, row.ownerGeneration)
+                    arrayOf(task.taskId, APPROVED, row.ownerCoreId, row.ownerGeneration.toString())
                 )
             } else if (row != null && row.status == APPROVED && row.grantExpiresAt <= nowMillis) {
                 db.update("core_action_approvals", ContentValues().apply { put("status", EXPIRED) },
@@ -429,7 +429,7 @@ class GlafiraCoreOwnerApprovalStore(
                             put("grant_expires_at", minOf(safeAdd(nowMillis, GRANT_TTL_MILLIS), task.deadlineAtMillis ?: Long.MAX_VALUE))
                             put("decided_by", ownerSession.sessionId)
                         }, "task_id = ? AND status = ? AND action_hash = ? AND owner_core_id = ? AND owner_generation = ?",
-                            arrayOf(taskId, PENDING, hash, row.ownerCoreId, row.ownerGeneration))
+                            arrayOf(taskId, PENDING, hash, row.ownerCoreId, row.ownerGeneration.toString()))
                         val requeued = db.update("core_tasks", ContentValues().apply {
                             put("state", GlafiraTaskState.QUEUED.databaseValue)
                             put("updated_at", nowMillis)
@@ -478,7 +478,7 @@ class GlafiraCoreOwnerApprovalStore(
                 put("status", REJECTED)
                 put("decided_by", ownerSession.sessionId)
             }, "task_id = ? AND status = ? AND expires_at > ? AND owner_core_id = ? AND owner_generation = ?",
-                arrayOf(taskId, PENDING, nowMillis.toString(), ownership.ownerCoreId, ownership.ownerGeneration))
+                arrayOf(taskId, PENDING, nowMillis.toString(), ownership.ownerCoreId, ownership.ownerGeneration.toString()))
             if (changed == 1) {
                 val taskChanged = db.update("core_tasks", ContentValues().apply {
                     put("state", GlafiraTaskState.FAILED.databaseValue)
