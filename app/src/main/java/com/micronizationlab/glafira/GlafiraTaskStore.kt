@@ -409,12 +409,12 @@ class GlafiraTaskStore(context: Context) :
                     actorType = GlafiraCoreTraceActorType.OWNER,
                     actorId = "owner",
                     component = "CoreDryRunReview",
-                    eventType = if (decision == GlafiraDryRunReviewStatus.APPROVED) {
+                    eventType = if (decision == GlafiraDryRunReviewStatus.ACKNOWLEDGED) {
                         GlafiraCoreTraceEventType.REVIEW_ACCEPTED
                     } else {
                         GlafiraCoreTraceEventType.REVIEW_REJECTED
                     },
-                    actionCode = if (decision == GlafiraDryRunReviewStatus.APPROVED) {
+                    actionCode = if (decision == GlafiraDryRunReviewStatus.ACKNOWLEDGED) {
                         "DRY_RUN_REVIEW_ACCEPTED"
                     } else {
                         "DRY_RUN_REVIEW_REJECTED"
