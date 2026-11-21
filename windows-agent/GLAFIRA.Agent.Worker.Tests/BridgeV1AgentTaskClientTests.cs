@@ -58,6 +58,14 @@ public sealed class BridgeV1AgentTaskClientTests
         Assert.Equal("ReadOnly", lease.EffectRisk);
         Assert.Null(lease.ApprovalRef);
         Assert.Equal(_now.AddMinutes(2).ToUnixTimeMilliseconds(), lease.LeaseExpiresAtEpochMs);
+        var envelope = lease.ToEnvelope();
+        Assert.Equal("web.research", envelope.TaskType);
+        Assert.Equal("idem-task-001", envelope.IdempotencyKey);
+        Assert.Equal("payload://task-001", envelope.PayloadRef);
+        Assert.Equal("Analyze supplied material", envelope.Instruction);
+        Assert.Equal("RESEARCHER", envelope.Executor);
+        Assert.Equal("lease-0001", envelope.LeaseId);
+        Assert.Equal(42, envelope.FencingToken);
         Assert.Equal("lease-0001", lease.LeaseId);
         Assert.Equal(42, lease.FencingToken);
         Assert.Equal("DESKTOP_TASK_CLAIM", operation);
