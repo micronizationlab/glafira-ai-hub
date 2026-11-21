@@ -199,6 +199,30 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
     }
 
     @Test
+    fun ownerRejectionIsRecordedAsApprovalRejectedTrace() {
+        val original = task("approval-trace-rejected")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        assertTrue(approvals.requestApproval(
+            running,
+            "Send a test message to test@example.invalid",
+            3_000L
+        ))
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.REJECTED,
+            approvals.reject(original.taskId, authenticatedOwnerSession(), 4_000L)
+        )
+        val events = GlafiraCoreTraceStore(taskStore).query(
+            GlafiraCoreTraceQuery("approval-project", taskId = original.taskId),
+            GlafiraCoreTraceAccessContext("approval-project", taskIds = setOf(original.taskId))
+        ).events
+        val rejected = events.single { it.eventType == GlafiraCoreTraceEventType.APPROVAL_REJECTED }
+        assertEquals(GlafiraCoreTraceActorType.OWNER, rejected.actorType)
+        assertEquals("owner", rejected.actorId)
+        assertEquals("OWNER_APPROVAL_REJECTED", rejected.actionCode)
+    }
+
+    @Test
     fun approvalRejectsWrongScopeAndChangedActionHash() {
         val original = task()
         taskStore.enqueue(original)
