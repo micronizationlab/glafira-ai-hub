@@ -13,7 +13,36 @@ import java.util.UUID
  */
 class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     private val appContext = context.applicationContext
-    private val preferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    // SharedPreferences is read only for one-time migration. Runtime policy is SQLite-backed.
+    private val legacyPreferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    private val runtimeConfigStore = GlafiraCoreRuntimeConfigStore(appContext)
+
+    init {
+        val legacyEnabled = if (legacyPreferences.contains(KEY_ENABLED)) {
+            legacyPreferences.getBoolean(KEY_ENABLED, false)
+        } else null
+        val legacyBudget = runCatching {
+            if (!legacyPreferences.contains(KEY_BUDGET_WALL_CLOCK_MS) &&
+                !legacyPreferences.contains(KEY_BUDGET_MAX_STEPS) &&
+                !legacyPreferences.contains(KEY_BUDGET_MAX_RETRIES) &&
+                !legacyPreferences.contains(KEY_BUDGET_MAX_CONCURRENT) &&
+                !legacyPreferences.contains(KEY_BUDGET_MAX_COST_MICROS)
+            ) null else GlafiraRuntimeBudget(
+                maxWallClockMillis = legacyPreferences.getLong(KEY_BUDGET_WALL_CLOCK_MS, 60_000L),
+                maxSteps = legacyPreferences.getInt(KEY_BUDGET_MAX_STEPS, 1),
+                maxRetries = legacyPreferences.getInt(KEY_BUDGET_MAX_RETRIES, 5),
+                maxConcurrentTasks = legacyPreferences.getInt(
+                    KEY_BUDGET_MAX_CONCURRENT, GlafiraRuntimeBudget().maxConcurrentTasks
+                ),
+                maxCostMicros = if (legacyPreferences.contains(KEY_BUDGET_MAX_COST_MICROS)) {
+                    legacyPreferences.getLong(KEY_BUDGET_MAX_COST_MICROS, 0L)
+                } else null
+            )
+        }.getOrNull()
+        // A missing legacy enablement flag initializes PAUSED, never implicitly enabled.
+        runtimeConfigStore.loadOrInitialize(legacyEnabled, legacyBudget)
+    }
+
     // Stable per-installation identity; this is not an owner grant or task-ownership lease.
     val installationIdentity = AndroidCoreInstallationIdentityStore(appContext).loadOrCreate()
 
@@ -92,36 +121,23 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     }
 
     val isEnabled: Boolean
-        get() = preferences.getBoolean(KEY_ENABLED, false) && !GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
+        get() = runCatching { runtimeConfigStore.read()?.enabled == true }.getOrDefault(false) &&
+            !GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
 
-    /** Current owner-controlled, persisted Core execution limits. */
+    /** Current owner-controlled limits. Unreadable configuration returns conservative defaults;
+     * execution remains paused because isEnabled fails closed. */
     fun runtimeBudget(): GlafiraRuntimeBudget = loadRuntimeBudget()
 
-    /** Persist a validated budget. Parallel task execution is bounded; multi-step handlers remain disabled. */
+    /** Persist the complete validated budget and its audit event in one SQLite transaction. */
     fun setRuntimeBudget(budget: GlafiraRuntimeBudget) {
-        val editor = preferences.edit()
-            .putLong(KEY_BUDGET_WALL_CLOCK_MS, budget.maxWallClockMillis)
-            .putInt(KEY_BUDGET_MAX_STEPS, budget.maxSteps)
-            .putInt(KEY_BUDGET_MAX_RETRIES, budget.maxRetries)
-            .putInt(KEY_BUDGET_MAX_CONCURRENT, budget.maxConcurrentTasks)
-        if (budget.maxCostMicros == null) editor.remove(KEY_BUDGET_MAX_COST_MICROS)
-        else editor.putLong(KEY_BUDGET_MAX_COST_MICROS, budget.maxCostMicros)
-        check(editor.commit()) { "Could not persist GLAFIRA runtime budget." }
+        runtimeConfigStore.setBudget(budget)
     }
 
-    private fun loadRuntimeBudget(): GlafiraRuntimeBudget = GlafiraRuntimeBudget(
-        maxWallClockMillis = preferences.getLong(KEY_BUDGET_WALL_CLOCK_MS, 60_000L),
-        maxSteps = preferences.getInt(KEY_BUDGET_MAX_STEPS, 1),
-        maxRetries = preferences.getInt(KEY_BUDGET_MAX_RETRIES, 5),
-        maxConcurrentTasks = preferences.getInt(KEY_BUDGET_MAX_CONCURRENT, GlafiraRuntimeBudget().maxConcurrentTasks),
-        maxCostMicros = if (preferences.contains(KEY_BUDGET_MAX_COST_MICROS))
-            preferences.getLong(KEY_BUDGET_MAX_COST_MICROS, 0L) else null
-    )
+    private fun loadRuntimeBudget(): GlafiraRuntimeBudget =
+        runCatching { runtimeConfigStore.read()?.budget }.getOrNull() ?: GlafiraRuntimeBudget()
 
     fun setEnabled(enabled: Boolean) {
-        check(preferences.edit().putBoolean(KEY_ENABLED, enabled).commit()) {
-            "Could not persist GLAFIRA runtime owner setting."
-        }
+        runtimeConfigStore.setEnabled(enabled)
         if (enabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
         else GlafiraCoreWorkScheduler.cancel(appContext)
     }
@@ -379,9 +395,10 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     companion object {
         internal fun pauseForRestore(context: Context) {
-            check(context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
-                .putBoolean(KEY_ENABLED, false).commit()) { "Не удалось приостановить Core." }
             GlafiraCoreWorkScheduler.cancel(context)
+            val store = GlafiraCoreRuntimeConfigStore(context)
+            check(store.loadOrInitialize(null, null) != null) { "Конфигурация Core недоступна." }
+            store.setEnabled(false, "RESTORE_PAUSE")
         }
 
         private const val DRY_RUN_PREVIEW_PREFIX = "DRY_RUN_PREVIEW:"
