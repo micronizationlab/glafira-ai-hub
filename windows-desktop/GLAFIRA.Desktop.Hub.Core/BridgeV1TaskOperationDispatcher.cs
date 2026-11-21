@@ -221,15 +221,18 @@ public sealed class BridgeV1TaskOperationDispatcher(
             return Failure("INVALID_TASK_RESULT");
         }
 
-        return accepted
-            ? new BridgeV1DispatchResponse("SUCCEEDED", new Dictionary<string, string>
-            {
-                ["accepted"] = "true", ["taskId"] = taskId, ["leaseId"] = leaseId,
-                ["fencingToken"] = fencingToken.ToString(CultureInfo.InvariantCulture), ["state"] = state,
-                ["resultSha256"] = Convert.ToHexString(SHA256.HashData(
-                    System.Text.Encoding.UTF8.GetBytes(payload.GetValueOrDefault("result") ?? "none"))).ToLowerInvariant()
-            })
-            : Failure("LEASE_FENCING_REJECTED");
+        if (!accepted) return Failure("LEASE_FENCING_REJECTED");
+        var acknowledgement = new Dictionary<string, string>
+        {
+            ["accepted"] = "true", ["taskId"] = taskId, ["leaseId"] = leaseId,
+            ["fencingToken"] = fencingToken.ToString(CultureInfo.InvariantCulture), ["state"] = state,
+            ["resultSha256"] = Convert.ToHexString(SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(payload.GetValueOrDefault("result") ?? "none"))).ToLowerInvariant()
+        };
+        if (state is "ACCEPTED" or "RUNNING")
+            acknowledgement["leaseExpiresAtEpochMs"] =
+                now.Add(_leaseDuration).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
+        return new BridgeV1DispatchResponse("SUCCEEDED", acknowledgement);
     }
 
     private static bool TryDecodePayload(
