@@ -49,6 +49,8 @@ data class GlafiraOwnedTaskClaim(
 
 /** Optional strict ownership-aware execution seam for installation-backed Core stores. */
 interface GlafiraTaskOwnershipExecutionFence {
+    /** False only for legacy/test stores that have no installation identity to fence against. */
+    val ownershipFencingEnabled: Boolean get() = true
     fun claimNextOwned(nowMillis: Long = System.currentTimeMillis()): GlafiraOwnedTaskClaim?
     fun transitionOwned(
         token: GlafiraTaskOwnershipExecutionToken,
