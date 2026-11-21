@@ -24,64 +24,80 @@ import java.util.Base64
 import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
-class AndroidGlafiraOwnershipTrustStoreInstrumentedTest {
+class AndroidGlafiraWindowsHubCredentialStoreInstrumentedTest {
     private val context
         get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val now = 1_800_000_000_000L
-    private lateinit var trustFile: File
+    private lateinit var stateFile: File
     private lateinit var keyAlias: String
 
     @Before
     fun createIsolatedStore() {
         val nonce = UUID.randomUUID().toString().replace("-", "")
-        trustFile = File(context.noBackupFilesDir, "ownership-trust-test-$nonce.enc")
-        keyAlias = "glafira.ownership.trust.test.$nonce"
+        stateFile = File(context.noBackupFilesDir, "windows-hub-pairing-test-$nonce.enc")
+        keyAlias = "glafira.windows.hub.pairing.test.$nonce"
     }
 
     @After
     fun removeIsolatedStore() {
-        trustFile.delete()
-        File(trustFile.path + ".bak").delete()
-        File(trustFile.path + ".new").delete()
+        stateFile.delete()
+        File(stateFile.path + ".bak").delete()
+        File(stateFile.path + ".new").delete()
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         if (keyStore.containsAlias(keyAlias)) keyStore.deleteEntry(keyAlias)
     }
 
     @Test
-    fun pairingBindingIsEncryptedPersistedAndResolvesExactIdentity() {
+    fun credentialAndOwnershipAnchorPersistAsOneEncryptedState() {
         val pair = keyPair()
-        val binding = binding(pair, 7)
+        val enrollment = enrollment(pair, 7)
         val store = store()
 
-        assertEquals(GlafiraOwnershipTrustInstallResult.INSTALLED, store.install(binding))
-        assertEquals(GlafiraOwnershipTrustInstallResult.UNCHANGED, store.install(binding))
+        try {
+            assertEquals(
+                GlafiraWindowsHubCredentialInstallResult.INSTALLED,
+                store.install(enrollment)
+            )
+        } finally {
+            enrollment.clearSecret()
+        }
+
+        val credential = requireNotNull(store().load(now))
+        try {
+            assertEquals("android-device-01", credential.deviceId)
+            assertEquals("desktop-hub-01", credential.desktopHubId)
+            assertEquals(setOf("ownership.read", "project.read"), credential.scopes)
+            assertArrayEquals(ByteArray(32) { 0x5c }, credential.secretCopy())
+        } finally {
+            credential.clearSecret()
+        }
         assertArrayEquals(
             pair.public.encoded,
-            requireNotNull(
-                store().resolve("desktop-core-01", 7, fingerprint(pair.public.encoded))
-            ).encoded
+            requireNotNull(store.resolve("desktop-core-01", 7, fingerprint(pair.public.encoded))).encoded
         )
-        assertNull(store.resolve("desktop-core-01", 8, fingerprint(pair.public.encoded)))
-
-        val raw = trustFile.readText()
+        val raw = stateFile.readText()
         assertFalse(raw.contains("desktop-core-01"))
-        assertFalse(raw.contains(Base64.getEncoder().encodeToString(pair.public.encoded)))
-        assertThrows(IllegalArgumentException::class.java) {
-            store.install(binding(pair, 8, listOf("project.read")))
-        }
+        assertFalse(raw.contains(Base64.getEncoder().encodeToString(ByteArray(32) { 0x5c })))
     }
 
     @Test
-    fun higherEpochRotatesAndRollbackOrSameEpochConflictFailsClosed() {
+    fun refreshRotationAndRollbackRemainAtomic() {
         val first = keyPair()
         val rotated = keyPair()
-        val conflicting = keyPair()
         val store = store()
-        store.install(binding(first, 7))
+        installAndClear(store, enrollment(first, 7))
 
         assertEquals(
-            GlafiraOwnershipTrustInstallResult.ROTATED,
-            store.install(binding(rotated, 8))
+            GlafiraWindowsHubCredentialInstallResult.UNCHANGED,
+            installAndClear(store, enrollment(first, 7))
+        )
+        assertEquals(
+            GlafiraWindowsHubCredentialInstallResult.REFRESHED,
+            installAndClear(store, enrollment(first, 7, 0x4d))
+        )
+        assertEquals(
+            GlafiraWindowsHubCredentialInstallResult.ROTATED,
+            installAndClear(store, enrollment(rotated, 8, 0x6e))
         )
         assertNull(store.resolve("desktop-core-01", 7, fingerprint(first.public.encoded)))
         assertArrayEquals(
@@ -90,42 +106,68 @@ class AndroidGlafiraOwnershipTrustStoreInstrumentedTest {
                 store.resolve("desktop-core-01", 8, fingerprint(rotated.public.encoded))
             ).encoded
         )
-        assertThrows(IllegalArgumentException::class.java) { store.install(binding(first, 7)) }
-        assertThrows(IllegalArgumentException::class.java) { store.install(binding(conflicting, 8)) }
+        val rollback = enrollment(first, 7)
+        try {
+            assertThrows(IllegalArgumentException::class.java) { store.install(rollback) }
+        } finally {
+            rollback.clearSecret()
+        }
+        val credential = requireNotNull(store.load(now))
+        try {
+            assertArrayEquals(ByteArray(32) { 0x6e }, credential.secretCopy())
+            assertEquals(8L, credential.ownershipAnchor.signingKeyEpoch)
+        } finally {
+            credential.clearSecret()
+        }
     }
 
     @Test
-    fun revocationRemovesSelectedAnchorAndRevokeAllDestroysWrappingKey() {
+    fun revocationRemovesCredentialTrustCiphertextAndWrappingKey() {
         val pair = keyPair()
         val store = store()
-        store.install(binding(pair, 7))
+        installAndClear(store, enrollment(pair, 7))
 
         assertTrue(store.revoke("desktop-core-01"))
+        assertNull(store.load(now))
         assertNull(store.resolve("desktop-core-01", 7, fingerprint(pair.public.encoded)))
-        assertFalse(store.revoke("desktop-core-01"))
-        store.install(binding(pair, 7))
-        store.revokeAll()
-
-        assertFalse(trustFile.exists())
+        assertFalse(stateFile.exists())
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         assertFalse(keyStore.containsAlias(keyAlias))
-        assertNull(store().resolve("desktop-core-01", 7, fingerprint(pair.public.encoded)))
+
+        installAndClear(store, enrollment(pair, 7))
+        store.revokeAll()
+        assertFalse(stateFile.exists())
+        assertFalse(keyStore.containsAlias(keyAlias))
     }
 
-    private fun store() = AndroidGlafiraOwnershipTrustStore(context, trustFile, keyAlias)
+    private fun store() = AndroidGlafiraWindowsHubCredentialStore(context, stateFile, keyAlias)
 
-    private fun binding(
+    private fun installAndClear(
+        store: AndroidGlafiraWindowsHubCredentialStore,
+        enrollment: GlafiraPinnedPairingEnrollment
+    ): GlafiraWindowsHubCredentialInstallResult = try {
+        store.install(enrollment)
+    } finally {
+        enrollment.clearSecret()
+    }
+
+    private fun enrollment(
         pair: KeyPair,
         epoch: Long,
-        scopes: List<String> = listOf("ownership.read", "project.read")
-    ): GlafiraPinnedPairingTrustBinding =
-        GlafiraWindowsHubPairingTrustBinding.parse(
-            invitation(pair, epoch, scopes).toString(),
-            response(pair, epoch, scopes).toString(),
+        secretByte: Int = 0x5c
+    ): GlafiraPinnedPairingEnrollment {
+        val invitation = GlafiraWindowsHubPairingTrustBinding.parseInvitation(
+            invitation(pair, epoch).toString(),
             now
         )
+        return GlafiraWindowsHubPairingTrustBinding.correlate(
+            invitation,
+            response(pair, epoch, secretByte).toString(),
+            now
+        )
+    }
 
-    private fun invitation(pair: KeyPair, epoch: Long, scopes: List<String>) = JSONObject().apply {
+    private fun invitation(pair: KeyPair, epoch: Long) = JSONObject().apply {
         put("version", 1)
         put("agentId", "android-device-01")
         put("endpoint", "https://192.168.1.20:8443/bridge/v1")
@@ -136,11 +178,11 @@ class AndroidGlafiraOwnershipTrustStoreInstrumentedTest {
         put("ownershipSigningPublicKeySha256", fingerprint(pair.public.encoded))
         put("ticketId", "0123456789abcdef0123456789abcdef")
         put("pairingCode", Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32) { 0x2a }))
-        put("scopes", JSONArray(scopes))
+        put("scopes", JSONArray(listOf("ownership.read", "project.read")))
         put("expiresAtEpochMs", now + 120_000)
     }
 
-    private fun response(pair: KeyPair, epoch: Long, scopes: List<String>) = JSONObject().apply {
+    private fun response(pair: KeyPair, epoch: Long, secretByte: Int) = JSONObject().apply {
         put("version", 1)
         put("status", "ENROLLED")
         put("errorCode", JSONObject.NULL)
@@ -153,8 +195,8 @@ class AndroidGlafiraOwnershipTrustStoreInstrumentedTest {
         put("ownershipSigningKeyEpoch", epoch)
         put("ownershipSigningPublicKeySpkiBase64", Base64.getEncoder().encodeToString(pair.public.encoded))
         put("ownershipSigningPublicKeySha256", fingerprint(pair.public.encoded))
-        put("sharedSecretBase64", Base64.getEncoder().encodeToString(ByteArray(32) { 0x5c }))
-        put("scopes", JSONArray(scopes))
+        put("sharedSecretBase64", Base64.getEncoder().encodeToString(ByteArray(32) { secretByte.toByte() }))
+        put("scopes", JSONArray(listOf("ownership.read", "project.read")))
         put("enrolledAtEpochMs", now - 1_000)
         put("expiresAtEpochMs", now + 30 * 24 * 60 * 60 * 1_000L)
     }

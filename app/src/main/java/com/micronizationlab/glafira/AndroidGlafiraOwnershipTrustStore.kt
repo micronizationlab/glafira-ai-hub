@@ -1,26 +1,14 @@
 package com.micronizationlab.glafira
 
-import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.io.FileNotFoundException
-import java.io.FileOutputStream
 import java.net.URI
 import java.security.KeyFactory
-import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.PublicKey
 import java.security.interfaces.ECPublicKey
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 
 data class GlafiraOwnershipTrustAnchor(
     val ownerCoreId: String,
@@ -42,6 +30,32 @@ class GlafiraPinnedPairingTrustBinding internal constructor(
     val anchor: GlafiraOwnershipTrustAnchor
 )
 
+internal class GlafiraWindowsHubPairingInvitation(
+    val deviceId: String,
+    val endpoint: String,
+    val tlsCertificateSha256: String,
+    val ticketId: String,
+    val pairingCode: String,
+    val scopes: Set<String>,
+    val expiresAtEpochMs: Long,
+    val anchor: GlafiraOwnershipTrustAnchor
+)
+
+internal class GlafiraPinnedPairingEnrollment(
+    val deviceId: String,
+    val desktopHubId: String,
+    val endpoint: String,
+    val tlsCertificateSha256: String,
+    private val hmacSecret: ByteArray,
+    val scopes: Set<String>,
+    val enrolledAtEpochMs: Long,
+    val expiresAtEpochMs: Long,
+    val anchor: GlafiraOwnershipTrustAnchor
+) {
+    fun secretCopy(): ByteArray = hmacSecret.copyOf()
+    fun clearSecret() = hmacSecret.fill(0)
+}
+
 /** Strict parser for the Windows Hub pairing trust material consumed by Android clients. */
 object GlafiraWindowsHubPairingTrustBinding {
     private val invitationFields = setOf(
@@ -62,9 +76,25 @@ object GlafiraWindowsHubPairingTrustBinding {
         enrollmentResponseJson: String,
         nowEpochMs: Long = System.currentTimeMillis()
     ): GlafiraPinnedPairingTrustBinding {
-        require(invitationJson.toByteArray().size in 1..MAX_JSON_BYTES &&
-            enrollmentResponseJson.toByteArray().size in 1..MAX_JSON_BYTES) {
-            "PAIRING_TRUST_BUNDLE_SIZE_INVALID"
+        val invitation = parseInvitation(invitationJson, nowEpochMs)
+        val enrollment = correlate(invitation, enrollmentResponseJson, nowEpochMs)
+        return try {
+            GlafiraPinnedPairingTrustBinding(
+                enrollment.deviceId,
+                enrollment.scopes,
+                enrollment.anchor
+            )
+        } finally {
+            enrollment.clearSecret()
+        }
+    }
+
+    internal fun parseInvitation(
+        invitationJson: String,
+        nowEpochMs: Long = System.currentTimeMillis()
+    ): GlafiraWindowsHubPairingInvitation {
+        require(invitationJson.toByteArray().size in 1..MAX_JSON_BYTES) {
+            "PAIRING_INVITATION_SIZE_INVALID"
         }
         val invitation = parseObject(invitationJson, "PAIRING_INVITATION_JSON_INVALID")
         require(invitation.keys().asSequence().toSet() == invitationFields) {
@@ -86,6 +116,26 @@ object GlafiraWindowsHubPairingTrustBinding {
             "PAIRING_INVITATION_IDENTITY_INVALID"
         }
 
+        return GlafiraWindowsHubPairingInvitation(
+            deviceId,
+            endpoint,
+            tlsPin,
+            ticketId,
+            pairingCode,
+            invitationScopes,
+            invitationExpiry,
+            anchor
+        )
+    }
+
+    internal fun correlate(
+        invitation: GlafiraWindowsHubPairingInvitation,
+        enrollmentResponseJson: String,
+        nowEpochMs: Long = System.currentTimeMillis()
+    ): GlafiraPinnedPairingEnrollment {
+        require(enrollmentResponseJson.toByteArray().size in 1..MAX_JSON_BYTES) {
+            "PAIRING_RESPONSE_SIZE_INVALID"
+        }
         val response = parseObject(enrollmentResponseJson, "PAIRING_RESPONSE_JSON_INVALID")
         require(response.keys().asSequence().toSet() == responseFields) {
             "PAIRING_RESPONSE_FIELDS_INVALID"
@@ -100,20 +150,32 @@ object GlafiraWindowsHubPairingTrustBinding {
         val secretText = exactString(response, "sharedSecretBase64")
         val secret = decodeCanonicalBase64(secretText, "PAIRING_SECRET_INVALID")
         try {
-            require(secret.size == 32 && exactString(response, "agentId") == deviceId &&
-                exactString(response, "enrollmentId") == ticketId &&
+            require(secret.size == 32 && exactString(response, "agentId") == invitation.deviceId &&
+                exactString(response, "enrollmentId") == invitation.ticketId &&
                 validIdentifier(exactString(response, "desktopHubId")) &&
-                exactString(response, "endpoint") == endpoint &&
-                exactString(response, "tlsCertificateSha256") == tlsPin &&
-                responseScopes.isNotEmpty() && responseScopes.all(invitationScopes::contains) &&
+                exactString(response, "endpoint") == invitation.endpoint &&
+                exactString(response, "tlsCertificateSha256") ==
+                    invitation.tlsCertificateSha256 &&
+                responseScopes.isNotEmpty() && responseScopes.all(invitation.scopes::contains) &&
                 enrolledAt <= nowEpochMs && credentialExpiry > nowEpochMs &&
-                anchor(response) == anchor) {
+                anchor(response) == invitation.anchor) {
                 "PAIRING_RESPONSE_CORRELATION_INVALID"
             }
-        } finally {
+            return GlafiraPinnedPairingEnrollment(
+                invitation.deviceId,
+                exactString(response, "desktopHubId"),
+                invitation.endpoint,
+                invitation.tlsCertificateSha256,
+                secret,
+                responseScopes,
+                enrolledAt,
+                credentialExpiry,
+                invitation.anchor
+            )
+        } catch (failure: Exception) {
             secret.fill(0)
+            throw failure
         }
-        return GlafiraPinnedPairingTrustBinding(deviceId, responseScopes, anchor)
     }
 
     private fun anchor(value: JSONObject) = GlafiraOwnershipTrustAnchor(
@@ -233,225 +295,5 @@ internal object GlafiraOwnershipTrustValidation {
         } finally {
             encoded.fill(0)
         }
-    }
-}
-
-enum class GlafiraOwnershipTrustInstallResult { INSTALLED, ROTATED, UNCHANGED }
-
-/**
- * Android client-side ownership trust store. Records are encrypted by a non-exportable
- * Android Keystore AES-GCM key and atomically persisted outside backup/restore.
- */
-class AndroidGlafiraOwnershipTrustStore(
-    context: Context,
-    trustFile: File = File(context.noBackupFilesDir, DEFAULT_FILE_NAME),
-    private val keyAlias: String = DEFAULT_KEY_ALIAS
-) : GlafiraOwnershipTrustedKeyResolver {
-    private val file = AtomicFile(trustFile)
-    private val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
-
-    @Synchronized
-    fun install(binding: GlafiraPinnedPairingTrustBinding): GlafiraOwnershipTrustInstallResult {
-        val anchor = binding.anchor.also(GlafiraOwnershipTrustValidation::validate)
-        require("ownership.read" in binding.scopes) { "OWNERSHIP_TRUST_SCOPE_NOT_GRANTED" }
-        val anchors = readAll().toMutableMap()
-        val existing = anchors[anchor.ownerCoreId]
-        if (existing != null) {
-            require(anchor.signingKeyEpoch >= existing.signingKeyEpoch) {
-                "OWNERSHIP_TRUST_EPOCH_ROLLBACK"
-            }
-            if (anchor.signingKeyEpoch == existing.signingKeyEpoch) {
-                require(anchor == existing) { "OWNERSHIP_TRUST_EPOCH_CONFLICT" }
-                return GlafiraOwnershipTrustInstallResult.UNCHANGED
-            }
-        }
-        require(existing != null || anchors.size < MAX_ANCHORS) { "OWNERSHIP_TRUST_LIMIT_EXCEEDED" }
-        anchors[anchor.ownerCoreId] = anchor
-        writeAll(anchors)
-        return if (existing == null) GlafiraOwnershipTrustInstallResult.INSTALLED
-        else GlafiraOwnershipTrustInstallResult.ROTATED
-    }
-
-    @Synchronized
-    override fun resolve(
-        oldOwnerCoreId: String,
-        signingKeyEpoch: Long,
-        fingerprintSha256: String
-    ): PublicKey? {
-        val anchor = readAll()[oldOwnerCoreId] ?: return null
-        if (anchor.signingKeyEpoch != signingKeyEpoch ||
-            anchor.signingPublicKeySha256 != fingerprintSha256) return null
-        return anchor.publicKey()
-    }
-
-    @Synchronized
-    fun revoke(ownerCoreId: String): Boolean {
-        val anchors = readAll().toMutableMap()
-        if (anchors.remove(ownerCoreId) == null) return false
-        writeAll(anchors)
-        return true
-    }
-
-    /** Commits an empty trust set before deleting both ciphertext and wrapping key. */
-    @Synchronized
-    fun revokeAll() {
-        try {
-            if (file.baseFile.exists() && keyStore.containsAlias(keyAlias)) writeAll(emptyMap())
-        } finally {
-            file.delete()
-            if (keyStore.containsAlias(keyAlias)) keyStore.deleteEntry(keyAlias)
-        }
-    }
-
-    private fun readAll(): Map<String, GlafiraOwnershipTrustAnchor> {
-        val encoded = try {
-            file.openRead().use { it.readBytes() }
-        } catch (_: FileNotFoundException) {
-            return emptyMap()
-        }
-        require(encoded.size in 1..MAX_ENCRYPTED_BYTES) { "OWNERSHIP_TRUST_FILE_SIZE_INVALID" }
-        val wrapper = runCatching { JSONObject(encoded.toString(Charsets.UTF_8)) }
-            .getOrElse { throw IllegalStateException("OWNERSHIP_TRUST_FILE_CORRUPT", it) }
-        require(wrapper.keys().asSequence().toSet() == setOf("version", "iv", "ciphertext") &&
-            wrapper.get("version") == 1) { "OWNERSHIP_TRUST_FILE_SCHEMA_INVALID" }
-        val iv = decode(wrapper, "iv")
-        val ciphertext = decode(wrapper, "ciphertext")
-        var plaintext: ByteArray? = null
-        try {
-            require(iv.size == GCM_IV_BYTES) { "OWNERSHIP_TRUST_IV_INVALID" }
-            plaintext = decrypt(existingKey(), iv, ciphertext)
-            val root = JSONObject(plaintext.toString(Charsets.UTF_8))
-            require(root.keys().asSequence().toSet() == setOf("schemaVersion", "anchors") &&
-                root.get("schemaVersion") == 1) { "OWNERSHIP_TRUST_SCHEMA_INVALID" }
-            val array = root.get("anchors")
-            require(array is JSONArray && array.length() <= MAX_ANCHORS) {
-                "OWNERSHIP_TRUST_LIMIT_EXCEEDED"
-            }
-            return buildMap {
-                repeat(array.length()) {
-                    val value = array.getJSONObject(it)
-                    require(value.keys().asSequence().toSet() == setOf(
-                        "ownerCoreId", "signingKeyEpoch", "signingPublicKeySpkiBase64",
-                        "signingPublicKeySha256"
-                    )) { "OWNERSHIP_TRUST_RECORD_SCHEMA_INVALID" }
-                    val ownerCoreId = value.get("ownerCoreId")
-                    val keyEpoch = value.get("signingKeyEpoch")
-                    val publicKey = value.get("signingPublicKeySpkiBase64")
-                    val fingerprint = value.get("signingPublicKeySha256")
-                    require(ownerCoreId is String && (keyEpoch is Int || keyEpoch is Long) &&
-                        publicKey is String && fingerprint is String) {
-                        "OWNERSHIP_TRUST_RECORD_TYPE_INVALID"
-                    }
-                    val anchor = GlafiraOwnershipTrustAnchor(
-                        ownerCoreId,
-                        (keyEpoch as Number).toLong(),
-                        publicKey,
-                        fingerprint
-                    ).also(GlafiraOwnershipTrustValidation::validate)
-                    require(put(anchor.ownerCoreId, anchor) == null) {
-                        "OWNERSHIP_TRUST_DUPLICATE_CORE"
-                    }
-                }
-            }
-        } catch (failure: Exception) {
-            throw IllegalStateException("OWNERSHIP_TRUST_FILE_INVALID", failure)
-        } finally {
-            encoded.fill(0)
-            iv.fill(0)
-            ciphertext.fill(0)
-            plaintext?.fill(0)
-        }
-    }
-
-    private fun writeAll(anchors: Map<String, GlafiraOwnershipTrustAnchor>) {
-        val root = JSONObject().apply {
-            put("schemaVersion", 1)
-            put("anchors", JSONArray().apply {
-                anchors.toSortedMap().values.forEach { anchor ->
-                    put(JSONObject().apply {
-                        put("ownerCoreId", anchor.ownerCoreId)
-                        put("signingKeyEpoch", anchor.signingKeyEpoch)
-                        put("signingPublicKeySpkiBase64", anchor.signingPublicKeySpkiBase64)
-                        put("signingPublicKeySha256", anchor.signingPublicKeySha256)
-                    })
-                }
-            })
-        }
-        val plaintext = root.toString().toByteArray(Charsets.UTF_8)
-        val encrypted = encrypt(getOrCreateKey(), plaintext)
-        val output = JSONObject().apply {
-            put("version", 1)
-            put("iv", Base64.getEncoder().encodeToString(encrypted.first))
-            put("ciphertext", Base64.getEncoder().encodeToString(encrypted.second))
-        }.toString().toByteArray(Charsets.UTF_8)
-        var stream: FileOutputStream? = null
-        try {
-            val opened = file.startWrite()
-            stream = opened
-            opened.write(output)
-            opened.fd.sync()
-            file.finishWrite(opened)
-        } catch (failure: Throwable) {
-            stream?.let(file::failWrite)
-            throw failure
-        } finally {
-            plaintext.fill(0)
-            encrypted.first.fill(0)
-            encrypted.second.fill(0)
-            output.fill(0)
-        }
-    }
-
-    private fun decode(wrapper: JSONObject, field: String): ByteArray = runCatching {
-        val value = wrapper.get(field)
-        require(value is String)
-        Base64.getDecoder().decode(value).also {
-            require(Base64.getEncoder().encodeToString(it) == value)
-        }
-    }.getOrElse { throw IllegalStateException("OWNERSHIP_TRUST_ENCODING_INVALID", it) }
-
-    private fun getOrCreateKey(): SecretKey {
-        (keyStore.getKey(keyAlias, null) as? SecretKey)?.let { return it }
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEY_STORE)
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                keyAlias,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build()
-        )
-        return generator.generateKey()
-    }
-
-    private fun existingKey(): SecretKey = keyStore.getKey(keyAlias, null) as? SecretKey
-        ?: throw IllegalStateException("OWNERSHIP_TRUST_KEY_MISSING")
-
-    private fun encrypt(key: SecretKey, plaintext: ByteArray): Pair<ByteArray, ByteArray> {
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key)
-        cipher.updateAAD(AAD)
-        return cipher.iv to cipher.doFinal(plaintext)
-    }
-
-    private fun decrypt(key: SecretKey, iv: ByteArray, ciphertext: ByteArray): ByteArray {
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
-        cipher.updateAAD(AAD)
-        return cipher.doFinal(ciphertext)
-    }
-
-    companion object {
-        private const val ANDROID_KEY_STORE = "AndroidKeyStore"
-        private const val DEFAULT_FILE_NAME = "ownership-trust-v1.enc"
-        private const val DEFAULT_KEY_ALIAS = "glafira.ownership.trust.v1"
-        private const val TRANSFORMATION = "AES/GCM/NoPadding"
-        private const val GCM_IV_BYTES = 12
-        private const val GCM_TAG_BITS = 128
-        private const val MAX_ANCHORS = 32
-        private const val MAX_ENCRYPTED_BYTES = 128 * 1024
-        private val AAD = "GLAFIRA.Android.OwnershipTrust.v1".toByteArray(Charsets.UTF_8)
     }
 }
