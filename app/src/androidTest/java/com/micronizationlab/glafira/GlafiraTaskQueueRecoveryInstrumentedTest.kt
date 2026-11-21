@@ -202,6 +202,63 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         ).use { it.moveToFirst() })
         assertEquals(2, store.taskHistory("rollback", "project").size)
     }
+    @Test fun injectedDesktopProgressWriteFailurePreservesPriorLeaseProgressAcrossReopen() {
+        val now = System.currentTimeMillis()
+        store.enqueue(task("desktop-progress", "desktop.execute").copy(
+            payload = """{"requiredCapabilities":["code.build"]}"""
+        ))
+        val lease = requireNotNull(store.claimDesktopTask(
+            "desktop-progress", "desktop-node-progress", setOf("code.build"), 1, now
+        ))
+        val before = store.readableDatabase.rawQuery(
+            "SELECT lease_expires_at, progress_percent, progress_message FROM core_desktop_leases WHERE task_id = ?",
+            arrayOf("desktop-progress")
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            Triple(cursor.getLong(0), cursor.getInt(1), if (cursor.isNull(2)) null else cursor.getString(2))
+        }
+        assertEquals(0, before.second)
+        assertNull(before.third)
+
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER inject_desktop_progress_update_failure
+            BEFORE UPDATE ON core_desktop_leases
+            WHEN NEW.progress_percent = 50
+            BEGIN
+                SELECT RAISE(ABORT, 'injected-desktop-progress-failure');
+            END
+        """.trimIndent())
+
+        val failure = runCatching {
+            store.updateDesktopTask(
+                "desktop-progress", "desktop-node-progress", lease.leaseId, lease.fencingToken,
+                "RUNNING", 50, "halfway", null, null, now + 100
+            )
+        }.exceptionOrNull()
+        assertNotNull("The injected progress persistence failure must reach the caller", failure)
+
+        val afterFailure = store.readableDatabase.rawQuery(
+            "SELECT lease_expires_at, progress_percent, progress_message FROM core_desktop_leases WHERE task_id = ?",
+            arrayOf("desktop-progress")
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            Triple(cursor.getLong(0), cursor.getInt(1), if (cursor.isNull(2)) null else cursor.getString(2))
+        }
+        assertEquals(before, afterFailure)
+
+        store.writableDatabase.execSQL("DROP TRIGGER inject_desktop_progress_update_failure")
+        store.close()
+        store = GlafiraTaskStore(context)
+        val reopened = store.readableDatabase.rawQuery(
+            "SELECT lease_expires_at, progress_percent, progress_message FROM core_desktop_leases WHERE task_id = ?",
+            arrayOf("desktop-progress")
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            Triple(cursor.getLong(0), cursor.getInt(1), if (cursor.isNull(2)) null else cursor.getString(2))
+        }
+        assertEquals(before, reopened)
+    }
+
     @Test fun expiredDesktopLeaseDoesNotReplayOperationAndAcceptsLateBoundResult() {
         val now = System.currentTimeMillis()
         store.enqueue(task("desktop", "desktop.execute").copy(payload = """{"requiredCapabilities":["code.build"]}"""))
