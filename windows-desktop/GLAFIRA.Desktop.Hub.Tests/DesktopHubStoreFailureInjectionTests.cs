@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using GLAFIRA.Desktop.Hub.Core;
 using Microsoft.Data.Sqlite;
 using Xunit;
