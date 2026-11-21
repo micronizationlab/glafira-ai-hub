@@ -5,6 +5,8 @@
 
 ## 1. Read these documents first
 
+0. [Central Multi-Agent Coordination](../GLAFIRA_COORDINATION.md) — mandatory current instructions, owner priorities, task reservation and 20 × 150 action evidence policy.
+
 1. [Engineering Roadmap](IMPLEMENTATION_ROADMAP.md) — owner priority order and dependency rules.
 2. [Core Foundation Specification](GLAFIRA_CORE_FOUNDATION_SPEC.md) — Core authority, memory, agent contracts, review, trace and policy.
 3. [Core autonomy, tools and credential security](GLAFIRA_CORE_SECURITY_AND_TOOLS.md) — permissions, credential broker and safe external actions.
