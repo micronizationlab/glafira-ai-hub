@@ -209,13 +209,21 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 GlafiraTaskState.WAITING_FOR_OWNER.databaseValue
             )
         )
-        // A legacy executor lease is authority too; remove it before any owner review.
-        db.delete(
-            "core_desktop_leases",
-            "task_id IN (SELECT task_id FROM $TABLE_TASKS WHERE state = ?)",
-            arrayOf(GlafiraTaskState.WAITING_FOR_OWNER.databaseValue)
-        )
+        // A legacy executor lease, paired-node record or approval grant is authority too.
+        // None can be proven to belong to the current noBackup installation identity.
+        db.delete("core_desktop_leases", null, null)
+        db.delete("core_desktop_nodes", null, null)
+        if (tableExists(db, "core_action_approvals")) db.delete("core_action_approvals", null, null)
+        if (tableExists(db, GlafiraCoreLiveRunStore.TABLE)) {
+            db.delete(GlafiraCoreLiveRunStore.TABLE, null, null)
+        }
     }
+
+    private fun tableExists(db: SQLiteDatabase, tableName: String): Boolean =
+        db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            arrayOf(tableName)
+        ).use { it.moveToFirst() }
 
     private fun insertTaskOwnershipRecord(
         db: SQLiteDatabase,
