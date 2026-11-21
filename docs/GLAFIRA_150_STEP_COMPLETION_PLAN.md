@@ -98,7 +98,7 @@
 
 71. [x] Закончить типизированный lease envelope: type/idempotency/payload hash/risk/approval/expiry.
 72. [x] Проверить strict metadata validation и capability subset.
-73. [ ] Добавить durable local lease journal с atomic persistence.
+73. [x] Добавить durable local lease journal с atomic persistence.
 74. [ ] Подключить polling loop с bounded backoff и pause on disconnect/revoke.
 75. [ ] Подключить AgentTaskHandlerRegistry к реальному worker lifecycle.
 76. [ ] Добавить первый allowlisted read-only handler set; unknown type fails closed.
@@ -206,18 +206,20 @@
 
 ## Execution ledger — 2026-11-21
 
+**Refreshed main after this wave:** `60ba9b5a95eefaaed351c3f769a6c725a27b35d5`.
+
 ### Verified complete
 
 - Step 1: baseline captured at `85fb70c16d900a8d4f66bd6fec59593de491da12`; refreshed before later merges.
 - Steps 26–27: AndroidJUnit4 suite is selected by CI; managed emulator executed instrumentation tests, JUnit reports were non-empty and diagnostics uploaded (PR #227 exact-head run `44841507909`).
 - Step 71: full typed lease metadata delivered to Agent (PR #228 merged as `0950bf33b2a7779e1b5addf64a56ea2a5c0fb2ce`).
-- Step 72: strict lease validation and handler-aware claim filtering landed (PR #230 merged as `1a1b7cc5e9a5123362b6abe725302ecfc8fda46c`). Follow-up PR #232 makes the handler allowlist mandatory for every claim; do not regress this fail-closed requirement.
+- Step 72: strict lease validation and handler-aware claim filtering landed (PR #230 merged as `1a1b7cc5e9a5123362b6abe725302ecfc8fda46c`). PR #232 then made the handler allowlist mandatory for every claim and removed the legacy unfiltered path (merged as `60ba9b5a95eefaaed351c3f769a6c725a27b35d5`).
 
 ### In progress
 
-- Step 73: DPAPI-protected active-lease journal and durable terminal-result outbox in PR #231. Initial Windows CI exposed that System.Text.Json cannot deserialize `IReadOnlySet<string>`; a dedicated converter was added in commit `832e7f0e9b74e38c447b67f63291c45a29614b6b`. The exact-head rerun is pending.
+- Step 73: DPAPI-protected active-lease journal and durable terminal-result outbox in PR #231, merged as `85fcf6779b15b045bef663ce8bede67398a6300b`. Initial Windows CI exposed that System.Text.Json cannot deserialize `IReadOnlySet<string>`; a dedicated converter was added in commit `832e7f0e9b74e38c447b67f63291c45a29614b6b`. Exact-head Windows Agent tests/build, shared contracts and x64 package validation passed.
 - Android voice delivery PR #225: JVM tests and debug APK pass on head `c9a5039d760c28a8f78eff25107f2a7c0ae42aa3`; the emulator suite is still running. The unrelated backup guidance selector was corrected from content-description lookup to visible-text lookup.
-- PR #232: server now rejects unfiltered legacy task claims; exact-head Windows CI is pending.
+- PR #232 merged after exact-head Windows Agent tests, Desktop Hub tests, shared contract conformance and both x64 package builds passed.
 
 ### Integration decisions
 
