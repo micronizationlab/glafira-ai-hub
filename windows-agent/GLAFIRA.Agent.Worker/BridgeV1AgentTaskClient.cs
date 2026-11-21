@@ -11,6 +11,13 @@ namespace GLAFIRA.Agent.Worker;
 public sealed record AgentTaskLease(
     string TaskId,
     string ProjectId,
+    string TaskType,
+    string IdempotencyKey,
+    string PayloadRef,
+    string PayloadSha256,
+    string EffectRisk,
+    string? ApprovalRef,
+    long LeaseExpiresAtEpochMs,
     string ParentTaskId,
     string SubtaskId,
     string Title,
@@ -21,20 +28,28 @@ public sealed record AgentTaskLease(
     long ExpiresAtEpochMs,
     int Priority,
     string LeaseId,
-    long FencingToken);
+    long FencingToken)
+{
+    public AgentTaskEnvelope ToEnvelope() => new(
+        TaskId, ProjectId, IdempotencyKey, TaskType, PayloadRef, PayloadSha256,
+        RequiredCapabilities, ApprovalRef, Title, Instruction, Executor,
+        ParentTaskId, SubtaskId, CreatedAtEpochMs, ExpiresAtEpochMs,
+        Priority, LeaseId, FencingToken, EffectRisk);
+}
 
 public sealed record AgentTaskUpdateAck(
     string TaskId,
     string LeaseId,
     long FencingToken,
     string State,
-    string ResultSha256);
+    string ResultSha256,
+    long LeaseExpiresAtEpochMs);
 
 /// <summary>
 /// Signed Bridge v1 task-claim and result transport for the Windows Agent.
 /// This class transports typed task metadata only; it never executes instructions.
 /// </summary>
-public sealed class BridgeV1AgentTaskClient
+public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
 {
     private const int MaximumResponseBytes = 64 * 1024;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
@@ -69,14 +84,28 @@ public sealed class BridgeV1AgentTaskClient
         AgentEnrollmentCredential credential,
         IReadOnlyCollection<string> ownerApprovedCapabilities,
         int maxParallelTasks,
+        IReadOnlyCollection<string> supportedTaskTypes,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(supportedTaskTypes);
         ValidateOwnerProfile(credential, ownerApprovedCapabilities, maxParallelTasks, "desktop.task.claim");
+        string[]? normalizedTaskTypes = null;
+        if (supportedTaskTypes is not null)
+        {
+            normalizedTaskTypes = supportedTaskTypes.Order(StringComparer.Ordinal).ToArray();
+            if (normalizedTaskTypes.Length is < 1 or > 64 ||
+                normalizedTaskTypes.Any(type => string.IsNullOrWhiteSpace(type) || type.Length > 96 ||
+                    !System.Text.RegularExpressions.Regex.IsMatch(type, "^[a-z][a-z0-9_.-]*$")) ||
+                normalizedTaskTypes.Distinct(StringComparer.Ordinal).Count() != normalizedTaskTypes.Length)
+                throw new ArgumentException("Supported task types must be 1–64 unique bounded identifiers.", nameof(supportedTaskTypes));
+        }
         var payload = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["capabilities"] = JsonSerializer.Serialize(ownerApprovedCapabilities.Order(StringComparer.Ordinal)),
             ["maxParallelTasks"] = maxParallelTasks.ToString(CultureInfo.InvariantCulture)
         };
+        if (normalizedTaskTypes is not null)
+            payload["taskTypes"] = JsonSerializer.Serialize(normalizedTaskTypes);
         var response = await SendAsync(credential, "DESKTOP_TASK_CLAIM", payload, cancellationToken).ConfigureAwait(false);
         if (response.Status != "ACCEPTED" || response.Result is null)
             throw new InvalidDataException(response.ErrorCode ?? "TASK_CLAIM_REJECTED");
@@ -88,13 +117,21 @@ public sealed class BridgeV1AgentTaskClient
 
         var taskId = Required(result, "taskId");
         var projectId = Required(result, "projectId");
+        var taskType = Required(result, "taskType");
+        var idempotencyKey = Required(result, "idempotencyKey");
+        var payloadRef = Required(result, "payloadRef");
+        var payloadSha256 = Required(result, "payloadSha256");
+        var effectRisk = Required(result, "effectRisk");
+        var approvalText = result.GetValueOrDefault("approvalRef") ?? string.Empty;
+        var approvalRef = string.IsNullOrEmpty(approvalText) ? null : approvalText;
         var parentTaskId = Required(result, "parentTaskId");
         var subtaskId = Required(result, "subtaskId");
         var title = Required(result, "title");
         var instruction = Required(result, "instruction");
         var executor = Required(result, "executor");
         var leaseId = Required(result, "leaseId");
-        if (!long.TryParse(Required(result, "fencingToken"), NumberStyles.None, CultureInfo.InvariantCulture, out var fencing) || fencing <= 0 ||
+        if (!long.TryParse(Required(result, "leaseExpiresAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var leaseExpires) ||
+            !long.TryParse(Required(result, "fencingToken"), NumberStyles.None, CultureInfo.InvariantCulture, out var fencing) || fencing <= 0 ||
             !long.TryParse(Required(result, "createdAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var created) ||
             !long.TryParse(Required(result, "expiresAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var expires) ||
             !int.TryParse(Required(result, "priority"), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var priority))
@@ -104,6 +141,10 @@ public sealed class BridgeV1AgentTaskClient
         try { requiredCapabilities = JsonSerializer.Deserialize<string[]>(Required(result, "requiredCapabilities"), JsonOptions) ?? []; }
         catch (JsonException error) { throw new InvalidDataException("TASK_CLAIM_CAPABILITIES_INVALID", error); }
         if (taskId.Length is < 1 or > 64 || projectId.Length is < 1 or > 128 ||
+            taskType.Length is < 1 or > 96 || idempotencyKey.Length is < 1 or > 128 ||
+            payloadRef.Length is < 1 or > 512 || !System.Text.RegularExpressions.Regex.IsMatch(payloadSha256, "^[a-fA-F0-9]{64}$") ||
+            effectRisk is not ("ReadOnly" or "LocalWrite" or "ExternalSideEffect") ||
+            approvalText.Length > 128 || leaseExpires <= _timeProvider.GetUtcNow().ToUnixTimeMilliseconds() ||
             parentTaskId.Length > 128 || subtaskId.Length > 128 || title.Length is < 1 or > 256 ||
             instruction.Length is < 1 or > 12_000 || leaseId.Length is < 8 or > 128 ||
             created <= 0 || expires <= _timeProvider.GetUtcNow().ToUnixTimeMilliseconds() ||
@@ -113,8 +154,10 @@ public sealed class BridgeV1AgentTaskClient
             requiredCapabilities.Any(capability => !ownerApprovedCapabilities.Contains(capability, StringComparer.Ordinal)))
             throw new InvalidDataException("TASK_CLAIM_RESPONSE_INVALID");
 
-        return new AgentTaskLease(taskId, projectId, parentTaskId, subtaskId, title, instruction,
-            executor, new HashSet<string>(requiredCapabilities, StringComparer.Ordinal),
+        return new AgentTaskLease(taskId, projectId, taskType, idempotencyKey, payloadRef,
+            payloadSha256.ToLowerInvariant(), effectRisk, approvalRef, leaseExpires,
+            parentTaskId, subtaskId, title, instruction, executor,
+            new HashSet<string>(requiredCapabilities, StringComparer.Ordinal),
             created, expires, priority, leaseId, fencing);
     }
 
@@ -169,7 +212,16 @@ public sealed class BridgeV1AgentTaskClient
             ack.GetValueOrDefault("state") != state ||
             ack.GetValueOrDefault("resultSha256") != expectedDigest)
             throw new InvalidDataException("TASK_RESULT_ACK_MISMATCH");
-        return new AgentTaskUpdateAck(lease.TaskId, lease.LeaseId, lease.FencingToken, state, expectedDigest);
+        var renewedExpiry = 0L;
+        if (state is "ACCEPTED" or "RUNNING")
+        {
+            if (!long.TryParse(ack.GetValueOrDefault("leaseExpiresAtEpochMs"), NumberStyles.None,
+                    CultureInfo.InvariantCulture, out renewedExpiry) ||
+                renewedExpiry <= _timeProvider.GetUtcNow().ToUnixTimeMilliseconds())
+                throw new InvalidDataException("TASK_LEASE_RENEWAL_ACK_INVALID");
+        }
+        return new AgentTaskUpdateAck(
+            lease.TaskId, lease.LeaseId, lease.FencingToken, state, expectedDigest, renewedExpiry);
     }
 
     private async Task<Response> SendAsync(

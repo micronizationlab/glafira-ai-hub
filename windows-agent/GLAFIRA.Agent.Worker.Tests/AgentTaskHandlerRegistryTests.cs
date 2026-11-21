@@ -37,6 +37,15 @@ public sealed class AgentTaskHandlerRegistryTests
     }
 
     [Fact]
+    public void RegisteredTaskTypesAreSortedAndStable()
+    {
+        var registry = new AgentTaskHandlerRegistry([
+            new TestHandler("web.research"), new TestHandler("analysis.document")]);
+
+        Assert.Equal(new[] { "analysis.document", "web.research" }, registry.RegisteredTaskTypes);
+    }
+
+    [Fact]
     public void BlankTaskType_IsRejected()
     {
         var registry = new AgentTaskHandlerRegistry([new TestHandler("research.search")]);

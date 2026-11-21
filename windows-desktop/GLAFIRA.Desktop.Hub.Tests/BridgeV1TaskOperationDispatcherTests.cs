@@ -80,11 +80,53 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
         Assert.Equal("ACCEPTED", response.Status);
         Assert.Equal("true", response.Result["available"]);
         Assert.Equal("task-0001", response.Result["taskId"]);
+        Assert.Equal("web.research", response.Result["taskType"]);
+        Assert.Equal("idem-task-01", response.Result["idempotencyKey"]);
+        Assert.Equal("payload://task-0001", response.Result["payloadRef"]);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(_payload)).ToLowerInvariant(), response.Result["payloadSha256"]);
+        Assert.Equal("ReadOnly", response.Result["effectRisk"]);
+        Assert.Equal(string.Empty, response.Result["approvalRef"]);
+        Assert.True(long.Parse(response.Result["leaseExpiresAtEpochMs"]) > now.ToUnixTimeMilliseconds());
         Assert.Equal("RESEARCHER", response.Result["executor"]);
         Assert.Equal("web.research", Assert.Single(JsonSerializer.Deserialize<string[]>(response.Result["requiredCapabilities"])!));
         Assert.False(string.IsNullOrWhiteSpace(response.Result["leaseId"]));
         Assert.True(long.Parse(response.Result["fencingToken"]) > 0);
         Assert.Equal(HubTaskState.Leased, _store.GetTaskState("task-0001"));
+    }
+
+    [Fact]
+    public async Task ClaimRequiresAnExplicitTaskHandlerAllowlist()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var payload = new Dictionary<string, string>
+        {
+            ["capabilities"] = JsonSerializer.Serialize(new[] { "web.research" }),
+            ["maxParallelTasks"] = "1"
+        };
+
+        var response = await CreateDispatcher(_payload).DispatchAsync(
+            Request(BridgeV1Operation.DESKTOP_TASK_CLAIM, payload), now.AddSeconds(1));
+
+        Assert.Equal("FAILED", response.Status);
+        Assert.Equal("AGENT_TASK_TYPE_REQUIRED", response.ErrorCode);
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("task-0001"));
+    }
+
+    [Fact]
+    public async Task ClaimDoesNotLeaseTaskTypesTheAgentCannotExecute()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+
+        var response = await CreateDispatcher(_payload).DispatchAsync(
+            ClaimRequest(["web.research"], 1, ["analysis.document"]), now.AddSeconds(1));
+
+        Assert.Equal("ACCEPTED", response.Status);
+        Assert.Equal("false", response.Result["available"]);
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("task-0001"));
     }
 
     [Fact]
@@ -128,6 +170,24 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
         var databaseFiles = Directory.GetFiles(Path.GetDirectoryName(_databasePath)!, Path.GetFileName(_databasePath) + "*");
         Assert.DoesNotContain(databaseFiles, file =>
             Encoding.UTF8.GetString(File.ReadAllBytes(file)).Contains("private result payload", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RunningProgressReturnsTheServerRenewedLeaseExpiry()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+
+        var progress = await dispatcher.DispatchAsync(
+            ResultRequest("RUNNING", claim.Result["leaseId"], long.Parse(claim.Result["fencingToken"]), "null"),
+            now.AddSeconds(2));
+
+        Assert.Equal("SUCCEEDED", progress.Status);
+        Assert.True(long.Parse(progress.Result["leaseExpiresAtEpochMs"]) >
+            now.AddSeconds(2).ToUnixTimeMilliseconds());
     }
 
     [Fact]
@@ -212,11 +272,14 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     private static BridgeV1SignedRequest HeartbeatRequest() =>
         Request(BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT, new Dictionary<string, string>());
 
-    private static BridgeV1SignedRequest ClaimRequest(IReadOnlyCollection<string> capabilities, int parallel) =>
+    private static BridgeV1SignedRequest ClaimRequest(
+        IReadOnlyCollection<string> capabilities, int parallel,
+        IReadOnlyCollection<string>? taskTypes = null) =>
         Request(BridgeV1Operation.DESKTOP_TASK_CLAIM, new Dictionary<string, string>
         {
             ["capabilities"] = JsonSerializer.Serialize(capabilities),
-            ["maxParallelTasks"] = parallel.ToString()
+            ["maxParallelTasks"] = parallel.ToString(),
+            ["taskTypes"] = JsonSerializer.Serialize(taskTypes ?? ["web.research"])
         });
 
     private static BridgeV1SignedRequest ResultRequest(

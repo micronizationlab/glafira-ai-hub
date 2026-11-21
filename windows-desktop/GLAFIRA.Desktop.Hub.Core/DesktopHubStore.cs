@@ -322,11 +322,21 @@ public sealed class DesktopHubStore
     public HubTaskLease? ClaimNext(
         string agentId,
         DateTimeOffset now,
-        TimeSpan leaseDuration)
+        TimeSpan leaseDuration,
+        IReadOnlyCollection<string>? supportedTaskTypes = null)
     {
         ValidateIdentifier(agentId, nameof(agentId));
         if (leaseDuration <= TimeSpan.Zero || leaseDuration > TimeSpan.FromMinutes(15))
             throw new ArgumentOutOfRangeException(nameof(leaseDuration));
+        HashSet<string>? supportedTypes = null;
+        if (supportedTaskTypes is not null)
+        {
+            if (supportedTaskTypes.Count is < 1 or > 64 ||
+                supportedTaskTypes.Any(type => string.IsNullOrWhiteSpace(type) || type.Length > 96) ||
+                supportedTaskTypes.Distinct(StringComparer.Ordinal).Count() != supportedTaskTypes.Count)
+                throw new ArgumentException("Supported task types must be 1–64 unique bounded identifiers.", nameof(supportedTaskTypes));
+            supportedTypes = new HashSet<string>(supportedTaskTypes, StringComparer.Ordinal);
+        }
 
         using var connection = Open();
         using var transaction = connection.BeginTransaction(deferred: false);
@@ -382,7 +392,8 @@ public sealed class DesktopHubStore
             command.Transaction = transaction;
             command.CommandText = """
                 SELECT t.task_id, t.project_id, t.task_type, t.payload_ref, t.payload_sha256,
-                       t.required_capabilities_json, t.effect_risk, t.approval_ref, t.fencing_token
+                       t.required_capabilities_json, t.effect_risk, t.approval_ref, t.fencing_token,
+                       t.idempotency_key
                 FROM Tasks t
                 WHERE t.state = 'Queued'
                   AND NOT EXISTS (
@@ -400,13 +411,15 @@ public sealed class DesktopHubStore
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
+                var taskType = reader.GetString(2);
+                if (supportedTypes is not null && !supportedTypes.Contains(taskType)) continue;
                 var required = JsonSerializer.Deserialize<string[]>(reader.GetString(5)) ?? [];
                 if (required.All(agentCapabilities.Contains))
                 {
                     candidates.Add(new Candidate(
-                        reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                        reader.GetString(0), reader.GetString(1), taskType,
                         reader.GetString(3), reader.GetString(4), (HubTaskEffectRisk)reader.GetInt32(6),
-                        reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt64(8)));
+                        reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt64(8), reader.GetString(9)));
                     break;
                 }
             }
@@ -456,7 +469,7 @@ public sealed class DesktopHubStore
 
         return new HubTaskLease(
             selected.TaskId, selected.ProjectId, agentId, leaseId, nextFence, expires,
-            selected.TaskType, selected.PayloadRef, selected.PayloadSha256,
+            selected.TaskType, selected.IdempotencyKey, selected.PayloadRef, selected.PayloadSha256,
             selected.EffectRisk, selected.ApprovalRef);
     }
 
@@ -653,8 +666,12 @@ public sealed class DesktopHubStore
         long fencingToken,
         int progressPercent,
         string progressMessage,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        TimeSpan? leaseDuration = null)
     {
+        leaseDuration ??= TimeSpan.FromMinutes(2);
+        if (leaseDuration <= TimeSpan.Zero || leaseDuration > TimeSpan.FromMinutes(15))
+            throw new ArgumentOutOfRangeException(nameof(leaseDuration));
         ValidateIdentifier(agentId, nameof(agentId));
         ValidateIdentifier(taskId, nameof(taskId));
         ValidateIdentifier(leaseId, nameof(leaseId));
@@ -692,6 +709,24 @@ public sealed class DesktopHubStore
             validate.Parameters.AddWithValue("$fence", fencingToken);
             validate.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
             if (Convert.ToInt32(validate.ExecuteScalar()) != 1)
+            {
+                transaction.Commit();
+                return false;
+            }
+        }
+
+        // Progress is also the lease-renewal signal. Extend only after the current
+        // owner-approved lease and fencing token have been validated in this transaction.
+        using (var renew = connection.CreateCommand())
+        {
+            renew.Transaction = transaction;
+            renew.CommandText = "UPDATE Leases SET expires_at_ms = $expires WHERE lease_id = $lease AND agent_id = $agent AND task_id = $task AND fencing_token = $fence;";
+            renew.Parameters.AddWithValue("$expires", now.Add(leaseDuration.Value).ToUnixTimeMilliseconds());
+            renew.Parameters.AddWithValue("$lease", leaseId);
+            renew.Parameters.AddWithValue("$agent", agentId);
+            renew.Parameters.AddWithValue("$task", taskId);
+            renew.Parameters.AddWithValue("$fence", fencingToken);
+            if (renew.ExecuteNonQuery() != 1)
             {
                 transaction.Commit();
                 return false;
@@ -1038,5 +1073,6 @@ public sealed class DesktopHubStore
         string PayloadSha256,
         HubTaskEffectRisk EffectRisk,
         string? ApprovalRef,
-        long FencingToken);
+        long FencingToken,
+        string IdempotencyKey);
 }

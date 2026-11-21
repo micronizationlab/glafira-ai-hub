@@ -65,6 +65,7 @@ fun BackupSettingsSection() {
     var wifiOnly by remember { mutableStateOf(prefs.getBoolean("backup_wifi_only", true)) }
     var lastSuccess by remember { mutableStateOf(prefs.getLong(GlafiraBackupWorker.KEY_LAST_SUCCESS, 0L)) }
     var folderError by remember { mutableStateOf<String?>(null) }
+    var manualBackupGuidance by remember { mutableStateOf<String?>(null) }
     var persistedStatus by remember { mutableStateOf(prefs.getString(GlafiraBackupWorker.KEY_LAST_STATUS, null)) }
     var lastError by remember { mutableStateOf(prefs.getString(GlafiraBackupWorker.KEY_LAST_ERROR, null)) }
     val workManager = remember { WorkManager.getInstance(context) }
@@ -115,6 +116,7 @@ fun BackupSettingsSection() {
                 folderUri = uri.toString()
                 prefs.edit().putString(GlafiraBackupWorker.KEY_TREE_URI, folderUri).apply()
                 folderError = null
+                manualBackupGuidance = null
                 status = "Папка облачного хранилища подключена и доступна для записи."
             } catch (error: Exception) {
                 folderError = "Не удалось подключить папку: ${error.message ?: "ошибка разрешения"}"
@@ -265,7 +267,10 @@ fun BackupSettingsSection() {
                                 stored = storedPassphrase
                             )
                             when {
-                                selectedFolder == null -> status = "Сначала выбери папку Google Drive или Яндекс Диска."
+                                selectedFolder == null -> {
+                                    manualBackupGuidance = "Сначала выбери папку Google Drive или Яндекс Диска."
+                                    status = "Выбери папку облачного хранилища, чтобы начать резервирование."
+                                }
                                 effectivePassphrase.length < 12 -> status = "Введи пароль не короче 12 символов. Если пароль уже сохранялся на этом телефоне, поле можно оставить пустым."
                                 !context.contentResolver.persistedUriPermissions.any {
                                     it.uri == selectedFolder && it.isWritePermission
@@ -276,6 +281,7 @@ fun BackupSettingsSection() {
                                     context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY, effectivePassphrase
                                 ) -> status = "Не удалось сохранить пароль в Android Keystore."
                                 else -> {
+                                    manualBackupGuidance = null
                                     BackupScheduler.runNow(context, wifiOnly)
                                     status = "Резервная копия поставлена в очередь. Пароль взят из защищённого хранилища; проверь результат загрузки ниже."
                                 }
@@ -328,6 +334,7 @@ fun BackupSettingsSection() {
                 if (!persistedStatus.isNullOrBlank()) {
                     Text("Последний результат: $persistedStatus", color = Tx, fontSize = 10.sp)
                 }
+                manualBackupGuidance?.let { Text(it, color = Tx, fontSize = 11.sp) }
                 val visibleStatus = if (busy) "Выполняется операция…" else status
                 Text(
                     visibleStatus,

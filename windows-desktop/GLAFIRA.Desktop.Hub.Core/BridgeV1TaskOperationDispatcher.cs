@@ -95,7 +95,18 @@ public sealed class BridgeV1TaskOperationDispatcher(
                 .SetEquals(agent.Capabilities))
             return Failure("AGENT_CAPABILITY_MISMATCH");
 
-        var lease = store.ClaimNext(agent.AgentId, now, _leaseDuration);
+        if (!request.Payload.TryGetValue("taskTypes", out var taskTypesJson))
+            return Failure("AGENT_TASK_TYPE_REQUIRED");
+        string[] parsedTypes;
+        try { parsedTypes = JsonSerializer.Deserialize<string[]>(taskTypesJson) ?? []; }
+        catch (JsonException) { return Failure("AGENT_TASK_TYPE_MISMATCH"); }
+        if (parsedTypes.Length is < 1 or > 64 ||
+            parsedTypes.Any(type => string.IsNullOrWhiteSpace(type) || type.Length > 96 ||
+                !System.Text.RegularExpressions.Regex.IsMatch(type, "^[a-z][a-z0-9_.-]*$")) ||
+            parsedTypes.Distinct(StringComparer.Ordinal).Count() != parsedTypes.Length)
+            return Failure("AGENT_TASK_TYPE_MISMATCH");
+
+        var lease = store.ClaimNext(agent.AgentId, now, _leaseDuration, parsedTypes);
         if (lease is null)
             return Accepted(new Dictionary<string, string> { ["available"] = "false" });
 
@@ -134,6 +145,13 @@ public sealed class BridgeV1TaskOperationDispatcher(
                 ["available"] = "true",
                 ["taskId"] = lease.TaskId,
                 ["projectId"] = lease.ProjectId,
+                ["taskType"] = lease.TaskType,
+                ["idempotencyKey"] = lease.IdempotencyKey,
+                ["payloadRef"] = lease.PayloadRef,
+                ["payloadSha256"] = lease.PayloadSha256,
+                ["effectRisk"] = lease.EffectRisk.ToString(),
+                ["approvalRef"] = lease.ApprovalRef ?? string.Empty,
+                ["leaseExpiresAtEpochMs"] = lease.ExpiresAt.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
                 ["parentTaskId"] = fields.ParentTaskId,
                 ["subtaskId"] = fields.SubtaskId,
                 ["title"] = fields.Title,
@@ -174,7 +192,7 @@ public sealed class BridgeV1TaskOperationDispatcher(
         {
             accepted = store.ReportProgress(
                 agent.AgentId, taskId, leaseId, fencingToken, progress,
-                payload.GetValueOrDefault("progressMessage") ?? "working", now);
+                payload.GetValueOrDefault("progressMessage") ?? "working", now, _leaseDuration);
         }
         else if (state is "SUCCEEDED" or "FAILED")
         {
@@ -203,15 +221,18 @@ public sealed class BridgeV1TaskOperationDispatcher(
             return Failure("INVALID_TASK_RESULT");
         }
 
-        return accepted
-            ? new BridgeV1DispatchResponse("SUCCEEDED", new Dictionary<string, string>
-            {
-                ["accepted"] = "true", ["taskId"] = taskId, ["leaseId"] = leaseId,
-                ["fencingToken"] = fencingToken.ToString(CultureInfo.InvariantCulture), ["state"] = state,
-                ["resultSha256"] = Convert.ToHexString(SHA256.HashData(
-                    System.Text.Encoding.UTF8.GetBytes(payload.GetValueOrDefault("result") ?? "none"))).ToLowerInvariant()
-            })
-            : Failure("LEASE_FENCING_REJECTED");
+        if (!accepted) return Failure("LEASE_FENCING_REJECTED");
+        var acknowledgement = new Dictionary<string, string>
+        {
+            ["accepted"] = "true", ["taskId"] = taskId, ["leaseId"] = leaseId,
+            ["fencingToken"] = fencingToken.ToString(CultureInfo.InvariantCulture), ["state"] = state,
+            ["resultSha256"] = Convert.ToHexString(SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(payload.GetValueOrDefault("result") ?? "none"))).ToLowerInvariant()
+        };
+        if (state is "ACCEPTED" or "RUNNING")
+            acknowledgement["leaseExpiresAtEpochMs"] =
+                now.Add(_leaseDuration).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
+        return new BridgeV1DispatchResponse("SUCCEEDED", acknowledgement);
     }
 
     private static bool TryDecodePayload(

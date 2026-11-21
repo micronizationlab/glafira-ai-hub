@@ -5,17 +5,20 @@ using Microsoft.Extensions.Logging;
 namespace GLAFIRA.Agent.Worker;
 
 /// <summary>
-/// Validates the machine-protected enrollment and maintains an authenticated,
-/// TLS-pinned heartbeat with Desktop. Task claims remain disabled until typed
-/// task handlers and durable result delivery are integrated.
+/// Validates machine-protected enrollment, maintains the authenticated TLS-pinned
+/// Desktop heartbeat and polls only when at least one typed handler is registered.
+/// The coordinator persists leases/results and executes ReadOnly handlers only.
 /// </summary>
 public sealed class AgentWorker(
     ILogger<AgentWorker> logger,
     AgentRuntimeState runtimeState,
     IAgentCredentialStore credentialStore,
-    BridgeV1AgentClient bridgeClient) : BackgroundService
+    BridgeV1AgentClient bridgeClient,
+    AgentTaskHandlerRegistry taskHandlers,
+    AgentTaskPollingCoordinator taskPollingCoordinator) : BackgroundService
 {
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PollTick = TimeSpan.FromSeconds(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -52,13 +55,69 @@ public sealed class AgentWorker(
 
         try
         {
-            using var timer = new PeriodicTimer(HeartbeatInterval);
+            var nextHeartbeat = DateTimeOffset.UtcNow.Add(HeartbeatInterval);
+            var nextPoll = DateTimeOffset.UtcNow;
+            var pollDelay = AgentPollingBackoff.MinimumDelay;
+            var wasReady = false;
+            using var timer = new PeriodicTimer(PollTick);
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
-                if (credential is not null)
-                    await SendHeartbeatAsync(credential, stoppingToken).ConfigureAwait(false);
-                else
+                if (credential is null)
+                {
                     logger.LogDebug("GLAFIRA Agent is {AgentStatus}; waiting for enrollment.", runtimeState.Status);
+                    continue;
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                if (now >= nextHeartbeat)
+                {
+                    await SendHeartbeatAsync(credential, stoppingToken).ConfigureAwait(false);
+                    nextHeartbeat = DateTimeOffset.UtcNow.Add(HeartbeatInterval);
+                }
+
+                var ready = runtimeState.Status == AgentServiceStatus.Ready &&
+                    taskHandlers.RegisteredTaskTypes.Count > 0;
+                if (!ready)
+                {
+                    wasReady = false;
+                    continue; // No claims while disconnected, revoked, paused or awaiting approval.
+                }
+
+                if (!wasReady)
+                {
+                    wasReady = true;
+                    nextPoll = DateTimeOffset.UtcNow;
+                    pollDelay = AgentPollingBackoff.MinimumDelay;
+                }
+                if (DateTimeOffset.UtcNow < nextPoll)
+                    continue;
+
+                try
+                {
+                    var worked = await taskPollingCoordinator.PollOnceAsync(credential, stoppingToken)
+                        .ConfigureAwait(false);
+                    pollDelay = AgentPollingBackoff.NextDelay(pollDelay, worked, failed: false);
+                    nextPoll = DateTimeOffset.UtcNow.Add(pollDelay);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or TaskCanceledException)
+                {
+                    logger.LogWarning(error,
+                        "GLAFIRA Agent {AgentId} task polling/execution failed; durable lease/outbox state remains journaled and retry is backed off.",
+                        credential.AgentId);
+                    pollDelay = AgentPollingBackoff.NextDelay(pollDelay, worked: false, failed: true);
+                    nextPoll = DateTimeOffset.UtcNow.Add(pollDelay);
+
+                    if (error is HttpRequestException or IOException or TaskCanceledException)
+                    {
+                        runtimeState.ClearOwnerProfile();
+                        runtimeState.SetStatus(AgentServiceStatus.Paused);
+                        wasReady = false; // Heartbeat must re-establish owner-approved liveness before polling resumes.
+                    }
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -83,13 +142,23 @@ public sealed class AgentWorker(
             if (heartbeat.Accepted)
             {
                 runtimeState.SetOwnerProfile(heartbeat.Capabilities, heartbeat.MaxParallelTasks);
-                var wasConnected = runtimeState.Status == AgentServiceStatus.Connected;
-                runtimeState.SetStatus(AgentServiceStatus.Connected);
-                if (!wasConnected)
+                var canExecute = taskHandlers.RegisteredTaskTypes.Count > 0;
+                var wasAvailable = runtimeState.Status is AgentServiceStatus.Connected or AgentServiceStatus.Ready;
+                runtimeState.SetStatus(canExecute ? AgentServiceStatus.Ready : AgentServiceStatus.Connected);
+                if (!wasAvailable)
                 {
-                    logger.LogInformation(
-                        "GLAFIRA Agent {AgentId} is connected to Desktop; owner approved {CapabilityCount} capabilities with parallelism {MaxParallel}. Task polling remains disabled.",
-                        heartbeat.AgentId, heartbeat.Capabilities.Count, heartbeat.MaxParallelTasks);
+                    if (canExecute)
+                    {
+                        logger.LogInformation(
+                            "GLAFIRA Agent {AgentId} is ready; {HandlerCount} typed task handlers are registered for {CapabilityCount} owner-approved capabilities.",
+                            heartbeat.AgentId, taskHandlers.RegisteredTaskTypes.Count, heartbeat.Capabilities.Count);
+                    }
+                    else
+                    {
+                        logger.LogInformation(
+                            "GLAFIRA Agent {AgentId} is connected to Desktop; no typed handlers are registered, so task claims remain disabled.",
+                            heartbeat.AgentId);
+                    }
                 }
                 else
                 {

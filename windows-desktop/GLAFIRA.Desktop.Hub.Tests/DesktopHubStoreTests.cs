@@ -55,6 +55,17 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void SupportedTaskTypeFilterLeavesUnregisteredTaskQueued()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("task-1"), now);
+
+        Assert.Null(_store.ClaimNext("agent-1", now, TimeSpan.FromMinutes(1), ["analysis.document"]));
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("task-1"));
+    }
+
+    [Fact]
     public void EnforcesPerAgentConcurrencyLimit()
     {
         var now = DateTimeOffset.UtcNow;
@@ -201,6 +212,26 @@ public sealed class DesktopHubStoreTests : IDisposable
             lease.FencingToken, succeeded: true, now.AddSeconds(4)));
         Assert.False(_store.ReportProgress("agent-progress", "progress-task", lease.LeaseId,
             lease.FencingToken, 90, "Late progress", now.AddSeconds(5)));
+    }
+
+    [Fact]
+    public void AcceptedProgressRenewsLeaseAndKeepsItOutOfExpiredRecovery()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-renew", "device-renew", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("renew-task"), now);
+        var lease = _store.ClaimNext("agent-renew", now.AddSeconds(1), TimeSpan.FromSeconds(30));
+        Assert.NotNull(lease);
+
+        Assert.True(_store.ReportProgress("agent-renew", "renew-task", lease.LeaseId,
+            lease.FencingToken, 50, "still working", now.AddSeconds(20), TimeSpan.FromMinutes(2)));
+
+        var recovered = _store.RecoverExpiredLeases(now.AddSeconds(40));
+        Assert.Empty(recovered);
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState("renew-task"));
+
+        Assert.Single(_store.RecoverExpiredLeases(now.AddMinutes(3)));
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("renew-task"));
     }
 
     [Fact]

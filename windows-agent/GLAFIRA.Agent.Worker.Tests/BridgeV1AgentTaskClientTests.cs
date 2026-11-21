@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -31,6 +32,10 @@ public sealed class BridgeV1AgentTaskClientTests
                 result = new Dictionary<string, string>
                 {
                     ["available"] = "true", ["taskId"] = "task-001", ["projectId"] = "default",
+                    ["taskType"] = "web.research", ["idempotencyKey"] = "idem-task-001",
+                    ["payloadRef"] = "payload://task-001", ["payloadSha256"] = new string('a', 64),
+                    ["effectRisk"] = "ReadOnly", ["approvalRef"] = "",
+                    ["leaseExpiresAtEpochMs"] = _now.AddMinutes(2).ToUnixTimeMilliseconds().ToString(),
                     ["parentTaskId"] = "parent-001", ["subtaskId"] = "sub-001",
                     ["title"] = "Research", ["instruction"] = "Analyze supplied material",
                     ["executor"] = "RESEARCHER", ["requiredCapabilities"] = "[\"web.research\"]",
@@ -43,16 +48,51 @@ public sealed class BridgeV1AgentTaskClientTests
         var client = Client(handler);
 
         var lease = await client.ClaimNextAsync(Credential(),
-            new[] { "web.research", "document.analysis" }, 2);
+            new[] { "web.research", "document.analysis" }, 2,
+            new[] { "web.research", "analysis.document" });
 
         Assert.NotNull(lease);
         Assert.Equal("task-001", lease.TaskId);
+        Assert.Equal("web.research", lease.TaskType);
+        Assert.Equal("idem-task-001", lease.IdempotencyKey);
+        Assert.Equal("payload://task-001", lease.PayloadRef);
+        Assert.Equal(new string('a', 64), lease.PayloadSha256);
+        Assert.Equal("ReadOnly", lease.EffectRisk);
+        Assert.Null(lease.ApprovalRef);
+        Assert.Equal(_now.AddMinutes(2).ToUnixTimeMilliseconds(), lease.LeaseExpiresAtEpochMs);
+        var envelope = lease.ToEnvelope();
+        Assert.Equal("web.research", envelope.TaskType);
+        Assert.Equal("idem-task-001", envelope.IdempotencyKey);
+        Assert.Equal("payload://task-001", envelope.PayloadRef);
+        Assert.Equal("Analyze supplied material", envelope.Instruction);
+        Assert.Equal("RESEARCHER", envelope.Executor);
+        Assert.Equal("lease-0001", envelope.LeaseId);
+        Assert.Equal(42, envelope.FencingToken);
         Assert.Equal("lease-0001", lease.LeaseId);
         Assert.Equal(42, lease.FencingToken);
         Assert.Equal("DESKTOP_TASK_CLAIM", operation);
         Assert.NotNull(captured);
         Assert.Equal("[\"document.analysis\",\"web.research\"]", captured["capabilities"]);
         Assert.Equal("2", captured["maxParallelTasks"]);
+    }
+
+    [Fact]
+    public async Task ClaimSendsOnlyRegisteredSupportedTaskTypes()
+    {
+        Dictionary<string, string>? captured = null;
+        var handler = new StubHandler(async request =>
+        {
+            using var doc = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            captured = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                doc.RootElement.GetProperty("payload").GetRawText());
+            return Json(new { status = "ACCEPTED", result = new Dictionary<string, string> { ["available"] = "false" } });
+        });
+
+        await Client(handler).ClaimNextAsync(Credential(), new[] { "web.research" }, 1,
+            new[] { "web.research", "analysis.document" });
+
+        Assert.NotNull(captured);
+        Assert.Equal("[\"analysis.document\",\"web.research\"]", captured["taskTypes"]);
     }
 
     [Fact]
@@ -63,7 +103,7 @@ public sealed class BridgeV1AgentTaskClientTests
             status = "ACCEPTED",
             result = new Dictionary<string, string> { ["available"] = "false" }
         }))));
-        Assert.Null(await client.ClaimNextAsync(Credential(), new[] { "web.research" }, 1));
+        Assert.Null(await client.ClaimNextAsync(Credential(), new[] { "web.research" }, 1, new[] { "web.research" }));
     }
 
     [Fact]
@@ -88,6 +128,29 @@ public sealed class BridgeV1AgentTaskClientTests
 
         Assert.Equal("task-001", ack.TaskId);
         Assert.Equal(digest, ack.ResultSha256);
+        Assert.Equal(0L, ack.LeaseExpiresAtEpochMs);
+    }
+
+    [Fact]
+    public async Task RunningProgressRequiresAndReturnsServerLeaseExpiry()
+    {
+        var renewedExpiry = _now.AddMinutes(2).ToUnixTimeMilliseconds();
+        var handler = new StubHandler(_ => Task.FromResult(Json(new
+        {
+            status = "SUCCEEDED",
+            result = new Dictionary<string, string>
+            {
+                ["accepted"] = "true", ["taskId"] = "task-001", ["leaseId"] = "lease-0001",
+                ["fencingToken"] = "42", ["state"] = "RUNNING",
+                ["resultSha256"] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("null"))).ToLowerInvariant(),
+                ["leaseExpiresAtEpochMs"] = renewedExpiry.ToString(CultureInfo.InvariantCulture)
+            }
+        })));
+
+        var ack = await Client(handler).SendTaskUpdateAsync(
+            Credential(), Lease(), "RUNNING", 25, "still working");
+
+        Assert.Equal(renewedExpiry, ack.LeaseExpiresAtEpochMs);
     }
 
     [Fact]
@@ -112,11 +175,13 @@ public sealed class BridgeV1AgentTaskClientTests
         var handler = new StubHandler(_ => throw new Xunit.Sdk.XunitException("Unexpected network call."));
         var credential = Credential() with { Scopes = new HashSet<string> { "desktop.task.result" } };
         await Assert.ThrowsAsync<InvalidDataException>(() =>
-            Client(handler).ClaimNextAsync(credential, new[] { "web.research" }, 1));
+            Client(handler).ClaimNextAsync(credential, new[] { "web.research" }, 1, new[] { "web.research" }));
         Assert.Null(handler.LastRequestUri);
     }
 
-    private AgentTaskLease Lease() => new("task-001", "default", "parent-001", "sub-001",
+    private AgentTaskLease Lease() => new("task-001", "default", "web.research", "idem-task-001",
+        "payload://task-001", new string('a', 64), "ReadOnly", null,
+        _now.AddMinutes(2).ToUnixTimeMilliseconds(), "parent-001", "sub-001",
         "Research", "Analyze", "RESEARCHER", new HashSet<string> { "web.research" },
         _now.ToUnixTimeMilliseconds(), _now.AddMinutes(5).ToUnixTimeMilliseconds(),
         10, "lease-0001", 42);

@@ -29,6 +29,15 @@ builder.Services.Configure<HostOptions>(options =>
 
 builder.Services.AddSingleton<AgentRuntimeState>();
 builder.Services.AddSingleton<AgentTaskHandlerRegistry>();
+builder.Services.AddSingleton<AgentTaskExecutor>(services =>
+    new AgentTaskExecutor(
+        services.GetRequiredService<AgentTaskHandlerRegistry>(),
+        services.GetRequiredService<AgentRuntimeState>(),
+        maxParallelTasks: 1));
+builder.Services.AddSingleton<IAgentLocalDataProtector, WindowsDpapiAgentDataProtector>();
+builder.Services.AddSingleton<IAgentExecutionJournal, DpapiAgentExecutionJournal>();
+builder.Services.AddSingleton<IAgentTaskTransport, BridgeV1AgentTaskClient>();
+builder.Services.AddSingleton<AgentTaskPollingCoordinator>();
 builder.Services.AddSingleton<IAgentCredentialStore, DpapiAgentCredentialStore>();
 builder.Services.AddSingleton<AgentPairingClient>();
 builder.Services.AddSingleton<BridgeV1AgentClient>();

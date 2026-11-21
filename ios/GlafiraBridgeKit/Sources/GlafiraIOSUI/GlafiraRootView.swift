@@ -1,14 +1,25 @@
 import SwiftUI
+import GlafiraBridgeKit
 
 /// Native adaptive iPhone/iPad shell. Live project data is supplied later by the
 /// authenticated Core repository; this view intentionally contains no mock projects.
 public struct GlafiraRootView: View {
+    @State private var pairedDeviceIds: [String] = []
+    @State private var credentialStatus = "Проверяем локальные учётные данные…"
+
     public init() {}
 
     public var body: some View {
         NavigationSplitView {
             List {
-                Section("Подключение") {
+                Section("Подключение и устройства") {
+                    Label(credentialStatus, systemImage: pairedDeviceIds.isEmpty ? "lock" : "checkmark.shield")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    ForEach(pairedDeviceIds, id: \.self) { deviceId in
+                        Label(deviceId, systemImage: "iphone")
+                            .font(.subheadline)
+                    }
                     NavigationLink {
                         BridgePairingView()
                     } label: {
@@ -38,13 +49,31 @@ public struct GlafiraRootView: View {
             }
             .navigationTitle("GLAFIRA")
         } detail: {
-            GlafiraWelcomeView()
+            GlafiraWelcomeView(hasPairedDevice: !pairedDeviceIds.isEmpty)
         }
         .navigationSplitViewStyle(.balanced)
+        .task { refreshCredentialState() }
+        .onReceive(NotificationCenter.default.publisher(for: .glafiraBridgeCredentialDidChange)) { _ in
+            refreshCredentialState()
+        }
+    }
+
+    private func refreshCredentialState() {
+        do {
+            pairedDeviceIds = try KeychainBridgeCredentialStore().listDeviceIds()
+            credentialStatus = pairedDeviceIds.isEmpty
+                ? "Нет сохранённых сопряжённых устройств"
+                : "Ключи сопряжения сохранены в Keychain"
+        } catch {
+            pairedDeviceIds = []
+            credentialStatus = "Не удалось прочитать состояние Keychain"
+        }
     }
 }
 
 private struct GlafiraWelcomeView: View {
+    let hasPairedDevice: Bool
+
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "bubble.left.and.bubble.right")
@@ -58,11 +87,16 @@ private struct GlafiraWelcomeView: View {
                 .font(.title3)
                 .multilineTextAlignment(.center)
 
-            Label("Устройство ещё не подключено", systemImage: "lock.shield")
+            Label(
+                hasPairedDevice ? "Ключ сопряжения сохранён" : "Устройство ещё не сопряжено",
+                systemImage: hasPairedDevice ? "checkmark.shield" : "lock.shield"
+            )
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
-            Text("После безопасного сопряжения здесь появятся ваши проекты и диалоги.")
+            Text(hasPairedDevice
+                 ? "Ключ хранится в Keychain. Проекты и диалоги появятся после подключения к доступному Core."
+                 : "После безопасного сопряжения здесь появятся ваши проекты и диалоги.")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
