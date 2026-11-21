@@ -1,7 +1,7 @@
 # GLAFIRA — ordered 150-step completion plan
 
 **Baseline main for this ledger revision:** `0649b3a24592e2ccd73b6997db04e2664f055be4` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
-**Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
+**Owner priority (current):** P1 Core → P2 Backup & Recovery → P3 Runtime/Bridge/Android instrumentation/Windows Desktop/Windows Agent → P4 Android UX/voice/iOS/specialist agents → P5 optional commercial integrations.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
 ## Reframed delivery strategy
@@ -15,7 +15,7 @@
 
 ## Ordered actions
 
-### P0 — Core: ownership и queue kernels
+### P1 — Core: ownership и queue kernels
 
 1. [x] Снять baseline main SHA, open PR/issues, CI runs и артефакты.
 2. [x] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
@@ -43,7 +43,7 @@
 24. [ ] Добавить scoped encrypted memory с provenance, confidence, expiry и owner correction/export/delete.
 25. [ ] Пройти Core corruption, key-loss, migration, backup/restore и security acceptance; merge slices по одному.
 
-### P1 — Android instrumentation и общий Bridge
+### P3 — Android instrumentation и общий Bridge
 
 26. [x] Проверить AndroidJUnit4 suite в main и CI selection для Core/Bridge изменений.
 27. [x] Подтвердить, что managed emulator реально выполняет тесты и JUnit XML не пуст.
@@ -66,7 +66,7 @@
 44. [ ] Провести private-LAN pairing acceptance на реальных устройствах и сохранить evidence.
 45. [ ] Зафиксировать Bridge v1 release gate; LIVE side effects остаются выключенными.
 
-### P2 — Windows Desktop: основной control center и Hub
+### P3 — Windows Desktop: основной control center и Hub
 
 46. [ ] Сверить issue #95/#123 с фактическим WPF и Hub кодом.
 47. [ ] Закрепить границу: Core — authority; Desktop Hub — transport/fleet host, не второй Core.
@@ -94,7 +94,7 @@
 69. [ ] Добавить safe File Intelligence parsing с limits/sandbox/no execution.
 70. [ ] Проверить installer, upgrade, firewall Private/LAN-only, uninstall retention и rollback.
 
-### P2 — Windows Agent: безопасный worker
+### P3 — Windows Agent: безопасный worker
 
 71. [x] Закончить типизированный lease envelope: type/idempotency/payload hash/risk/approval/expiry.
 72. [x] Проверить strict metadata validation и capability subset.
@@ -117,7 +117,7 @@
 89. [ ] Проверить restart, LAN loss, duplicate result, stale lease и revoke.
 90. [ ] Пройти двухкомпьютерное Windows acceptance и зафиксировать проверенные сценарии.
 
-### P4 — Android: owner mobile app
+### P4 — Android: owner mobile app (Backup & Recovery actions 95–97 are P2)
 
 91. [ ] Собрать regression matrix навигации, settings и критических controls.
 92. [ ] Закрыть Bridge entry point, Start/Stop, pairing и owner approval из issue #137.
@@ -163,7 +163,7 @@
 129. [ ] Проверить clean install/upgrade/restore на чистом профиле.
 130. [ ] Получить owner acceptance native iOS build и зафиксировать parity gaps.
 
-### P4/P5 — Cross-platform release gates
+### P3/P4/P5 — Cross-platform release gates
 
 131. [ ] Собрать feature parity matrix Android/iOS/Windows Desktop/Windows Agent.
 132. [ ] Утвердить private MVP scope; wallet/token marketplace не включать в executable MVP.
@@ -185,6 +185,10 @@
 148. [ ] Провести backup recovery drill и замер restore на clean device.
 149. [ ] Выпустить owner beta packages с SHA-256 и compatibility matrix.
 150. [ ] Закрыть MVP только evidence pack: exact SHAs, CI, test counts, artifacts и device acceptance.
+
+## Owner priority mapping for this ordered plan
+
+The 150 numbered actions retain their dependency-aware sequence; the number order is not a competing priority order. Apply these dispatch priorities when selecting work: Core actions 1–24 are P1 except backup/restore-specific actions 9 and 25 (P2); backup/restore actions 95–97 and 136 are P2; Android instrumentation/Bridge actions 26–45 and Windows Desktop/Agent actions 46–90 are P3; Android UX/voice and iOS actions not classified as backup/restore are P4; optional commercial/token integrations are P5. Cross-cutting release gates inherit the highest unresolved dependency they validate.
 
 ## Dispatch protocol
 
