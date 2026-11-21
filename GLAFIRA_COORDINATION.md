@@ -33,7 +33,11 @@ If this file conflicts with an older snapshot document, follow the current owner
 - A participant must not assume that a prior instruction remains current after another coordinator update.
 - If the file cannot be read or GitHub access is unavailable, stop repository mutations and report the blocker to the owner.
 
-## 3. Current owner priority order
+## 3. Free-only architecture and resource policy
+
+GLAFIRA development must not depend on paid plans, paid API tiers, paid cloud resources or mandatory subscriptions. Prefer free-to-use resources, open-source components and owner-controlled devices. Before proposing a provider or dependency, verify its actual free-tier limits, regional availability, quotas, retention terms and risk of free-tier withdrawal. Treat free quotas as limited, not unlimited. Keep providers replaceable and design graceful fallback where practical. Do not create spending, paid subscriptions or paid obligations; any exception requires explicit prior approval from the owner. This rule applies equally to central GLAFIRA and every invited ChatGPT/AI collaborator.
+
+## 4. Current owner priority order
 
 The owner's currently confirmed execution hierarchy is:
 
@@ -46,7 +50,7 @@ The owner's currently confirmed execution hierarchy is:
 
 A higher-priority task waiting for CI, review, hardware or a conflicting file is not a reason to idle. Start the highest-priority independent action available, then rescan from P1 when a slot opens.
 
-## 4. Maximum safe multitasking
+## 5. Maximum safe multitasking
 
 - Maintain a rolling pool of at least 50 concrete, independently actionable tasks; see Action Pool A and the dispatcher rule.
 - Work on multiple independent tracks concurrently when tools, files, dependencies and CI capacity permit.
@@ -56,7 +60,7 @@ A higher-priority task waiting for CI, review, hardware or a conflicting file is
 - If a task is blocked, record the specific blocker and immediately take the next highest-priority independent task.
 - Parallelism is not a target number of simultaneous edits. It is useful throughput without conflicts, unsafe merges or false completion claims.
 
-## 5. The 150-step program — 20 full cycles per participant
+## 6. The 150-step program — 20 full cycles per participant
 
 The 150-step program is the mandatory operating algorithm for all GLAFIRA development, not merely a static checklist. It applies to central GLAFIRA and every invited ChatGPT/AI account independently. Each participant must complete **20 full cycles**; the requested target is 3,000 distinct, evidence-backed actions per participant.
 
@@ -96,7 +100,7 @@ The audit is a deliberate stop point, not an extra unrecorded cycle. After repor
 
 **Important feasibility rule:** 3,000 is a requested cumulative target, not permission to manufacture activity or make unsafe changes. If no 150 distinct, useful, verifiable actions remain in a cycle, document the shortage and ask the owner/central coordinator for fresh scope. Never falsely declare a cycle or the 20-cycle program complete.
 
-## 6. Task reservation and participant files
+## 7. Task reservation and participant files
 
 - Every participant uses a stable, unique participant ID (for example `gpt-valery-01`, chosen by the owner).
 - Register in `docs/coordination/participants/<participant-id>.md` using the template.
@@ -105,7 +109,7 @@ The audit is a deliberate stop point, not an extra unrecorded cycle. After repor
 - Before claiming a task, check the task board, open PRs and other participant files. If overlap exists, coordinate first.
 - The central coordinator maintains the shared task board and this file. Participants report status via their own file and the related issue/PR.
 
-## 7. Git and release safety
+## 8. Git and release safety
 
 - Create focused branches from the correct current base. Avoid force-pushes and history rewrites.
 - Do not overwrite other contributors' work or commit directly to `main`.
@@ -117,7 +121,7 @@ The audit is a deliberate stop point, not an extra unrecorded cycle. After repor
 - Never put credentials, private keys, access tokens, personal data or secrets in source, issues, logs or coordination files.
 - No irreversible external action, production data mutation, spending, publishing or destructive operation without the required owner approval.
 
-## 8. Completion reporting
+## 9. Completion reporting
 
 Every work block should end with a concise update in the participant file and relevant issue/PR:
 - participant ID and cycle/action IDs;
@@ -130,11 +134,12 @@ Every work block should end with a concise update in the participant file and re
 
 Never claim background work between sessions unless a real scheduled automation exists. Never claim success without tool evidence.
 
-## 9. Current Connect architecture work
+## 10. Current Connect architecture work
 
 GLAFIRA Connect mobile invitation bootstrap and adaptive P2P/Wi-Fi route migration is tracked in [issue #361](https://github.com/micronizationlab/glafira-ai-hub/issues/361). It may proceed at architecture/specification level in parallel. Its runtime implementation must not displace Core, Backup/Recovery, Bridge and Desktop dependencies. Do not expose raw IP as identity; use immutable account identity, signed short-lived invitations, rendezvous, ICE/STUN/TURN and end-to-end identity verification.
 
-## 10. Coordinator change log
+## 11. Coordinator change log
 
 - 2026-11-21: initial central multi-agent coordination contract created. Links the existing collaborator handoff, roadmap and dispatcher rule; formalizes per-agent status files and 20 × 150 evidence-based cycles.
 - 2026-11-21: clarified mandatory cycle order (capacity audit → parallel portfolio selection → execution → evidence review → fresh reassessment) and the stop-after-cycle-20 whole-project audit, including legacy builds/branches and previously discussed but unrecorded requirements.
+- 2026-11-21: added a binding free-only resource policy; paid plans, paid APIs and mandatory subscriptions cannot be required without explicit owner approval.
