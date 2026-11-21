@@ -167,3 +167,18 @@ Physical acceptance must record device IDs (non-secret), Core IDs, exact build S
 9. Enable failover only after the full acceptance matrix and owner review pass.
 
 Until then, each Core continues to execute only tasks it owns locally or has explicitly received as a bounded delegated assignment. No autonomous cross-Core takeover is implied by pairing, heartbeat or lease expiry.
+
+
+## 12. User-visible Degraded Operation
+
+Degraded Operation is an availability mode, not an ownership-transfer mechanism.
+
+- If Windows Desktop/Hub is unavailable, Android Core continues supported local chat, queueing, owner approvals and Android-local handlers. Desktop-only work remains durably queued with a visible reason and is not falsely marked failed.
+- If Android is unavailable, Windows Desktop Core continues supported Desktop-local work and its enrolled Agent fleet under the same owner policy.
+- The UI must distinguish at least: LOCAL_ONLY, PEER_OFFLINE, QUEUED_FOR_PEER, RECONCILIATION_PENDING, OWNERSHIP_TRANSFER_PENDING, OUTCOME_UNKNOWN and RECOVERY_REQUIRED.
+- Every task view identifies its canonical owner Core and generation, current executor (if any), and the reason execution is waiting.
+- Heartbeat loss, timeout or Hub unavailability alone never increments owner generation and never authorizes takeover.
+- On reconnect, each Core reconciles durable inbox/outbox events idempotently. Stale-generation mutations are rejected; uncertain external effects require source reconciliation or owner decision.
+- A user can continue supported work locally without being forced to pair or keep the other device online. The system must not imply that a peer-only capability is available while its host is offline.
+
+Acceptance extends the matrix above with both one-Core-offline cases, queue visibility, reconnect, stale ownership and interrupted transfer. Automated tests do not replace physical Android/Windows acceptance.
