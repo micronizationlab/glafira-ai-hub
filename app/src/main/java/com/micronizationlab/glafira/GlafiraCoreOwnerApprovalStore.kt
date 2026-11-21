@@ -241,8 +241,16 @@ class GlafiraCoreOwnerApprovalStore(
                     )
                 }
             } else if (row != null && row.status == APPROVED && row.grantExpiresAt <= nowMillis) {
-                db.update("core_action_approvals", ContentValues().apply { put("status", EXPIRED) },
+                val expired = db.update("core_action_approvals", ContentValues().apply { put("status", EXPIRED) },
                     "task_id = ? AND status = ?", arrayOf(task.taskId, APPROVED))
+                if (expired == 1) {
+                    appendApprovalTrace(
+                        db, task,
+                        GlafiraCoreTraceEventType.APPROVAL_EXPIRED,
+                        "OWNER_APPROVAL_EXPIRED", nowMillis,
+                        resultStatus = "expired"
+                    )
+                }
             }
             db.setTransactionSuccessful()
         } finally {
@@ -257,6 +265,17 @@ class GlafiraCoreOwnerApprovalStore(
         val database = db
         database.beginTransaction()
         try {
+            val expiredRows = database.query(
+                "core_action_approvals",
+                arrayOf("task_id", "project_id"),
+                "status = ? AND expires_at <= ?",
+                arrayOf(PENDING, nowMillis.toString()),
+                null, null, null
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(0) to cursor.getString(1))
+                }
+            }
             database.update(
                 "core_action_approvals",
                 ContentValues().apply { put("status", EXPIRED) },
@@ -272,6 +291,17 @@ class GlafiraCoreOwnerApprovalStore(
                     GlafiraTaskState.WAITING_FOR_OWNER.databaseValue, EXPIRED, nowMillis
                 )
             )
+            expiredRows.forEach { (taskId, projectId) ->
+                val task = taskStore.getTask(taskId)
+                if (task != null && task.projectId == projectId) {
+                    appendApprovalTrace(
+                        database, task,
+                        GlafiraCoreTraceEventType.APPROVAL_EXPIRED,
+                        "OWNER_APPROVAL_EXPIRED", nowMillis,
+                        resultStatus = "expired"
+                    )
+                }
+            }
             database.setTransactionSuccessful()
         } finally {
             database.endTransaction()
