@@ -32,6 +32,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
     GlafiraTaskQueue, GlafiraOwnedDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraOwnedCoreTaskResultPersistence, GlafiraTaskOwnershipExecutionFence {
     private val appContext = context.applicationContext
+    override val ownershipFencingEnabled: Boolean get() = ownerCoreId != null
 
     init {
         require(ownerCoreId == null || ownerCoreId.matches(Regex("^[A-Za-z0-9._-]{8,128}$"))) {
