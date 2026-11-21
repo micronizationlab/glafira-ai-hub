@@ -93,6 +93,21 @@ class GlafiraCoreTraceStoreInstrumentedTest {
     }
 
     @Test
+    fun parentEventMustExistInTheSameProject() {
+        traceStore.append(event("trace-parent", "trace-project"))
+        traceStore.append(
+            event("trace-child", "trace-project", occurredAt = 2_000L)
+                .copy(parentEventId = "trace-parent")
+        )
+        assertThrows(IllegalStateException::class.java) {
+            traceStore.append(
+                event("trace-cross-project-child", "another-project", occurredAt = 3_000L)
+                    .copy(parentEventId = "trace-parent")
+            )
+        }
+    }
+
+    @Test
     fun paginationUsesStableOccurredAtAndEventIdCursor() {
         (1..3).forEach { index ->
             traceStore.append(
