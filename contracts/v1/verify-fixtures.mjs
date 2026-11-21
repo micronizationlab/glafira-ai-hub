@@ -12,6 +12,8 @@ const signingFixture = await readJson("./fixtures/bridge-hmac-unicode.json");
 const validMessages = await readJson("./fixtures/valid-messages.json");
 const invalidMessages = await readJson("./fixtures/invalid-messages.json");
 const lifecycleScenarios = await readJson("./fixtures/task-lifecycle-scenarios.json");
+const ownershipSchema = await readJson("./dual-core-ownership.schema.json");
+const ownershipFixture = await readJson("./fixtures/ownership-transfer-valid.json");
 
 assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
 for (const name of [
@@ -53,6 +55,59 @@ const reversed = {
 };
 assert.equal(canonicalize(reversed), canonical, "Payload key order changed canonical bytes");
 
+const ownershipAjv = new Ajv2020({ allErrors: true, strict: true });
+addFormats(ownershipAjv);
+const validateOwnership = ownershipAjv.compile(ownershipSchema);
+const transfer = ownershipFixture.envelope;
+assert.equal(validateOwnership(transfer), true,
+  `Valid ownership transfer rejected: ${JSON.stringify(validateOwnership.errors)}`);
+
+const ownershipCanonicalFields = [
+  "schemaVersion", "transferId", "nonce", "taskId", "projectId",
+  "oldOwnerCoreId", "newOwnerCoreId", "oldOwnerGeneration", "newOwnerGeneration",
+  "stateVersion", "payloadSha256", "idempotencyKey", "effectRisk", "approvalRef",
+  "issuedAt", "expiresAt", "signingKeyEpoch", "signingPublicKeySha256",
+  "signatureAlgorithm"
+];
+const ownershipCanonical = ownershipCanonicalFields
+  .map(key => transfer[key] === null ? "null" : String(transfer[key]))
+  .map(value => `${value.length}:${value}`)
+  .join("");
+assert.equal(ownershipCanonical, ownershipFixture.canonicalUtf8,
+  "Ownership transfer canonical field order or UTF-16 length-prefix encoding changed");
+
+function assertInvalidOwnership(mutator, reason) {
+  const candidate = structuredClone(transfer);
+  mutator(candidate);
+  assert.equal(validateOwnership(candidate), false, reason);
+}
+function assertInvalidOwnershipSemantics(mutator, reason) {
+  const candidate = structuredClone(transfer);
+  mutator(candidate);
+  const valid = candidate.oldOwnerCoreId !== candidate.newOwnerCoreId &&
+    candidate.newOwnerGeneration === candidate.oldOwnerGeneration + 1 &&
+    Date.parse(candidate.expiresAt) > Date.parse(candidate.issuedAt) &&
+    !(["EXTERNAL_SIDE_EFFECT", "FINANCIAL", "DESTRUCTIVE"].includes(candidate.effectRisk)) ||
+    candidate.approvalRef !== null;
+  assert.equal(valid, false, reason);
+}
+assertInvalidOwnership(item => { item.unreviewedField = true; },
+  "Unknown ownership transfer fields must be rejected");
+assertInvalidOwnership(item => { item.newOwnerGeneration = 0; },
+  "Non-positive ownership generation must be rejected");
+assertInvalidOwnership(item => { item.payloadSha256 = "not-a-digest"; },
+  "Malformed task payload digest must be rejected");
+assertInvalidOwnershipSemantics(item => { item.newOwnerCoreId = item.oldOwnerCoreId; },
+  "An owner cannot transfer a task to itself");
+assertInvalidOwnershipSemantics(item => { item.newOwnerGeneration = item.oldOwnerGeneration + 2; },
+  "Ownership generation must increment exactly once");
+assertInvalidOwnershipSemantics(item => { item.expiresAt = item.issuedAt; },
+  "Ownership transfer must expire after issue time");
+assertInvalidOwnershipSemantics(item => {
+  item.effectRisk = "FINANCIAL";
+  item.approvalRef = null;
+}, "Financial or destructive transfers require an explicit approval reference");
+
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
 const validate = ajv.compile(schema);
@@ -92,3 +147,4 @@ console.log(
 );
 console.log(`Shared lifecycle scenarios: ${lifecycleScenarios.scenarios.length} invariants checked.`);
 console.log("Bridge v1 Unicode HMAC golden vector: PASS");
+console.log("Dual-Core ownership transfer schema and canonicalization fixtures: PASS");
