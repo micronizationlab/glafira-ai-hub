@@ -63,7 +63,7 @@ Bridge and Desktop execution foundations belong to P3. Android instrumentation i
 6. Add SMM, Accountant, Medical/Scientific Consultant, Lawyer and Commercial Director roles, then further roles such as Analyst and Procurement/Logistics as prioritized by the owner.
 7. Voice and role behavior must not change facts, permissions, privacy or authority.
 
-## Priority 4 — Knowledge Ingestion and Retrieval Extensions
+## P4 — Knowledge Ingestion and Retrieval Extensions
 
 Unified operational memory is a Priority 1 GLAFIRA Core responsibility and is specified in [GLAFIRA CORE — Foundation Technical Specification](GLAFIRA_CORE_FOUNDATION_SPEC.md). This later priority covers source-document knowledge, not a second memory system.
 
@@ -72,7 +72,7 @@ Unified operational memory is a Priority 1 GLAFIRA Core responsibility and is sp
 3. Add context compaction and long-running task summaries while preserving durable facts and decisions.
 4. Preserve source metadata, jurisdiction/date, access policy and citations for retrieved knowledge.
 
-## Priority 5 — Multi-Agent Workforce
+## P4 — Multi-Agent Workforce
 
 1. Add a coordinator-led team of narrowly scoped specialist agents with explicit role contracts.
 2. Support sequential, conditional, parallel and delegated handoffs with structured inputs and outputs.
@@ -86,7 +86,7 @@ A first JVM 17 Desktop Bridge module is being integrated as a command-line valid
 
 The module is not yet the authoritative Core queue and must not be treated as the completed Windows Desktop host. The next stages are shared Core queue integration, Desktop UI/host, enrollment/heartbeats/result acknowledgements, Windows packaging and fleet management. LIVE external actions remain disabled.
 
-## Priority 6 — Secure Device and Computer Bridge
+## P3 — Secure Device and Computer Bridge
 
 1. Add an authenticated, paired Bridge for desktop and Android device actions.
 2. Provide browser automation and controlled UI automation in isolated environments with minimal privileges.
@@ -94,7 +94,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 4. Require owner approval for public, financial, destructive, privacy-sensitive or irreversible actions.
 5. Add dry-run/preview mode and recovery checkpoints before consequential actions.
 
-## Priority 7 — Skill Engine and Governed Plugin Marketplace
+## P4/P5 — Skill Engine and Governed Plugin Marketplace
 
 1. Versioned skill manifest and package validation.
 2. Local skill library with import/export, install/update/uninstall and rollback.
@@ -102,7 +102,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 4. No implicit tool/network/filesystem permissions from installing a skill.
 5. Add role-specific test cases and acceptance checks.
 
-## Priority 8 — Evaluation, Observability and Self-Monitoring
+## P1/P3 — Evaluation, Observability and Self-Monitoring
 
 1. Project-scoped document ingestion and RAG.
 2. Source metadata, dates, jurisdiction, citations and access filtering.
@@ -110,7 +110,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 4. Fixed role benchmarks, regression tests, prompt-injection and privacy tests.
 5. Staging, owner approval and rollback for production skill changes.
 
-## Priority 9 — Community Exchange
+## P5 — Community Exchange
 
 1. Free sharing and paid package listings.
 2. Publisher identity, rights, license, provenance, privacy/security declaration and version history.
@@ -118,7 +118,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 4. Start with free package exchange; add payment processing only after legal and security review.
 5. Never publish private conversations, customer data, secrets or materials without rights.
 
-## Priority 10 — Model Routing and Adaptation
+## P1/P4 — Model Routing and Adaptation
 
 1. Compare candidate foundation models against role-specific benchmarks.
 2. Evaluate provider fine-tuning and local LoRA only for tasks with demonstrated need.
@@ -127,7 +127,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 5. Require owner approval before deployment. No automatic training on raw chat history.
 
 
-## Priority 11 — GLAFIRA Self-Monitor and Safe Self-Improvement
+## P1/P4 — GLAFIRA Self-Monitor and Safe Self-Improvement
 
 1. Add GLAFIRA SELF-MONITOR: health checks for Core, queue, runtime, backups, Bridge, providers, agents and integrations.
 2. Detect stalled tasks, repeated failures, expired credentials, backup drift, CI regressions and resource-limit breaches.
@@ -136,7 +136,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 5. Never let self-improvement silently change its own safety policy, authority model, approval requirements or production state.
 6. Require signed/reviewable changes, regression tests, staged rollout and tested rollback for runtime or policy changes.
 
-## Priority 12 — Voice, Model Adaptation and Personal Interaction
+## P4 — Voice, Model Adaptation and Personal Interaction
 
 1. Preserve the optional voice plugin and support multiple selectable voice engines.
 2. Add voice input/output profiles, interruption handling, transcription correction and spoken task confirmations.
