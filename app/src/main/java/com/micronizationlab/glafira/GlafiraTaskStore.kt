@@ -139,14 +139,9 @@ class GlafiraTaskStore(context: Context) :
         """.trimIndent())
         db.execSQL("CREATE INDEX IF NOT EXISTS index_core_trace_project_sequence ON core_trace_events(project_id, sequence_id)")
         db.execSQL("CREATE INDEX IF NOT EXISTS index_core_trace_project_task_sequence ON core_trace_events(project_id, task_id, sequence_id)")
-        db.execSQL("""
-            CREATE TRIGGER IF NOT EXISTS core_trace_events_no_update
-            BEFORE UPDATE ON core_trace_events BEGIN
-                SELECT RAISE(ABORT, 'CORE_TRACE_APPEND_ONLY');
-            END
-        """.trimIndent())
         backfillTaskHistoryTrace(db)
         createTaskHistoryTraceTrigger(db)
+        createTraceMutationProtectionTriggers(db)
     }
 
     private fun backfillTaskHistoryTrace(db: SQLiteDatabase) {
@@ -185,6 +180,28 @@ class GlafiraTaskStore(context: Context) :
                     THEN task_id ELSE NULL END,
                 upper(to_state), NULL, NULL, '[]', 'INTERNAL', 1, 0, NULL
             FROM core_task_history
+        """.trimIndent())
+    }
+
+    internal fun setTraceMutationProtectionEnabled(db: SQLiteDatabase, enabled: Boolean) {
+        if (enabled) createTraceMutationProtectionTriggers(db) else {
+            db.execSQL("DROP TRIGGER IF EXISTS core_trace_events_no_update")
+            db.execSQL("DROP TRIGGER IF EXISTS core_trace_events_no_delete")
+        }
+    }
+
+    private fun createTraceMutationProtectionTriggers(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS core_trace_events_no_update
+            BEFORE UPDATE ON core_trace_events BEGIN
+                SELECT RAISE(ABORT, 'CORE_TRACE_APPEND_ONLY');
+            END
+        """.trimIndent())
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS core_trace_events_no_delete
+            BEFORE DELETE ON core_trace_events BEGIN
+                SELECT RAISE(ABORT, 'CORE_TRACE_APPEND_ONLY');
+            END
         """.trimIndent())
     }
 
