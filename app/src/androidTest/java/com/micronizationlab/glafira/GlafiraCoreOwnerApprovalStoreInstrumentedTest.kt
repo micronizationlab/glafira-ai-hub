@@ -171,7 +171,7 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
             "SELECT status FROM core_action_approvals WHERE task_id = ?",
             arrayOf(original.taskId)
         ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
-        assertEquals("APPROVED", status)
+        assertEquals("EXPIRED", status)
     }
 
     @Test
