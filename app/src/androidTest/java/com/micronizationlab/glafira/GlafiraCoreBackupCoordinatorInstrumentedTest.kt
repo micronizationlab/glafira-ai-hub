@@ -264,7 +264,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         } finally {
             archive.delete()
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
         }
     }
 
