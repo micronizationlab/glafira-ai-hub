@@ -48,6 +48,7 @@ public sealed class AgentTaskPollingCoordinator
             return false;
 
         await FlushPendingResultsAsync(credential, cancellationToken).ConfigureAwait(false);
+        await FlushPendingProgressesAsync(credential, cancellationToken).ConfigureAwait(false);
         var snapshot = await _journal.LoadAsync(cancellationToken).ConfigureAwait(false);
         if (snapshot.ActiveLeases.Count > 0)
         {
@@ -84,12 +85,11 @@ public sealed class AgentTaskPollingCoordinator
         CancellationToken cancellationToken)
     {
         var leaseState = new ActiveLeaseState(lease);
-        AgentTaskUpdateAck initialAck;
         try
         {
-            initialAck = await _transport.SendTaskUpdateAsync(
-                credential, leaseState.Current, "RUNNING", 0, "Agent started registered handler",
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+            await SendProgressAndRenewLeaseAsync(
+                credential, leaseState, 0, "Agent started registered handler", cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (InvalidDataException error) when (error.Message == "LEASE_FENCING_REJECTED")
         {
@@ -97,8 +97,6 @@ public sealed class AgentTaskPollingCoordinator
                 lease.TaskId, lease.LeaseId, lease.FencingToken, cancellationToken).ConfigureAwait(false);
             return;
         }
-        UpdateLeaseExpiry(leaseState, initialAck);
-        await _journal.SaveActiveLeaseAsync(leaseState.Current, cancellationToken).ConfigureAwait(false);
 
         using var renewalCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var renewalTask = RenewWhileRunningAsync(credential, leaseState, renewalCancellation);
@@ -154,11 +152,9 @@ public sealed class AgentTaskPollingCoordinator
             await Task.Delay(_renewInterval, _timeProvider, cancellationToken).ConfigureAwait(false);
             try
             {
-                var ack = await _transport.SendTaskUpdateAsync(
-                    credential, leaseState.Current, "RUNNING", 50, "Registered handler is still running",
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-                UpdateLeaseExpiry(leaseState, ack);
-                await _journal.SaveActiveLeaseAsync(leaseState.Current, cancellationToken).ConfigureAwait(false);
+                await SendProgressAndRenewLeaseAsync(
+                    credential, leaseState, 50, "Registered handler is still running", cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -169,6 +165,61 @@ public sealed class AgentTaskPollingCoordinator
                 // If the Hub cannot extend the lease, stop local work before its authority expires.
                 executionCancellation.Cancel();
                 throw;
+            }
+        }
+    }
+
+    private async Task SendProgressAndRenewLeaseAsync(
+        AgentEnrollmentCredential credential,
+        ActiveLeaseState leaseState,
+        int progressPercent,
+        string progressMessage,
+        CancellationToken cancellationToken)
+    {
+        var lease = leaseState.Current;
+        var pending = new AgentPendingProgress(lease, progressPercent, progressMessage);
+        await _journal.PersistProgressAsync(pending, cancellationToken).ConfigureAwait(false);
+        var ack = await _transport.SendTaskUpdateAsync(
+            credential, lease, "RUNNING", progressPercent, progressMessage,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        UpdateLeaseExpiry(leaseState, ack);
+        await _journal.SaveActiveLeaseAsync(leaseState.Current, cancellationToken).ConfigureAwait(false);
+        if (!await _journal.AcknowledgeProgressAsync(
+                lease.TaskId, lease.LeaseId, lease.FencingToken, cancellationToken).ConfigureAwait(false))
+            throw new InvalidDataException("AGENT_PROGRESS_ACK_NOT_JOURNALED");
+    }
+
+    private async Task FlushPendingProgressesAsync(
+        AgentEnrollmentCredential credential,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await _journal.LoadAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var pending in snapshot.PendingProgresses)
+        {
+            try
+            {
+                var ack = await _transport.SendTaskUpdateAsync(
+                    credential, pending.Lease, "RUNNING", pending.ProgressPercent,
+                    pending.ProgressMessage, cancellationToken: cancellationToken).ConfigureAwait(false);
+                if (ack.TaskId != pending.Lease.TaskId || ack.LeaseId != pending.Lease.LeaseId ||
+                    ack.FencingToken != pending.Lease.FencingToken || ack.State != "RUNNING" ||
+                    ack.LeaseExpiresAtEpochMs <= _timeProvider.GetUtcNow().ToUnixTimeMilliseconds())
+                    throw new InvalidDataException("AGENT_PROGRESS_ACK_IDENTITY_MISMATCH");
+
+                var renewed = pending.Lease with { LeaseExpiresAtEpochMs = ack.LeaseExpiresAtEpochMs };
+                await _journal.SaveActiveLeaseAsync(renewed, cancellationToken).ConfigureAwait(false);
+                await _journal.AcknowledgeProgressAsync(
+                    pending.Lease.TaskId, pending.Lease.LeaseId, pending.Lease.FencingToken,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (InvalidDataException error) when (error.Message == "LEASE_FENCING_REJECTED")
+            {
+                await _journal.DiscardStaleProgressAsync(
+                    pending.Lease.TaskId, pending.Lease.LeaseId, pending.Lease.FencingToken,
+                    cancellationToken).ConfigureAwait(false);
+                await _journal.DiscardStaleActiveLeaseAsync(
+                    pending.Lease.TaskId, pending.Lease.LeaseId, pending.Lease.FencingToken,
+                    cancellationToken).ConfigureAwait(false);
             }
         }
     }
