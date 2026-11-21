@@ -70,6 +70,18 @@ class GlafiraCoreOwnerApprovalStore(
         return current.ownerCoreId == ownerCoreId && current.ownerGeneration == ownerGeneration
     }
 
+    private fun <T> inDatabaseTransaction(block: (SQLiteDatabase) -> T): T {
+        val database = db
+        database.beginTransaction()
+        try {
+            val result = block(database)
+            database.setTransactionSuccessful()
+            return result
+        } finally {
+            database.endTransaction()
+        }
+    }
+
     private fun appendApprovalTrace(
         database: SQLiteDatabase,
         task: GlafiraTask,
@@ -105,20 +117,22 @@ class GlafiraCoreOwnerApprovalStore(
         }.getOrDefault("")
         if (summary.isBlank()) return emptySet()
         val hash = GlafiraToolRegistry.actionHash(task, summary)
-        return db.query(
-            "core_action_approvals", arrayOf("requested_scopes", "owner_core_id", "owner_generation"),
-            "task_id = ? AND project_id = ? AND tool_id = ? AND action_hash = ? AND status = ? AND grant_expires_at > ?",
-            arrayOf(task.taskId, task.projectId, task.taskType, hash, APPROVED, System.currentTimeMillis().toString()),
-            null, null, null, "1"
-        ).use { cursor ->
-            if (!cursor.moveToFirst()) emptySet()
-            else {
-                val scopesJson = cursor.getString(0)
-                val ownerCoreId = cursor.getString(1)
-                val ownerGeneration = cursor.getLong(2)
-                if (!ownershipMatches(task, ownerCoreId, ownerGeneration) ||
-                    !hasExactRegisteredScopes(task, scopesJson)
-                ) emptySet() else parseRequestedScopes(scopesJson).orEmpty()
+        return inDatabaseTransaction { database ->
+            database.query(
+                "core_action_approvals", arrayOf("requested_scopes", "owner_core_id", "owner_generation"),
+                "task_id = ? AND project_id = ? AND tool_id = ? AND action_hash = ? AND status = ? AND grant_expires_at > ?",
+                arrayOf(task.taskId, task.projectId, task.taskType, hash, APPROVED, System.currentTimeMillis().toString()),
+                null, null, null, "1"
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) emptySet()
+                else {
+                    val scopesJson = cursor.getString(0)
+                    val ownerCoreId = cursor.getString(1)
+                    val ownerGeneration = cursor.getLong(2)
+                    if (!ownershipMatches(task, ownerCoreId, ownerGeneration) ||
+                        !hasExactRegisteredScopes(task, scopesJson)
+                    ) emptySet() else parseRequestedScopes(scopesJson).orEmpty()
+                }
             }
         }
     }
@@ -131,26 +145,28 @@ class GlafiraCoreOwnerApprovalStore(
     ): ToolApprovalGrant? {
         if (actionSummary.isBlank()) return null
         val hash = GlafiraToolRegistry.actionHash(task, actionSummary)
-        return db.query(
-            "core_action_approvals",
-            arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at", "requested_scopes", "owner_core_id", "owner_generation"),
-            "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
-        ).use { cursor ->
-            if (!cursor.moveToFirst()) return@use null
-            val row = ApprovalRow(
-                cursor.getString(0), cursor.getString(1), cursor.getString(2),
-                cursor.getString(3), cursor.getLong(4), cursor.getLong(5), cursor.getString(6),
-                cursor.getString(7), cursor.getLong(8)
-            )
-            if (row.status == APPROVED && ownershipMatches(task, row.ownerCoreId, row.ownerGeneration) &&
-                row.projectId == task.projectId &&
-                row.toolId == task.taskType && row.actionHash == hash &&
-                hasExactRegisteredScopes(task, row.requestedScopesJson) &&
-                row.approvedAt <= nowMillis && row.grantExpiresAt > nowMillis
-            ) ToolApprovalGrant(
-                row.projectId, row.toolId, row.actionHash,
-                row.approvedAt, row.grantExpiresAt, task.taskId
-            ) else null
+        return inDatabaseTransaction { database ->
+            database.query(
+                "core_action_approvals",
+                arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at", "requested_scopes", "owner_core_id", "owner_generation"),
+                "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val row = ApprovalRow(
+                    cursor.getString(0), cursor.getString(1), cursor.getString(2),
+                    cursor.getString(3), cursor.getLong(4), cursor.getLong(5), cursor.getString(6),
+                    cursor.getString(7), cursor.getLong(8)
+                )
+                if (row.status == APPROVED && ownershipMatches(task, row.ownerCoreId, row.ownerGeneration) &&
+                    row.projectId == task.projectId &&
+                    row.toolId == task.taskType && row.actionHash == hash &&
+                    hasExactRegisteredScopes(task, row.requestedScopesJson) &&
+                    row.approvedAt <= nowMillis && row.grantExpiresAt > nowMillis
+                ) ToolApprovalGrant(
+                    row.projectId, row.toolId, row.actionHash,
+                    row.approvedAt, row.grantExpiresAt, task.taskId
+                ) else null
+            }
         }
     }
 
