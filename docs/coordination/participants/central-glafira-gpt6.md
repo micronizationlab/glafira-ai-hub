@@ -13,7 +13,7 @@
 |---|---|---|---|---|---|---|
 | P2 | PR #369 / #372, Issues #350/#371, stacked #372 → #369 → #352 → #347 | Manual Backup accessibility action and emulator regression only | `fix/android-backup-explicit-accessibility-action-371` (#372); predecessor `fix/android-backup-button-merged-semantics-352` (#369) | #372 exact-head Android JVM/emulator/APK CI | #369 failed managed emulator: button node still reports not clickable; #372 adds explicit Button-role semantics action and is in CI | `d005cc1fd8e023999db4d7f799ed2e550e3b09fb` |
 | P1 audit | Issue #366, PR #347 | Review ownership-generation bypasses; no production edit yet | audit only | #347 must gain complete handoff and all mutation paths must be fenced | Findings recorded in #366 | `be1d81586cd506176db712494ec77f6364faac83` |
-| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Added external AI contributor onboarding and task-board lane; latest head `f2d29c6b638385aa5c535d7cd06db28d23b210be`; exact-head docs-only CI passed (platform suites skipped) | `f2d29c6b638385aa5c535d7cd06db28d23b210be` |
+| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Added external AI contributor onboarding and task-board lane; last verified docs-only head `f2d29c6b638385aa5c535d7cd06db28d23b210be` passed; subsequent ledger-only commits are pending exact-head validation | `f2d29c6b638385aa5c535d7cd06db28d23b210be` |
 
 ## 150-step program tracker
 
