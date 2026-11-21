@@ -288,6 +288,53 @@ class GlafiraCoreTraceStoreInstrumentedTest {
     }
 
     @Test
+    fun dryRunPreviewAndPolicyTraceCommitOrRollBackTogether() {
+        val taskId = "trace-dry-run-task"
+        val projectId = "trace-dry-run-project"
+        val original = task(taskId, projectId).copy(
+            payload = org.json.JSONObject().put("actionSummary", "Preview this task").toString()
+        )
+        taskStore.enqueue(original)
+        assertNotNull(taskStore.claimNext(2_000L))
+        val plan = GlafiraDryRunPlanner.build(
+            original,
+            GlafiraTaskAuthorizationResult(
+                GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
+                "OWNER_APPROVAL_REQUIRED"
+            )
+        )
+        val db = taskStore.writableDatabase
+        db.execSQL("""
+            CREATE TRIGGER fail_dry_run_trace
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.action_code = 'DRY_RUN_PREVIEW_STORED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_DRY_RUN_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) {
+            taskStore.persistDryRunPreview(
+                taskId, setOf(GlafiraTaskState.RUNNING), plan, 3_000L
+            )
+        }
+        assertEquals(GlafiraTaskState.RUNNING, taskStore.getTask(taskId)?.state)
+        assertNull(taskStore.dryRunPreview(taskId))
+        db.execSQL("DROP TRIGGER fail_dry_run_trace")
+
+        assertTrue(taskStore.persistDryRunPreview(
+            taskId, setOf(GlafiraTaskState.RUNNING), plan, 4_000L
+        ))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, taskStore.getTask(taskId)?.state)
+        assertNotNull(taskStore.dryRunPreview(taskId))
+        val events = traceStore.query(
+            GlafiraCoreTraceQuery(projectId, taskId = taskId),
+            GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
+        ).events
+        assertTrue(events.any {
+            it.eventType == GlafiraCoreTraceEventType.POLICY_CHECKED &&
+                it.actionCode == "DRY_RUN_PREVIEW_STORED"
+        })
+    }
+
+    @Test
     fun interruptedTaskRecoveryAndTraceTransitionCommitOrRollBackTogether() {
         val taskId = "trace-recovery-task"
         val projectId = "trace-recovery-project"
