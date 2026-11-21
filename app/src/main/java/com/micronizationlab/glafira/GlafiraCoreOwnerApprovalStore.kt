@@ -36,8 +36,38 @@ class GlafiraCoreOwnerApprovalStore(
                 decided_by TEXT
             )""".trimIndent()
         )
+        val addedOwnerCoreId = ensureColumn(database, "owner_core_id", "TEXT")
+        val addedOwnerGeneration = ensureColumn(database, "owner_generation", "INTEGER")
+        if (addedOwnerCoreId || addedOwnerGeneration) {
+            // Legacy approvals cannot be safely attributed to a canonical owner generation.
+            // Fail closed instead of inheriting old grants after this migration.
+            database.execSQL(
+                "UPDATE core_action_approvals SET status = ?, approved_at = NULL, grant_expires_at = NULL " +
+                    "WHERE owner_core_id IS NULL OR owner_generation IS NULL",
+                arrayOf(EXPIRED)
+            )
+        }
+        database.execSQL("CREATE INDEX IF NOT EXISTS core_action_approval_owner_idx ON core_action_approvals(task_id, owner_core_id, owner_generation, status)")
         database.execSQL("CREATE INDEX IF NOT EXISTS core_action_approval_status_idx ON core_action_approvals(status, requested_at)")
         database.execSQL("CREATE INDEX IF NOT EXISTS core_action_approval_expiry_idx ON core_action_approvals(status, expires_at)")
+    }
+
+    private fun ensureColumn(database: SQLiteDatabase, column: String, type: String): Boolean {
+        val exists = database.rawQuery("PRAGMA table_info(core_action_approvals)", null).use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            var found = false
+            while (cursor.moveToNext()) if (cursor.getString(nameIndex) == column) found = true
+            found
+        }
+        if (exists) return false
+        database.execSQL("ALTER TABLE core_action_approvals ADD COLUMN $column $type")
+        return true
+    }
+
+    private fun ownershipMatches(task: GlafiraTask, ownerCoreId: String?, ownerGeneration: Long?): Boolean {
+        if (ownerCoreId.isNullOrBlank() || ownerGeneration == null || ownerGeneration <= 0L) return false
+        val current = taskStore.taskOwnership(task.taskId, task.projectId) ?: return false
+        return current.ownerCoreId == ownerCoreId && current.ownerGeneration == ownerGeneration
     }
 
     private fun appendApprovalTrace(
@@ -76,7 +106,7 @@ class GlafiraCoreOwnerApprovalStore(
         if (summary.isBlank()) return emptySet()
         val hash = GlafiraToolRegistry.actionHash(task, summary)
         return db.query(
-            "core_action_approvals", arrayOf("requested_scopes"),
+            "core_action_approvals", arrayOf("requested_scopes", "owner_core_id", "owner_generation"),
             "task_id = ? AND project_id = ? AND tool_id = ? AND action_hash = ? AND status = ? AND grant_expires_at > ?",
             arrayOf(task.taskId, task.projectId, task.taskType, hash, APPROVED, System.currentTimeMillis().toString()),
             null, null, null, "1"
@@ -84,8 +114,11 @@ class GlafiraCoreOwnerApprovalStore(
             if (!cursor.moveToFirst()) emptySet()
             else {
                 val scopesJson = cursor.getString(0)
-                if (!hasExactRegisteredScopes(task, scopesJson)) emptySet()
-                else parseRequestedScopes(scopesJson).orEmpty()
+                val ownerCoreId = cursor.getString(1)
+                val ownerGeneration = cursor.getLong(2)
+                if (!ownershipMatches(task, ownerCoreId, ownerGeneration) ||
+                    !hasExactRegisteredScopes(task, scopesJson)
+                ) emptySet() else parseRequestedScopes(scopesJson).orEmpty()
             }
         }
     }
@@ -100,15 +133,17 @@ class GlafiraCoreOwnerApprovalStore(
         val hash = GlafiraToolRegistry.actionHash(task, actionSummary)
         return db.query(
             "core_action_approvals",
-            arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at", "requested_scopes"),
+            arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at", "requested_scopes", "owner_core_id", "owner_generation"),
             "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
         ).use { cursor ->
             if (!cursor.moveToFirst()) return@use null
             val row = ApprovalRow(
                 cursor.getString(0), cursor.getString(1), cursor.getString(2),
-                cursor.getString(3), cursor.getLong(4), cursor.getLong(5), cursor.getString(6)
+                cursor.getString(3), cursor.getLong(4), cursor.getLong(5), cursor.getString(6),
+                cursor.getString(7), cursor.getLong(8)
             )
-            if (row.status == APPROVED && row.projectId == task.projectId &&
+            if (row.status == APPROVED && ownershipMatches(task, row.ownerCoreId, row.ownerGeneration) &&
+                row.projectId == task.projectId &&
                 row.toolId == task.taskType && row.actionHash == hash &&
                 hasExactRegisteredScopes(task, row.requestedScopesJson) &&
                 row.approvedAt <= nowMillis && row.grantExpiresAt > nowMillis
@@ -131,6 +166,8 @@ class GlafiraCoreOwnerApprovalStore(
         database.beginTransaction()
         try {
             val currentTask = taskStore.getTask(task.taskId) ?: return false
+            val ownership = taskStore.taskOwnership(task.taskId, task.projectId) ?: return false
+            if (ownership.ownerCoreId.isBlank() || ownership.ownerGeneration <= 0L) return false
             if ((currentTask.state != GlafiraTaskState.RUNNING &&
                 currentTask.state != GlafiraTaskState.WAITING_FOR_OWNER) ||
                 (currentTask.deadlineAtMillis != null && currentTask.deadlineAtMillis <= nowMillis)
@@ -148,6 +185,8 @@ class GlafiraCoreOwnerApprovalStore(
 
             val values = ContentValues().apply {
                 put("task_id", task.taskId)
+                put("owner_core_id", ownership.ownerCoreId)
+                put("owner_generation", ownership.ownerGeneration)
                 put("project_id", task.projectId)
                 put("tool_id", task.taskType)
                 put("action_hash", hash)
@@ -209,15 +248,18 @@ class GlafiraCoreOwnerApprovalStore(
         try {
             val row = db.query(
                 "core_action_approvals",
-                arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at", "requested_scopes"),
+                arrayOf("project_id", "tool_id", "action_hash", "status", "approved_at", "grant_expires_at", "requested_scopes", "owner_core_id", "owner_generation"),
                 "task_id = ?", arrayOf(task.taskId), null, null, null, "1"
             ).use { cursor ->
                 if (!cursor.moveToFirst()) null else ApprovalRow(
                     cursor.getString(0), cursor.getString(1), cursor.getString(2),
-                    cursor.getString(3), cursor.getLong(4), cursor.getLong(5), cursor.getString(6)
+                    cursor.getString(3), cursor.getLong(4), cursor.getLong(5), cursor.getString(6),
+                    cursor.getString(7), cursor.getLong(8)
                 )
             }
-            if (row != null && row.status == APPROVED && row.projectId == task.projectId &&
+            if (row != null && row.status == APPROVED &&
+                ownershipMatches(task, row.ownerCoreId, row.ownerGeneration) &&
+                row.projectId == task.projectId &&
                 row.toolId == task.taskType && row.actionHash == hash &&
                 hasExactRegisteredScopes(task, row.requestedScopesJson) &&
                 row.approvedAt <= nowMillis && row.grantExpiresAt > nowMillis
@@ -225,8 +267,8 @@ class GlafiraCoreOwnerApprovalStore(
                 val consumed = db.update(
                     "core_action_approvals",
                     ContentValues().apply { put("status", CONSUMED) },
-                    "task_id = ? AND status = ? AND action_hash = ?",
-                    arrayOf(task.taskId, APPROVED, hash)
+                    "task_id = ? AND status = ? AND action_hash = ? AND owner_core_id = ? AND owner_generation = ?",
+                    arrayOf(task.taskId, APPROVED, hash, row.ownerCoreId, row.ownerGeneration)
                 )
                 if (consumed == 1) {
                     appendApprovalTrace(
@@ -263,6 +305,16 @@ class GlafiraCoreOwnerApprovalStore(
                 "status = ? AND expires_at <= ?",
                 arrayOf(PENDING, nowMillis.toString())
             )
+            // An ownership transfer invalidates every approval from the previous generation.
+            database.execSQL(
+                "UPDATE core_action_approvals SET status = ?, approved_at = NULL, grant_expires_at = NULL " +
+                    "WHERE status IN (?, ?) AND NOT EXISTS (" +
+                    "SELECT 1 FROM core_task_ownership o WHERE o.task_id = core_action_approvals.task_id " +
+                    "AND o.project_id = core_action_approvals.project_id " +
+                    "AND o.owner_core_id = core_action_approvals.owner_core_id " +
+                    "AND o.owner_generation = core_action_approvals.owner_generation)",
+                arrayOf(EXPIRED, PENDING, APPROVED)
+            )
             database.execSQL(
                 "UPDATE core_tasks SET state = ?, updated_at = ?, last_error = ? " +
                     "WHERE state = ? AND task_id IN " +
@@ -278,20 +330,22 @@ class GlafiraCoreOwnerApprovalStore(
         }
         val rows = database.query(
             "core_action_approvals",
-            arrayOf("task_id", "action_hash", "requested_scopes", "requested_at", "expires_at"),
+            arrayOf("task_id", "action_hash", "requested_scopes", "requested_at", "expires_at", "owner_core_id", "owner_generation"),
             "status = ? AND expires_at > ?", arrayOf(PENDING, nowMillis.toString()),
             null, null, "requested_at ASC", limit.toString()
         ).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) add(PendingRow(
                     cursor.getString(0), cursor.getString(1), cursor.getString(2),
-                    cursor.getLong(3), cursor.getLong(4)
+                    cursor.getLong(3), cursor.getLong(4), cursor.getString(5), cursor.getLong(6)
                 ))
             }
         }
         return rows.mapNotNull { row ->
             val task = taskStore.getTask(row.taskId) ?: return@mapNotNull null
-            if (task.state != GlafiraTaskState.WAITING_FOR_OWNER) return@mapNotNull null
+            if (task.state != GlafiraTaskState.WAITING_FOR_OWNER ||
+                !ownershipMatches(task, row.ownerCoreId, row.ownerGeneration)
+            ) return@mapNotNull null
             val json = JSONArray(row.scopesJson)
             val scopes = buildSet { for (i in 0 until json.length()) add(json.getString(i)) }
             GlafiraPendingActionApproval(task, row.actionHash, scopes, row.requestedAt, row.expiresAt)
@@ -321,15 +375,16 @@ class GlafiraCoreOwnerApprovalStore(
                 val summary = runCatching { org.json.JSONObject(task.payload).optString("actionSummary").trim() }.getOrDefault("")
                 val hash = if (summary.isBlank()) "" else GlafiraToolRegistry.actionHash(task, summary)
                 val row = db.query(
-                    "core_action_approvals", arrayOf("project_id", "tool_id", "action_hash", "status", "expires_at"),
+                    "core_action_approvals", arrayOf("project_id", "tool_id", "action_hash", "status", "expires_at", "owner_core_id", "owner_generation"),
                     "task_id = ?", arrayOf(taskId), null, null, null, "1"
                 ).use { cursor ->
                     if (!cursor.moveToFirst()) null else DecisionRow(
                         cursor.getString(0), cursor.getString(1), cursor.getString(2),
-                        cursor.getString(3), cursor.getLong(4)
+                        cursor.getString(3), cursor.getLong(4), cursor.getString(5), cursor.getLong(6)
                     )
                 }
                 if (row == null || definition == null || row.status != PENDING ||
+                    !ownershipMatches(task, row.ownerCoreId, row.ownerGeneration) ||
                     row.expiresAt <= nowMillis || row.projectId != task.projectId ||
                     row.toolId != task.taskType || row.actionHash != hash
                 ) {
@@ -349,8 +404,8 @@ class GlafiraCoreOwnerApprovalStore(
                             put("approved_at", nowMillis)
                             put("grant_expires_at", minOf(safeAdd(nowMillis, GRANT_TTL_MILLIS), task.deadlineAtMillis ?: Long.MAX_VALUE))
                             put("decided_by", ownerSession.sessionId)
-                        }, "task_id = ? AND status = ? AND action_hash = ?",
-                            arrayOf(taskId, PENDING, hash))
+                        }, "task_id = ? AND status = ? AND action_hash = ? AND owner_core_id = ? AND owner_generation = ?",
+                            arrayOf(taskId, PENDING, hash, row.ownerCoreId, row.ownerGeneration))
                         val requeued = db.update("core_tasks", ContentValues().apply {
                             put("state", GlafiraTaskState.QUEUED.databaseValue)
                             put("updated_at", nowMillis)
@@ -389,14 +444,17 @@ class GlafiraCoreOwnerApprovalStore(
         db.beginTransaction()
         try {
             val currentTask = taskStore.getTask(taskId)
-            if (currentTask == null || currentTask.state != GlafiraTaskState.WAITING_FOR_OWNER) {
+            val ownership = currentTask?.let { taskStore.taskOwnership(taskId, it.projectId) }
+            if (currentTask == null || currentTask.state != GlafiraTaskState.WAITING_FOR_OWNER ||
+                ownership == null || ownership.ownerCoreId.isBlank() || ownership.ownerGeneration <= 0L
+            ) {
                 result = GlafiraCoreOwnerApprovalMutation.ALREADY_DECIDED
             } else {
             val changed = db.update("core_action_approvals", ContentValues().apply {
                 put("status", REJECTED)
                 put("decided_by", ownerSession.sessionId)
-            }, "task_id = ? AND status = ? AND expires_at > ?",
-                arrayOf(taskId, PENDING, nowMillis.toString()))
+            }, "task_id = ? AND status = ? AND expires_at > ? AND owner_core_id = ? AND owner_generation = ?",
+                arrayOf(taskId, PENDING, nowMillis.toString(), ownership.ownerCoreId, ownership.ownerGeneration))
             if (changed == 1) {
                 val taskChanged = db.update("core_tasks", ContentValues().apply {
                     put("state", GlafiraTaskState.FAILED.databaseValue)
@@ -442,7 +500,9 @@ class GlafiraCoreOwnerApprovalStore(
     private data class ApprovalRow(
         val projectId: String, val toolId: String, val actionHash: String,
         val status: String, val approvedAt: Long, val grantExpiresAt: Long,
-        val requestedScopesJson: String
+        val requestedScopesJson: String,
+        val ownerCoreId: String,
+        val ownerGeneration: Long
     )
 
     private fun expectedRegisteredScopes(task: GlafiraTask): Set<String>? {
@@ -468,11 +528,13 @@ class GlafiraCoreOwnerApprovalStore(
     }
     private data class PendingRow(
         val taskId: String, val actionHash: String, val scopesJson: String,
-        val requestedAt: Long, val expiresAt: Long
+        val requestedAt: Long, val expiresAt: Long,
+        val ownerCoreId: String, val ownerGeneration: Long
     )
     private data class DecisionRow(
         val projectId: String, val toolId: String, val actionHash: String,
-        val status: String, val expiresAt: Long
+        val status: String, val expiresAt: Long,
+        val ownerCoreId: String, val ownerGeneration: Long
     )
 
     companion object {
