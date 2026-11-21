@@ -25,9 +25,12 @@ object GooglePasswordCsvImporter {
             val rows = parseCsv(text)
             require(rows.isNotEmpty()) { "CSV-файл пуст." }
 
-            val headers = rows.first().mapIndexed { index, name ->
-                name.trim().removePrefix("\uFEFF").lowercase() to index
-            }.toMap()
+            val headerNames = rows.first().map { it.trim().removePrefix("\uFEFF").lowercase() }
+            require(headerNames.all { it.isNotBlank() }) { "CSV содержит пустое название столбца." }
+            require(headerNames.distinct().size == headerNames.size) {
+                "CSV содержит повторяющиеся названия столбцов."
+            }
+            val headers = headerNames.mapIndexed { index, name -> name to index }.toMap()
             val nameIndex = headers["name"] ?: error("В CSV не найден столбец name.")
             val urlIndex = headers["url"] ?: error("В CSV не найден столбец url.")
             val usernameIndex = headers["username"] ?: error("В CSV не найден столбец username.")
@@ -99,32 +102,58 @@ object GooglePasswordCsvImporter {
         var row = mutableListOf<String>()
         val field = StringBuilder()
         var quoted = false
+        var afterClosingQuote = false
         var index = 0
+
+        fun finishField() {
+            row.add(field.toString())
+            field.setLength(0)
+            afterClosingQuote = false
+        }
+
+        fun finishRow() {
+            finishField()
+            if (row.isNotEmpty()) rows.add(row)
+            row = mutableListOf()
+        }
 
         while (index < source.length) {
             val char = source[index]
-            when {
-                quoted && char == '"' && index + 1 < source.length && source[index + 1] == '"' -> {
-                    field.append('"')
-                    index++
+            if (quoted) {
+                when {
+                    char == '"' && index + 1 < source.length && source[index + 1] == '"' -> {
+                        field.append('"')
+                        index++
+                    }
+                    char == '"' -> {
+                        quoted = false
+                        afterClosingQuote = true
+                    }
+                    else -> field.append(char)
                 }
-                char == '"' && !quoted && field.isEmpty() -> quoted = true
-                char == '"' && quoted -> quoted = false
-                char == ',' && !quoted -> {
-                    row.add(field.toString())
-                    field.setLength(0)
+            } else {
+                when {
+                    afterClosingQuote && char == ',' -> finishField()
+                    afterClosingQuote && (char == '\n' || char == '\r') -> {
+                        finishRow()
+                        if (char == '\r' && index + 1 < source.length && source[index + 1] == '\n') index++
+                    }
+                    afterClosingQuote -> error("CSV содержит данные после закрывающей кавычки.")
+                    char == '"' -> {
+                        require(field.isEmpty()) { "CSV содержит кавычку внутри незаключённого в кавычки поля." }
+                        quoted = true
+                    }
+                    char == ',' -> finishField()
+                    char == '\n' || char == '\r' -> {
+                        finishRow()
+                        if (char == '\r' && index + 1 < source.length && source[index + 1] == '\n') index++
+                    }
+                    else -> field.append(char)
                 }
-                (char == '\n' || char == '\r') && !quoted -> {
-                    row.add(field.toString())
-                    field.setLength(0)
-                    if (row.isNotEmpty()) rows.add(row)
-                    row = mutableListOf()
-                    if (char == '\r' && index + 1 < source.length && source[index + 1] == '\n') index++
-                }
-                else -> field.append(char)
             }
             index++
         }
+
         require(!quoted) { "CSV содержит незакрытую кавычку." }
         row.add(field.toString())
         if (row.any { it.isNotEmpty() }) rows.add(row)

@@ -32,4 +32,75 @@ class GooglePasswordCsvImporterTest {
         }.exceptionOrNull()
         assertTrue(error?.message?.contains("password") == true)
     }
+
+    @Test
+    fun parsesReorderedHeadersAndPreservesTimestamp() {
+        val csv = "\uFEFFurl,password,note,username,name\nhttps://example.com,secret,private,user,Example"
+        val entry = GooglePasswordCsvImporter.parse(csv.byteInputStream(), now = 123L).entries.single()
+
+        assertEquals("Example", entry.title)
+        assertEquals("https://example.com", entry.website)
+        assertEquals("user", entry.username)
+        assertEquals("secret", entry.password)
+        assertEquals("private", entry.notes)
+        assertEquals(123L, entry.updatedAt)
+    }
+
+    @Test
+    fun preservesEscapedQuotesInsideQuotedFields() {
+        val csv = "name,url,username,password,note\nExample,https://example.com,user,secret,\"text with \"\"quotes\"\"\""
+        val entry = GooglePasswordCsvImporter.parse(csv.byteInputStream()).entries.single()
+        assertEquals("text with \"quotes\"", entry.notes)
+    }
+
+    @Test
+    fun rejectsUnclosedQuotedFields() {
+        val csv = "name,url,username,password\n\"unfinished,https://example.com,user,secret"
+        val error = runCatching { GooglePasswordCsvImporter.parse(csv.byteInputStream()) }.exceptionOrNull()
+        assertTrue(error?.message?.contains("незакрытую кавычку") == true)
+    }
+
+    @Test
+    fun enforcesInputByteLimitBeforeParsing() {
+        val oversized = ByteArray(10 * 1024 * 1024 + 1) { 'a'.code.toByte() }
+        val error = runCatching {
+            GooglePasswordCsvImporter.parse(ByteArrayInputStream(oversized))
+        }.exceptionOrNull()
+        assertTrue(error?.message?.contains("10 МБ") == true)
+    }
+
+    @Test
+    fun rejectsMoreThanTenThousandDataRows() {
+        val csv = buildString {
+            append("name,url,username,password,note\n")
+            repeat(10_001) { append("Example,https://example.com,user,secret,\n") }
+        }
+        val error = runCatching { GooglePasswordCsvImporter.parse(csv.byteInputStream()) }.exceptionOrNull()
+        assertTrue(error?.message?.contains("10000") == true)
+    }
+
+    @Test
+    fun rejectsQuoteInsideUnquotedFieldAndTrailingDataAfterQuotedField() {
+        val embeddedQuote = "name,url,username,password\nExa\"mple,https://example.com,user,secret"
+        val embeddedError = runCatching {
+            GooglePasswordCsvImporter.parse(ByteArrayInputStream(embeddedQuote.toByteArray()))
+        }.exceptionOrNull()
+        assertTrue(embeddedError?.message?.contains("кавычку внутри") == true)
+
+        val trailingData = "name,url,username,password\n\"Example\"oops,https://example.com,user,secret"
+        val trailingError = runCatching {
+            GooglePasswordCsvImporter.parse(ByteArrayInputStream(trailingData.toByteArray()))
+        }.exceptionOrNull()
+        assertTrue(trailingError?.message?.contains("после закрывающей кавычки") == true)
+    }
+
+    @Test
+    fun rejectsDuplicateColumnNames() {
+        val csv = "name,url,username,password,name\nExample,https://example.com,user,secret,Other"
+        val error = runCatching {
+            GooglePasswordCsvImporter.parse(ByteArrayInputStream(csv.toByteArray()))
+        }.exceptionOrNull()
+        assertTrue(error?.message?.contains("повторяющиеся") == true)
+    }
+
 }
