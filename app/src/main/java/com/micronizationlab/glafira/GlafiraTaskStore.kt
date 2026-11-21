@@ -42,6 +42,11 @@ class GlafiraTaskStore(context: Context) :
                 arrayOf(projectId)).use {
                 check(!it.moveToFirst()) { "Сначала завершите или отмените задачи проекта в очереди Core." }
             }
+            val traceExists = db.rawQuery(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                arrayOf(GlafiraCoreTraceStore.TABLE)
+            ).use { it.moveToFirst() }
+            if (traceExists) GlafiraCoreTraceStore.purgeProjectForOwnerDeletion(db, projectId)
             db.delete(TABLE_TASKS, "project_id = ?", arrayOf(projectId))
             db.delete("core_task_plans", "project_id = ?", arrayOf(projectId))
             val approvalsExist = db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_action_approvals'", null)
@@ -94,6 +99,7 @@ class GlafiraTaskStore(context: Context) :
         createTaskDependenciesSchema(db)
         createTaskPlansSchema(db)
         GlafiraCoreLiveRunStore.createSchema(db)
+        GlafiraCoreTraceStore.createSchema(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -105,7 +111,8 @@ class GlafiraTaskStore(context: Context) :
         if (oldVersion < 7) createTaskPlansSchema(db)
         if (oldVersion < 8) migrateDesktopLeaseFencing(db)
         if (oldVersion < 9) GlafiraCoreLiveRunStore.createSchema(db)
-        if (newVersion > 9) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 10) GlafiraCoreTraceStore.createSchema(db)
+        if (newVersion > 10) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
     }
 
     private fun createTaskDependenciesSchema(db: SQLiteDatabase) {
@@ -1476,7 +1483,7 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 9
+        private const val DATABASE_VERSION = 10
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
