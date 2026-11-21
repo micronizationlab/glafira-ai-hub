@@ -910,18 +910,19 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         val queued = task("dry-run-owner-grant", "message.send").copy(
             payload = org.json.JSONObject().put("actionSummary", actionSummary).toString()
         )
+        val now = System.currentTimeMillis()
         store.enqueue(queued)
-        assertNotNull(store.claimNext(2_000L))
+        assertNotNull(store.claimNext(now + 1L))
 
         val approvals = GlafiraCoreOwnerApprovalStore(store)
-        assertTrue(approvals.requestApproval(queued, actionSummary, 3_000L))
+        assertTrue(approvals.requestApproval(queued, actionSummary, now + 2L))
         assertEquals(
             GlafiraCoreOwnerApprovalMutation.APPROVED,
             approvals.approve(
                 queued.taskId,
                 setOf("communications.send"),
                 ownerSession(),
-                4_000L
+                now + 3L
             )
         )
 
@@ -929,20 +930,20 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         val authorizer = RegistryBackedGlafiraTaskAuthorizer(approvals)
         assertEquals(
             GlafiraTaskAuthorizationStatus.AUTHORIZED,
-            authorizer.inspectForDryRun(current, 5_000L).status
+            authorizer.inspectForDryRun(current, now + 4L).status
         )
         assertEquals(
             GlafiraTaskAuthorizationStatus.AUTHORIZED,
-            authorizer.inspectForDryRun(current, 6_000L).status
+            authorizer.inspectForDryRun(current, now + 5L).status
         )
-        assertNotNull(approvals.peekApprovalGrant(current, actionSummary, 6_000L))
+        assertNotNull(approvals.peekApprovalGrant(current, actionSummary, now + 5L))
 
         // Only the real execution authorization consumes the one-use approval.
         assertEquals(
             GlafiraTaskAuthorizationStatus.AUTHORIZED,
-            authorizer.authorize(current, 7_000L).status
+            authorizer.authorize(current, now + 6L).status
         )
-        assertNull(approvals.peekApprovalGrant(current, actionSummary, 8_000L))
+        assertNull(approvals.peekApprovalGrant(current, actionSummary, now + 7L))
     }
 
     private fun ownerSession(): GlafiraCoreOwnerSession {
