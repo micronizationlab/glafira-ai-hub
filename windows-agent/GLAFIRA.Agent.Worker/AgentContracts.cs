@@ -12,7 +12,18 @@ public sealed record AgentTaskEnvelope(
     string PayloadRef,
     string PayloadSha256,
     IReadOnlySet<string> RequiredCapabilities,
-    string? ApprovalRef);
+    string? ApprovalRef,
+    string Title = "",
+    string Instruction = "",
+    string Executor = "",
+    string ParentTaskId = "",
+    string SubtaskId = "",
+    long CreatedAtEpochMs = 0,
+    long ExpiresAtEpochMs = 0,
+    int Priority = 0,
+    string LeaseId = "",
+    long FencingToken = 0,
+    string EffectRisk = "ReadOnly");
 
 public sealed record AgentTaskResult(
     string TaskId,
