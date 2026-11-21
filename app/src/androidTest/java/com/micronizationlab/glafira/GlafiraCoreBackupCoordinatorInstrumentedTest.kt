@@ -162,7 +162,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    fun exportRejectsUnknownCoreTablesInsteadOfSilentlyOmittingThem() = runBlocking {
+    fun exportRejectsUnknownCoreTablesInsteadOfSilentlyOmittingThem(): Unit = runBlocking {
         store.writableDatabase.execSQL(
             "CREATE TABLE core_future_sensitive (id TEXT PRIMARY KEY, secret TEXT NOT NULL)"
         )
@@ -178,7 +178,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    fun portableRestoreInsertFailureRollsBackDatabaseAndKeepsCurrentQueue() = runBlocking {
+    fun portableRestoreInsertFailureRollsBackDatabaseAndKeepsCurrentQueue(): Unit = runBlocking {
         store.enqueue(task("backup-result-task"))
         assertEquals("backup-result-task", store.claimNext(nowMillis = 2_500L)?.taskId)
         assertTrue(store.persistCoreTaskResult(
