@@ -40,7 +40,20 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             )
         }.getOrNull()
         // A missing legacy enablement flag initializes PAUSED, never implicitly enabled.
-        runtimeConfigStore.loadOrInitialize(legacyEnabled, legacyBudget)
+        // Remove the legacy copy after the migration attempt, even when SQLite is corrupt:
+        // a later database recreation must not resurrect a stale "enabled" preference.
+        try {
+            runtimeConfigStore.loadOrInitialize(legacyEnabled, legacyBudget)
+        } finally {
+            check(legacyPreferences.edit()
+                .remove(KEY_ENABLED)
+                .remove(KEY_BUDGET_WALL_CLOCK_MS)
+                .remove(KEY_BUDGET_MAX_STEPS)
+                .remove(KEY_BUDGET_MAX_RETRIES)
+                .remove(KEY_BUDGET_MAX_CONCURRENT)
+                .remove(KEY_BUDGET_MAX_COST_MICROS)
+                .commit()) { "Could not retire legacy GLAFIRA runtime preferences." }
+        }
     }
 
     // Stable per-installation identity; this is not an owner grant or task-ownership lease.
