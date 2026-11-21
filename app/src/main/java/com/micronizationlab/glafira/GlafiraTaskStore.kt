@@ -30,7 +30,7 @@ private data class StoredDesktopLease(
  */
 class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
-    GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraOwnedCoreTaskResultPersistence, GlafiraTaskOwnershipExecutionFence {
+    GlafiraTaskQueue, GlafiraOwnedDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraOwnedCoreTaskResultPersistence, GlafiraTaskOwnershipExecutionFence {
     private val appContext = context.applicationContext
 
     init {
@@ -331,6 +331,22 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         expectedStates: Set<GlafiraTaskState>,
         plan: GlafiraDryRunPlan,
         nowMillis: Long
+    ): Boolean = persistDryRunPreviewInternal(null, taskId, expectedStates, plan, nowMillis)
+
+    @Synchronized
+    override fun persistDryRunPreviewOwned(
+        token: GlafiraTaskOwnershipExecutionToken,
+        expectedStates: Set<GlafiraTaskState>,
+        plan: GlafiraDryRunPlan,
+        nowMillis: Long
+    ): Boolean = persistDryRunPreviewInternal(token, token.taskId, expectedStates, plan, nowMillis)
+
+    private fun persistDryRunPreviewInternal(
+        token: GlafiraTaskOwnershipExecutionToken?,
+        taskId: String,
+        expectedStates: Set<GlafiraTaskState>,
+        plan: GlafiraDryRunPlan,
+        nowMillis: Long
     ): Boolean {
         require(taskId == plan.taskId && taskId.isNotBlank())
         require(plan.planHash.matches(Regex("[0-9a-f]{64}")))
@@ -341,6 +357,16 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         val db = writableDatabase
         db.beginTransaction()
         try {
+            if (token != null && (token.taskId != taskId || token.ownerCoreId != ownerCoreId)) return false
+            if (ownerCoreId != null) {
+                val currentOwner = db.query(TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation"),
+                    "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getLong(1)
+                } ?: return false
+                if (currentOwner.first != ownerCoreId ||
+                    (token != null && currentOwner.second != token.ownerGeneration)
+                ) return false
+            }
             val existingHash = db.query(
                 GlafiraDryRunPreviewSchema.TABLE, arrayOf("plan_hash"),
                 "task_id = ?", arrayOf(taskId), null, null, null, "1"
@@ -359,8 +385,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                         put("updated_at", nowMillis)
                         put("last_error", "DRY_RUN_PREVIEW_STORED")
                     },
-                    "task_id = ? AND state IN ($placeholders)",
-                    arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray()
+                    "task_id = ? AND state IN ($placeholders)" +
+                        if (token != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ?)"
+                        else if (ownerCoreId != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
+                        else "",
+                    arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray() +
+                        if (token != null) arrayOf(token.ownerCoreId, token.ownerGeneration.toString())
+                        else if (ownerCoreId != null) arrayOf(ownerCoreId) else emptyArray()
                 )
                 if (changed != 1) return false
                 db.update(
@@ -403,8 +434,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     put("updated_at", nowMillis)
                     put("last_error", "DRY_RUN_PREVIEW_STORED")
                 },
-                "task_id = ? AND state IN ($placeholders)",
-                arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray()
+                "task_id = ? AND state IN ($placeholders)" +
+                        if (token != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ?)"
+                        else if (ownerCoreId != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
+                        else "",
+                    arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray() +
+                        if (token != null) arrayOf(token.ownerCoreId, token.ownerGeneration.toString())
+                        else if (ownerCoreId != null) arrayOf(ownerCoreId) else emptyArray()
             )
             if (changed != 1) return false
             val inserted = db.insertOrThrow(
