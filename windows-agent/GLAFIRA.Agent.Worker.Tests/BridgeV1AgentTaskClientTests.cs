@@ -90,7 +90,7 @@ public sealed class BridgeV1AgentTaskClientTests
             new[] { "web.research", "analysis.document" });
 
         Assert.NotNull(captured);
-        Assert.Equal("[\\\"analysis.document\\\",\\\"web.research\\\"]", captured["taskTypes"]);
+        Assert.Equal("[\"analysis.document\",\"web.research\"]", captured["taskTypes"]);
     }
 
     [Fact]
