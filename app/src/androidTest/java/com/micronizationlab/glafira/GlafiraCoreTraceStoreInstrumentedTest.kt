@@ -73,7 +73,8 @@ class GlafiraCoreTraceStoreInstrumentedTest {
             GlafiraCoreTraceQuery(projectId = "trace-project"),
             GlafiraCoreTraceAccessContext(projectId = "trace-project", taskIds = setOf("trace-task-a"))
         )
-        assertEquals(listOf("trace-task-a"), taskOnly.events.map { it.taskId })
+        assertEquals(2, taskOnly.events.size) // Explicit event plus transactional TASK_CREATED.
+        assertTrue(taskOnly.events.all { it.taskId == "trace-task-a" })
 
         val taskAndProject = traceStore.query(
             GlafiraCoreTraceQuery(projectId = "trace-project"),
