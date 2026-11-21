@@ -127,6 +127,29 @@ public sealed class BridgeV1AgentTaskClientTests
 
         Assert.Equal("task-001", ack.TaskId);
         Assert.Equal(digest, ack.ResultSha256);
+        Assert.Equal(0L, ack.LeaseExpiresAtEpochMs);
+    }
+
+    [Fact]
+    public async Task RunningProgressRequiresAndReturnsServerLeaseExpiry()
+    {
+        var renewedExpiry = DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeMilliseconds();
+        var handler = new StubHandler(_ => Task.FromResult(Json(new
+        {
+            status = "SUCCEEDED",
+            result = new Dictionary<string, string>
+            {
+                ["accepted"] = "true", ["taskId"] = "task-001", ["leaseId"] = "lease-0001",
+                ["fencingToken"] = "42", ["state"] = "RUNNING",
+                ["resultSha256"] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("null"))).ToLowerInvariant(),
+                ["leaseExpiresAtEpochMs"] = renewedExpiry.ToString(CultureInfo.InvariantCulture)
+            }
+        })));
+
+        var ack = await Client(handler).SendTaskUpdateAsync(
+            Credential(), Lease(), "RUNNING", 25, "still working");
+
+        Assert.Equal(renewedExpiry, ack.LeaseExpiresAtEpochMs);
     }
 
     [Fact]
