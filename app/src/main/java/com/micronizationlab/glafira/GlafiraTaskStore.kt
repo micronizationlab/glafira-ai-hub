@@ -162,7 +162,7 @@ class GlafiraTaskStore(context: Context) :
                 'task-history-' || event_id,
                 CASE WHEN changed_at > 0 THEN changed_at ELSE 1 END,
                 'CORE', 'core', 'TaskStore',
-                CASE to_state
+                CASE WHEN from_state IS NULL THEN 'TASK_CREATED' ELSE CASE to_state
                     WHEN 'queued' THEN 'TASK_QUEUED'
                     WHEN 'running' THEN 'TASK_STARTED'
                     WHEN 'waiting_for_network' THEN 'TASK_WAITING_FOR_NETWORK'
@@ -172,7 +172,7 @@ class GlafiraTaskStore(context: Context) :
                     WHEN 'failed' THEN 'TASK_FAILED'
                     WHEN 'cancelled' THEN 'TASK_CANCELLED'
                     ELSE 'TASK_STATE_CHANGED'
-                END,
+                END END,
                 'task.state.changed',
                 CASE WHEN task_id GLOB '[A-Za-z0-9]*' AND task_id NOT GLOB '*[^A-Za-z0-9._:-]*' AND task_id GLOB '*[A-Za-z]*'
                     THEN 'TASK' ELSE NULL END,
@@ -229,7 +229,7 @@ class GlafiraTaskStore(context: Context) :
                     'task-history-' || NEW.event_id,
                     CASE WHEN NEW.changed_at > 0 THEN NEW.changed_at ELSE 1 END,
                     'CORE', 'core', 'TaskStore',
-                    CASE NEW.to_state
+                    CASE WHEN NEW.from_state IS NULL THEN 'TASK_CREATED' ELSE CASE NEW.to_state
                         WHEN 'queued' THEN 'TASK_QUEUED'
                         WHEN 'running' THEN 'TASK_STARTED'
                         WHEN 'waiting_for_network' THEN 'TASK_WAITING_FOR_NETWORK'
@@ -239,7 +239,7 @@ class GlafiraTaskStore(context: Context) :
                         WHEN 'failed' THEN 'TASK_FAILED'
                         WHEN 'cancelled' THEN 'TASK_CANCELLED'
                         ELSE 'TASK_STATE_CHANGED'
-                    END,
+                    END END,
                     'task.state.changed',
                     CASE WHEN NEW.task_id GLOB '[A-Za-z0-9]*' AND NEW.task_id NOT GLOB '*[^A-Za-z0-9._:-]*'
                         THEN 'TASK' ELSE NULL END,
