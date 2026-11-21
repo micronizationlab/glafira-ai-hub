@@ -33,7 +33,7 @@ public sealed class BridgeV1AgentTaskClientTests
                     ["available"] = "true", ["taskId"] = "task-001", ["projectId"] = "default",
                     ["taskType"] = "web.research", ["idempotencyKey"] = "idem-task-001",
                     ["payloadRef"] = "payload://task-001", ["payloadSha256"] = new string('a', 64),
-                    ["effectRisk"] = "ReadOnly", ["approvalRef"] = "none",
+                    ["effectRisk"] = "ReadOnly", ["approvalRef"] = "",
                     ["leaseExpiresAtEpochMs"] = _now.AddMinutes(2).ToUnixTimeMilliseconds().ToString(),
                     ["parentTaskId"] = "parent-001", ["subtaskId"] = "sub-001",
                     ["title"] = "Research", ["instruction"] = "Analyze supplied material",
