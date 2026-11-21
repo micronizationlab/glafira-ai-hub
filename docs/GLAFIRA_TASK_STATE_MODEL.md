@@ -72,6 +72,8 @@ A handler's `SUCCEEDED` / `FAILED` / `CANCELLED` outcome is an execution result,
 | `FAILED` | `Failed` | Failure is known, not merely an expired lease |
 | `CANCELLED` | `Cancelled` | Owner cancellation of queued or leased ReadOnly work; the active lease is deleted/fenced and delayed Agent progress/results are rejected |
 
+Cancellation rule: queued work of any risk is safe to cancel before dispatch; leased `ReadOnly` work is cancelled and its lease is removed; leased `LocalWrite` or `ExternalSideEffect` work becomes `OutcomeUnknown`; already terminal or unknown tasks are not silently rewritten. The Desktop UI requires explicit owner confirmation and explains the unknown-outcome case.
+
 Hub `OutcomeUnknown` must map to the owning Core's `WAITING_FOR_OWNER` plus the exact `CORE_EXECUTION_OUTCOME_UNKNOWN` reason until the Core model introduces a first-class state. This avoids treating every owner wait as an unknown external effect.
 
 ## 4. Transition and retry invariants
