@@ -19,6 +19,16 @@ interface GlafiraTaskQueue {
     ): Boolean
 }
 
+/** Ownership-aware Dry Run persistence used by the production Core executor. */
+interface GlafiraOwnedDryRunPreviewPersistence : GlafiraDryRunPreviewPersistence {
+    fun persistDryRunPreviewOwned(
+        token: GlafiraTaskOwnershipExecutionToken,
+        expectedStates: Set<GlafiraTaskState>,
+        plan: GlafiraDryRunPlan,
+        nowMillis: Long
+    ): Boolean
+}
+
 /** Immutable authority captured atomically with a Core task claim. */
 data class GlafiraTaskOwnershipExecutionToken(
     val taskId: String,
