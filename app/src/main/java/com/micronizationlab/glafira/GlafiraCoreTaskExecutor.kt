@@ -191,13 +191,20 @@ class GlafiraCoreTaskExecutor(
         if (mode == GlafiraExecutionMode.DRY_RUN) {
             val plan = GlafiraDryRunPlanner.build(task, authorization)
             val preview = "DRY_RUN_PREVIEW:" + plan.toSafeJson()
-            val changed = dryRunPreviewPersistence?.persistDryRunPreview(
-                task.taskId, setOf(GlafiraTaskState.RUNNING), plan, clock()
-            ) ?: transitionOwnedOrLegacy(
-                ownershipToken, task.taskId, setOf(GlafiraTaskState.RUNNING),
-                GlafiraTaskState.WAITING_FOR_OWNER, clock(),
-                lastError = preview
-            )
+            val changed = when {
+                ownershipToken != null && dryRunPreviewPersistence is GlafiraOwnedDryRunPreviewPersistence ->
+                    dryRunPreviewPersistence.persistDryRunPreviewOwned(
+                        ownershipToken, setOf(GlafiraTaskState.RUNNING), plan, clock()
+                    )
+                dryRunPreviewPersistence != null -> dryRunPreviewPersistence.persistDryRunPreview(
+                    task.taskId, setOf(GlafiraTaskState.RUNNING), plan, clock()
+                )
+                else -> transitionOwnedOrLegacy(
+                    ownershipToken, task.taskId, setOf(GlafiraTaskState.RUNNING),
+                    GlafiraTaskState.WAITING_FOR_OWNER, clock(),
+                    lastError = preview
+                )
+            }
             return GlafiraTaskExecutionResult(
                 task.taskId,
                 if (changed) GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED
