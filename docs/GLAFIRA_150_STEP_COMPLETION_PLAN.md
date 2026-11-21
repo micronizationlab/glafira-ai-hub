@@ -142,7 +142,7 @@
 
 ### P4 — iOS: native peer app
 
-111. [ ] Проверить Xcode project, scheme, deployment target и simulator build.
+111. [x] Проверить Xcode project, scheme, deployment target и simulator build.
 112. [ ] Сверить Swift BridgeKit с canonical C1 fixtures и Kotlin/C# schema.
 113. [ ] Подключить root UI к authenticated account/device state.
 114. [ ] Добавить project/workspace switcher на реальных данных.
@@ -206,7 +206,7 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `92e34759378c7636bd148766e7553bd1e1fde29c`.
+**Refreshed main after this wave:** `0c9c1f26f146e853b84bf3891387ac9ff67223b8`.
 
 ### Verified complete
 
@@ -217,12 +217,14 @@
 
 ### In progress
 
+- Step 74: PR #238 adds the Agent polling/execution coordinator with DPAPI lease/result journal, server-confirmed lease renewal and exact ACK retry. CI is pending. No production task handlers are registered yet; Agent stays Connected and does not claim work until a real typed ReadOnly handler is added.
 - Step 73: complete. PR #231 added the DPAPI journal; PR #235 added the full lease envelope to every pending result so a restarted Agent can reconstruct the exact result submission. PR #235 merged as `92e34759378c7636bd148766e7553bd1e1fde29c` after exact-head Windows Agent tests/build, shared contracts and package validation passed.
-- Android voice delivery PR #225: JVM tests and debug APK pass on head `c9a5039d760c28a8f78eff25107f2a7c0ae42aa3`; the emulator suite is still running. The unrelated backup guidance selector was corrected from content-description lookup to visible-text lookup.
 - PR #232 merged after exact-head Windows Agent tests, Desktop Hub tests, shared contract conformance and both x64 package builds passed.
 
 ### Integration decisions
 
+- PR #225 merged as `0c9c1f26f146e853b84bf3891387ac9ff67223b8`: opt-in automatic speech for newly delivered Agent replies, operationId-based duplicate suppression, and persistent missing-cloud-folder backup guidance. Exact-head Android JVM, debug APK and managed-emulator acceptance passed.
+- PR #237 merged as `077579b818f3b2bf3179f0b3f9ea12b5f010f978`: macOS CI now builds the actual native `ios/GLAFIRA.xcodeproj` Simulator app target in addition to Swift BridgeKit tests; exact-head iOS app and contract jobs passed. Step 111 is marked complete; physical iPhone acceptance remains open.
 - PR #227 merged as `14fba6f6a4e83dfba5a7177b4d25cea846d433c3`: restore regression proves RUNNING tasks return to owner review and source-device leases/nodes do not transfer.
 - PR #229 merged as `d11afe70372f0dcf6215671ae317a2150711cad1`: this 150-step plan is the current ordered execution ledger.
 - PR #230 merged after Windows Agent, Windows Desktop Hub and shared contract tests passed on its exact head.
