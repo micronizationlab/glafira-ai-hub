@@ -13,6 +13,70 @@ public sealed class DesktopHubStoreFailureInjectionTests : IDisposable
     public DesktopHubStoreFailureInjectionTests() => _store = new DesktopHubStore(_databasePath);
 
     [Fact]
+    public void ClaimJournalFailureRollsBackTaskTransitionAndLeaseInsert()
+    {
+        var now = DateTimeOffset.UtcNow;
+        const string agentId = "agent-claim-fault";
+        const string taskId = "claim-fault-task";
+        _store.RegisterAgent(new HubAgentRegistration(
+            agentId, "device-claim-fault", ["web.research"], 1, true), now);
+        _store.Enqueue(new HubTaskRequest(
+            taskId,
+            "claim-fault-project",
+            "claim-fault-idempotency",
+            "web.research",
+            "payload://claim-fault-task",
+            new string('a', 64),
+            ["web.research"],
+            [],
+            HubTaskEffectRisk.ReadOnly,
+            null,
+            5), now);
+
+        using (var connection = new SqliteConnection($"Data Source={_databasePath};Foreign Keys=True;"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TRIGGER inject_claim_event_failure
+                BEFORE INSERT ON TaskEvents
+                WHEN NEW.event_code = 'TASK_LEASED'
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected-claim-journal-failure');
+                END;
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var failure = Assert.Throws<SqliteException>(() => _store.ClaimNext(
+            agentId, now.AddSeconds(1), TimeSpan.FromMinutes(1)));
+        Assert.Contains("injected-claim-journal-failure", failure.Message);
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState(taskId));
+
+        using (var connection = new SqliteConnection($"Data Source={_databasePath};Foreign Keys=True;"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM Leases WHERE task_id = $task;";
+            command.Parameters.AddWithValue("$task", taskId);
+            Assert.Equal(0L, (long)command.ExecuteScalar()!);
+            command.CommandText = "DROP TRIGGER inject_claim_event_failure;";
+            command.Parameters.Clear();
+            command.ExecuteNonQuery();
+        }
+
+        // A successful retry must start from the original queue state and fence,
+        // proving the failed claim did not leak an attempt, lease or journal row.
+        var reopened = new DesktopHubStore(_databasePath);
+        Assert.Equal(HubTaskState.Queued, reopened.GetTaskState(taskId));
+        var lease = reopened.ClaimNext(agentId, now.AddSeconds(2), TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+        Assert.Equal(1, lease.FencingToken);
+        Assert.Equal(HubTaskState.Leased, reopened.GetTaskState(taskId));
+        Assert.Single(reopened.GetTaskHistory(taskId), item => item.EventCode == "TASK_LEASED");
+    }
+
+    [Fact]
     public void ResultJournalFailureRollsBackTaskResultAndLeaseCompletion()
     {
         var now = DateTimeOffset.UtcNow;
