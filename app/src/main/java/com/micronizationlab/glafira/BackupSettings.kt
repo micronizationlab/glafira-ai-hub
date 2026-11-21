@@ -33,7 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -162,6 +166,37 @@ fun BackupSettingsSection() {
         if (uri != null) pendingRestoreUri = uri
     }
 
+    val onManualBackupClick: () -> Unit = {
+        val selectedFolder = folderUri?.let { Uri.parse(it) }
+        val storedPassphrase = EncryptedApiKeyStore.load(
+            context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY
+        )
+        val effectivePassphrase = BackupManualPassphrase.resolve(
+            entered = passphrase,
+            stored = storedPassphrase
+        )
+        when {
+            selectedFolder == null -> {
+                manualBackupGuidance = "Сначала выбери папку Google Drive или Яндекс Диска."
+                status = "Выбери папку облачного хранилища, чтобы начать резервирование."
+            }
+            effectivePassphrase.length < 12 -> status = "Введи пароль не короче 12 символов. Если пароль уже сохранялся на этом телефоне, поле можно оставить пустым."
+            !context.contentResolver.persistedUriPermissions.any {
+                it.uri == selectedFolder && it.isWritePermission
+            } -> status = "Нет сохранённого разрешения на запись в выбранную папку. Выбери её повторно и подтверди доступ."
+            DocumentFile.fromTreeUri(context, selectedFolder)?.canWrite() != true ->
+                status = "Облачная папка доступна только для чтения или провайдер не поддерживает запись."
+            passphrase.isNotBlank() && !EncryptedApiKeyStore.save(
+                context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY, effectivePassphrase
+            ) -> status = "Не удалось сохранить пароль в Android Keystore."
+            else -> {
+                manualBackupGuidance = null
+                BackupScheduler.runNow(context, wifiOnly)
+                status = "Резервная копия поставлена в очередь. Пароль взят из защищённого хранилища; проверь результат загрузки ниже."
+            }
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("РЕЗЕРВНОЕ КОПИРОВАНИЕ", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         Card(colors = CardDefaults.cardColors(containerColor = GrD), modifier = Modifier.fillMaxWidth()) {
@@ -265,43 +300,20 @@ fun BackupSettingsSection() {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
-                        onClick = {
-                            val selectedFolder = folderUri?.let { Uri.parse(it) }
-                            val storedPassphrase = EncryptedApiKeyStore.load(
-                                context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY
-                            )
-                            val effectivePassphrase = BackupManualPassphrase.resolve(
-                                entered = passphrase,
-                                stored = storedPassphrase
-                            )
-                            when {
-                                selectedFolder == null -> {
-                                    manualBackupGuidance = "Сначала выбери папку Google Drive или Яндекс Диска."
-                                    status = "Выбери папку облачного хранилища, чтобы начать резервирование."
-                                }
-                                effectivePassphrase.length < 12 -> status = "Введи пароль не короче 12 символов. Если пароль уже сохранялся на этом телефоне, поле можно оставить пустым."
-                                !context.contentResolver.persistedUriPermissions.any {
-                                    it.uri == selectedFolder && it.isWritePermission
-                                } -> status = "Нет сохранённого разрешения на запись в выбранную папку. Выбери её повторно и подтверди доступ."
-                                DocumentFile.fromTreeUri(context, selectedFolder)?.canWrite() != true ->
-                                    status = "Облачная папка доступна только для чтения или провайдер не поддерживает запись."
-                                passphrase.isNotBlank() && !EncryptedApiKeyStore.save(
-                                    context, GlafiraBackupWorker.BACKUP_PASSPHRASE_KEY, effectivePassphrase
-                                ) -> status = "Не удалось сохранить пароль в Android Keystore."
-                                else -> {
-                                    manualBackupGuidance = null
-                                    BackupScheduler.runNow(context, wifiOnly)
-                                    status = "Резервная копия поставлена в очередь. Пароль взят из защищённого хранилища; проверь результат загрузки ниже."
-                                }
-                            }
-                        },
+                        onClick = onManualBackupClick,
                         enabled = !busy,
-                        modifier = Modifier
-                            .weight(1f)
-                            .semantics(mergeDescendants = true) {
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        // Put the label on the Button's child so Material3's own clickable
+                        // semantics node merges it; an outer semantics wrapper is exposed
+                        // as a separate non-clickable node by UiAutomator on API 35.
+                        Text(
+                            "Сохранить сейчас",
+                            modifier = Modifier.semantics {
                                 contentDescription = "Создать резервную копию сейчас"
                             }
-                    ) { Text("Сохранить сейчас") }
+                        )
+                    }
                     OutlinedButton(
                         onClick = {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
