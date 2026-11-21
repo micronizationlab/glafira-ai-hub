@@ -1,11 +1,10 @@
 package com.micronizationlab.glafira
 
-import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.Signature
-import java.time.Instant
+import java.time.OffsetDateTime
 
 /** Signature-covered fields of Dual-Core Ownership Transfer v1; signature is excluded. */
 data class GlafiraOwnershipTransferSigningPayload(
@@ -106,7 +105,7 @@ internal object GlafiraCoreOwnershipTransferCryptography {
 
     fun fingerprint(publicKey: PublicKey): String =
         MessageDigest.getInstance("SHA-256").digest(publicKey.encoded)
-            .joinToString("") { "%02x".format(it) }
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     private fun validate(payload: GlafiraOwnershipTransferSigningPayload) {
         require(payload.schemaVersion == 1) { "OWNERSHIP_TRANSFER_SCHEMA_VERSION_UNSUPPORTED" }
@@ -131,8 +130,8 @@ internal object GlafiraCoreOwnershipTransferCryptography {
         require(payload.signatureAlgorithm == ALGORITHM && payload.signatureFormat == SIGNATURE_FORMAT) {
             "OWNERSHIP_TRANSFER_SIGNATURE_FORMAT_UNSUPPORTED"
         }
-        val issued = Instant.parse(payload.issuedAt)
-        val expires = Instant.parse(payload.expiresAt)
+        val issued = OffsetDateTime.parse(payload.issuedAt).toInstant()
+        val expires = OffsetDateTime.parse(payload.expiresAt).toInstant()
         require(expires.isAfter(issued)) { "OWNERSHIP_TRANSFER_TIME_WINDOW_INVALID" }
         require(payload.effectRisk in allowedRisks) { "OWNERSHIP_TRANSFER_EFFECT_RISK_INVALID" }
         if (payload.effectRisk in highRisk) {
