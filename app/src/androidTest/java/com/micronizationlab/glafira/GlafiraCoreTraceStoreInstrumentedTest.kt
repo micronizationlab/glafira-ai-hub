@@ -323,7 +323,7 @@ class GlafiraCoreTraceStoreInstrumentedTest {
             taskId, setOf(GlafiraTaskState.RUNNING), plan, 4_000L
         ))
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, taskStore.getTask(taskId)?.state)
-        val preview = requireNotNull(taskStore.dryRunPreview(taskId))
+        assertNotNull(taskStore.dryRunPreview(taskId))
         db.execSQL("""
             CREATE TRIGGER fail_dry_run_review_trace
             BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
