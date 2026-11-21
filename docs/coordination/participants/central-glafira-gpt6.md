@@ -21,7 +21,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 | Cycle | Status | Completed actions | Evidence index / PRs | Validation summary | Open blockers |
 |---:|---|---:|---|---|---|
-| 01 | partial | 16/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
+| 01 | partial | 17/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
 
 ## Cycle 01 — capacity audit and parallel portfolio
 
