@@ -160,6 +160,61 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun legacyPortableV2SnapshotRestoresWithoutTraceTable() = runBlocking {
+        store.enqueue(task("legacy-v2-task"))
+        val trace = GlafiraCoreTraceSqliteRepository(store)
+        trace.append(GlafiraCoreTraceDraft(
+            eventId = "trace-not-in-legacy-backup",
+            projectId = "backup-project",
+            correlationId = "legacy-correlation",
+            occurredAtMillis = 2_000L,
+            actorType = GlafiraCoreTraceActorType.SYSTEM,
+            actorId = "system-main",
+            component = "LegacyBackupTest",
+            eventType = GlafiraCoreTraceEventType.BACKUP_STARTED,
+            actionCode = "backup.started"
+        ))
+
+        val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
+        snapshotDirectory.deleteRecursively()
+        assertTrue(snapshotDirectory.mkdirs())
+        val snapshotFile = File(snapshotDirectory, "core-portable-v2.json")
+        GlafiraPortableCoreSnapshot(store).exportTo(snapshotFile)
+        val legacy = org.json.JSONObject(snapshotFile.readText())
+        legacy.put("version", 2)
+        legacy.getJSONObject("tables").remove("core_trace_events")
+        snapshotFile.writeText(legacy.toString())
+
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
+        val archive = BackupArchive.create(context, passphrase)
+        try {
+            trace.append(GlafiraCoreTraceDraft(
+                eventId = "trace-after-legacy-backup",
+                projectId = "backup-project",
+                correlationId = "legacy-correlation",
+                occurredAtMillis = 3_000L,
+                actorType = GlafiraCoreTraceActorType.SYSTEM,
+                actorId = "system-main",
+                component = "LegacyBackupTest",
+                eventType = GlafiraCoreTraceEventType.BACKUP_STARTED,
+                actionCode = "backup.started"
+            ))
+
+            GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
+
+            assertEquals("legacy-v2-task", store.getTask("legacy-v2-task")?.taskId)
+            assertTrue(trace.query(
+                GlafiraCoreTraceQuery("backup-project"),
+                GlafiraCoreTraceAccessContext("backup-project")
+            ).events.isEmpty())
+        } finally {
+            archive.delete()
+            snapshotDirectory.deleteRecursively()
+            passphrase.fill('\u0000')
+        }
+    }
+
+    @Test
     fun restoreResetsRunningTasksAndDropsSourceDeviceLeasesAndAuthority() = runBlocking {
         store.enqueue(task("running-task"))
         assertEquals("running-task", store.claimNext(nowMillis = 2_500L)?.taskId)
