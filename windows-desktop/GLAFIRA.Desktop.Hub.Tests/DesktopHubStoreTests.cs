@@ -375,6 +375,39 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task OwnerCancellationAndAgentCompletionRaceHaveExactlyOneDurableWinner()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-cancel-race", "device-cancel-race", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("cancel-race"), now);
+        var lease = _store.ClaimNext("agent-cancel-race", now, TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+        var secondStore = new DesktopHubStore(_databasePath);
+
+        var cancel = Task.Run(() => _store.CancelTask("cancel-race", now.AddSeconds(1)));
+        var complete = Task.Run(() => secondStore.Complete(
+            "agent-cancel-race", lease.TaskId, lease.LeaseId, lease.FencingToken,
+            succeeded: true, now.AddSeconds(1), result: "read-only result"));
+        await Task.WhenAll(cancel, complete);
+
+        Assert.NotEqual(cancel.Result, complete.Result);
+        var state = _store.GetTaskState("cancel-race");
+        Assert.Contains(state, new[] { HubTaskState.Cancelled, HubTaskState.Succeeded });
+        var history = _store.GetTaskHistory("cancel-race");
+        Assert.Equal(1, history.Count(item => item.State is HubTaskState.Cancelled or HubTaskState.Succeeded));
+        if (state == HubTaskState.Cancelled)
+        {
+            Assert.Null(_store.GetTaskResult("cancel-race"));
+            Assert.Equal("TASK_CANCELLED_OWNER_REQUEST", history[^1].EventCode);
+        }
+        else
+        {
+            Assert.NotNull(_store.GetTaskResult("cancel-race"));
+            Assert.Equal("TASK_SUCCEEDED", history[^1].EventCode);
+        }
+    }
+
+    [Fact]
     public void OwnerCannotCancelAlreadyTerminalTask()
     {
         var now = DateTimeOffset.UtcNow;
