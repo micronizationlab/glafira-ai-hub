@@ -107,8 +107,8 @@ public sealed class BridgeV1AgentTaskClient
         var payloadRef = Required(result, "payloadRef");
         var payloadSha256 = Required(result, "payloadSha256");
         var effectRisk = Required(result, "effectRisk");
-        var approvalText = result.GetValueOrDefault("approvalRef") ?? "none";
-        var approvalRef = StringComparer.Ordinal.Equals(approvalText, "none") ? null : approvalText;
+        var approvalText = result.GetValueOrDefault("approvalRef") ?? string.Empty;
+        var approvalRef = string.IsNullOrEmpty(approvalText) ? null : approvalText;
         var parentTaskId = Required(result, "parentTaskId");
         var subtaskId = Required(result, "subtaskId");
         var title = Required(result, "title");
