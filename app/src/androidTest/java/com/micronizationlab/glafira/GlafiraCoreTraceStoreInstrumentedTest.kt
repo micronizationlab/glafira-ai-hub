@@ -209,6 +209,67 @@ class GlafiraCoreTraceStoreInstrumentedTest {
     }
 
     @Test
+    fun taskLifecycleTraceSharesTransactionsWithQueueAndResultWrites() {
+        val taskId = "trace-lifecycle-task"
+        val projectId = "trace-lifecycle-project"
+        taskStore.enqueue(task(taskId, projectId))
+
+        val db = taskStore.writableDatabase
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_task_start
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.action_code = 'TASK_STARTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) { taskStore.claimNext(2_000L) }
+        assertEquals(GlafiraTaskState.QUEUED, taskStore.getTask(taskId)?.state)
+        assertEquals(0, taskStore.getTask(taskId)?.attemptCount)
+        db.execSQL("DROP TRIGGER fail_trace_task_start")
+
+        assertNotNull(taskStore.claimNext(3_000L))
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_result_commit
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.action_code = 'TASK_RESULT_COMMITTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) {
+            taskStore.persistCoreTaskResult(
+                taskId,
+                setOf(GlafiraTaskState.RUNNING),
+                "durable-result",
+                4_000L
+            )
+        }
+        assertEquals(GlafiraTaskState.RUNNING, taskStore.getTask(taskId)?.state)
+        assertNull(taskStore.coreTaskResult(taskId, projectId))
+        db.execSQL("DROP TRIGGER fail_trace_result_commit")
+
+        assertTrue(taskStore.persistCoreTaskResult(
+            taskId,
+            setOf(GlafiraTaskState.RUNNING),
+            "durable-result",
+            5_000L
+        ))
+        val page = traceStore.query(
+            GlafiraCoreTraceQuery(projectId, taskId = taskId),
+            GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
+        )
+        assertEquals(
+            listOf(
+                GlafiraCoreTraceEventType.TASK_SUCCEEDED,
+                GlafiraCoreTraceEventType.TASK_STARTED,
+                GlafiraCoreTraceEventType.TASK_CREATED
+            ),
+            page.events.map { it.eventType }
+        )
+        assertEquals(
+            listOf("TASK_RESULT_COMMITTED", "TASK_STARTED", "TASK_CREATED"),
+            page.events.map { it.actionCode }
+        )
+    }
+
+    @Test
     fun legacyV2PortableSnapshotWithoutTraceTableMigratesToEmptyTraceTable() {
         val tables = JSONObject().apply {
             listOf(
