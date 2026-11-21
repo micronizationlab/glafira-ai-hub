@@ -71,7 +71,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         } finally {
             store.writableDatabase.execSQL("DROP TABLE core_future_sensitive")
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
         }
     }
 
