@@ -20,7 +20,7 @@
 1. [x] Снять baseline main SHA, open PR/issues, CI runs и артефакты.
 2. [x] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
 3. [x] Сверить PR #71/#104/#119/#122 с main и выделить только уникальные Core изменения.
-4. [ ] Зафиксировать единый task state machine и допустимые переходы.
+4. [x] Зафиксировать единый task state machine и допустимые переходы. PR #259 merged (`26ee94222811c5669d4f8d6d89b13f0cfb0be4dc`); exact-head CI run `44855763242` completed successfully, with exhaustive persisted-state transition and round-trip tests.
 5. [x] Проверить все SQLite migrations на upgrade с поддерживаемых версий.
 6. [x] Проверить concurrent claim из независимых SQLite connections.
 7. [x] Доказать отсутствие двойной выдачи task при конкуренции N workers.
