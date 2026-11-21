@@ -20,7 +20,8 @@
     "signingKeyEpoch": 3,
     "signingPublicKeySha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "signatureAlgorithm": "ECDSA_P256_SHA256",
-    "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "signatureFormat": "IEEE_P1363_FIXED_64"
   },
-  "canonicalUtf8": "1:113:transfer-000112:nonce-00000111:task-00000112:project-000115:android-core-0115:desktop-core-011:71:82:4264:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa11:idem-0000019:READ_ONLY4:null24:2026-11-21T12:00:00.000Z24:2026-11-21T12:05:00.000Z1:364:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb17:ECDSA_P256_SHA256"
+  "canonicalUtf8": "1:113:transfer-000112:nonce-00000111:task-00000112:project-000115:android-core-0115:desktop-core-011:71:82:4264:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa11:idem-0000019:READ_ONLY4:null24:2026-11-21T12:00:00.000Z24:2026-11-21T12:05:00.000Z1:364:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb17:ECDSA_P256_SHA25619:IEEE_P1363_FIXED_64"
 }
