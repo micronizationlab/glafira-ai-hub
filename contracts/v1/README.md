@@ -12,6 +12,7 @@ This schema is the shared language-neutral source for task dispatch and Windows 
 - `TaskStatusEvent`: ordered task lifecycle event; distinct from Bridge transport response.
 - `AgentHeartbeat`: liveness, capabilities, active leases and resource usage.
 - `AgentEnrollmentRequest` / `AgentEnrollmentDecision`: owner-reviewed registration and explicit granted capability set.
+- `AgentRevocationRequest` / `AgentRevocationDecision`: owner-requested revocation bound to the exact enrollment generation, including the last accepted fencing token and explicit active-lease disposition.
 
 ## Security rules
 1. Never place passwords, API keys, private keys, cookies, bearer tokens or reusable credentials in these payloads.
@@ -22,6 +23,7 @@ This schema is the shared language-neutral source for task dispatch and Windows 
 6. Lease expiry does not prove that a side effect did not occur. Use `OUTCOME_UNKNOWN` and reconciliation; do not blindly retry.
 7. Results are accepted only for the current lease/fencing token. Late results cannot overwrite a newer lease owner.
 8. Replayed request IDs and idempotency keys must be deduplicated durably.
+9. Revocation targets an exact enrollment ID. A revoked or replaced Agent cannot reuse an older enrollment, and an uncertain active lease is reported as `OUTCOME_UNKNOWN` for owner reconciliation.
 
 ## Compatibility
 - Schema version 1 is explicit. Unknown major versions and unknown task types are rejected.
@@ -49,6 +51,7 @@ Fixture:
 - Payload key insertion order does not change the signature.
 - Unicode, malformed identifiers, unsupported versions, expired/future timestamps and oversized payloads are handled consistently.
 - Unknown operation/task type is rejected; it is never mapped to a generic executor.
+- Revocation is never encoded as an enrollment decision. The pre-adoption draft value `AgentEnrollmentDecision.decision=REVOKED` is rejected; callers must send the exact-generation `AgentRevocationRequest` and consume its decision.
 - Duplicate task delivery is deduplicated by stable task ID/idempotency key.
 - Two Agents cannot hold a valid lease for the same task/fencing generation.
 - A stale lease result cannot overwrite a newer result.
@@ -61,7 +64,7 @@ This is a schema and contract draft, not a running broker, transport, enrollment
 
 ## Generated cross-platform DTOs
 
-`generate-models.mjs` derives each message family separately from the canonical schema. The CI job is pinned to quicktype 26.0.0 and publishes a SHA-scoped artifact containing:
+`generate-models.mjs` derives each of the nine message families separately from the canonical schema. The CI job is pinned to quicktype 26.0.0 and publishes a SHA-scoped artifact containing:
 
 - Kotlin data classes using kotlinx.serialization (Kotlin serialization plugin/runtime must be enabled by the consuming module).
 - Swift Codable structs.

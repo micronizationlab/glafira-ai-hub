@@ -3,6 +3,8 @@ package glafira.contracts.v1.verification
 import glafira.contracts.v1.generated.agentenrollmentdecision.AgentEnrollmentDecision
 import glafira.contracts.v1.generated.agentenrollmentrequest.AgentEnrollmentRequest
 import glafira.contracts.v1.generated.agentheartbeat.AgentHeartbeat
+import glafira.contracts.v1.generated.agentrevocationdecision.AgentRevocationDecision
+import glafira.contracts.v1.generated.agentrevocationrequest.AgentRevocationRequest
 import glafira.contracts.v1.generated.taskenvelope.TaskEnvelope
 import glafira.contracts.v1.generated.tasklease.TaskLease
 import glafira.contracts.v1.generated.taskresultenvelope.TaskResultEnvelope
@@ -15,7 +17,7 @@ import org.junit.Test
 
 class ContractFixtureRoundTripTest {
     @Test
-    fun allSevenMessageFamiliesDecodeAndReencode() {
+    fun allNineMessageFamiliesDecodeAndReencode() {
         val json = Json { explicitNulls = false }
         val fixture = javaClass.getResourceAsStream("/valid-messages.json")!!
             .bufferedReader()
@@ -43,7 +45,13 @@ class ContractFixtureRoundTripTest {
         val decision = json.decodeFromString<AgentEnrollmentDecision>(messages[5].toString())
         assertEquals("agent-00001", decision.agentID)
 
-        val lease = json.decodeFromString<TaskLease>(messages[6].toString())
+        val revocation = json.decodeFromString<AgentRevocationRequest>(messages[6].toString())
+        assertEquals("enroll-001", revocation.enrollmentID)
+
+        val revocationDecision = json.decodeFromString<AgentRevocationDecision>(messages[7].toString())
+        assertEquals(7L, revocationDecision.lastAcceptedFencingToken)
+
+        val lease = json.decodeFromString<TaskLease>(messages[8].toString())
         assertEquals("task-000001", lease.taskID)
     }
 }

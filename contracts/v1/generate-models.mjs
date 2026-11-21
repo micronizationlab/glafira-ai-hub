@@ -17,6 +17,8 @@ const definitions = [
   "AgentHeartbeat",
   "AgentEnrollmentRequest",
   "AgentEnrollmentDecision",
+  "AgentRevocationRequest",
+  "AgentRevocationDecision",
   "TaskLease"
 ];
 

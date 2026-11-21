@@ -16,7 +16,8 @@ const lifecycleScenarios = await readJson("./fixtures/task-lifecycle-scenarios.j
 assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
 for (const name of [
   "TaskEnvelope", "TaskResultEnvelope", "TaskStatusEvent", "AgentHeartbeat",
-  "AgentEnrollmentRequest", "AgentEnrollmentDecision", "TaskLease"
+  "AgentEnrollmentRequest", "AgentEnrollmentDecision", "AgentRevocationRequest",
+  "AgentRevocationDecision", "TaskLease"
 ]) {
   assert.ok(schema.$defs[name], `Missing schema definition: ${name}`);
 }
@@ -83,6 +84,10 @@ assert.equal(scenario("duplicate-delivery-001").expect.executionCount, 1);
 assert.equal(scenario("dependency-gate-001").expect.childClaimBeforeParentSuccess, false);
 assert.equal(scenario("lease-fencing-001").expect.staleResultAccepted, false);
 assert.equal(scenario("agent-revocation-001").expect.claimAccepted, false);
+assert.equal(scenario("agent-revocation-001").request.enrollmentId, "enroll-revoked-001");
+assert.equal(scenario("agent-revocation-001").decision.lastAcceptedFencingToken, 7);
+assert.equal(scenario("agent-revocation-001").decision.activeLeaseDisposition, "OUTCOME_UNKNOWN");
+assert.equal(scenario("agent-revocation-001").decision.requiresOwnerReconciliation, true);
 assert.equal(scenario("unknown-side-effect-001").expect.outcome, "OUTCOME_UNKNOWN");
 assert.equal(scenario("unknown-side-effect-001").expect.retryable, false);
 assert.equal(scenario("unknown-side-effect-001").expect.automaticReplayAllowed, false);
