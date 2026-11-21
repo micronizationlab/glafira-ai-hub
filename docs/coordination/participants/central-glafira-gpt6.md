@@ -21,7 +21,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 | Cycle | Status | Completed actions | Evidence index / PRs | Validation summary | Open blockers |
 |---:|---|---:|---|---|---|
-| 01 | partial | 29/150 | PR #372; PR #362; Issues #366, #370, #371, #373; PRs #347, #352, #353, #140, #364, #61, #62 | PR #372 latest head: Android JVM, shared contracts and APK passed; emulator in progress. PR #362 latest docs-only exact-head CI summary passed; platform jobs skipped. | Core ownership-generation bypasses remain; PR #372 emulator pending; main branch protection disabled |
+| 01 | partial | 32/150 | PR #372; PR #362; Issues #366, #370, #371, #373, #374; PRs #347, #352, #353, #140, #364, #61, #62 | PR #372 latest head: Android JVM, shared contracts and APK passed; emulator pending. PR #362 latest docs-only exact-head CI from previous head passed; new design/finance docs head pending. | Core ownership-generation bypasses remain; PR #372 emulator pending; bank-specific integration unverified; main branch protection disabled |
 
 ## Cycle 01 — capacity audit and parallel portfolio
 
@@ -99,3 +99,9 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 | C01-A028 | P4 Design | Зафиксировал фактический разрыв между текущим ранним WPF dashboard и утверждённым premium visual direction; создал отдельный изолированный design-only issue #373, разрешив только docs/design/** и запретив runtime/Core/Bridge edits. | https://github.com/micronizationlab/glafira-ai-hub/issues/95#issuecomment-7066303192 ; https://github.com/micronizationlab/glafira-ai-hub/issues/373 | Issue created; no design implementation or account owner falsely claimed. | complete |
 
 | C01-A029 | P4 Web/Communications | Связал Connect protocol lane с owner-approved issue #361 и draft ADR PR #364 (Matrix E2EE + optional WebRTC direct path/TURN fallback); task board now requires ADR review before runtime commitment. | PR #362 latest head 4643c74bef46ed4f909ad59acdfa5a01274e2714 | Exact-head docs CI run 44928923707 success; platform jobs skipped. | complete |
+
+| C01-A030 | P4 Design | Записал точное owner-approved направление единого интерфейса: ICQ 2003 переосмысленная через архитектуру современного iOS, с умеренным глянцевым/лаковым гламуром; окна чатов используют ChatGPT conversation workspace patterns. Создана базовая спецификация для Android/Windows/Web. | docs/design/UNIFIED_INTERFACE_DESIGN_SYSTEM.md ; commit 03d446f33007cf8f67e5e55d3f9ee2b348b1361a | Design-only documentation on coordination branch; runtime UI untouched. | complete |
+
+| C01-A031 | P2 Security / Finance | Создал отдельное требование для owner-supervised банковской подсистемы ИП: поиск платежей, выписки, счета, payment review/approval, reconciliation и налоговые workpapers. Включил запрет хранения банковских паролей/OTP, обхода MFA/CAPTCHA и unattended transfers; exact transaction approval, audit, idempotency and accountant review are mandatory. | Issue #374 ; docs/finance/BANKING_PAYMENTS_AND_SOLE_PROPRIETOR_FINANCE.md ; commit 070b62c0ae2516049be018372943a109983c3c6e | Product/architecture specification only; no bank connector or money movement implemented. | complete |
+
+| C01-A032 | P4 coordination | Обновил десятинаправленную task board: добавил finance dependency links к Owner Security, Android и Desktop, а Design lane привёл к новой owner-approved visual direction. | docs/coordination/TASK_BOARD.md ; commit 8adbbe8ee76ec8cfd5afbc3fdf89832f84ffd48a | New coordination branch head requires exact-head docs CI. | complete |
