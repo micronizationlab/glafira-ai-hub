@@ -79,6 +79,29 @@ public final class KeychainBridgeCredentialStore {
         }
     }
 
+    /// Returns account identifiers only; secret bytes are never requested or exposed.
+    /// This lets the native shell render paired-device state without a biometric prompt.
+    public func listDeviceIds() throws -> [String] {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecUseDataProtectionKeychain as String: true
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess, let rows = result as? [[String: Any]] else {
+            throw BridgeCredentialStoreError.keychainFailure(status: status)
+        }
+        let identifiers = rows.compactMap { $0[kSecAttrAccount as String] as? String }
+        guard identifiers.allSatisfy({ (8...128).contains($0.utf16.count) }) else {
+            throw BridgeCredentialStoreError.invalidDeviceIdentifier
+        }
+        return Array(Set(identifiers)).sorted()
+    }
+
     /// Keychain presents the system biometric prompt. No secret is returned
     /// until the current biometric set has authenticated successfully.
     public func load(
@@ -141,4 +164,8 @@ public final class KeychainBridgeCredentialStore {
             throw BridgeCredentialStoreError.keychainFailure(status: status)
         }
     }
+}
+
+public extension Notification.Name {
+    static let glafiraBridgeCredentialDidChange = Notification.Name("com.micronizationlab.glafira.bridgeCredentialDidChange")
 }
