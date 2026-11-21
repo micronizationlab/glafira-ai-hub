@@ -31,6 +31,7 @@ class GlafiraTaskStore(context: Context) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
     GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraCoreTaskResultPersistence {
     private val appContext = context.applicationContext
+    private val coreTraceStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { GlafiraCoreTraceStore(this) }
 
     /** The caller holds maintenance and pauses pending delivery before deleting project files. */
     @Synchronized
@@ -952,6 +953,21 @@ class GlafiraTaskStore(context: Context) :
                     put("result_ciphertext", ciphertext)
                     put("completed_at", nowMillis)
                 }
+            )
+            coreTraceStore.appendInTransaction(
+                db,
+                GlafiraCoreTraceDraft(
+                    projectId = task.projectId,
+                    taskId = task.taskId,
+                    correlationId = task.taskId,
+                    occurredAtMillis = nowMillis,
+                    actorType = GlafiraCoreTraceActorType.CORE,
+                    actorId = "core",
+                    component = "CoreTaskStore",
+                    eventType = GlafiraCoreTraceEventType.TASK_SUCCEEDED,
+                    actionCode = "TASK_RESULT_COMMITTED",
+                    resultStatus = "succeeded"
+                )
             )
             db.setTransactionSuccessful()
             return true
