@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -10,6 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -114,6 +116,22 @@ class GlafiraTaskOwnershipInstrumentedTest {
         assertTrue(store.enqueue(unknown).inserted)
         assertEquals("EXTERNAL_SIDE_EFFECT", ownership(store, external.taskId)?.get("effect_risk"))
         assertEquals("DESTRUCTIVE", ownership(store, unknown.taskId)?.get("effect_risk"))
+    }
+
+    @Test
+    fun ownershipRecordFailureRollsBackTheTaskInsert() {
+        val store = store("android-core-atomic-01")
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER fail_core_task_ownership_insert
+            BEFORE INSERT ON core_task_ownership
+            BEGIN SELECT RAISE(ABORT, 'INJECTED_OWNERSHIP_INSERT_FAILURE'); END
+        """.trimIndent())
+
+        assertThrows(SQLiteException::class.java) {
+            store.enqueue(task("ownership-atomic-failure"))
+        }
+        assertNull(store.getTask("ownership-atomic-failure"))
+        assertNull(ownership(store, "ownership-atomic-failure"))
     }
 
     @Test
