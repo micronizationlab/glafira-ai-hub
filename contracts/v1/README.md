@@ -99,3 +99,22 @@ The Desktop outbox validates that acknowledgement before marking the terminal qu
 record delivered. Unacknowledged terminal records cannot be evicted. They survive a
 restart and are retried without running the handler again. Backpressure stops new
 claims when protected local history has no room.
+
+
+## Dual-Core task ownership transfer v1
+
+`dual-core-ownership.schema.json` defines the first language-neutral wire shape for a canonical task ownership record and an explicit signed transfer between two Core installations. The transfer binds the exact task/project, old and new Core IDs, current and next owner generation, canonical state version, immutable payload digest, idempotency key, effect-risk class, approval reference, nonce, validity window, signing-key epoch and public-key fingerprint.
+
+### Mandatory semantic checks
+
+JSON Schema validates field types and bounds. The shared fixture verifier additionally enforces invariants that JSON Schema cannot express portably:
+
+- old and new Core IDs must differ;
+- the new owner generation must equal the old generation plus exactly one;
+- transfer expiry must be later than issue time;
+- EXTERNAL_SIDE_EFFECT, FINANCIAL and DESTRUCTIVE transfers require a non-null approval reference;
+- unknown fields are rejected.
+
+The signature covers every transfer field except `signature`, in the exact field order in `verify-fixtures.mjs`. Each value is encoded as UTF-16-code-unit-length, colon, value; null is the literal `null`; the concatenated string is UTF-8 encoded before ECDSA P-256/SHA-256 signing. Signatures are Base64-encoded IEEE P1363 fixed-width 64-byte `r || s` values (`signatureFormat=IEEE_P1363_FIXED_64`), not ASN.1 DER. Android/JCA implementations must convert DER output to this exact representation before transport; .NET implementations must request `DSASignatureFormat.IeeeP1363FixedFieldConcatenation` explicitly. The canonicalization fixture pins the bytes and field order across implementations.
+
+**Important limitation:** the current fixture's signature is deliberately a placeholder and is not cryptographically valid. The schema and canonicalization checks do not verify a signature, establish a trusted old-Core public key, enforce key revocation, or persist a transfer inbox/outbox. Production adoption requires platform-level ECDSA verification against the authenticated old-Core identity, durable nonce replay protection, atomic owner-generation compare-and-set, and adversarial two-Core acceptance. No failover or task ownership mutation is enabled by this schema-only change.
