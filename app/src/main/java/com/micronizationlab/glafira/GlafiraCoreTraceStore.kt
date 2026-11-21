@@ -18,45 +18,54 @@ class GlafiraCoreTraceStore(private val taskStore: GlafiraTaskStore) : GlafiraCo
     }
 
     override fun append(event: GlafiraCoreTraceDraft): String = synchronized(taskStore) {
-        val safe = GlafiraCoreTraceRedactor.redact(event)
         val db = taskStore.writableDatabase
         db.beginTransaction()
         try {
-            readEventById(db, safe.eventId, safe.projectId)?.let { existing ->
-                check(existing == safe) { "TRACE_EVENT_ID_CONFLICT" }
-                db.setTransactionSuccessful()
-                return@synchronized safe.eventId
-            }
-
-            safe.taskId?.let { taskId ->
-                val taskProject = db.query(
-                    "core_tasks",
-                    arrayOf("project_id"),
-                    "task_id = ?",
-                    arrayOf(taskId),
-                    null,
-                    null,
-                    null,
-                    "1"
-                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-                check(taskProject == safe.projectId) { "TRACE_TASK_PROJECT_MISMATCH" }
-            }
-
-            val inserted = db.insertWithOnConflict(
-                TABLE,
-                null,
-                safe.toContentValues(),
-                SQLiteDatabase.CONFLICT_IGNORE
-            )
-            if (inserted == -1L) {
-                val existing = readEventById(db, safe.eventId, safe.projectId)
-                check(existing == safe) { "TRACE_EVENT_ID_CONFLICT" }
-            }
+            val eventId = appendInTransaction(db, event)
             db.setTransactionSuccessful()
-            safe.eventId
+            eventId
         } finally {
             db.endTransaction()
         }
+    }
+
+    /**
+     * Appends inside a caller-owned Core transaction. Used by task lifecycle producers so the
+     * state transition and its trace event can commit or roll back together.
+     */
+    internal fun appendInTransaction(db: SQLiteDatabase, event: GlafiraCoreTraceDraft): String {
+        check(db.inTransaction()) { "TRACE_TRANSACTION_REQUIRED" }
+        val safe = GlafiraCoreTraceRedactor.redact(event)
+        readEventById(db, safe.eventId, safe.projectId)?.let { existing ->
+            check(existing == safe) { "TRACE_EVENT_ID_CONFLICT" }
+            return safe.eventId
+        }
+
+        safe.taskId?.let { taskId ->
+            val taskProject = db.query(
+                "core_tasks",
+                arrayOf("project_id"),
+                "task_id = ?",
+                arrayOf(taskId),
+                null,
+                null,
+                null,
+                "1"
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            check(taskProject == safe.projectId) { "TRACE_TASK_PROJECT_MISMATCH" }
+        }
+
+        val inserted = db.insertWithOnConflict(
+            TABLE,
+            null,
+            safe.toContentValues(),
+            SQLiteDatabase.CONFLICT_IGNORE
+        )
+        if (inserted == -1L) {
+            val existing = readEventById(db, safe.eventId, safe.projectId)
+            check(existing == safe) { "TRACE_EVENT_ID_CONFLICT" }
+        }
+        return safe.eventId
     }
 
     override fun query(
