@@ -905,6 +905,46 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask(write.taskId)?.state)
     }
 
+    @Test fun dryRunApprovalInspectionDoesNotConsumePersistentOneUseGrant() {
+        val actionSummary = "Send the approved customer update"
+        val queued = task("dry-run-owner-grant", "message.send").copy(
+            payload = org.json.JSONObject().put("actionSummary", actionSummary).toString()
+        )
+        store.enqueue(queued)
+        assertNotNull(store.claimNext(2_000L))
+
+        val approvals = GlafiraCoreOwnerApprovalStore(store)
+        assertTrue(approvals.requestApproval(queued, actionSummary, 3_000L))
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                queued.taskId,
+                setOf("communications.send"),
+                ownerSession(),
+                4_000L
+            )
+        )
+
+        val current = requireNotNull(store.getTask(queued.taskId))
+        val authorizer = RegistryBackedGlafiraTaskAuthorizer(approvals)
+        assertEquals(
+            GlafiraTaskAuthorizationStatus.AUTHORIZED,
+            authorizer.inspectForDryRun(current, 5_000L).status
+        )
+        assertEquals(
+            GlafiraTaskAuthorizationStatus.AUTHORIZED,
+            authorizer.inspectForDryRun(current, 6_000L).status
+        )
+        assertNotNull(approvals.peekApprovalGrant(current, actionSummary, 6_000L))
+
+        // Only the real execution authorization consumes the one-use approval.
+        assertEquals(
+            GlafiraTaskAuthorizationStatus.AUTHORIZED,
+            authorizer.authorize(current, 7_000L).status
+        )
+        assertNull(approvals.peekApprovalGrant(current, actionSummary, 8_000L))
+    }
+
     private fun ownerSession(): GlafiraCoreOwnerSession {
         val constructor = GlafiraCoreOwnerSession::class.java.getDeclaredConstructor(
             String::class.java,
