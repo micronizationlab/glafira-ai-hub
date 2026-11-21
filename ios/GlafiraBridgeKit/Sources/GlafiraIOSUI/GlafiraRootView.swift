@@ -1,14 +1,25 @@
 import SwiftUI
+import GlafiraBridgeKit
 
 /// Native adaptive iPhone/iPad shell. Live project data is supplied later by the
 /// authenticated Core repository; this view intentionally contains no mock projects.
 public struct GlafiraRootView: View {
+    @State private var pairedDeviceIds: [String] = []
+    @State private var credentialStatus = "Проверяем локальные учётные данные…"
+
     public init() {}
 
     public var body: some View {
         NavigationSplitView {
             List {
-                Section("Подключение") {
+                Section("Подключение и устройства") {
+                    Label(credentialStatus, systemImage: pairedDeviceIds.isEmpty ? "lock" : "checkmark.shield")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    ForEach(pairedDeviceIds, id: \\.self) { deviceId in
+                        Label(deviceId, systemImage: "iphone")
+                            .font(.subheadline)
+                    }
                     NavigationLink {
                         BridgePairingView()
                     } label: {
@@ -41,6 +52,22 @@ public struct GlafiraRootView: View {
             GlafiraWelcomeView()
         }
         .navigationSplitViewStyle(.balanced)
+        .task { refreshCredentialState() }
+        .onReceive(NotificationCenter.default.publisher(for: .glafiraBridgeCredentialDidChange)) { _ in
+            refreshCredentialState()
+        }
+    }
+
+    private func refreshCredentialState() {
+        do {
+            pairedDeviceIds = try KeychainBridgeCredentialStore().listDeviceIds()
+            credentialStatus = pairedDeviceIds.isEmpty
+                ? "Нет сохранённых сопряжённых устройств"
+                : "Ключи сопряжения сохранены в Keychain"
+        } catch {
+            pairedDeviceIds = []
+            credentialStatus = "Не удалось прочитать состояние Keychain"
+        }
     }
 }
 
