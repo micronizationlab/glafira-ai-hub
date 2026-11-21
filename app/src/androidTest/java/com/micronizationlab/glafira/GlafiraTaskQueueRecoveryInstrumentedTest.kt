@@ -127,6 +127,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(0, afterFailure.attemptCount)
         assertEquals(listOf(GlafiraTaskState.QUEUED),
             store.taskHistory("injected-claim-history-failure", "project").map { it.toState })
+        store.writableDatabase.execSQL("DROP TRIGGER inject_core_claim_history_failure")
 
         store.close()
         store = GlafiraTaskStore(context)
