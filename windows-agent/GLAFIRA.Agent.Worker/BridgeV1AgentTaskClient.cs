@@ -28,7 +28,14 @@ public sealed record AgentTaskLease(
     long ExpiresAtEpochMs,
     int Priority,
     string LeaseId,
-    long FencingToken);
+    long FencingToken)
+{
+    public AgentTaskEnvelope ToEnvelope() => new(
+        TaskId, ProjectId, IdempotencyKey, TaskType, PayloadRef, PayloadSha256,
+        RequiredCapabilities, ApprovalRef, Title, Instruction, Executor,
+        ParentTaskId, SubtaskId, CreatedAtEpochMs, ExpiresAtEpochMs,
+        Priority, LeaseId, FencingToken, EffectRisk);
+}
 
 public sealed record AgentTaskUpdateAck(
     string TaskId,
