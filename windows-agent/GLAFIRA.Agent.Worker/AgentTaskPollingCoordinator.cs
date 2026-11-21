@@ -83,17 +83,20 @@ public sealed class AgentTaskPollingCoordinator
         AgentTaskLease lease,
         CancellationToken cancellationToken)
     {
-        await _transport.SendTaskUpdateAsync(
-            credential, lease, "RUNNING", 0, "Agent started registered handler",
+        var leaseState = new ActiveLeaseState(lease);
+        var initialAck = await _transport.SendTaskUpdateAsync(
+            credential, leaseState.Current, "RUNNING", 0, "Agent started registered handler",
             cancellationToken: cancellationToken).ConfigureAwait(false);
+        UpdateLeaseExpiry(leaseState, initialAck);
+        await _journal.SaveActiveLeaseAsync(leaseState.Current, cancellationToken).ConfigureAwait(false);
 
         using var renewalCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var renewalTask = RenewWhileRunningAsync(credential, lease, renewalCancellation);
+        var renewalTask = RenewWhileRunningAsync(credential, leaseState, renewalCancellation);
         AgentTaskResult result;
         Exception? renewalFailure = null;
         try
         {
-            result = await _executor.ExecuteAsync(lease.ToEnvelope(), renewalCancellation.Token).ConfigureAwait(false);
+            result = await _executor.ExecuteAsync(leaseState.Current.ToEnvelope(), renewalCancellation.Token).ConfigureAwait(false);
         }
         finally
         {
@@ -111,7 +114,7 @@ public sealed class AgentTaskPollingCoordinator
         var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson))).ToLowerInvariant();
         var state = result.Outcome == "SUCCEEDED" ? "SUCCEEDED" : "FAILED";
         var pending = new AgentPendingResult(
-            lease, state, 100, "Registered handler finished", resultJson,
+            leaseState.Current, state, 100, "Registered handler finished", resultJson,
             result.ErrorCode ?? "none", digest);
         await _journal.PersistCompletedResultAsync(pending, cancellationToken).ConfigureAwait(false);
         await FlushPendingResultsAsync(credential, cancellationToken).ConfigureAwait(false);
@@ -119,7 +122,7 @@ public sealed class AgentTaskPollingCoordinator
 
     private async Task RenewWhileRunningAsync(
         AgentEnrollmentCredential credential,
-        AgentTaskLease lease,
+        ActiveLeaseState leaseState,
         CancellationTokenSource executionCancellation)
     {
         var cancellationToken = executionCancellation.Token;
@@ -128,9 +131,11 @@ public sealed class AgentTaskPollingCoordinator
             await Task.Delay(_renewInterval, _timeProvider, cancellationToken).ConfigureAwait(false);
             try
             {
-                await _transport.SendTaskUpdateAsync(
-                    credential, lease, "RUNNING", 50, "Registered handler is still running",
+                var ack = await _transport.SendTaskUpdateAsync(
+                    credential, leaseState.Current, "RUNNING", 50, "Registered handler is still running",
                     cancellationToken: cancellationToken).ConfigureAwait(false);
+                UpdateLeaseExpiry(leaseState, ack);
+                await _journal.SaveActiveLeaseAsync(leaseState.Current, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -145,6 +150,22 @@ public sealed class AgentTaskPollingCoordinator
         }
     }
 
+    private void UpdateLeaseExpiry(ActiveLeaseState leaseState, AgentTaskUpdateAck ack)
+    {
+        if (ack.TaskId != leaseState.Current.TaskId || ack.LeaseId != leaseState.Current.LeaseId ||
+            ack.FencingToken != leaseState.Current.FencingToken || ack.State != "RUNNING" ||
+            ack.LeaseExpiresAtEpochMs <= _timeProvider.GetUtcNow().ToUnixTimeMilliseconds())
+            throw new InvalidDataException("TASK_LEASE_RENEWAL_ACK_INVALID");
+        leaseState.Update(leaseState.Current with { LeaseExpiresAtEpochMs = ack.LeaseExpiresAtEpochMs });
+    }
+
+    private sealed class ActiveLeaseState(AgentTaskLease initialLease)
+    {
+        private AgentTaskLease _current = initialLease;
+        public AgentTaskLease Current => Volatile.Read(ref _current);
+        public void Update(AgentTaskLease lease) => Interlocked.Exchange(ref _current, lease);
+    }
+
     private async Task FlushPendingResultsAsync(
         AgentEnrollmentCredential credential,
         CancellationToken cancellationToken)
@@ -152,10 +173,23 @@ public sealed class AgentTaskPollingCoordinator
         var snapshot = await _journal.LoadAsync(cancellationToken).ConfigureAwait(false);
         foreach (var pending in snapshot.PendingResults.OrderBy(item => item.Lease.LeaseExpiresAtEpochMs))
         {
-            var ack = await _transport.SendTaskUpdateAsync(
-                credential, pending.Lease, pending.State, pending.ProgressPercent,
-                pending.ProgressMessage, pending.ResultJson, pending.ErrorCode,
-                cancellationToken).ConfigureAwait(false);
+            AgentTaskUpdateAck ack;
+            try
+            {
+                ack = await _transport.SendTaskUpdateAsync(
+                    credential, pending.Lease, pending.State, pending.ProgressPercent,
+                    pending.ProgressMessage, pending.ResultJson, pending.ErrorCode,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (InvalidDataException error) when (error.Message == "LEASE_FENCING_REJECTED")
+            {
+                // The Hub has explicitly rejected this stale lease. It is safe to discard
+                // this read-only result; the server owns requeue/reconciliation from here.
+                await _journal.DiscardStaleResultAsync(
+                    pending.Lease.TaskId, pending.Lease.LeaseId, pending.Lease.FencingToken,
+                    cancellationToken).ConfigureAwait(false);
+                continue;
+            }
             if (ack.TaskId != pending.Lease.TaskId || ack.LeaseId != pending.Lease.LeaseId ||
                 ack.FencingToken != pending.Lease.FencingToken ||
                 ack.State != pending.State || ack.ResultSha256 != pending.ResultSha256)
