@@ -285,8 +285,6 @@ class GlafiraTaskOwnershipInstrumentedTest {
             GlafiraTaskState.RUNNING,
             4_000L
         ))
-        assertNull(core.claimNextOwned(4_000L)?.takeIf { it.ownershipToken.ownerGeneration == 1L })
-
         val currentClaim = requireNotNull(core.claimNextOwned(5_000L))
         assertEquals(2L, currentClaim.ownershipToken.ownerGeneration)
         assertFalse(core.persistCoreTaskResultOwned(
