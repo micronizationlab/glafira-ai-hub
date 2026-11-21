@@ -898,6 +898,35 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         ).use { if (it.moveToFirst()) it.toTask() else null }
     }
 
+    /** Project-scoped canonical owner record; deliberately separate from Desktop/Agent leases. */
+    @Synchronized
+    fun taskOwnership(taskId: String, projectId: String): GlafiraTaskOwnershipRecord? {
+        require(taskId.isNotBlank() && projectId.isNotBlank())
+        return readableDatabase.query(
+            TABLE_OWNERSHIP,
+            null,
+            "task_id = ? AND project_id = ?",
+            arrayOf(taskId, projectId),
+            null, null, null, "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else GlafiraTaskOwnershipRecord(
+                taskId = taskId,
+                projectId = projectId,
+                ownerCoreId = cursor.getString(cursor.getColumnIndexOrThrow("owner_core_id")),
+                ownerGeneration = cursor.getLong(cursor.getColumnIndexOrThrow("owner_generation")),
+                stateVersion = cursor.getLong(cursor.getColumnIndexOrThrow("state_version")),
+                payloadSha256 = cursor.getString(cursor.getColumnIndexOrThrow("payload_sha256")),
+                idempotencyKey = cursor.getString(cursor.getColumnIndexOrThrow("idempotency_key")),
+                effectRisk = cursor.getString(cursor.getColumnIndexOrThrow("effect_risk")),
+                approvalRef = cursor.getColumnIndexOrThrow("approval_ref").let {
+                    if (cursor.isNull(it)) null else cursor.getString(it)
+                },
+                createdAtMillis = cursor.getLong(cursor.getColumnIndexOrThrow("created_at")),
+                updatedAtMillis = cursor.getLong(cursor.getColumnIndexOrThrow("updated_at"))
+            )
+        }
+    }
+
     @Synchronized
     fun taskHistory(taskId: String, projectId: String, limit: Int = 100): List<GlafiraTaskStateEvent> {
         require(projectId.isNotBlank() && limit in 1..500)
