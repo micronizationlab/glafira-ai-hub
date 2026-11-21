@@ -356,11 +356,11 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
                 "core_desktop_leases", "core_desktop_results", "core_desktop_nodes",
                 "core_dry_run_previews", "core_task_history", "core_task_results",
                 "core_task_dependencies", "core_task_plan_nodes", "core_task_plans",
-                "core_live_run_grants"
+                "core_live_run_grants", "core_task_ownership"
             ).forEach { database.execSQL("DROP TABLE IF EXISTS $it") }
             listOf(
                 "core_task_history_insert", "core_task_history_transition",
-                "core_task_terminal_guard", "core_task_plan_updated"
+                "core_task_terminal_guard", "core_task_plan_updated", "core_task_ownership_state_version"
             ).forEach { database.execSQL("DROP TRIGGER IF EXISTS $it") }
             database.version = 1
         } finally {
@@ -368,13 +368,15 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         }
 
         store = GlafiraTaskStore(context)
-        assertEquals(10, store.readableDatabase.version)
+        assertEquals(11, store.readableDatabase.version)
         assertNotNull(store.getTask("legacy-v1"))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v1")?.state)
+        assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy-v1")?.lastError)
         listOf(
             "core_desktop_leases", "core_desktop_results", "core_desktop_nodes",
             "core_dry_run_previews", "core_task_history", "core_task_results",
             "core_task_dependencies", "core_task_plan_nodes", "core_task_plans",
-            "core_live_run_grants"
+            "core_live_run_grants", "core_task_ownership"
         ).forEach { table ->
             assertTrue("Missing migrated table $table", store.readableDatabase.rawQuery(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
@@ -407,8 +409,10 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         }
 
         store = GlafiraTaskStore(context)
-        assertEquals(10, store.readableDatabase.version)
+        assertEquals(11, store.readableDatabase.version)
         assertNotNull(store.getTask("legacy-v2"))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v2")?.state)
+        assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy-v2")?.lastError)
         assertTrue(store.readableDatabase.rawQuery(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_live_run_grants'",
             null
@@ -422,14 +426,17 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         db.execSQL("DROP TRIGGER core_task_history_transition")
         db.execSQL("DROP TRIGGER core_task_terminal_guard")
         db.execSQL("DROP TABLE core_task_history")
+        db.execSQL("DROP TABLE IF EXISTS core_task_ownership")
+        db.execSQL("DROP TRIGGER IF EXISTS core_task_ownership_state_version")
         db.version = 3
         store.close()
         store = GlafiraTaskStore(context)
-        assertEquals(10, store.writableDatabase.version)
-        assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy")?.state)
-        assertEquals("HISTORY_BASELINE", store.taskHistory("legacy", "project").single().reason)
-        store.claimNext(2_000)
-        assertEquals(2, store.taskHistory("legacy", "project").size)
+        assertEquals(11, store.writableDatabase.version)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy")?.state)
+        assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy")?.lastError)
+        val history = store.taskHistory("legacy", "project")
+        assertEquals("HISTORY_BASELINE", history.first().reason)
+        assertEquals(2, history.size)
     }
 
     @Test fun versionSevenUpgradeAddsLeaseFencingWithoutDroppingLegacyRows() {
@@ -443,6 +450,8 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         try {
             database.execSQL("DROP TABLE core_desktop_leases")
             database.execSQL("DROP TABLE core_desktop_results")
+            database.execSQL("DROP TABLE IF EXISTS core_task_ownership")
+            database.execSQL("DROP TRIGGER IF EXISTS core_task_ownership_state_version")
             database.execSQL("""
                 CREATE TABLE core_desktop_leases (
                     task_id TEXT PRIMARY KEY NOT NULL REFERENCES core_tasks(task_id) ON DELETE CASCADE,
@@ -474,16 +483,17 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         }
 
         store = GlafiraTaskStore(context)
-        val lease = store.readableDatabase.rawQuery(
-            "SELECT lease_id, fencing_token FROM core_desktop_leases WHERE task_id = ?",
+        val leaseExists = store.readableDatabase.rawQuery(
+            "SELECT 1 FROM core_desktop_leases WHERE task_id = ?",
             arrayOf("legacy-desktop")
-        ).use { cursor ->
-            assertTrue(cursor.moveToFirst())
-            cursor.getString(0) to cursor.getLong(1)
-        }
-        assertTrue(lease.first.startsWith("legacy-"))
-        assertEquals(3L, lease.second)
-        assertNotNull(store.getTask("legacy-desktop"))
+        ).use { it.moveToFirst() }
+        assertFalse("Legacy lease must be revoked during owner quarantine", leaseExists)
+        val leaseColumns = store.readableDatabase.rawQuery("PRAGMA table_info(core_desktop_leases)", null)
+            .use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) } }
+        assertTrue("Legacy lease fencing migration must still run", "lease_id" in leaseColumns && "fencing_token" in leaseColumns)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-desktop")?.state)
+        assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy-desktop")?.lastError)
+        assertNull(store.taskOwnership("legacy-desktop", "project"))
         assertTrue(store.readableDatabase.rawQuery(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_live_run_grants'",
             null
@@ -507,6 +517,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
 
         store = GlafiraTaskStore(context)
         assertNotNull(store.getTask("legacy-v8"))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v8")?.state)
         assertTrue(store.readableDatabase.rawQuery(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_live_run_grants'",
             null
@@ -516,12 +527,15 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
     @Test fun versionFourUpgradeCreatesEncryptedCoreResultTable() {
         store.enqueue(task("legacy-v4"))
         store.writableDatabase.execSQL("DROP TABLE core_task_results")
+        store.writableDatabase.execSQL("DROP TABLE IF EXISTS core_task_ownership")
+        store.writableDatabase.execSQL("DROP TRIGGER IF EXISTS core_task_ownership_state_version")
         store.writableDatabase.version = 4
         store.close()
         store = GlafiraTaskStore(context)
 
-        assertEquals(10, store.writableDatabase.version)
-        assertEquals(GlafiraTaskState.QUEUED, store.getTask("legacy-v4")?.state)
+        assertEquals(11, store.writableDatabase.version)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v4")?.state)
+        assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy-v4")?.lastError)
         assertTrue(store.readableDatabase.rawQuery(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'core_task_results'",
             null
