@@ -410,8 +410,12 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         internal fun pauseForRestore(context: Context) {
             GlafiraCoreWorkScheduler.cancel(context)
             val store = GlafiraCoreRuntimeConfigStore(context)
-            check(store.loadOrInitialize(null, null) != null) { "Конфигурация Core недоступна." }
-            store.setEnabled(false, "RESTORE_PAUSE")
+            try {
+                check(store.loadOrInitialize(null, null) != null) { "Конфигурация Core недоступна." }
+                store.setEnabled(false, "RESTORE_PAUSE")
+            } finally {
+                store.close()
+            }
         }
 
         private const val DRY_RUN_PREVIEW_PREFIX = "DRY_RUN_PREVIEW:"
