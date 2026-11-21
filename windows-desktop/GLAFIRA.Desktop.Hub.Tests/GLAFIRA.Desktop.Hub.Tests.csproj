@@ -16,5 +16,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../GLAFIRA.Desktop.Hub.Core/GLAFIRA.Desktop.Hub.Core.csproj" />
+    <ProjectReference Include="../GLAFIRA.Desktop.Core/GLAFIRA.Desktop.Core.csproj" />
   </ItemGroup>
 </Project>
