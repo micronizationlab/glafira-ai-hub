@@ -53,7 +53,7 @@ private fun deliverSavedResult(context: Context, message: PendingMessage) {
         result, false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(now),
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now), message.id
     )))
-    PendingMessageStore(context.filesDir).delivered(message.id)
+    pendingMessageStore(context).delivered(message.id)
 }
 
 /** Cancellation after a remote request starts is ambiguous; keep it quarantined until owner review. */
@@ -75,7 +75,7 @@ internal suspend fun executePendingMessage(context: Context, pending: PendingMes
     // A disconnected phone keeps the outbox durable without exhausting provider retry attempts.
     if (capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) != true ||
         !capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return
-    val store = PendingMessageStore(context.filesDir)
+    val store = pendingMessageStore(context)
     val claimed = withContext(Dispatchers.IO) { store.claim(pending.id) } ?: return
     try {
         val history = withContext(Dispatchers.IO) { appendPendingUserMessage(context, claimed) }
@@ -124,7 +124,7 @@ private fun appendPartialResult(context: Context, message: PendingMessage) {
 
 internal suspend fun replayPendingMessages(context: Context) {
     if (isPendingDispatchBlocked(context)) return
-    val store = PendingMessageStore(context.filesDir)
+    val store = pendingMessageStore(context)
     val queue = withContext(Dispatchers.IO) { store.all() }
     queue.forEach { message ->
         if (message.state == PendingDeliveryState.UNCERTAIN && message.result != null) {

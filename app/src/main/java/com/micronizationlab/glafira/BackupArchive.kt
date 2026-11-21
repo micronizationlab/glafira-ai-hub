@@ -41,6 +41,7 @@ object BackupArchive {
     private const val SALT_BYTES = 16
     private const val IV_BYTES = 12
     private const val TAG_BITS = 128
+    private const val PORTABLE_OUTBOX_PATH = "portable-outbox/pending_queue.json"
 
     fun create(context: Context, passphrase: CharArray): File {
         require(passphrase.size >= 12) { "Пароль резервной копии должен содержать не менее 12 символов." }
@@ -209,7 +210,7 @@ object BackupArchive {
     }
 
     private fun applyStaged(context: Context, files: List<StagedFile>, safePreferences: JSONObject) {
-        val preparedFiles = preparePortableHistories(context, files)
+        val preparedFiles = preparePortablePayloads(context, files)
         val targetRoot = context.filesDir.canonicalFile
         val restoredPaths = preparedFiles.map { it.relativePath }.toSet()
 
@@ -460,12 +461,13 @@ object BackupArchive {
      */
     private fun collectArchiveSources(context: Context, portableRoot: File): List<ArchiveSource> {
         val root = context.filesDir
-        val regular = collectFiles(root).filterNot { isHistoryArtifact(it.name) }.map {
+        val regular = collectFiles(root).filterNot { isHistoryArtifact(it.name) || isOutboxArtifact(it.name) }.map {
             ArchiveSource(it.relativeTo(root).invariantSeparatorsPath, it)
         }
         val histories = root.listFiles().orEmpty()
-            .filter { it.isFile && it.name.startsWith("chat_") && it.name.endsWith(".json") }
-            .map { it.name.removePrefix("chat_").removeSuffix(".json") }
+            .filter { it.isFile && it.name.startsWith("chat_") &&
+                (it.name.endsWith(".json") || it.name.endsWith(".json.bak")) }
+            .map { it.name.removePrefix("chat_").removeSuffix(".bak").removeSuffix(".json") }
             .distinct()
             .sorted()
             .map { key ->
@@ -475,17 +477,25 @@ object BackupArchive {
                 portable.writeText(encodeHistoryJson(loadHistory(context, key)))
                 ArchiveSource(portableHistoryEntryName(key), portable)
             }
-        val result = regular + histories
+        val outbox = if (listOf(File(root, "pending_queue.json"), File(root, "pending_queue.json.bak")).any(File::exists)) {
+            val portable = File(portableRoot, PORTABLE_OUTBOX_PATH)
+            portable.parentFile!!.mkdirs()
+            portable.writeText(PendingMessageStore.encodePortable(pendingMessageStore(context).portableSnapshot()))
+            listOf(ArchiveSource(PORTABLE_OUTBOX_PATH, portable))
+        } else emptyList()
+        val result = regular + histories + outbox
         require(result.map { it.relativePath }.distinct().size == result.size) { "Повторяющиеся пути резервной копии." }
         require(result.size <= MAX_FILES) { "Слишком много файлов для резервной копии." }
         return result.sortedBy { it.relativePath }
     }
 
-    private fun preparePortableHistories(context: Context, files: List<StagedFile>): List<StagedFile> {
+    private fun preparePortablePayloads(context: Context, files: List<StagedFile>): List<StagedFile> {
         val portable = files.filter { it.relativePath.startsWith("portable-history/") }
-        if (portable.isEmpty()) return files
-        val regularPaths = files.filterNot { it in portable }.map { it.relativePath }.toSet()
-        val converted = portable.map { staged ->
+        val portableOutbox = files.singleOrNull { it.relativePath == PORTABLE_OUTBOX_PATH }
+        if (portable.isEmpty() && portableOutbox == null) return files
+        val portableSources = portable + listOfNotNull(portableOutbox)
+        val regularPaths = files.filterNot { it in portableSources }.map { it.relativePath }.toSet()
+        val convertedHistories = portable.map { staged ->
             val key = historyKeyFromPortableEntry(staged.relativePath)
             val targetPath = "chat_$key.json"
             require(targetPath !in regularPaths) { "Архив содержит две версии одной истории." }
@@ -495,11 +505,23 @@ object BackupArchive {
             check(staged.file.delete()) { "Не удалось удалить переносимую plaintext-историю после перешифрования." }
             StagedFile(targetPath, File(encryptedDirectory, targetPath))
         }
-        return files.filterNot { it in portable } + converted
+        val convertedOutbox = portableOutbox?.let { staged ->
+            require("pending_queue.json" !in regularPaths) { "Архив содержит две версии Android outbox." }
+            val records = PendingMessageStore.decodePortable(staged.file.readText())
+            val encryptedDirectory = File(staged.file.parentFile, "device-encrypted").apply { mkdirs() }
+            PendingMessageStore(encryptedDirectory, protector = PendingCryptoRuntime.protector())
+                .replaceForPortableRestore(records)
+            check(staged.file.delete()) { "Не удалось удалить переносимый plaintext-outbox после перешифрования." }
+            StagedFile("pending_queue.json", File(encryptedDirectory, "pending_queue.json"))
+        }
+        return files.filterNot { it in portableSources } + convertedHistories + listOfNotNull(convertedOutbox)
     }
 
     private fun isHistoryArtifact(name: String): Boolean =
         name.startsWith("chat_") && (name.contains(".json") || name.contains(".json."))
+
+    private fun isOutboxArtifact(name: String): Boolean = name == "pending_queue.json" ||
+        name.startsWith("pending_queue.json.")
 
     private fun collectFiles(root: File): List<File> {
         val result = mutableListOf<File>()

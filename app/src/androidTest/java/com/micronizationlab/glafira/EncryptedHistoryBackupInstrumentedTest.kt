@@ -24,6 +24,7 @@ class EncryptedHistoryBackupInstrumentedTest {
         val replacementProtector = protector(29)
         var archive: File? = null
         try {
+            PendingMessageStore(context.filesDir).deleteAll()
             HistoryCryptoRuntime.setProtectorForTesting(sourceProtector)
             saveHistory(context, historyKey, listOf(Msg(secret, true, "12:00", operationId = "portable-op")))
             archive = BackupArchive.create(context, passphrase)
@@ -43,6 +44,50 @@ class EncryptedHistoryBackupInstrumentedTest {
             archive?.delete()
             passphrase.fill('\u0000')
             HistoryCryptoRuntime.setProtectorForTesting(null)
+        }
+    }
+
+    @Test
+    fun portableBackupReencryptsOutboxWithReplacementDeviceKeyWithoutPlaintextResidue() {
+        val operationId = "portable-outbox-${System.nanoTime()}"
+        val prompt = "portable-outbox-prompt-${System.nanoTime()}"
+        val result = "portable-outbox-result-${System.nanoTime()}"
+        val systemPrompt = "portable-outbox-system-${System.nanoTime()}"
+        val passphrase = "GLAFIRA-portable-outbox-test".toCharArray()
+        val sourceProtector = protector(41)
+        val replacementProtector = protector(57)
+        var archive: File? = null
+        try {
+            PendingMessageStore(context.filesDir).deleteAll()
+            PendingCryptoRuntime.setProtectorForTesting(sourceProtector)
+            pendingMessageStore(context).add(PendingMessage(
+                projectId = "portable-project", agentName = "portable-agent", text = prompt,
+                time = "12:00", id = operationId, state = PendingDeliveryState.RESULT_READY,
+                result = result, systemPrompt = systemPrompt
+            ))
+            archive = BackupArchive.create(context, passphrase)
+            PendingMessageStore(context.filesDir).deleteAll()
+
+            PendingCryptoRuntime.setProtectorForTesting(replacementProtector)
+            BackupArchive.restore(context, archive, passphrase)
+
+            val restored = PendingMessageStore(context.filesDir, "test-session", replacementProtector)
+                .portableSnapshot().single { it.id == operationId }
+            assertEquals(prompt, restored.text)
+            assertEquals(result, restored.result)
+            assertEquals(systemPrompt, restored.systemPrompt)
+            val raw = File(context.filesDir, "pending_queue.json").readText()
+            assertTrue(raw.contains("GLAFIRA_ENCRYPTED_OUTBOX"))
+            listOf(prompt, result, systemPrompt).forEach { assertFalse(raw.contains(it)) }
+            assertFalse(context.cacheDir.walkTopDown().filter { it.isFile && it != archive }
+                .any { file -> listOf(prompt, result, systemPrompt).any { secret ->
+                    runCatching { file.readText().contains(secret) }.getOrDefault(false)
+                } })
+        } finally {
+            PendingMessageStore(context.filesDir).deleteAll()
+            archive?.delete()
+            passphrase.fill('\u0000')
+            PendingCryptoRuntime.setProtectorForTesting(null)
         }
     }
 

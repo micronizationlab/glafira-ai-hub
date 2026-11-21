@@ -11,7 +11,7 @@ suspend fun deleteProject(context: Context, project: Project): List<Project> =
                 require(current.any { it.id == project.id }) { "Проект уже удалён." }
                 require(current.size > 1) { "Нельзя удалить последний проект." }
                 GlafiraCoreRuntimeOwner.get(context).taskStore.deleteFinishedProject(project.id)
-                PendingMessageStore(context.filesDir).deleteProject(project.id)
+                pendingMessageStore(context).deleteProject(project.id)
                 GlafiraContextCitationManifestRuntime.store(context).deleteProject(
                     ContextCitationAccess(ProjectIdentifier(project.id), "local-owner")
                 )

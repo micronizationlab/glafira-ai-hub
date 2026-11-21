@@ -210,6 +210,84 @@ class AndroidStorageRecoveryTest {
         assertFalse(File(root, "chat_p_a.json.bak").exists())
     }
 
+    @Test fun plaintextOutboxMigrationEncryptsPromptResultErrorAndSystemContext() {
+        val root = directory()
+        val file = File(root, "pending_queue.json")
+        val message = PendingMessage(
+            "project", "agent", "sensitive prompt", "12:00", id = "legacy-op",
+            state = PendingDeliveryState.RESULT_READY, result = "sensitive result",
+            error = "sensitive error", systemPrompt = "sensitive system context"
+        )
+        file.writeText(PendingMessageStore.encodePortable(listOf(message)))
+
+        val restored = PendingMessageStore(root, "session", historyProtector(31)).all().single()
+
+        assertEquals(message, restored)
+        listOf(file, File(root, "pending_queue.json.bak")).filter(File::exists).forEach { generation ->
+            val raw = generation.readText()
+            assertTrue(raw.contains("GLAFIRA_ENCRYPTED_OUTBOX"))
+            listOf(message.text, message.result, message.error, message.systemPrompt).forEach {
+                assertFalse(raw.contains(requireNotNull(it)))
+            }
+        }
+    }
+
+    @Test fun encryptedOutboxSurvivesRestartAndStateTransitionsWithoutPlaintext() {
+        val root = directory()
+        val protector = historyProtector(32)
+        val store = PendingMessageStore(root, "session", protector)
+        store.add(PendingMessage("p", "a", "private request", "", id = "encrypted-op", systemPrompt = "private system"))
+        store.claim("encrypted-op")
+        store.result("encrypted-op", "private result")
+
+        val restored = PendingMessageStore(root, "session", protector).all().single()
+        assertEquals(PendingDeliveryState.RESULT_READY, restored.state)
+        assertEquals("private request", restored.text)
+        assertEquals("private result", restored.result)
+        listOf(File(root, "pending_queue.json"), File(root, "pending_queue.json.bak")).forEach {
+            assertFalse(it.readText().contains("private"))
+        }
+    }
+
+    @Test fun replacementOutboxKeyFailsClosedWithoutOverwritingCiphertext() {
+        val root = directory()
+        val file = File(root, "pending_queue.json")
+        PendingMessageStore(root, "session", historyProtector(33))
+            .add(PendingMessage("p", "a", "keep ciphertext", "", id = "key-op"))
+        val before = file.readBytes()
+
+        assertNotNull(runCatching { PendingMessageStore(root, "session", historyProtector(34)).all() }.exceptionOrNull())
+        assertArrayEquals(before, file.readBytes())
+        assertFalse(root.listFiles().orEmpty().any { it.name.startsWith("pending_queue.json.corrupt-") })
+    }
+
+    @Test fun outboxPayloadCannotBeReboundToAnotherOperationId() {
+        val root = directory()
+        val file = File(root, "pending_queue.json")
+        val protector = historyProtector(35)
+        PendingMessageStore(root, "session", protector)
+            .add(PendingMessage("p", "a", "bound payload", "", id = "original-op"))
+        val envelope = org.json.JSONObject(file.readText())
+        envelope.getJSONArray("records").getJSONObject(0).put("id", "forged-op")
+        file.writeText(envelope.toString())
+
+        assertNotNull(runCatching { PendingMessageStore(root, "session", protector).all() }.exceptionOrNull())
+    }
+
+    @Test fun failedOutboxMigrationLeavesPlaintextGenerationForRetry() {
+        val root = directory()
+        val file = File(root, "pending_queue.json")
+        file.writeText(PendingMessageStore.encodePortable(listOf(PendingMessage("p", "a", "must survive", "", id = "op"))))
+        val failing = object : MemoryPayloadProtector {
+            override fun protect(memoryId: MemoryIdentifier, plaintext: ByteArray): String = error("injected")
+            override fun unprotect(memoryId: MemoryIdentifier, encoded: String): ByteArray = error("unused")
+        }
+
+        assertNotNull(runCatching { PendingMessageStore(root, "session", failing).all() }.exceptionOrNull())
+        assertTrue(file.readText().contains("must survive"))
+        assertFalse(File(root, "pending_queue.json.bak").exists())
+    }
+
     @Test fun concurrentEnqueueAndClaimPreserveNewOperations() {
         val root = directory()
         val store = PendingMessageStore(root, "session")

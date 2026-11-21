@@ -1087,7 +1087,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             title = { Text("Повторить запрос?") },
             text = { Text("Предыдущий запрос мог уже выполниться у провайдера. Повтор создаст новый вызов и может повторно израсходовать квоту.") },
             confirmButton = { TextButton(onClick = {
-                PendingMessageStore(context.filesDir).retry(pending.id)
+                pendingMessageStore(context).retry(pending.id)
                 retryConfirmation = null
             }) { Text("Повторить") } },
             dismissButton = { TextButton(onClick = { retryConfirmation = null }) { Text("Назад") } }
@@ -1202,7 +1202,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 TextButton(onClick = { retryConfirmation = pending }) { Text("Повторить…") }
                             }
                             if (pending.state != PendingDeliveryState.IN_FLIGHT && pending.state != PendingDeliveryState.RESULT_READY) {
-                                TextButton(onClick = { PendingMessageStore(context.filesDir).cancel(pending.id) }) { Text("Отменить") }
+                                TextButton(onClick = { pendingMessageStore(context).cancel(pending.id) }) { Text("Отменить") }
                             }
                         }
                     }
