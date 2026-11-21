@@ -66,6 +66,29 @@ public sealed class AgentExecutionJournalTests : IDisposable
     }
 
     [Fact]
+    public async Task LegacyJournalWithoutProgressPropertyLoadsAndUpgradesOnWrite()
+    {
+        var lease = Lease();
+        var legacyJson = JsonSerializer.Serialize(new
+        {
+            activeLeases = new[] { lease },
+            pendingResults = Array.Empty<AgentPendingResult>()
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        await File.WriteAllBytesAsync(
+            _journalPath,
+            _protector.Protect(Encoding.UTF8.GetBytes(legacyJson)));
+
+        var journal = Journal();
+        var legacySnapshot = await journal.LoadAsync(CancellationToken.None);
+        Assert.Single(legacySnapshot.ActiveLeases);
+        Assert.Empty(legacySnapshot.PendingProgresses);
+
+        await journal.PersistProgressAsync(
+            new AgentPendingProgress(lease, 10, "journal upgraded"), CancellationToken.None);
+        Assert.Single((await journal.LoadAsync(CancellationToken.None)).PendingProgresses);
+    }
+
+    [Fact]
     public async Task ProgressOutboxSurvivesReloadAndRequiresExactLeaseFenceAck()
     {
         var journal = CreateJournal();
