@@ -57,7 +57,21 @@ class VerifyJUnitReportsTests(unittest.TestCase):
             )
             result = self.run_verifier(root)
             self.assertNotEqual(0, result.returncode)
-            self.assertIn("all reported tests are skipped", result.stderr)
+            self.assertIn("skipped test cases", result.stderr)
+
+    def test_rejects_partial_skips(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "TEST-partial-skips.xml").write_text(
+                '<testsuite tests="2" failures="0" errors="0" skipped="1">'
+                '<testcase classname="Example" name="works"/>'
+                '<testcase classname="Example" name="skipped"><skipped/></testcase>'
+                '</testsuite>',
+                encoding="utf-8",
+            )
+            result = self.run_verifier(root)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("skipped test cases", result.stderr)
 
     def test_rejects_failure(self):
         with tempfile.TemporaryDirectory() as temp:
