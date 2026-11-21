@@ -41,6 +41,12 @@ class GlafiraCoreTraceStore(private val taskStore: GlafiraTaskStore) : GlafiraCo
             return safe.eventId
         }
 
+        safe.parentEventId?.let { parentEventId ->
+            check(parentEventId != safe.eventId &&
+                readEventById(db, parentEventId, safe.projectId) != null
+            ) { "TRACE_PARENT_EVENT_NOT_FOUND" }
+        }
+
         safe.taskId?.let { taskId ->
             val taskProject = db.query(
                 "core_tasks",
