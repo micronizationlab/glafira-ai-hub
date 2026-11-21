@@ -277,6 +277,7 @@ class GlafiraCoreTraceStore(private val taskStore: GlafiraTaskStore) : GlafiraCo
             db.execSQL("CREATE INDEX IF NOT EXISTS index_core_trace_project_time ON $TABLE(project_id, occurred_at DESC, event_id DESC)")
             db.execSQL("CREATE INDEX IF NOT EXISTS index_core_trace_task_time ON $TABLE(project_id, task_id, occurred_at DESC, event_id DESC)")
             createAppendOnlyTriggers(db)
+            createCoreTaskLifecycleTriggers(db)
         }
 
         /**
@@ -296,6 +297,58 @@ class GlafiraCoreTraceStore(private val taskStore: GlafiraTaskStore) : GlafiraCo
         internal fun dropAppendOnlyTriggers(db: SQLiteDatabase) {
             db.execSQL("DROP TRIGGER IF EXISTS core_trace_events_no_update")
             db.execSQL("DROP TRIGGER IF EXISTS core_trace_events_no_delete")
+        }
+
+        internal fun dropCoreTaskLifecycleTriggers(db: SQLiteDatabase) {
+            db.execSQL("DROP TRIGGER IF EXISTS core_trace_task_created")
+            db.execSQL("DROP TRIGGER IF EXISTS core_trace_task_state_changed")
+        }
+
+        internal fun createCoreTaskLifecycleTriggers(db: SQLiteDatabase) {
+            db.execSQL("""
+                CREATE TRIGGER IF NOT EXISTS core_trace_task_created
+                AFTER INSERT ON core_tasks
+                BEGIN
+                    INSERT INTO $TABLE (
+                        event_id, project_id, task_id, parent_event_id, correlation_id, occurred_at,
+                        actor_type, actor_id, component, event_type, action_code, target_type, target_id,
+                        result_status, error_code, approval_ref, evidence_refs, data_classification,
+                        redaction_applied, secret_values_stored, duration_ms
+                    ) VALUES (
+                        lower(hex(randomblob(16))), NEW.project_id, NEW.task_id, NULL, NEW.task_id,
+                        NEW.created_at, 'CORE', 'core', 'CoreTaskStore', 'TASK_CREATED', 'TASK_CREATED',
+                        NULL, NULL, NEW.state, NULL, NULL, '[]', 'INTERNAL', 1, 0, NULL
+                    );
+                END
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TRIGGER IF NOT EXISTS core_trace_task_state_changed
+                AFTER UPDATE OF state ON core_tasks
+                WHEN OLD.state != NEW.state
+                BEGIN
+                    INSERT INTO $TABLE (
+                        event_id, project_id, task_id, parent_event_id, correlation_id, occurred_at,
+                        actor_type, actor_id, component, event_type, action_code, target_type, target_id,
+                        result_status, error_code, approval_ref, evidence_refs, data_classification,
+                        redaction_applied, secret_values_stored, duration_ms
+                    ) VALUES (
+                        lower(hex(randomblob(16))), NEW.project_id, NEW.task_id, NULL, NEW.task_id,
+                        NEW.updated_at, 'CORE', 'core', 'CoreTaskStore',
+                        CASE NEW.state
+                            WHEN 'queued' THEN 'TASK_QUEUED'
+                            WHEN 'retry_scheduled' THEN 'TASK_QUEUED'
+                            WHEN 'running' THEN 'TASK_STARTED'
+                            WHEN 'waiting_for_owner' THEN 'TASK_PAUSED'
+                            WHEN 'waiting_for_network' THEN 'TASK_PAUSED'
+                            WHEN 'succeeded' THEN 'TASK_SUCCEEDED'
+                            WHEN 'failed' THEN 'TASK_FAILED'
+                            WHEN 'cancelled' THEN 'TASK_CANCELLED'
+                            ELSE 'TASK_FAILED'
+                        END,
+                        'TASK_STATE_CHANGED', NULL, NULL, replace(NEW.state, '_', '-'), NULL, NULL, '[]', 'INTERNAL', 1, 0, NULL
+                    );
+                END
+            """.trimIndent())
         }
 
         internal fun createAppendOnlyTriggers(db: SQLiteDatabase) {
