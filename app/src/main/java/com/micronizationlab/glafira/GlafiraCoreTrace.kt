@@ -104,14 +104,16 @@ data class GlafiraCoreTraceEvent internal constructor(
 object GlafiraCoreTraceRedactor {
     private val secretPatterns = listOf(
         Regex("(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]{8,}"),
+        Regex("(?i)\\bsk-[A-Za-z0-9_-]{12,}\\b"),
+        Regex("(?i)\\bya29\\.[A-Za-z0-9._-]{12,}\\b"),
         Regex("(?i)(password|passphrase|secret|token|api[_ -]?key|authorization|cookie|credential|private[_ -]?key)\\s*[:=]\\s*[^\\s,;]{4,}"),
         Regex("(?i)\\b(?:ghp_|gho_|github_pat_)[A-Za-z0-9_]{16,}\\b"),
         Regex("\\bAKIA[0-9A-Z]{16}\\b"),
         Regex("\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b")
     )
     private val email = Regex("(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b")
-    private val url = Regex("(?i)https?://[^\\s]+")
-    private val phone = Regex("(?<![A-Za-z0-9])\\+?[0-9][0-9 ()-]{8,}[0-9](?![A-Za-z0-9)")
+    private val url = Regex("(?i)\\b[a-z][a-z0-9+.-]*://[^\\s]+")
+    private val phone = Regex("(?<![A-Za-z0-9])\\+?[0-9][0-9 ()-]{8,}[0-9](?![A-Za-z0-9])")
 
     fun redact(draft: GlafiraCoreTraceDraft): GlafiraCoreTraceEvent {
         require(draft.occurredAtMillis > 0L) { "TRACE_TIMESTAMP_INVALID" }
