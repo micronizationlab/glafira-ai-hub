@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using GLAFIRA.Agent.Worker;
 using Xunit;
 
@@ -75,10 +76,10 @@ public sealed class AgentExecutionJournalTests : IDisposable
             pendingResults = Array.Empty<AgentPendingResult>()
         }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         await File.WriteAllBytesAsync(
-            _journalPath,
+            _path,
             _protector.Protect(Encoding.UTF8.GetBytes(legacyJson)));
 
-        var journal = Journal();
+        var journal = CreateJournal();
         var legacySnapshot = await journal.LoadAsync(CancellationToken.None);
         Assert.Single(legacySnapshot.ActiveLeases);
         Assert.Empty(legacySnapshot.PendingProgresses);
