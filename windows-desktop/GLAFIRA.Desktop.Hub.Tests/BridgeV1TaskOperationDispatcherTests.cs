@@ -95,6 +95,26 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task ClaimRequiresAnExplicitTaskHandlerAllowlist()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var payload = new Dictionary<string, string>
+        {
+            ["capabilities"] = JsonSerializer.Serialize(new[] { "web.research" }),
+            ["maxParallelTasks"] = "1"
+        };
+
+        var response = await CreateDispatcher(_payload).DispatchAsync(
+            Request(BridgeV1Operation.DESKTOP_TASK_CLAIM, payload), now.AddSeconds(1));
+
+        Assert.Equal("FAILED", response.Status);
+        Assert.Equal("AGENT_TASK_TYPE_REQUIRED", response.ErrorCode);
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("task-0001"));
+    }
+
+    [Fact]
     public async Task ClaimDoesNotLeaseTaskTypesTheAgentCannotExecute()
     {
         var now = DateTimeOffset.UtcNow;
