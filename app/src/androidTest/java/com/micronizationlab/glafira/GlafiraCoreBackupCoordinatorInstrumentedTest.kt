@@ -47,11 +47,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Test
     fun coordinatorArchiveContainsCoreDatabaseSnapshot() = runBlocking {
-        val expectedTraceEventIds = trace.query(
-            GlafiraCoreTraceQuery("backup-project"),
-            GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
-        ).events.map { it.eventId }
-
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
@@ -206,6 +201,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             eventType = GlafiraCoreTraceEventType.TASK_SUCCEEDED,
             actionCode = "core.result.committed"
         ))
+
+        val expectedTraceEventIds = trace.query(
+            GlafiraCoreTraceQuery("backup-project"),
+            GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
+        ).events.map { it.eventId }
 
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
