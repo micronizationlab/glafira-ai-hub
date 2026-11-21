@@ -202,16 +202,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             actionCode = "core.result.committed"
         ))
 
-        val expectedTraceEventIds = trace.query(
-            GlafiraCoreTraceQuery("backup-project"),
-            GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
-        ).events.map { it.eventId }
-
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             store.enqueue(task("created-after-backup"))
+        val expectedTraceEventIds = trace.query(
+            GlafiraCoreTraceQuery("backup-project"),
+            GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
+        ).events.map { it.eventId }
+
             store.writableDatabase.execSQL("""
                 CREATE TRIGGER inject_portable_restore_result_failure
                 BEFORE INSERT ON core_task_results
