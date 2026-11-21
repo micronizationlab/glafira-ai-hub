@@ -58,7 +58,15 @@ A higher-priority task waiting for CI, review, hardware or a conflicting file is
 
 ## 5. The 150-step program — 20 full cycles per participant
 
-Every invited participant is asked to execute the project's 150-step improvement program **20 complete times**, for a target of 3,000 real, evidence-backed actions per participant.
+The 150-step program is the mandatory operating algorithm for all GLAFIRA development, not merely a static checklist. It applies to central GLAFIRA and every invited ChatGPT/AI account independently. Each participant must complete **20 full cycles**; the requested target is 3,000 distinct, evidence-backed actions per participant.
+
+**Mandatory cycle sequence (repeat exactly 20 times):**
+
+1. **Capacity and portfolio audit first.** Before starting implementation in each cycle, inspect the current repository, backlog, open branches/PRs, CI state, dependencies, available tools and any hardware/provider constraints. Determine and record how many distinct projects/workstreams can safely be advanced in parallel in this cycle. Do not assume a fixed concurrency number; calculate it from actual independence, file ownership, dependency gates and validation capacity.
+2. **Select and schedule the parallel portfolio.** Choose the maximum useful set of non-conflicting projects/tasks, ordered by the owner's current priorities. Record each workstream, its owner, scope, dependencies, branch/files and validation gate. Do not count several subtasks in one tightly coupled change as independent projects.
+3. **Execute the portfolio.** Start the selected independent workstreams in parallel where tools permit. Drive each to a verifiable result. When one workstream is waiting for CI, review, hardware or another dependency, immediately advance the next highest-priority independent workstream; return when the blocker clears.
+4. **Verify and record.** Inspect actual test/build logs and exact-head evidence, record completed/partial/blocked work, and update the participant ledger and relevant GitHub issues/PRs. A skipped check is not a pass.
+5. **Reassess before the next cycle.** Re-scan the project state and repeat the capacity audit from step 1. The next cycle must adapt to merged changes, newly discovered work, regressions, changed priorities and dependencies.
 
 Rules:
 
@@ -71,7 +79,20 @@ Rules:
 7. Each cycle must contain a balanced portfolio of implementation, testing, reliability/security review, documentation and backlog improvement as applicable. Never sacrifice quality to hit a quota.
 8. A cycle is complete only when all 150 entries have evidence and the participant has written a cycle summary. Partial cycles must be labelled partial.
 9. The participant's 20 cycles are cumulative across sessions and must survive context loss in the participant progress file and GitHub history.
-10. After cycle 20, prepare a comprehensive report for the participant's owner, distinguishing merged changes, open PRs, tests actually executed, skipped checks, unresolved risks and remaining work.
+10. After cycle 20, stop the 150-step execution loop. Do not silently roll into cycle 21. Enter the mandatory project-wide audit described below, then prepare a comprehensive report for the participant's owner, distinguishing merged changes, open PRs, tests actually executed, skipped checks, unresolved risks and remaining work.
+
+### Mandatory audit after cycle 20 — stop and inspect GLAFIRA as a whole
+
+After the twentieth cycle, each participant must pause ordinary cycle execution and perform a broad reconciliation audit with central GLAFIRA. At minimum:
+
+- Inspect current `main`, all relevant active and stale branches, open/closed/merged PRs, and commit history; identify abandoned, superseded, conflicting or still-useful work.
+- Review historical Android APK/build artifacts and other platform builds where available. Compare their versions, included features, regressions and known defects with the current source; do not assume an older build is authoritative or automatically discard it.
+- Revisit old issues, specifications, architecture notes, handoff documents, meeting/chat decisions and owner requests to identify requirements or ideas discussed earlier but never added to the repository, backlog, implementation or tests.
+- Reconcile the 150-step plan, Action Pool, roadmap, task board and participant ledgers. Identify missing work, duplicate work, stale priorities, hidden dependencies and unverified completion claims.
+- Check that the free-only/no-required-paid-resources constraint and all current owner priorities are reflected in the design and dependency choices.
+- Produce an evidence-linked gap report: recovered requirements, useful legacy changes, missing features, regressions, security/reliability gaps, proposed issues/PRs, and recommended next priorities. Do not merge or discard historical work without owner approval.
+
+The audit is a deliberate stop point, not an extra unrecorded cycle. After reporting it, wait for the owner/central coordinator to authorize the next program phase.
 
 **Important feasibility rule:** 3,000 is a requested cumulative target, not permission to manufacture activity or make unsafe changes. If no 150 distinct, useful, verifiable actions remain in a cycle, document the shortage and ask the owner/central coordinator for fresh scope. Never falsely declare a cycle or the 20-cycle program complete.
 
@@ -116,3 +137,4 @@ GLAFIRA Connect mobile invitation bootstrap and adaptive P2P/Wi-Fi route migrati
 ## 10. Coordinator change log
 
 - 2026-11-21: initial central multi-agent coordination contract created. Links the existing collaborator handoff, roadmap and dispatcher rule; formalizes per-agent status files and 20 × 150 evidence-based cycles.
+- 2026-11-21: clarified mandatory cycle order (capacity audit → parallel portfolio selection → execution → evidence review → fresh reassessment) and the stop-after-cycle-20 whole-project audit, including legacy builds/branches and previously discussed but unrecorded requirements.
