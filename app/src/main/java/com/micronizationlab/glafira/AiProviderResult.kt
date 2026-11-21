@@ -69,6 +69,17 @@ internal fun providerHttpFailure(status: Int, retryAfter: String? = null,
     ))
 }
 
+/** Classify transport failures at the dispatch boundary. After dispatch, ambiguity is never replayable. */
+internal fun providerTransportFailure(
+    category: AiProviderErrorCategory,
+    modelPostAttempted: Boolean,
+    message: String
+): AiProviderResult.Failure = AiProviderResult.Failure(AiProviderError(
+    category = category,
+    message = message,
+    outcome = if (modelPostAttempted) AiRequestOutcome.UNKNOWN else AiRequestOutcome.NOT_SENT
+))
+
 /** A composite consultation cannot safely replay completed planner/peer calls without durable checkpoints. */
 internal fun afterPartialProviderCompletion(result: AiProviderResult): AiProviderResult = when (result) {
     is AiProviderResult.Success -> result
