@@ -48,7 +48,7 @@ public sealed record AgentTaskUpdateAck(
 /// Signed Bridge v1 task-claim and result transport for the Windows Agent.
 /// This class transports typed task metadata only; it never executes instructions.
 /// </summary>
-public sealed class BridgeV1AgentTaskClient
+public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
 {
     private const int MaximumResponseBytes = 64 * 1024;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
