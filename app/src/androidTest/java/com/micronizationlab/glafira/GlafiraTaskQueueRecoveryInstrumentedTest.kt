@@ -435,7 +435,8 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy")?.state)
         assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy")?.lastError)
         val history = store.taskHistory("legacy", "project")
-        assertEquals("HISTORY_BASELINE", history.first().reason)
+        assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", history.first().reason)
+        assertEquals("HISTORY_BASELINE", history.last().reason)
         assertEquals(2, history.size)
     }
 
