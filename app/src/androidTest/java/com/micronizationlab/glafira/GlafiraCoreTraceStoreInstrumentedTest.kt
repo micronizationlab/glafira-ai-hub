@@ -170,34 +170,37 @@ class GlafiraCoreTraceStoreInstrumentedTest {
 
     @Test
     fun ownerProjectDeletionPurgesTraceAndRestoresAppendOnlyGuards() {
-        store.enqueue(task("delete-project-task", "delete-project"))
-        assertNotNull(store.claimNext(2_000L))
-        assertTrue(store.transition(
+        taskStore.enqueue(task("delete-project-task", "delete-project"))
+        assertNotNull(taskStore.claimNext(2_000L))
+        assertTrue(taskStore.transition(
             "delete-project-task",
             setOf(GlafiraTaskState.RUNNING),
             GlafiraTaskState.SUCCEEDED,
             3_000L
         ))
-        repository.append(draft("delete-project-task-event", 4_000L, "delete-project-task", "delete-project"))
-        repository.append(draft("delete-project-only-event", 5_000L, projectId = "delete-project"))
-        repository.append(draft("preserved-other-project-event", 6_000L, projectId = "preserved-project"))
+        traceStore.append(event(
+            "delete-project-task-event", "delete-project",
+            taskId = "delete-project-task", occurredAt = 4_000L
+        ))
+        traceStore.append(event("delete-project-only-event", "delete-project", occurredAt = 5_000L))
+        traceStore.append(event("preserved-other-project-event", "preserved-project", occurredAt = 6_000L))
 
-        store.deleteFinishedProject("delete-project")
+        taskStore.deleteFinishedProject("delete-project")
 
-        assertTrue(repository.query(
+        assertTrue(traceStore.query(
             GlafiraCoreTraceQuery("delete-project"),
             GlafiraCoreTraceAccessContext("delete-project")
         ).events.isEmpty())
         assertEquals(
             listOf("preserved-other-project-event"),
-            repository.query(
+            traceStore.query(
                 GlafiraCoreTraceQuery("preserved-project"),
                 GlafiraCoreTraceAccessContext("preserved-project")
             ).events.map { it.eventId }
         )
 
         assertThrows(SQLiteException::class.java) {
-            store.writableDatabase.delete(
+            taskStore.writableDatabase.delete(
                 GlafiraCoreTraceStore.TABLE,
                 "event_id = ?",
                 arrayOf("preserved-other-project-event")
