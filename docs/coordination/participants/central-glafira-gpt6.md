@@ -46,7 +46,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 ## Cycle close-out
 
-Cycle 01 remains partial (17/150 before the latest audit; now 18/150). PR #362 docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform jobs were skipped, not passed. PR #369 exact-head CI for `b46a1d8496a63a40718192d37571b1ca7359a0de` is still running; the previous head failed Kotlin compilation because of an invalid import, which was removed in the current head. Do not mark the cycle complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
+Cycle 01 remains partial (17/150 before the latest audit; now 19/150). PR #362 docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform jobs were skipped, not passed. PR #369 exact-head CI for `b46a1d8496a63a40718192d37571b1ca7359a0de` is still running; the previous head failed Kotlin compilation because of an invalid import, which was removed in the current head. Do not mark the cycle complete until 150 distinct actions have evidence and a written cycle summary. Re-audit current repository and CI before selecting each next action.
 
 ## Whole-project audit after cycle 20
 
@@ -75,3 +75,6 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 
 
 | C01-A018 | P1 | Audited the complete Android owner-approval persistence schema and task-store identity creation. Confirmed `core_action_approvals` has no `owner_core_id`/`owner_generation` columns; request, pending expiry, approve, reject and grant consumption still use task/state predicates without generation fencing. Also found `GlafiraTaskStore` accepts a nullable owner ID and silently omits ownership rows when constructed without it; current approval instrumentation tests use that unowned constructor. Existing ownership-transfer cryptography and identity tests are only a signed-envelope/identity layer, not a SQLite owner-generation CAS/handoff. | https://github.com/micronizationlab/glafira-ai-hub/issues/366 ; source files `GlafiraCoreOwnerApprovalStore.kt`, `GlafiraTaskStore.kt`, `GlafiraCoreOwnershipTransferCryptography.kt`, `GlafiraCoreOwnerApprovalStoreInstrumentedTest.kt` | Read-only source/schema/test audit. No production change; exact fail-closed behavior and migration design still required. | complete |
+
+
+| C01-A019 | P1 | Расширил поиск прямых изменений `core_tasks.state`: обнаружен дополнительный путь в `GlafiraCoreLiveRunStore.approveReadOnlyRun()` — выдача LIVE grant и перевод задачи в QUEUED проверяют только task ID/state; сама таблица LIVE grants также не содержит owner generation. Зафиксировал также, что обычный `GlafiraTaskStore.transition()` остаётся state-only CAS, а state_version trigger — это учёт версии, не авторизация владельца. | https://github.com/micronizationlab/glafira-ai-hub/issues/366#issuecomment-7066110210 | Read-only audit; production changes not yet made. | complete |
