@@ -17,6 +17,10 @@ enum class GlafiraCoreTraceEventType {
     BACKUP_STARTED, BACKUP_VERIFIED, RESTORE_STARTED, RESTORE_SUCCEEDED, RESTORE_FAILED
 }
 
+internal fun traceEventTypeForTaskHistory(fromState: String?, toState: String): GlafiraCoreTraceEventType =
+    if (fromState.isNullOrBlank()) GlafiraCoreTraceEventType.TASK_CREATED
+    else traceEventTypeForTaskState(toState)
+
 internal fun traceEventTypeForTaskState(state: String): GlafiraCoreTraceEventType = when (state.lowercase()) {
     "queued" -> GlafiraCoreTraceEventType.TASK_QUEUED
     "running" -> GlafiraCoreTraceEventType.TASK_STARTED
