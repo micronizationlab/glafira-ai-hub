@@ -323,7 +323,7 @@ public sealed class DesktopHubStoreTests : IDisposable
         Assert.Null(_store.ClaimNext("agent-cancel", now.AddSeconds(2), TimeSpan.FromMinutes(1)));
         Assert.False(_store.CancelTask("queued-cancel", now.AddSeconds(3)));
 
-        var last = Assert.Last(_store.GetTaskHistory("queued-cancel"));
+        var last = _store.GetTaskHistory("queued-cancel").Last();
         Assert.Equal(HubTaskState.Cancelled, last.State);
         Assert.Equal("TASK_CANCELLED_OWNER_REQUEST", last.EventCode);
     }
@@ -344,7 +344,7 @@ public sealed class DesktopHubStoreTests : IDisposable
         Assert.False(_store.Complete("agent-cancel-read", lease.TaskId, lease.LeaseId,
             lease.FencingToken, succeeded: true, now.AddSeconds(3)));
         Assert.Equal("TASK_CANCELLED_OWNER_REQUEST",
-            Assert.Last(_store.GetTaskHistory("leased-read-cancel")).EventCode);
+            _store.GetTaskHistory("leased-read-cancel").Last().EventCode);
     }
 
     [Theory]
@@ -368,7 +368,7 @@ public sealed class DesktopHubStoreTests : IDisposable
         Assert.False(_store.Complete(agentId, lease.TaskId, lease.LeaseId,
             lease.FencingToken, succeeded: true, now.AddSeconds(3)));
         Assert.Empty(_store.RecoverExpiredLeases(now.AddMinutes(2)));
-        var last = Assert.Last(_store.GetTaskHistory(taskId));
+        var last = _store.GetTaskHistory(taskId).Last();
         Assert.Equal(HubTaskState.OutcomeUnknown, last.State);
         Assert.Equal("TASK_CANCELLED_OUTCOME_UNKNOWN", last.EventCode);
     }
