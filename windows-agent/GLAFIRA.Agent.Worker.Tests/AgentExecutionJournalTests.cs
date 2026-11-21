@@ -66,6 +66,27 @@ public sealed class AgentExecutionJournalTests : IDisposable
     }
 
     [Fact]
+    public async Task ActiveLeaseCanBeClearedOnlyAfterItsExpiryAndExactFence()
+    {
+        var journal = CreateJournal();
+        var lease = Lease();
+        await journal.SaveActiveLeaseAsync(lease, CancellationToken.None);
+
+        Assert.False(await journal.ClearExpiredActiveLeaseAsync(
+            lease.TaskId, lease.LeaseId, lease.FencingToken,
+            lease.LeaseExpiresAtEpochMs - 1, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            journal.ClearExpiredActiveLeaseAsync(
+                lease.TaskId, lease.LeaseId, lease.FencingToken + 1,
+                lease.LeaseExpiresAtEpochMs + 1, CancellationToken.None));
+
+        Assert.True(await journal.ClearExpiredActiveLeaseAsync(
+            lease.TaskId, lease.LeaseId, lease.FencingToken,
+            lease.LeaseExpiresAtEpochMs + 1, CancellationToken.None));
+        Assert.Empty((await journal.LoadAsync(CancellationToken.None)).ActiveLeases);
+    }
+
+    [Fact]
     public async Task DifferentLeaseCannotOverwriteAnActiveTaskIdentity()
     {
         var journal = CreateJournal();
