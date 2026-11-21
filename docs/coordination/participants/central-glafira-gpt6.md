@@ -11,9 +11,9 @@
 
 | Priority | Issue / PR | Scope and files | Branch | Dependencies | Status | Exact head SHA |
 |---|---|---|---|---|---|---|
-| P2 | PR #369, Issue #350, stacked on PR #352 → #347 | Backup button accessibility semantics and emulator regression assertion only | `fix/android-backup-button-merged-semantics-352` | #352 on #347; exact-head emulator acceptance | Android JVM, Shared Contracts and debug APK passed at exact head; managed emulator acceptance still in progress | `b46a1d8496a63a40718192d37571b1ca7359a0de` |
+| P2 | PR #369 / #372, Issues #350/#371, stacked #372 → #369 → #352 → #347 | Manual Backup accessibility action and emulator regression only | `fix/android-backup-explicit-accessibility-action-371` (#372); predecessor `fix/android-backup-button-merged-semantics-352` (#369) | #372 exact-head Android JVM/emulator/APK CI | #369 failed managed emulator: button node still reports not clickable; #372 adds explicit Button-role semantics action and is in CI | `6397a8b5fcad41340c3fb01b2ed9e2fdae889903` |
 | P1 audit | Issue #366, PR #347 | Review ownership-generation bypasses; no production edit yet | audit only | #347 must gain complete handoff and all mutation paths must be fenced | Findings recorded in #366 | `be1d81586cd506176db712494ec77f6364faac83` |
-| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Added external AI contributor onboarding and task-board lane; latest head `da3bd6516cbf076b3cc7d3dfdb3b8c3635f9131e`; CI for the newest head not yet observed | `da3bd6516cbf076b3cc7d3dfdb3b8c3635f9131e` |
+| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Added external AI contributor onboarding and task-board lane; latest head `a130fae7c43f2f694d81b7089895b2d4c833581a`; exact-head docs CI passed | `a130fae7c43f2f694d81b7089895b2d4c833581a` |
 
 ## 150-step program tracker
 
@@ -21,7 +21,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 | Cycle | Status | Completed actions | Evidence index / PRs | Validation summary | Open blockers |
 |---:|---|---:|---|---|---|
-| 01 | partial | 12/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
+| 01 | partial | 13/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
 
 ## Cycle 01 — capacity audit and parallel portfolio
 
@@ -62,3 +62,5 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 | C01-A011 | P2 | Opened a focused tracking issue for the exact-head emulator failure and explicitly distinguished the existing conditional guidance from the still-unverified UI/test failure cause. | https://github.com/micronizationlab/glafira-ai-hub/issues/371 | Issue created; waiting for PR #369 emulator result before product-code changes. | complete |
 
 | C01-A012 | P4 collaboration | Added a separate external-AI-contributor onboarding contract and registered it on the task board. It distinguishes GitHub user identity from AI-provider identity, lists verified Cursor/Codex/GitHub Agentic Workflows/Gemini/Claude paths, leaves DeepSeek/GigaChat write access unverified, and blocks invitations until #370 branch protection is active. | https://github.com/micronizationlab/glafira-ai-hub/commit/4cdb9ed32207f2a09df2c4032203b9e832dd314a ; latest board/ledger head `da3bd6516cbf076b3cc7d3dfdb3b8c3635f9131e` | Documentation-only; prior #362 exact-head docs CI passed at `b7f6b6b3010bdba54caf4080401cb55e10dde423`; CI for the newest head is pending. | complete |
+
+| C01-A013 | P2 | After PR #369's exact-head emulator failure, created draft PR #372 stacked on #369. It adds an explicit Button-role accessibility node and routes the accessibility click through the same callback as the physical button, preserving disabled state while busy. | https://github.com/micronizationlab/glafira-ai-hub/pull/372 ; head `6397a8b5fcad41340c3fb01b2ed9e2fdae889903` | Exact-head CI queued/in progress at last check; no pass claimed. | in progress |
