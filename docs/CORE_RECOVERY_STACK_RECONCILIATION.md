@@ -71,14 +71,14 @@ The PR #122 exact-head run on 2026-11-20 validated its own historical head, not 
 | AI decomposition and durable plans | `GlafiraTaskPlanner.kt`, `GlafiraAiProviderTaskPlanDecomposer.kt`, `GlafiraCoreTaskPlanAdapter.kt`, `GlafiraTaskPlanOrchestrator.kt`, `GlafiraTaskPlan.kt` |
 | Android Bridge policy primitives | `GlafiraBridgeCoreGate.kt`, `GlafiraBridgeAdmissionPorts.kt`, `GlafiraBridgeReplayGuard.kt`, `AndroidKeystoreBridgeCredentialStore.kt` |
 | Windows Agent fleet admission and transport | `BridgeV1RequestAuthenticator`, `SqliteHubReplayGuard`, `BridgeV1TaskOperationDispatcher`, `BridgeV1AgentTaskClient` in `windows-desktop` / `windows-agent` |
-| Dual-Core ownership/handoff | `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md` (normative; implementation pending) |
+| Dual-Core ownership/handoff | Windows installation identity primitive merged in `GLAFIRA.Desktop.Core` (PR #322); canonical task owner generation, signed handoff, per-Core inbox/outbox and cross-Core reconciliation remain pending under `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md` |
 
 ## 4. Next Core/Bridge gates
 
 1. Finish all supported SQLite upgrade tests (v1/v2 PR #245) and missing/duplicate dependency tests (PR #247).
 2. Complete bounded worker-pool/backpressure/configurable concurrency and stale-worker fencing acceptance.
 3. Finish failure injection across claim, handler, progress, result, ACK and provider outcome boundaries.
-4. Implement stable per-installation Core identity, owner generation, durable per-Core inbox/outbox and signed handoff.
+4. Extend the merged Android/Windows installation identity primitives with canonical task owner generation, durable per-Core inbox/outbox and signed handoff; do not enable takeover until adversarial fencing acceptance passes.
 5. Implement Desktop Core → Windows Hub task assignment/payload mapping and exact canonical result reconciliation.
 6. Add a real, typed, bounded Windows Agent handler only after the task type, payload, capability, result and owner-generation contracts are aligned.
 7. Keep physical two-PC and cross-Core partition/failover tests as release gates.
