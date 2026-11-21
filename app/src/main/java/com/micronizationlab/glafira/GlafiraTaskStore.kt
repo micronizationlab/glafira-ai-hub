@@ -200,7 +200,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         // After reinstall/restore, the current Core ID may be new; never infer that it
         // owns legacy rows. Quarantine interrupted work for explicit owner review.
         db.execSQL(
-            "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = ? " +
+            "UPDATE $TABLE_TASKS SET state = ?, updated_at = ?, last_error = COALESCE(last_error, ?) " +
                 "WHERE state NOT IN ('succeeded', 'failed', 'cancelled', ?)",
             arrayOf(
                 GlafiraTaskState.WAITING_FOR_OWNER.databaseValue,
@@ -208,6 +208,12 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 "LEGACY_TASK_OWNER_REVIEW_REQUIRED",
                 GlafiraTaskState.WAITING_FOR_OWNER.databaseValue
             )
+        )
+        // A legacy executor lease is authority too; remove it before any owner review.
+        db.delete(
+            "core_desktop_leases",
+            "task_id IN (SELECT task_id FROM $TABLE_TASKS WHERE state = ?)",
+            arrayOf(GlafiraTaskState.WAITING_FOR_OWNER.databaseValue)
         )
     }
 
