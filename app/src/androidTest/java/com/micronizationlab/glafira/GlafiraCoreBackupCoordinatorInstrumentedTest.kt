@@ -188,6 +188,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             "known-good-result",
             3_000L
         ))
+        val trace = GlafiraCoreTraceStore(store)
+        trace.append(GlafiraCoreTraceDraft(
+            eventId = "restore-failure-trace",
+            projectId = "backup-project",
+            taskId = "backup-result-task",
+            correlationId = "restore-failure-correlation",
+            occurredAtMillis = 3_500L,
+            actorType = GlafiraCoreTraceActorType.CORE,
+            actorId = "core-main",
+            component = "BackupCoordinator",
+            eventType = GlafiraCoreTraceEventType.RESULT_COMMITTED,
+            actionCode = "core.result.committed"
+        ))
 
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
@@ -212,6 +225,20 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             )
             assertEquals("created-after-backup", store.getTask("created-after-backup")?.taskId)
             assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertEquals(
+                listOf("restore-failure-trace"),
+                trace.query(
+                    GlafiraCoreTraceQuery("backup-project"),
+                    GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
+                ).events.map { it.eventId }
+            )
+            assertThrows(android.database.sqlite.SQLiteException::class.java) {
+                store.writableDatabase.delete(
+                    GlafiraCoreTraceStore.TABLE,
+                    "event_id = ?",
+                    arrayOf("restore-failure-trace")
+                )
+            }
             store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
         } finally {
             archive.delete()
