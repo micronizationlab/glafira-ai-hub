@@ -239,6 +239,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     arrayOf("restore-failure-trace")
                 )
             }
+            assertTrue(store.readableDatabase.rawQuery(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_created'",
+                null
+            ).use { it.moveToFirst() })
+            assertTrue(store.readableDatabase.rawQuery(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_state_changed'",
+                null
+            ).use { it.moveToFirst() })
             store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
         } finally {
             archive.delete()
