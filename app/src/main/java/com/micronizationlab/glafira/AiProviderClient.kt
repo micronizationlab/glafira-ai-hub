@@ -151,9 +151,11 @@ suspend fun callAiProviderResult(context: Context, providerId: ProviderId, histo
                 is java.io.IOException -> AiProviderErrorCategory.NETWORK
                 else -> AiProviderErrorCategory.INVALID_RESPONSE
             }
-            AiProviderResult.Failure(AiProviderError(category,
-                "Не удалось получить ответ ${providerId.displayName}.",
-                outcome = if (modelPostAttempted) AiRequestOutcome.UNKNOWN else AiRequestOutcome.NOT_SENT))
+            providerTransportFailure(
+                category = category,
+                modelPostAttempted = modelPostAttempted,
+                message = "Не удалось получить ответ ${providerId.displayName}."
+            )
         } finally {
             connection?.disconnect()
             tokenConnection?.disconnect()

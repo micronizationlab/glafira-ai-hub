@@ -169,6 +169,18 @@ class AndroidStorageRecoveryTest {
         assertNotNull(restarted.claim("stable"))
     }
 
+    @Test fun cancellationAfterClaimQuarantinesRequestAsUnknownAndBlocksReplay() {
+        val store = PendingMessageStore(directory(), "session")
+        store.add(PendingMessage("p", "a", "text", "", id = "cancelled-operation"))
+        assertNotNull(store.claim("cancelled-operation"))
+
+        markPendingCancellationUncertain(store, "cancelled-operation")
+
+        assertEquals(PendingDeliveryState.UNCERTAIN, store.all().single().state)
+        assertNull(store.claim("cancelled-operation", Long.MAX_VALUE))
+        assertTrue(store.all().single().error.orEmpty().contains("неизвестен"))
+    }
+
     @Test fun completedRequestAndSavedResultAreNeverClaimedAgain() {
         val store = PendingMessageStore(directory(), "session")
         store.add(PendingMessage("p", "a", "text", "", id = "stable"))
