@@ -175,7 +175,7 @@ class GlafiraCoreTaskExecutor(
             GlafiraTaskAuthorizationStatus.AUTHORIZED -> Unit
         }
 
-        val handler = handlerMap[task.taskType] ?: return fail(task, "NO_HANDLER_REGISTERED")
+        val handler = handlerMap[task.taskType] ?: return fail(task, ownershipToken, "NO_HANDLER_REGISTERED")
         val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
             task = task,
             nowMillis = clock(),
