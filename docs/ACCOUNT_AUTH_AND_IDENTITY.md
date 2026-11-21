@@ -114,3 +114,19 @@ The current Android MVP stores projects, chat history, pinned items and the pass
 - on sign-out, lock the vault, clear in-memory secrets and remove cached user data from active memory;
 - never merge local data into a different account merely because email addresses match;
 - define explicit export/migration for the existing local-only profile so current data is not lost.
+
+
+## Owner Password Vault policy — banking credentials included
+
+The Password Vault is the owner's unified credential manager. It may store credentials for banking applications, alongside other user-approved account credentials. Do not apply a blanket prohibition to storing bank passwords: the owner explicitly requires them to be stored and, where the banking app supports a safe supported path, entered by GLAFIRA.
+
+Security and execution boundary:
+- Vault records are encrypted at rest with envelope encryption; Android keys are protected by Android Keystore (hardware-backed where available), and Windows secrets use the platform's protected credential store. A device-bound key is not a portable recovery secret.
+- Unlock requires explicit owner authentication. OS biometric/device credential checks authorize a scoped, short-lived vault session; GLAFIRA never collects or stores biometric templates.
+- A language model receives only a credential reference/opaque handle and a narrowly scoped action description, never plaintext usernames/passwords, OTPs, recovery codes or vault contents. Secrets must not appear in prompts, cloud API payloads, task JSON, logs, traces, telemetry, crash reports or support bundles.
+- Prefer official provider APIs/OAuth or OS-supported Autofill and native passkey/biometric flows. A narrowly scoped, opt-in accessibility helper may be considered only where supported and lawful; it must not bypass app protections, certificate checks, anti-automation controls or bank security challenges.
+- GLAFIRA may fill a credential only after the owner has unlocked the vault and authorized that app/session. OTP, push approval, passkey confirmation, step-up biometric and other bank challenges remain owner-controlled.
+- Vault unlock or biometric authentication is not consent to move money. Transfers, payments, new payees, credit applications, profile/security changes and other high-impact or irreversible operations require a separate, transaction-specific owner confirmation. Show payee, amount, currency, source account and fees; any change invalidates the confirmation.
+- If a bank offers no supported safe automation route, stop and ask the owner to complete the step manually. Never claim universal compatibility with arbitrary banking apps.
+
+Default backup excludes vault secrets. A future portable vault export must be a separate explicit owner action, encrypted under a user-held recovery secret, and tested independently. See `GLAFIRA_BACKUP_AND_RECOVERY.md` and issue #383.
