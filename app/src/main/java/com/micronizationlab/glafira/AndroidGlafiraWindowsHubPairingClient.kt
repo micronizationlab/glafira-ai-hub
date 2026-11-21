@@ -66,7 +66,9 @@ internal class AndroidGlafiraPinnedHttpsPairingExchange(
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
             connection.doOutput = true
-            connection.sslSocketFactory = pinnedSocketFactory(invitation.tlsCertificateSha256)
+            connection.sslSocketFactory = AndroidGlafiraPinnedHttpsSupport.socketFactory(
+                invitation.tlsCertificateSha256
+            )
             connection.setFixedLengthStreamingMode(request.size)
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             connection.setRequestProperty("Accept", "application/json")
@@ -75,13 +77,10 @@ internal class AndroidGlafiraPinnedHttpsPairingExchange(
             // peer is checked again before getOutputStream(), so the pairing code is
             // never disclosed to an unpinned HTTPS endpoint.
             connection.connect()
-            val leaf = connection.serverCertificates.firstOrNull()
-                ?: throw IllegalStateException("PAIRING_TLS_PEER_CERTIFICATE_MISSING")
-            val actualPin = MessageDigest.getInstance("SHA-256").digest(leaf.encoded)
-                .joinToString("") { "%02x".format(it) }
-            require(actualPin == invitation.tlsCertificateSha256) {
-                "PAIRING_TLS_PIN_MISMATCH"
-            }
+            AndroidGlafiraPinnedHttpsSupport.verifyConnectedLeaf(
+                connection,
+                invitation.tlsCertificateSha256
+            )
 
             connection.outputStream.use { it.write(request) }
             require(connection.responseCode == HttpURLConnection.HTTP_OK) {
@@ -123,8 +122,21 @@ internal class AndroidGlafiraPinnedHttpsPairingExchange(
         }
     }
 
+    companion object {
+        private const val CONNECT_TIMEOUT_MS = 10_000
+        private const val READ_TIMEOUT_MS = 15_000
+        private const val MAX_REQUEST_BYTES = 2_048
+        private const val MAX_RESPONSE_BYTES = 16 * 1_024
+    }
+}
+
+/** Shared pin enforcement for pairing and subsequent signed Bridge requests. */
+internal object AndroidGlafiraPinnedHttpsSupport {
     @SuppressLint("CustomX509TrustManager")
-    private fun pinnedSocketFactory(expectedPin: String) = SSLContext.getInstance("TLS").run {
+    fun socketFactory(expectedPin: String) = SSLContext.getInstance("TLS").run {
+        require(expectedPin.matches(Regex("^[a-f0-9]{64}$"))) {
+            "BRIDGE_TLS_PIN_INVALID"
+        }
         val expected = expectedPin.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         val trustManager = object : X509TrustManager {
             override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
@@ -153,11 +165,17 @@ internal class AndroidGlafiraPinnedHttpsPairingExchange(
         socketFactory
     }
 
-    companion object {
-        private const val CONNECT_TIMEOUT_MS = 10_000
-        private const val READ_TIMEOUT_MS = 15_000
-        private const val MAX_REQUEST_BYTES = 2_048
-        private const val MAX_RESPONSE_BYTES = 16 * 1_024
+    fun verifyConnectedLeaf(connection: HttpsURLConnection, expectedPin: String) {
+        val leaf = connection.serverCertificates.firstOrNull()
+            ?: throw IllegalStateException("BRIDGE_TLS_PEER_CERTIFICATE_MISSING")
+        val expected = expectedPin.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val actual = MessageDigest.getInstance("SHA-256").digest(leaf.encoded)
+        try {
+            require(MessageDigest.isEqual(actual, expected)) { "BRIDGE_TLS_PIN_MISMATCH" }
+        } finally {
+            actual.fill(0)
+            expected.fill(0)
+        }
     }
 }
 

@@ -106,6 +106,14 @@ interface GlafiraMobileOwnershipProjectionStore {
     fun write(projection: GlafiraMobileOwnershipProjection)
 }
 
+fun interface GlafiraOwnershipBridgeResponseConsumer {
+    fun applyBridgeResponse(
+        request: GlafiraBridgeRequest,
+        response: GlafiraBridgeResponse,
+        now: Instant = Instant.now()
+    ): GlafiraOwnershipSyncResult?
+}
+
 /**
  * Owner-facing, read-side ownership synchronization for Android.
  *
@@ -116,15 +124,15 @@ interface GlafiraMobileOwnershipProjectionStore {
 class GlafiraMobileOwnershipSyncAdapter(
     private val store: GlafiraMobileOwnershipProjectionStore,
     private val trustedKeys: GlafiraOwnershipTrustedKeyResolver
-) {
+) : GlafiraOwnershipBridgeResponseConsumer {
     /**
      * Correlates the authenticated Hub response before parsing the signed envelope.
      * The signing key still comes only from trustedKeys, never from the response.
      */
-    fun applyBridgeResponse(
+    override fun applyBridgeResponse(
         request: GlafiraBridgeRequest,
         response: GlafiraBridgeResponse,
-        now: Instant = Instant.now()
+        now: Instant
     ): GlafiraOwnershipSyncResult? {
         require(request.operation == GlafiraBridgeOperation.OWNERSHIP_TRANSFER_READ &&
             GlafiraBridgeProtocol.validate(request, now.toEpochMilli()) == null) {
