@@ -142,7 +142,8 @@ internal class GlafiraPortableCoreSnapshot(
                     when {
                         value === JSONObject.NULL -> require(column in NULLABLE)
                         column == "priority" -> require((value is Int || value is Long) && (value as Number).toLong() in -1000L..1000L)
-                        column in NUMBERS -> require((value is Int || value is Long) && (value as Number).toLong() >= 0)
+                        column in NUMBERS && !(table.name == TRACE && column == "event_id") ->
+                            require((value is Int || value is Long) && (value as Number).toLong() >= 0)
                         else -> require(value is String && value.length <= MAX_FIELD_CHARS)
                     }
                 }
