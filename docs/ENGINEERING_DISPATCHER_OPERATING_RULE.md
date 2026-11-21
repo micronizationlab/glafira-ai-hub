@@ -27,7 +27,7 @@ Do not interpret "50 actions" as permission to make 50 simultaneous conflicting 
 
 Old or abandoned work is a cross-cutting obligation: continuously revisit it and assign its actual P1–P5 priority based on current dependencies and owner value. Do not park all old work in a separate priority tier.
 
-A higher-priority item waiting on CI, review, hardware, a dependency, or a conflicting file is not a reason to idle. Descend the priority list and start the highest-priority independent item available. When a slot opens, restart evaluation at P0.
+A higher-priority item waiting on CI, review, hardware, a dependency, or a conflicting file is not a reason to idle. Descend the priority list and start the highest-priority independent item available. When a slot opens, restart evaluation at P1.
 
 ## 3. Mandatory GitHub visit protocol
 
