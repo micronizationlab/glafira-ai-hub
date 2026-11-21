@@ -197,3 +197,45 @@ OFF stops new submissions and cancels pending proposals where technically possib
 - Offline delivery, idempotent retries, audit, deletion/retention and backup/restore are covered.
 
 Implementation is staged after the Core/Bridge/Desktop foundations. The messenger, identity, permission and competence-exchange contracts can be designed in parallel without changing Core task authority or bypassing existing approval and signed-update controls.
+
+
+### Network identity, contact aliases and voice resolution
+
+Each owner receives an immutable opaque GLAFIRA Account ID and chooses one globally unique network handle, for example `@berestnev`. Handles are case-insensitive and normalized, checked against reserved names, and verified in the central directory at registration and rename. The handle is the network address; it is not the person's legal name. A safe rename updates the directory while preserving the immutable account ID; old handles are tombstoned/reserved for a policy-defined period to reduce impersonation.
+
+Each owner's local contact book may attach multiple personal nicknames to a verified account, e.g. the local aliases "Костя", "Костян" and "КБ" all point to `@berestnev`. These aliases are private to that owner's address book and are not global handles. A contact dossier can be linked to HR Intelligence/Kadrovik with source/provenance, confidence and the explicit owner-confirmed mapping: "this GLAFIRA handle belongs to this contact". Never infer or publish that link from a name alone.
+
+Voice/text intent resolution:
+- Exact `@handle` or one exact unique local alias resolves directly.
+- A single strong context match may be announced ("Открываю диалог с Константином Берестневым, @berestnev") and opened under the owner's configured policy.
+- If several contacts match "Костя", or confidence is low, ask "Какого Костю?" and show candidate cards; do not invite, message or disclose anything before disambiguation.
+- After the owner confirms a mapping, persist it in the local contact book and optionally Kadrovik dossier with provenance. The owner can edit/remove it.
+
+### Messenger protocol and connection lifecycle (ADR required)
+
+Preferred candidate: the Matrix protocol ecosystem, subject to an architecture decision and prototype. It provides established room membership, event sync, receipts, device identities, media handling and an optional federation model. Evaluate the maintained Matrix Rust SDK and its currently supported end-to-end encryption implementation (Olm/Megolm or the current supported Matrix crypto stack); do not implement cryptography ourselves.
+
+- Client communication: Matrix Client-Server API over HTTPS, sync/long-poll for reliable offline delivery and WebSocket only where supported/beneficial.
+- Conversation model: Matrix rooms/events for direct and group conversations, human messages, separately identified GLAFIRA agent messages, membership changes, receipts and typing/presence.
+- Files: Matrix media repository with encrypted attachment payloads and per-room access; keys travel only inside encrypted room events. Verify attachment encryption and revocation semantics in the prototype.
+- Agent: each owner's GLAFIRA is a distinct authenticated device/agent identity. It decrypts only rooms where its owner explicitly enables/invites it. The UI distinguishes human owner from agent. The agent never silently joins all owner rooms.
+- Directory: GLAFIRA Directory maps a unique public `@handle` to immutable Account ID and service/home endpoint. Private local aliases remain local. Use verified QR/invite links and anti-enumeration/rate limits.
+- Federation: begin with a controlled GLAFIRA service deployment; evaluate cross-homeserver federation only after identity verification, abuse controls, key verification, moderation/report/block and data residency are understood.
+- Alternative: compare a GLAFIRA-native HTTPS/TLS 1.3 + WebSocket event service with an audited E2EE SDK. No custom crypto. Record the choice, threat model, key lifecycle/recovery, device revocation, costs, operations and migration path in an ADR before implementation.
+
+### GLAFIRA Network user experience
+
+The app gains a **"Сообщения" / "GLAFIRA Network"** area. A user can search by `@handle`, scan a QR code, accept a verified invite, or issue a voice/text command:
+- "Глафира, открой диалог с @berestnev."
+- "Добавь псевдоним Костя к контакту Константин Берестнев."
+- "Соедини меня с Костей."
+
+A conversation header shows the human participants and their GLAFIRA agents as distinct identities. The timeline labels each message as human or agent-authored. Agent controls include pause/remove from this room, allow reading conversation, allow analysis of each attachment, allow saving a derived fact to private memory and allow sharing a generated answer with the room. The owner may address their own agent, another owner's agent (only if that owner enabled it), or both. Ambiguous nicknames always trigger clarification. Human participants can take over at any time.
+
+### Cloud web retrieval without a device VPN
+
+Add a separate **GLAFIRA Cloud Research Gateway** for agent-side retrieval from public web resources that are reachable from an authorized cloud region but not from the user's local network. This is remote research/browser retrieval, not a VPN and not a promise to unblock every site. It does not tunnel arbitrary device traffic.
+
+The gateway uses isolated per-account/per-task cloud browser sessions, retrieves pages/documents/APIs, and returns extracted text or a rendered view with URL, timestamp and source citations. Cookies and authenticated sessions are isolated; user sign-in is explicit and only supported where allowed. Enforce destination allow/deny policy, provider terms and applicable law; no CAPTCHA/paywall bypass, credential theft, stealth scraping or evasion of access controls. Apply SSRF/private-IP and DNS-rebinding defenses, malware scanning, download size/type limits, rate limits, audit, session expiry and a kill switch. Never claim anonymity or guaranteed access. If a destination is not lawfully or technically available to the cloud service, report that clearly.
+
+Keep local browser access, cloud research retrieval and any future full-device network routing as separate product capabilities and settings.
