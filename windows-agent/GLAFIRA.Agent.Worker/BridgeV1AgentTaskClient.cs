@@ -42,7 +42,8 @@ public sealed record AgentTaskUpdateAck(
     string LeaseId,
     long FencingToken,
     string State,
-    string ResultSha256);
+    string ResultSha256,
+    long LeaseExpiresAtEpochMs);
 
 /// <summary>
 /// Signed Bridge v1 task-claim and result transport for the Windows Agent.
@@ -211,7 +212,16 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
             ack.GetValueOrDefault("state") != state ||
             ack.GetValueOrDefault("resultSha256") != expectedDigest)
             throw new InvalidDataException("TASK_RESULT_ACK_MISMATCH");
-        return new AgentTaskUpdateAck(lease.TaskId, lease.LeaseId, lease.FencingToken, state, expectedDigest);
+        var renewedExpiry = 0L;
+        if (state is "ACCEPTED" or "RUNNING")
+        {
+            if (!long.TryParse(ack.GetValueOrDefault("leaseExpiresAtEpochMs"), NumberStyles.None,
+                    CultureInfo.InvariantCulture, out renewedExpiry) ||
+                renewedExpiry <= _timeProvider.GetUtcNow().ToUnixTimeMilliseconds())
+                throw new InvalidDataException("TASK_LEASE_RENEWAL_ACK_INVALID");
+        }
+        return new AgentTaskUpdateAck(
+            lease.TaskId, lease.LeaseId, lease.FencingToken, state, expectedDigest, renewedExpiry);
     }
 
     private async Task<Response> SendAsync(
