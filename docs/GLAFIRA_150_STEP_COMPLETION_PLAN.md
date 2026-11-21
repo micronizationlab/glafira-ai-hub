@@ -1,21 +1,21 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main:** `85fb70c16d900a8d4f66bd6fec59593de491da12` (refresh before each integration).  
+**Baseline main for this ledger revision:** `195a45e430b271d3303a3cdca5bbf01dbb241485` (refresh before each integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
 ## Reframed delivery strategy
 
-- One Core authority and one versioned Bridge protocol; no platform-specific competing task queues or permission authorities.
-- Windows Desktop is prioritized over iOS for the first full cross-device execution loop because it hosts Windows Agents. iOS remains first-class and progresses on non-conflicting work.
-- Android is the instrumentation/conformance anchor and primary mobile owner test surface.
+- Two independently useful Core installations (Android and Windows Desktop), each authoritative only for tasks it owns. Every cross-Core task has exactly one owner Core and monotonic ownership generation; no global shared SQLite queue or dual-writable replica. Bridge is authenticated transport, not authority. See `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md`.
+- Windows Desktop is prioritized over iOS for the first full cross-device execution loop because it hosts Windows Agents. Its Hub is a fleet/transport coordinator under Desktop Core, not another policy Core. iOS remains first-class and progresses on non-conflicting work.
+- Android is the instrumentation/conformance anchor and primary mobile owner test surface; it must remain independently useful when Desktop is offline.
 - Functional MVP first; defer visual polish, Chimera/avatar, public marketplace, wallet issuance/transfers, compute marketplace, VPN billing, macOS Desktop and specialist-agent expansion until the four-app foundation is accepted.
 - No arbitrary shell execution, hidden compute, automatic external side effects, credential leakage or paid-backend requirement for the initial MVP.
 - A step is complete only with code/config plus tests and relevant acceptance evidence. Skipped CI is not a pass; physical-device gates are explicitly owner-dependent.
 
 ## Ordered actions
 
-### P0 — Core: единственная очередь и authority
+### P0 — Core: ownership и queue kernels
 
 1. [x] Снять baseline main SHA, open PR/issues, CI runs и артефакты.
 2. [ ] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
@@ -71,7 +71,7 @@
 46. [ ] Сверить issue #95/#123 с фактическим WPF и Hub кодом.
 47. [ ] Закрепить границу: Core — authority; Desktop Hub — transport/fleet host, не второй Core.
 48. [ ] Сделать один lifecycle owner для HTTPS host, store, scheduler и shutdown.
-49. [ ] Связать Hub task journal с единым Core task authority; убрать дублирующие очереди.
+49. [ ] Связать Hub task journal с Desktop Core как владельцем задач: Hub lease/fleet journal — транспортная проекция и журнал исполнения, Android Core queue остаётся независимой; cross-Core handoff только по dual-Core ownership contract.
 50. [ ] Завершить persistent leases, monotonic fencing и stale-result rejection.
 51. [ ] Интегрировать HMAC admission, replay guard и DPAPI resolver на чистой ветке main.
 52. [ ] Завершить enroll/approve/revoke/rotate с signed short-lived descriptor.
@@ -167,7 +167,7 @@
 
 131. [ ] Собрать feature parity matrix Android/iOS/Windows Desktop/Windows Agent.
 132. [ ] Утвердить private MVP scope; wallet/token marketplace не включать в executable MVP.
-133. [ ] Проверить end-to-end task submission once → Core scheduling → Desktop routing → Agent handler.
+133. [ ] Проверить end-to-end task submission once → owning Core → Desktop Hub routing → Agent handler → owning Core result ACK; при смене Core owner требуется signed transfer + generation fencing.
 134. [ ] Проверить durable result return, ACK, trace и user-visible terminal state.
 135. [ ] Проверить owner approval/revoke mid-flight и stale credential rejection.
 136. [ ] Проверить cross-platform backup portability и restore без device secrets.
@@ -190,7 +190,7 @@
 
 1. Execute the lowest-numbered unblocked step; respect dependencies and avoid conflicting writers.
 2. While CI/hardware/review waits, execute the next independent action, then rescan from step 1.
-3. Keep all four app directions active without duplicating Core/Bridge authority.
+3. Keep all four apps active: two peer Cores, one owner Core per task, Bridge as transport only; no dual-writable replicas or global authority assumption.
 4. Branch from current main for clean slices. Stale stacked PRs are source material, not merge candidates.
 5. Record exact head SHA, run IDs, executed tests/counts, skipped jobs, artifacts and unresolved risks.
 6. Do not claim completion from docs, compilation or APK creation alone.
@@ -200,32 +200,37 @@
 
 - Core: reconcile issue #91 and PRs #71/#104/#119/#122; validate concurrency, recovery, dependencies and result ACK.
 - Bridge: finish canonical fixtures and authenticated lease/result delivery; validate #228 on its latest head.
-- Windows: complete a typed read-only task cycle with durable lease and result ACK.
+- Windows: complete the typed read-only Agent runtime, then register a real bounded handler and integrate Desktop Hub leases with Desktop Core ownership.
 - Android: preserve emulator suite; close Bridge/queue/backup/voice release regressions after dependencies.
 - iOS: preserve BridgeKit/native target; progress authenticated UI/task flows in parallel.
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `0c9c1f26f146e853b84bf3891387ac9ff67223b8`.
+**Refreshed main after this wave:** `195a45e430b271d3303a3cdca5bbf01dbb241485`.
 
 ### Verified complete
 
-- Step 1: baseline captured at `85fb70c16d900a8d4f66bd6fec59593de491da12`; refreshed before later merges.
+- Step 1: baseline captured and refreshed at each integration; this ledger revision starts from main `195a45e430b271d3303a3cdca5bbf01dbb241485`.
+- Steps 6–7, 10–12 and 15: current Core has independent-connection/concurrent-claim, duplicate-claim, DAG cycle/cross-project/dependency-join, project fairness and process-restart recovery instrumentation coverage. Exact Core acceptance remains dependent on the managed emulator and the remaining failure-injection/trace cases.
 - Steps 26–27: AndroidJUnit4 suite is selected by CI; managed emulator executed instrumentation tests, JUnit reports were non-empty and diagnostics uploaded (PR #227 exact-head run `44841507909`).
 - Step 71: full typed lease metadata delivered to Agent (PR #228 merged as `0950bf33b2a7779e1b5addf64a56ea2a5c0fb2ce`).
-- Step 72: strict lease validation and handler-aware claim filtering landed (PR #230 merged as `1a1b7cc5e9a5123362b6abe725302ecfc8fda46c`). PR #232 then made the handler allowlist mandatory for every claim and removed the legacy unfiltered path (merged as `60ba9b5a95eefaaed351c3f769a6c725a27b35d5`).
+- Step 72: strict lease validation and handler-aware claim filtering landed (PR #230 merged as `1a1b7cc5e9a5123362b6abe725302ecfc8fda46c`); PR #232 made the handler allowlist mandatory for every claim (merged as `60ba9b5a95eefaaed351c3f769a6c725a27b35d5`).
+- Steps 73, 75, 79–81 and 83: DPAPI lease/result journal, Worker lifecycle registration, server-confirmed lease renewal, cancellation on renewal failure, durable result outbox, exact ACK identity/digest validation and restart recovery are merged in PR #238 (`b439177d6c71bebcbb8e4a6a17fd36ded39fdc26`). Exact-head Windows Agent tests: 67 passed, 0 failed; Windows Hub tests/build, shared contract conformance and x64 packages passed.
+- Step 74: bounded idle/failure polling backoff and pause-on-disconnect/revoke behavior merged in PR #242 (`195a45e430b271d3303a3cdca5bbf01dbb241485`). Exact-head Windows Agent tests: 68 passed, 0 failed; compile, shared contracts and x64 packages passed.
+- Step 111: native iOS Xcode project/simulator target builds in CI (PR #237).
 
 ### In progress
 
-- Step 74: PR #238 adds the Agent polling/execution coordinator with DPAPI lease/result journal, server-confirmed lease renewal and exact ACK retry. CI is pending. No production task handlers are registered yet; Agent stays Connected and does not claim work until a real typed ReadOnly handler is added.
-- Step 73: complete. PR #231 added the DPAPI journal; PR #235 added the full lease envelope to every pending result so a restarted Agent can reconstruct the exact result submission. PR #235 merged as `92e34759378c7636bd148766e7553bd1e1fde29c` after exact-head Windows Agent tests/build, shared contracts and package validation passed.
-- PR #232 merged after exact-head Windows Agent tests, Desktop Hub tests, shared contract conformance and both x64 package builds passed.
+- Step 5 and 9: PR #240 adds v7→v9 and v8→v9 Core migration coverage plus a two-connection cancellation-vs-result-commit race. Android JVM and APK jobs passed; managed emulator acceptance is still running on exact head `60ce76a9bd11c37df8ef0123382399ce63c06d93`. Do not mark these complete until the emulator test actually executes and passes.
+- Step 76: no production Windows Agent task handler is registered. The Agent remains connected but intentionally does not claim work. The next safe handler must match a real Core task type/capability and have a bounded, useful result contract; do not add a fake generic executor.
+- Steps 77–78 and 82, 84–90: payload/handler isolation, sandbox/resource limits, unknown-outcome classification, owner pause/preemption, tray state, credential rotation/revocation, installer/service lifecycle, fleet harness and physical two-PC acceptance remain open.
+- iOS step 113 is partial: PR #241 displays paired-device identifiers from Keychain metadata after import (`41d2ca035450a7b2709d70425401153f5fae1ea1`); it correctly says “key saved”, not “connected”. Projects, authenticated Core session and live data are still placeholders.
 
 ### Integration decisions
 
+- Dual-Core authority is per task, not one global writable queue. PR #243 (this ledger's companion) adds the normative ownership/handoff/fencing contract; implementation and two-device acceptance remain open.
 - PR #225 merged as `0c9c1f26f146e853b84bf3891387ac9ff67223b8`: opt-in automatic speech for newly delivered Agent replies, operationId-based duplicate suppression, and persistent missing-cloud-folder backup guidance. Exact-head Android JVM, debug APK and managed-emulator acceptance passed.
-- PR #237 merged as `077579b818f3b2bf3179f0b3f9ea12b5f010f978`: macOS CI now builds the actual native `ios/GLAFIRA.xcodeproj` Simulator app target in addition to Swift BridgeKit tests; exact-head iOS app and contract jobs passed. Step 111 is marked complete; physical iPhone acceptance remains open.
+- PR #237 merged as `077579b818f3b2bf3179f0b3f9ea12b5f010f978`: macOS CI builds the actual native `ios/GLAFIRA.xcodeproj` Simulator app target in addition to Swift BridgeKit tests; exact-head iOS app and contract jobs passed. Physical iPhone acceptance remains open.
 - PR #227 merged as `14fba6f6a4e83dfba5a7177b4d25cea846d433c3`: restore regression proves RUNNING tasks return to owner review and source-device leases/nodes do not transfer.
-- PR #229 merged as `d11afe70372f0dcf6215671ae317a2150711cad1`: this 150-step plan is the current ordered execution ledger.
-- PR #230 merged after Windows Agent, Windows Desktop Hub and shared contract tests passed on its exact head.
-- Historical Core PRs #71/#104/#119 are not merge candidates as stacks; current main contains newer versions of the overlapping concurrency, maintenance, dependency and fairness code. Issue #91 remains open for the remaining Core acceptance gaps.
+- PR #229 merged as `d11afe70372f0dcf6215671ae317a2150711cad1`: this 150-step plan is the ordered execution ledger.
+- Historical Core PRs #71/#104/#119/#122 are not merge candidates as stacks; current main contains newer versions of overlapping concurrency, maintenance, dependency, fairness and durable plan code. Issue #91 remains open for remaining Core acceptance gaps.
