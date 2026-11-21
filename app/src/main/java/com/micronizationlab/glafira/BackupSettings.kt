@@ -302,15 +302,18 @@ fun BackupSettingsSection() {
                     Button(
                         onClick = onManualBackupClick,
                         enabled = !busy,
-                        modifier = Modifier
-                            .weight(1f)
-                            .semantics(mergeDescendants = true) {
-                                // Preserve the Material Button's native clickable semantics.
-                                // Adding a second synthetic onClick here caused UiAutomator
-                                // to expose the merged node as non-clickable on API 35.
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        // Put the label on the Button's child so Material3's own clickable
+                        // semantics node merges it; an outer semantics wrapper is exposed
+                        // as a separate non-clickable node by UiAutomator on API 35.
+                        Text(
+                            "Сохранить сейчас",
+                            modifier = Modifier.semantics {
                                 contentDescription = "Создать резервную копию сейчас"
                             }
-                    ) { Text("Сохранить сейчас") }
+                        )
+                    }
                     OutlinedButton(
                         onClick = {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
