@@ -164,6 +164,50 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
     }
 
     @Test
+    fun unknownTaskRequestedScopeCannotEnterAnOwnerApprovalGrant() {
+        val invalid = task("approval-unknown-scope").copy(
+            requiredScopes = setOf("communications.send", "unregistered.admin")
+        )
+        taskStore.enqueue(invalid)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+
+        assertFalse(approvals.requestApproval(
+            running,
+            "Send a test message to test@example.invalid",
+            3_000L
+        ))
+        assertTrue(approvals.pendingApprovals(3_001L).isEmpty())
+        assertEquals(GlafiraTaskState.RUNNING, taskStore.getTask(invalid.taskId)?.state)
+    }
+
+    @Test
+    fun legacyApprovalRowWithUnknownScopeFailsClosedWhenReadingGrantedScopes() {
+        val original = task("approval-legacy-unknown")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        assertTrue(approvals.requestApproval(
+            running,
+            "Send a test message to test@example.invalid",
+            3_000L
+        ))
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                original.taskId,
+                setOf("communications.send"),
+                authenticatedOwnerSession(),
+                4_000L
+            )
+        )
+        taskStore.writableDatabase.execSQL(
+            "UPDATE core_action_approvals SET requested_scopes = ? WHERE task_id = ?",
+            arrayOf("""["communications.send","unregistered.admin"]""", original.taskId)
+        )
+
+        assertTrue(approvals.grantedScopes(requireNotNull(taskStore.getTask(original.taskId))).isEmpty())
+    }
+
+    @Test
     fun pendingApprovalExpiryFailsWaitingTaskAndRemovesItFromReviewQueue() {
         val original = task("approval-expiry")
         taskStore.enqueue(original)
