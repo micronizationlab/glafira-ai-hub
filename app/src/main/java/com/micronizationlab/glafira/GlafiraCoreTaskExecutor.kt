@@ -257,7 +257,7 @@ class GlafiraCoreTaskExecutor(
                     return reconcileResultPersistenceFailure(task, ownershipToken, effectiveBudget.maxRetries, now)
                 }
                 if (!changed && resultPersistence != null) {
-                    return reconcileResultPersistenceFailure(task, effectiveBudget.maxRetries, now)
+                    return reconcileResultPersistenceFailure(task, ownershipToken, effectiveBudget.maxRetries, now)
                 }
                 GlafiraTaskExecutionResult(
                     task.taskId,
