@@ -16,7 +16,7 @@ public struct GlafiraRootView: View {
                     Label(credentialStatus, systemImage: pairedDeviceIds.isEmpty ? "lock" : "checkmark.shield")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    ForEach(pairedDeviceIds, id: \\.self) { deviceId in
+                    ForEach(pairedDeviceIds, id: \.self) { deviceId in
                         Label(deviceId, systemImage: "iphone")
                             .font(.subheadline)
                     }
