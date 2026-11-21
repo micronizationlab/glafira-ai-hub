@@ -14,6 +14,8 @@ import java.util.UUID
 class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    // Stable per-installation identity; this is not an owner grant or task-ownership lease.
+    val installationIdentity = AndroidCoreInstallationIdentityStore(appContext).loadOrCreate()
 
     val taskStore = GlafiraTaskStore(appContext)
     private val ownerApprovalStore = GlafiraCoreOwnerApprovalStore(taskStore)
