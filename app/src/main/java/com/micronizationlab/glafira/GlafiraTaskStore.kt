@@ -376,15 +376,59 @@ class GlafiraTaskStore(context: Context) :
     ): Boolean {
         require(decision != GlafiraDryRunReviewStatus.PENDING)
         require(expectedPlanHash.matches(Regex("[0-9a-f]{64}")))
-        return writableDatabase.update(
-            GlafiraDryRunPreviewSchema.TABLE,
-            ContentValues().apply {
-                put("review_status", decision.name)
-                put("reviewed_at", nowMillis)
-            },
-            "task_id = ? AND plan_hash = ? AND review_status = ?",
-            arrayOf(taskId, expectedPlanHash, GlafiraDryRunReviewStatus.PENDING.name)
-        ) == 1
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val previewProjectId = db.query(
+                GlafiraDryRunPreviewSchema.TABLE,
+                arrayOf("project_id"),
+                "task_id = ? AND plan_hash = ? AND review_status = ?",
+                arrayOf(taskId, expectedPlanHash, GlafiraDryRunReviewStatus.PENDING.name),
+                null, null, null, "1"
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                ?: return false
+            val task = queryTask(db, taskId) ?: return false
+            if (task.projectId != previewProjectId) return false
+            val changed = db.update(
+                GlafiraDryRunPreviewSchema.TABLE,
+                ContentValues().apply {
+                    put("review_status", decision.name)
+                    put("reviewed_at", nowMillis)
+                },
+                "task_id = ? AND plan_hash = ? AND review_status = ?",
+                arrayOf(taskId, expectedPlanHash, GlafiraDryRunReviewStatus.PENDING.name)
+            )
+            if (changed != 1) return false
+            coreTraceStore.appendInTransaction(
+                db,
+                GlafiraCoreTraceDraft(
+                    projectId = task.projectId,
+                    taskId = task.taskId,
+                    correlationId = task.taskId,
+                    occurredAtMillis = nowMillis,
+                    actorType = GlafiraCoreTraceActorType.OWNER,
+                    actorId = "owner",
+                    component = "CoreDryRunReview",
+                    eventType = if (decision == GlafiraDryRunReviewStatus.APPROVED) {
+                        GlafiraCoreTraceEventType.REVIEW_ACCEPTED
+                    } else {
+                        GlafiraCoreTraceEventType.REVIEW_REJECTED
+                    },
+                    actionCode = if (decision == GlafiraDryRunReviewStatus.APPROVED) {
+                        "DRY_RUN_REVIEW_ACCEPTED"
+                    } else {
+                        "DRY_RUN_REVIEW_REJECTED"
+                    },
+                    targetType = "DRY_RUN_PREVIEW",
+                    targetId = task.taskId,
+                    resultStatus = decision.name
+                )
+            )
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
     }
 
     private fun Cursor.toDryRunPreviewRecord(): GlafiraDryRunPreviewRecord {
