@@ -234,6 +234,63 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         ).use { it.moveToFirst() })
         assertEquals(2, store.taskHistory("rollback", "project").size)
     }
+    @Test fun injectedDesktopProgressWriteFailurePreservesPriorLeaseProgressAcrossReopen() {
+        val now = System.currentTimeMillis()
+        store.enqueue(task("desktop-progress", "desktop.execute").copy(
+            payload = """{"requiredCapabilities":["code.build"]}"""
+        ))
+        val lease = requireNotNull(store.claimDesktopTask(
+            "desktop-progress", "desktop-node-progress", setOf("code.build"), 1, now
+        ))
+        val before = store.readableDatabase.rawQuery(
+            "SELECT lease_expires_at, progress_percent, progress_message FROM core_desktop_leases WHERE task_id = ?",
+            arrayOf("desktop-progress")
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            Triple(cursor.getLong(0), cursor.getInt(1), if (cursor.isNull(2)) null else cursor.getString(2))
+        }
+        assertEquals(0, before.second)
+        assertNull(before.third)
+
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER inject_desktop_progress_update_failure
+            BEFORE UPDATE ON core_desktop_leases
+            WHEN NEW.progress_percent = 50
+            BEGIN
+                SELECT RAISE(ABORT, 'injected-desktop-progress-failure');
+            END
+        """.trimIndent())
+
+        val failure = runCatching {
+            store.updateDesktopTask(
+                "desktop-progress", "desktop-node-progress", lease.leaseId, lease.fencingToken,
+                "RUNNING", 50, "halfway", null, null, now + 100
+            )
+        }.exceptionOrNull()
+        assertNotNull("The injected progress persistence failure must reach the caller", failure)
+
+        val afterFailure = store.readableDatabase.rawQuery(
+            "SELECT lease_expires_at, progress_percent, progress_message FROM core_desktop_leases WHERE task_id = ?",
+            arrayOf("desktop-progress")
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            Triple(cursor.getLong(0), cursor.getInt(1), if (cursor.isNull(2)) null else cursor.getString(2))
+        }
+        assertEquals(before, afterFailure)
+
+        store.writableDatabase.execSQL("DROP TRIGGER inject_desktop_progress_update_failure")
+        store.close()
+        store = GlafiraTaskStore(context)
+        val reopened = store.readableDatabase.rawQuery(
+            "SELECT lease_expires_at, progress_percent, progress_message FROM core_desktop_leases WHERE task_id = ?",
+            arrayOf("desktop-progress")
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            Triple(cursor.getLong(0), cursor.getInt(1), if (cursor.isNull(2)) null else cursor.getString(2))
+        }
+        assertEquals(before, reopened)
+    }
+
     @Test fun expiredDesktopLeaseDoesNotReplayOperationAndAcceptsLateBoundResult() {
         val now = System.currentTimeMillis()
         store.enqueue(task("desktop", "desktop.execute").copy(payload = """{"requiredCapabilities":["code.build"]}"""))
@@ -620,6 +677,112 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals("private handler result", store.coreTaskResult("result-task", "project")?.result)
     }
 
+
+    @Test fun injectedRetryHistoryFailureAfterHandlerExceptionLeavesTaskRecoverableAfterRestart() = runBlocking {
+        store.enqueue(task("handler-failure-recovery"))
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER inject_core_retry_history_failure
+            BEFORE INSERT ON core_task_history
+            WHEN NEW.to_state = 'retry_scheduled'
+            BEGIN
+                SELECT RAISE(ABORT, 'injected-retry-history-failure');
+            END
+        """.trimIndent())
+
+        val executor = GlafiraCoreTaskExecutor(
+            queue = store,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                throw IllegalStateException("injected-handler-failure")
+            }),
+            dispatcher = Dispatchers.IO,
+            clock = { 2_000L },
+            runtimeBudget = { GlafiraRuntimeBudget(maxConcurrentTasks = 1) },
+            executionMode = { GlafiraExecutionMode.LIVE }
+        )
+
+        val failure = runCatching { executor.executeNext() }.exceptionOrNull()
+        assertNotNull("The injected history failure must escape the failed retry persistence", failure)
+        assertEquals(GlafiraTaskState.RUNNING, store.getTask("handler-failure-recovery")?.state)
+        assertEquals(
+            listOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING),
+            store.taskHistory("handler-failure-recovery", "project").map { it.toState }.reversed()
+        )
+
+        store.writableDatabase.execSQL("DROP TRIGGER inject_core_retry_history_failure")
+        store.close()
+        store = GlafiraTaskStore(context)
+
+        assertEquals(1, store.recoverInterruptedCoreTasks(3_000L, 5))
+        val recovered = requireNotNull(store.getTask("handler-failure-recovery"))
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, recovered.state)
+        assertEquals(3_000L, recovered.retryAtMillis)
+        assertEquals("CORE_EXECUTION_INTERRUPTED", recovered.lastError)
+        assertEquals(
+            listOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING, GlafiraTaskState.RETRY_SCHEDULED),
+            store.taskHistory("handler-failure-recovery", "project").map { it.toState }.reversed()
+        )
+    }
+
+    @Test fun injectedResultAndRetryHistoryFailuresRecoverCompletedReadAfterRestart() = runBlocking {
+        store.enqueue(task("result-persist-recovery"))
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER inject_core_result_persist_failure
+            BEFORE INSERT ON core_task_results
+            BEGIN
+                SELECT RAISE(ABORT, 'injected-result-persist-failure');
+            END
+        """.trimIndent())
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER inject_core_retry_history_after_result_failure
+            BEFORE INSERT ON core_task_history
+            WHEN NEW.to_state = 'retry_scheduled'
+            BEGIN
+                SELECT RAISE(ABORT, 'injected-retry-history-after-result-failure');
+            END
+        """.trimIndent())
+
+        val executor = GlafiraCoreTaskExecutor(
+            queue = store,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                GlafiraTaskExecutionOutcome.Succeeded("handler completed before result-store failure")
+            }),
+            dispatcher = Dispatchers.IO,
+            clock = { 2_000L },
+            runtimeBudget = { GlafiraRuntimeBudget(maxConcurrentTasks = 1) },
+            executionMode = { GlafiraExecutionMode.LIVE }
+        )
+
+        val execution = executor.executeNext()
+        assertEquals(GlafiraTaskExecutionStatus.FAILED, execution.status)
+        assertEquals(GlafiraTaskState.RUNNING, store.getTask("result-persist-recovery")?.state)
+        assertNull(store.coreTaskResult("result-persist-recovery", "project"))
+        assertEquals(
+            listOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING),
+            store.taskHistory("result-persist-recovery", "project").map { it.toState }.reversed()
+        )
+
+        store.writableDatabase.execSQL("DROP TRIGGER inject_core_result_persist_failure")
+        store.writableDatabase.execSQL("DROP TRIGGER inject_core_retry_history_after_result_failure")
+        store.close()
+        store = GlafiraTaskStore(context)
+
+        assertEquals(1, store.recoverInterruptedCoreTasks(3_000L, 5))
+        val recovered = requireNotNull(store.getTask("result-persist-recovery"))
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, recovered.state)
+        assertEquals(3_000L, recovered.retryAtMillis)
+        assertEquals("CORE_EXECUTION_INTERRUPTED", recovered.lastError)
+        assertNull(store.coreTaskResult("result-persist-recovery", "project"))
+        assertEquals(
+            listOf(GlafiraTaskState.QUEUED, GlafiraTaskState.RUNNING, GlafiraTaskState.RETRY_SCHEDULED),
+            store.taskHistory("result-persist-recovery", "project").map { it.toState }.reversed()
+        )
+    }
 
     @Test fun coreExecutorPersistsHandlerSummaryWithSucceededState() = runBlocking {
         store.enqueue(task("executor-result"))

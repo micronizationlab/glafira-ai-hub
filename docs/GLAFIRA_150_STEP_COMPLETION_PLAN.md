@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `894a0ace84c045692c9fb21df6538cc4d6086d61` (refresh before each integration).  
+**Baseline main for this ledger revision:** `d14b59582544dabfcc83d8237b6dd0a8aa53710e` (verified 2026-11-21 05:35 UTC; refresh before the next integration).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -338,3 +338,20 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 200. [ ] Провести итоговую независимую приёмку расширенной программы: матрица требований, exact SHAs, CI evidence, security review, backup/restore drill и реальные устройства; незакрытые пункты остаются явно открытыми.
 
 **Правило исполнения расширения:** шаги 151–200 не образуют отдельную программу и не отменяют приоритеты исходных 150 шагов. Диспетчер выбирает следующие незаблокированные задачи по риску и зависимостям, продолжая параллельную работу. Постоянное имя всей программы — «150 шагов GLAFIRA».
+
+
+## Execution ledger update — 2026-11-21 05:35 UTC
+
+**Verified main baseline:** `d14b59582544dabfcc83d8237b6dd0a8aa53710e`. This revision records only exact-head evidence checked against GitHub PR metadata and workflow job results.
+
+- **Steps 1–15:** retain their previously recorded status; this refresh does not re-audit or broaden their acceptance.
+- **Step 16 — still open; several new failure slices merged.** PR #261 (result-row failure rollback), #265 (claim/history rollback), #275 (handler retry-history failure recovery and Desktop Agent progress-write rollback), #284 (double failure of result persistence and retry-history persistence followed by SQLite reopen recovery), and #288 (reject unclassified Core tables; injected portable-restore result-insert failure rolls back and preserves pre-restore state) are merged. PR #284 exact-head run `44870471390` passed Android JVM, shared-contract, APK, emulator and exact-head summary; PR #288 exact-head run `44870835931` passed the same Android-scope jobs. PR #283 also merged a Windows Hub fenced-result regression. The complete claim/handler/progress/result/ACK/cross-process failure matrix remains incomplete under #260.
+- **Step 17 — focused provider outcome and queue-boundary coverage merged; overall step remains open.** PR #264 distinguishes NOT_SENT from UNKNOWN and prevents blind replay after ambiguous dispatch. PR #282 adds the partial-composite UNKNOWN/no-replay boundary while preserving completed peer results. PR #290 adds durable pending-queue tests for UNKNOWN quarantine, explicit owner-only retry, bounded 429 Retry-After, auth rejection and definitely-NOT_SENT retry. PR #290 exact-head run `44870934260` passed Android JVM, shared contract, APK and exact-head summary; emulator acceptance was skipped for this unit-test-only change. End-to-end provider/coordinator reconciliation remains open under #262.
+- **Step 18 — still blocked on complete two-Core identity and ownership generation.** Android installation identity is being validated in PR #292 (current-main port, head `751423ce1762da0f5f43203ca15538327e1fb567`; Android JVM passed at last check, APK/emulator still running). This slice uses Android Keystore and non-backup metadata, but it is not owner authentication, Windows Desktop Core identity, ownerGeneration, signed ownership transfer, or task fencing. #258 and the reviewed ownership contract remain prerequisites for #266. Do not implement exact ACK/outbox binding using placeholder identity or generation values.
+- **Step 19 — partial evidence only.** PR #271 is merged and adds targeted result idempotency/conflict rejection. PR #282 adds partial-composite preservation. End-to-end idempotency across provider request, Core result, cross-Core delivery and durable ACK remains open.
+- **Backup/Restore and step 25/136 — targeted evidence merged, full acceptance open.** PR #288 is merged; it does not close the full portable Backup/Restore lifecycle, OS-kill matrix, restore across platforms, or device acceptance. Earlier PR #272 and #281 were closed as superseded; their validated test scope was re-applied in #288.
+- **Owner authorization — new safety fix under CI.** PR #295 separates non-consuming `peekApprovalGrant` from one-use `approvalGrant`; this prevents a Dry Run preview from consuming an owner's one-use grant before actual execution. It includes unit and persistent-store instrumentation regression coverage. Exact-head CI is pending; do not count the fix until the tests pass and the PR is reviewed.
+- **Mobile Personal Data Bridge — Android foundation slices merged; broader feature remains open.** PR #285 adds permission-gated, read-only Contacts Provider access. PR #286 adds the scoped AndroidX Photo Picker affordance without broad gallery access or automatic upload. Issue #273 remains open for complete lifecycle, owner review/merge UX, in-memory processing, safe image-to-agent transport, HR import integration, iOS parity and physical-device acceptance.
+- **Copilot collaboration:** PR #279 merged repository-specific instructions. No autonomous Copilot execution is assumed; all implementation and CI claims above are based on actual GitHub branches, PRs and workflow evidence.
+
+**Open validation runs at this snapshot:** PR #292 (Android identity) and PR #295 (non-consuming Dry Run grant inspection) still require exact-head CI completion. No skipped platform job is counted as a pass. No full program step is marked complete solely because one test slice or an architecture document exists.

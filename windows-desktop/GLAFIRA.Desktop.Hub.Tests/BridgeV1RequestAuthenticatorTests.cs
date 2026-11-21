@@ -201,6 +201,87 @@ public sealed class BridgeV1RequestAuthenticatorTests
         Assert.Equal(0, replay.Claims);
     }
 
+    [Fact]
+    public async Task AcceptsFencedDesktopTaskResultWithCurrentLeaseIdentity()
+    {
+        var replay = new FakeReplayGuard();
+        var authenticator = CreateTaskResultAuthenticator(replay);
+        var request = Sign(TaskResultRequest(ValidTaskResultPayload()));
+
+        var result = await authenticator.AuthenticateAsync(
+            request, DateTimeOffset.FromUnixTimeMilliseconds(request.IssuedAtEpochMs));
+
+        Assert.True(result.Accepted);
+        Assert.Equal(1, replay.Claims);
+    }
+
+    [Fact]
+    public async Task RejectsDesktopTaskResultWithoutLeaseIdentityBeforeReplayClaim()
+    {
+        var replay = new FakeReplayGuard();
+        var authenticator = CreateTaskResultAuthenticator(replay);
+        var payload = ValidTaskResultPayload();
+        payload.Remove("leaseId");
+
+        var result = await authenticator.AuthenticateAsync(
+            Sign(TaskResultRequest(payload)),
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(BridgeV1AdmissionFailure.InvalidEnvelope, result.Failure);
+        Assert.Equal(0, replay.Claims);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("not-a-number")]
+    public async Task RejectsNonPositiveOrMalformedDesktopTaskFenceBeforeReplayClaim(string fence)
+    {
+        var replay = new FakeReplayGuard();
+        var authenticator = CreateTaskResultAuthenticator(replay);
+        var payload = ValidTaskResultPayload();
+        payload["fencingToken"] = fence;
+
+        var result = await authenticator.AuthenticateAsync(
+            Sign(TaskResultRequest(payload)),
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(BridgeV1AdmissionFailure.InvalidEnvelope, result.Failure);
+        Assert.Equal(0, replay.Claims);
+    }
+
+    private static BridgeV1RequestAuthenticator CreateTaskResultAuthenticator(FakeReplayGuard replay) =>
+        new(new FakeCredentialResolver(new HubRequestCredential(
+            "device-0001", Secret, new HashSet<string> { "desktop.task.result" })), replay);
+
+    private static Dictionary<string, string> ValidTaskResultPayload() => new()
+    {
+        ["taskId"] = "task_1",
+        ["leaseId"] = "lease-0001",
+        ["fencingToken"] = "42",
+        ["state"] = "SUCCEEDED",
+        ["progressPercent"] = "100",
+        ["progressMessage"] = "completed",
+        ["result"] = "done",
+        ["errorCode"] = "none"
+    };
+
+    private static BridgeV1SignedRequest TaskResultRequest(IReadOnlyDictionary<string, string> payload)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return new BridgeV1SignedRequest(
+            1,
+            "request-task-result-01",
+            "idem-task-result-01",
+            "device-0001",
+            "default",
+            BridgeV1Operation.DESKTOP_TASK_RESULT,
+            now.AddSeconds(-1).ToUnixTimeMilliseconds(),
+            now.AddMinutes(1).ToUnixTimeMilliseconds(),
+            payload,
+            new string('0', 64));
+    }
+
     private static BridgeV1RequestAuthenticator CreateAuthenticator(FakeReplayGuard replay) =>
         new(new FakeCredentialResolver(new HubRequestCredential(
             "device-0001", Secret, new HashSet<string> { "conversation.append" })), replay);

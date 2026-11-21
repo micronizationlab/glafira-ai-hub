@@ -1,6 +1,6 @@
 # Action Pool A — rolling 50-item GLAFIRA backlog
 
-**Snapshot:** 2026-11-20  
+**Snapshot:** 2026-11-21 05:25 UTC  
 **Rule:** take the highest-priority item that is currently unblocked and non-conflicting. After each completion or newly available slot, rescan from item 1. Keep Pool A alive; prepare Pool B before Pool A runs out. Statuses are a planning snapshot, not claims of completion.
 
 | # | Priority | Action / acceptance result | Existing reference | Current state / dependency |
@@ -10,14 +10,14 @@
 | 03 | P0 | Integrate fair project-level dispatch with starvation bounds and deterministic tests | PR #119 | Stacked; requires Core reconciliation |
 | 04 | P0 | Integrate durable AI task-plan graph creation and owner-runtime scheduling | PR #122 | Stacked; reconcile before port |
 | 05 | P0 | Verify no duplicate task claims across independent SQLite connections under contention | PR #159, #71 | Instrumentation acceptance pending |
-| 06 | P0 | Verify process-death recovery, expired leases and stale-worker fencing | PR #53, #163 | Partial; needs end-to-end Core tests |
-| 07 | P0 | Complete provider outcome state machine: rejected vs unsent vs unknown | PR #54 | Old open implementation; reconcile |
-| 08 | P0 | Complete durable result delivery/outbox retry until explicit ACK | PR #58 | Stacked; reconcile with main |
-| 09 | P0 | Complete portable Core backup and interrupted-restore recovery | PR #57 | Stacked; reconcile with main |
+| 06 | P0 | Verify process-death recovery, expired leases and stale-worker fencing | PR #53, #163, #275, #284 | Partial: claim/history rollback, handler/retry recovery, result-write rollback and Desktop progress rollback are covered; #284 adds combined result+retry-history failure recovery and awaits exact-head CI. Full cross-platform failure matrix remains open |
+| 07 | P0 | Complete provider outcome state machine: rejected vs unsent vs unknown | PR #264, #282, issue #262 | Partial: typed dispatch outcomes and partial-composite UNKNOWN/no-replay tests are merged; full provider coordinator checkpoints and durable reconciliation remain open |
+| 08 | P0 | Complete durable result delivery/outbox retry until explicit ACK | Issue #266, prerequisite #258 | Blocked by real Core identity and ownership-generation foundation; durable outbox, exact recipient/digest ACK and restart-safe retry are not implemented |
+| 09 | P0 | Complete portable Core backup and interrupted-restore recovery | PR #287, issue #260 | Partial: main has encrypted snapshot/restore and interrupted-restore handling; current-main PR #287 adds unknown-table export rejection and restore transaction rollback injection, exact-head CI pending |
 | 10 | P0 | Verify Core maintenance lock is separate from per-task locks; crash/restart and data-integrity matrix | PR #71, #159 | Tests and code audit pending |
 | 11 | P1 | Land Android instrumentation runner and initial AndroidJUnit4 suite in main | PR #159 | Exact-head CI pending |
 | 12 | P1 | Land corrected change-aware selector so relevant Android/Core/Bridge changes run emulator acceptance | PR #161, #159 | Selector fix exists on PR branches |
-| 13 | P1 | Verify exact-head emulator reports for the 9-test initial suite; reconcile and port the older 16-test TaskPlan instrumentation suite from PR #122 after its Core dependencies are integrated | PR #159, #122 | Initial 9 tests pass on emulator; older 16-test suite remains stacked/unmerged |
+| 13 | P1 | Preserve and verify historical TaskPlan instrumentation coverage from PR #122 in current main | PR #122, `GlafiraTaskPlanInstrumentedTest.kt` | The historical six cases plus four current-main acceptance additions are present (10 tests). Exact-head emulator run #44870182653 executed 77 instrumentation cases with 0 failures/errors/skips; current-main refresh PR #287 is rerunning the suite |
 | 14 | P1 | Finish Bridge settings UI, owner approval and emulator regression | PR #140 | Android JVM passed; APK/emulator running |
 | 15 | P1 | Complete backup manual action and user-visible failure/precondition states | Issue #137, PR #139/#148 | Emulator regression active |
 | 16 | P1 | Make Council action clickable when idle and show actionable validation/partial-failure states | Issue #137 | Await UI regression |
@@ -25,8 +25,8 @@
 | 18 | P1 | Verify Google Drive SAF write/restore and persisted URI permissions on physical Android device | Issue #138 | Physical device required |
 | 19 | P1 | Verify two-device owner-approved private-LAN Bridge pairing and Keystore signing | Issues #73/#137 | Physical device pair required |
 | 20 | P1 | Align Kotlin Bridge golden vectors with canonical schema/HMAC, including Unicode and sorted keys | Issue #73 | Contract suite work |
-| 21 | P1 | Complete Bridge v1 task result lease/fencing contract on Android, Desktop client and Hub | PR #163 | Stacked on #160; CI pending |
-| 22 | P1 | Validate replay rejection, revoked device rejection and stale fencing token rejection end-to-end | PR #163, issue #123 | Requires durable Hub lease store |
+| 21 | P1 | Complete Bridge v1 task result lease/fencing contract on Android, Desktop client and Hub | PR #170, #283, issue #91 | Partial: lease ID/fencing fields, Android validation, Desktop queue persistence and Windows Hub admission validation are in main; #283 added Windows Hub C# regression tests and merged with exact-head checks |
+| 22 | P1 | Validate replay rejection, revoked device rejection and stale fencing token rejection end-to-end | Issue #123, #91 | Open: protocol/admission tests exist, but live authoritative lease issuance, revocation-to-lease invalidation and end-to-end stale-result rejection still require the production Desktop Hub listener/store |
 | 23 | P1 | Finish Bridge owner test APK signing/distribution and verify installed APK SHA | PR #69 | Stacked; inspect exact head |
 | 24 | P1 | Reconcile Android Bridge Keystore signer fix with current owner pairing flow | PR #63 | Stacked on older Bridge UI |
 | 25 | P1 | Close the release acceptance matrix across navigation, controls, permissions and screenshots | Issue #138 | Depends on #14–#20 |
