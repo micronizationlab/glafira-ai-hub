@@ -55,6 +55,17 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void SupportedTaskTypeFilterLeavesUnregisteredTaskQueued()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-1", "device-1", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("task-1"), now);
+
+        Assert.Null(_store.ClaimNext("agent-1", now, TimeSpan.FromMinutes(1), ["analysis.document"]));
+        Assert.Equal(HubTaskState.Queued, _store.GetTaskState("task-1"));
+    }
+
+    [Fact]
     public void EnforcesPerAgentConcurrencyLimit()
     {
         var now = DateTimeOffset.UtcNow;
