@@ -79,7 +79,6 @@ class AndroidCoreInstallationIdentityInstrumentedTest {
 
     @Test
     fun tamperedPublicKeyMetadataFailsClosed() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val store = store()
         store.loadOrCreate()
         val properties = Properties().apply {
@@ -93,8 +92,7 @@ class AndroidCoreInstallationIdentityInstrumentedTest {
 
     @Test
     fun missingNonBackupMetadataCreatesANewIdentityInsteadOfReusingOrphanedKey() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val store = AndroidCoreInstallationIdentityStore(context)
+        val store = store()
         val previous = store.loadOrCreate()
         identityFile.delete()
 
@@ -106,10 +104,9 @@ class AndroidCoreInstallationIdentityInstrumentedTest {
 
     @Test
     fun identityIsStableSignsLocallyAndRotatesWithMonotonicEpoch() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val store = AndroidCoreInstallationIdentityStore(context)
+        val store = store()
         val first = store.loadOrCreate()
-        val second = AndroidCoreInstallationIdentityStore(context).loadOrCreate()
+        val second = store().loadOrCreate()
 
         assertEquals(first, second)
         assertTrue(first.keyEpoch > 0)
@@ -137,7 +134,7 @@ class AndroidCoreInstallationIdentityInstrumentedTest {
         verifier.update(payload)
         assertFalse(verifier.verify(signature))
 
-        val persisted = AndroidCoreInstallationIdentityStore(context).loadOrCreate()
+        val persisted = store().loadOrCreate()
         assertEquals(rotated, persisted)
     }
 }
