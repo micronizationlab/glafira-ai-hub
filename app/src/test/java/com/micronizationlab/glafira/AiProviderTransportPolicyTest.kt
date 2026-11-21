@@ -79,6 +79,29 @@ class AiProviderTransportPolicyTest {
         assertFalse(afterDispatch.canRetryAutomatically)
     }
 
+    @Test fun partialCompositeFailureBecomesUnknownAndPreservesCompletedPeerResults() {
+        val partial = mapOf("provider-a" to "completed answer")
+        val original = AiProviderResult.Failure(AiProviderError(
+            category = AiProviderErrorCategory.NETWORK,
+            message = "provider-b disconnected",
+            outcome = AiRequestOutcome.REJECTED,
+            partialResults = partial
+        ))
+
+        val reconciled = afterPartialProviderCompletion(original) as AiProviderResult.Failure
+
+        assertEquals(AiRequestOutcome.UNKNOWN, reconciled.error.outcome)
+        assertFalse(reconciled.error.canRetryAutomatically)
+        assertEquals(partial, reconciled.error.partialResults)
+        assertTrue(reconciled.userText().contains("completed answer"))
+        assertTrue(reconciled.userText().contains("Исход запроса неизвестен"))
+    }
+
+    @Test fun successfulCompositeResultIsNotReclassifiedAsUnknown() {
+        val success = AiProviderResult.Success("all peers completed")
+        assertEquals(success, afterPartialProviderCompletion(success))
+    }
+
     @Test fun modelIdsRejectControlCharacters() {
         assertTrue(validProviderModel("vendor/model:free"))
         assertFalse(validProviderModel("model\nAuthorization:secret"))
