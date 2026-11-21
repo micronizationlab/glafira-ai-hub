@@ -1,0 +1,27 @@
+{
+  "purpose": "Schema and canonicalization fixture only; signature is a placeholder and is not cryptographically valid.",
+  "envelope": {
+    "schemaVersion": 1,
+    "transferId": "transfer-0001",
+    "nonce": "nonce-000001",
+    "taskId": "task-000001",
+    "projectId": "project-0001",
+    "oldOwnerCoreId": "android-core-01",
+    "newOwnerCoreId": "desktop-core-01",
+    "oldOwnerGeneration": 7,
+    "newOwnerGeneration": 8,
+    "stateVersion": 42,
+    "payloadSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "idempotencyKey": "idem-000001",
+    "effectRisk": "READ_ONLY",
+    "approvalRef": null,
+    "issuedAt": "2026-11-21T12:00:00.000Z",
+    "expiresAt": "2026-11-21T12:05:00.000Z",
+    "signingKeyEpoch": 3,
+    "signingPublicKeySha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "signatureAlgorithm": "ECDSA_P256_SHA256",
+    "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "signatureFormat": "IEEE_P1363_FIXED_64"
+  },
+  "canonicalUtf8": "1:113:transfer-000112:nonce-00000111:task-00000112:project-000115:android-core-0115:desktop-core-011:71:82:4264:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa11:idem-0000019:READ_ONLY4:null24:2026-11-21T12:00:00.000Z24:2026-11-21T12:05:00.000Z1:364:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb17:ECDSA_P256_SHA25619:IEEE_P1363_FIXED_64"
+}
