@@ -57,7 +57,7 @@ class VerifyJUnitReportsTests(unittest.TestCase):
             )
             result = self.run_verifier(root)
             self.assertNotEqual(0, result.returncode)
-            self.assertIn("all reported tests are skipped", result.stderr)
+            self.assertIn("skipped test cases", result.stderr)
 
     def test_rejects_partial_skips(self):
         with tempfile.TemporaryDirectory() as temp:
