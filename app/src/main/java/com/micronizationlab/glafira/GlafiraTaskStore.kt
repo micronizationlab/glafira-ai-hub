@@ -8,6 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.security.MessageDigest
 import java.util.UUID
 
 data class GlafiraDesktopTaskLease(
@@ -27,10 +28,17 @@ private data class StoredDesktopLease(
  * Transactional, process-death-safe queue storage for GLAFIRA Core.
  * Payloads are encrypted before they enter SQLite; task metadata remains queryable.
  */
-class GlafiraTaskStore(context: Context) :
+class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION),
     GlafiraTaskQueue, GlafiraDryRunPreviewPersistence, GlafiraInterruptedTaskRecovery, GlafiraCoreTaskResultPersistence {
     private val appContext = context.applicationContext
+
+    init {
+        require(ownerCoreId == null || ownerCoreId.matches(Regex("^[A-Za-z0-9._-]{8,128}$"))) {
+            "CORE_OWNERSHIP_ID_INVALID"
+        }
+    }
+
     private val coreTraceStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { GlafiraCoreTraceStore(this) }
 
     /** The caller holds maintenance and pauses pending delivery before deleting project files. */
@@ -99,6 +107,7 @@ class GlafiraTaskStore(context: Context) :
         createCoreTaskResultsSchema(db)
         createTaskDependenciesSchema(db)
         createTaskPlansSchema(db)
+        createCoreTaskOwnershipSchema(db)
         GlafiraCoreLiveRunStore.createSchema(db)
         GlafiraCoreTraceStore.createSchema(db)
     }
@@ -113,7 +122,8 @@ class GlafiraTaskStore(context: Context) :
         if (oldVersion < 8) migrateDesktopLeaseFencing(db)
         if (oldVersion < 9) GlafiraCoreLiveRunStore.createSchema(db)
         if (oldVersion < 10) GlafiraCoreTraceStore.createSchema(db)
-        if (newVersion > 10) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 11) migrateCoreTaskOwnership(db)
+        if (newVersion > 11) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
     }
 
     private fun createTaskDependenciesSchema(db: SQLiteDatabase) {
@@ -155,6 +165,99 @@ class GlafiraTaskStore(context: Context) :
             SELECT RAISE(ABORT,'TERMINAL_TASK_IMMUTABLE');
         END""")
     }
+
+    private fun createCoreTaskOwnershipSchema(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS $TABLE_OWNERSHIP (
+            task_id TEXT PRIMARY KEY NOT NULL REFERENCES $TABLE_TASKS(task_id) ON DELETE CASCADE,
+            project_id TEXT NOT NULL,
+            owner_core_id TEXT NOT NULL,
+            owner_generation INTEGER NOT NULL CHECK(owner_generation > 0),
+            state_version INTEGER NOT NULL DEFAULT 0 CHECK(state_version >= 0),
+            payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256) = 64),
+            idempotency_key TEXT NOT NULL,
+            effect_risk TEXT NOT NULL CHECK(effect_risk IN (
+                'READ_ONLY', 'DRAFT', 'EXTERNAL_SIDE_EFFECT', 'FINANCIAL', 'DESTRUCTIVE'
+            )),
+            approval_ref TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )""")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_core_task_ownership_project_owner ON $TABLE_OWNERSHIP(project_id, owner_core_id)")
+        db.execSQL("""CREATE TRIGGER IF NOT EXISTS core_task_ownership_state_version
+            AFTER UPDATE OF state ON $TABLE_TASKS
+            WHEN OLD.state != NEW.state
+            BEGIN
+                UPDATE $TABLE_OWNERSHIP
+                SET state_version = state_version + 1, updated_at = NEW.updated_at
+                WHERE task_id = NEW.task_id;
+            END""")
+    }
+
+    private fun migrateCoreTaskOwnership(db: SQLiteDatabase) {
+        createCoreTaskOwnershipSchema(db)
+        val coreId = ownerCoreId ?: return
+        db.rawQuery(
+            "SELECT task_id, project_id, task_type, payload_ciphertext, idempotency_key, created_at, updated_at " +
+                "FROM $TABLE_TASKS ORDER BY created_at ASC, task_id ASC",
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val taskId = cursor.getString(0)
+                val projectId = cursor.getString(1)
+                val taskType = cursor.getString(2)
+                val payload = GlafiraTaskPayloadCrypto.decrypt(cursor.getString(3), "$taskId|$projectId")
+                val digest = sha256(payload)
+                db.insertOrThrow(TABLE_OWNERSHIP, null, ContentValues().apply {
+                    put("task_id", taskId)
+                    put("project_id", projectId)
+                    put("owner_core_id", coreId)
+                    put("owner_generation", 1)
+                    put("state_version", 0)
+                    put("payload_sha256", digest)
+                    put("idempotency_key", cursor.getString(4))
+                    put("effect_risk", effectRiskFor(taskType))
+                    putNull("approval_ref")
+                    put("created_at", cursor.getLong(5))
+                    put("updated_at", cursor.getLong(6))
+                })
+            }
+        }
+    }
+
+    private fun insertTaskOwnershipRecord(
+        db: SQLiteDatabase,
+        task: GlafiraTask,
+        coreId: String
+    ) {
+        db.insertOrThrow(TABLE_OWNERSHIP, null, ContentValues().apply {
+            put("task_id", task.taskId)
+            put("project_id", task.projectId)
+            put("owner_core_id", coreId)
+            put("owner_generation", 1)
+            put("state_version", 0)
+            put("payload_sha256", sha256(task.payload))
+            put("idempotency_key", task.idempotencyKey)
+            put("effect_risk", effectRiskFor(task.taskType))
+            putNull("approval_ref")
+            put("created_at", task.createdAtMillis)
+            put("updated_at", task.updatedAtMillis)
+        })
+    }
+
+    private fun effectRiskFor(taskType: String): String =
+        when (GlafiraToolRegistry.find(taskType)?.risk) {
+            ToolRiskLevel.READ_ONLY -> "READ_ONLY"
+            ToolRiskLevel.DRAFT -> "DRAFT"
+            ToolRiskLevel.EXTERNAL_WRITE -> "EXTERNAL_SIDE_EFFECT"
+            ToolRiskLevel.FINANCIAL -> "FINANCIAL"
+            ToolRiskLevel.DESTRUCTIVE -> "DESTRUCTIVE"
+            // Unknown tools are deliberately treated as destructive for ownership transfer.
+            null -> "DESTRUCTIVE"
+        }
+
+    private fun sha256(value: String): String =
+        MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     private fun createTaskPlansSchema(db: SQLiteDatabase) {
         db.execSQL("""CREATE TABLE IF NOT EXISTS core_task_plans (
@@ -457,20 +560,35 @@ class GlafiraTaskStore(context: Context) :
     @Synchronized
     override fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
         GlafiraTaskPolicy.validate(task)
-        val values = task.toContentValues()
-        val insertedId = writableDatabase.insertWithOnConflict(
-            TABLE_TASKS,
-            null,
-            values,
-            SQLiteDatabase.CONFLICT_IGNORE
-        )
-        if (insertedId != -1L) {
-            return GlafiraTaskEnqueueResult(task, true)
-        }
+        val db = writableDatabase
+        val ownsTransaction = !db.inTransaction()
+        if (ownsTransaction) db.beginTransaction()
+        try {
+            val insertedId = db.insertWithOnConflict(
+                TABLE_TASKS,
+                null,
+                task.toContentValues(),
+                SQLiteDatabase.CONFLICT_IGNORE
+            )
+            if (insertedId != -1L) {
+                ownerCoreId?.let { insertTaskOwnershipRecord(db, task, it) }
+                if (ownsTransaction) db.setTransactionSuccessful()
+                return GlafiraTaskEnqueueResult(task, true)
+            }
 
-        val existing = findByIdempotency(task.projectId, task.idempotencyKey)
-            ?: throw IllegalStateException("Task ID already exists with a different idempotency key.")
-        return GlafiraTaskEnqueueResult(existing, false)
+            val existing = db.query(
+                TABLE_TASKS,
+                null,
+                "project_id = ? AND idempotency_key = ?",
+                arrayOf(task.projectId, task.idempotencyKey),
+                null, null, null, "1"
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.toTask() else null }
+                ?: throw IllegalStateException("Task ID already exists with a different idempotency key.")
+            if (ownsTransaction) db.setTransactionSuccessful()
+            return GlafiraTaskEnqueueResult(existing, false)
+        } finally {
+            if (ownsTransaction) db.endTransaction()
+        }
     }
 
     /** Adds predecessor edges to an existing queued task atomically. */
@@ -778,6 +896,35 @@ class GlafiraTaskStore(context: Context) :
         return readableDatabase.query(TABLE_TASKS, null, "task_id = ? AND project_id = ?",
             arrayOf(taskId, projectId), null, null, null, "1"
         ).use { if (it.moveToFirst()) it.toTask() else null }
+    }
+
+    /** Project-scoped canonical owner record; deliberately separate from Desktop/Agent leases. */
+    @Synchronized
+    fun taskOwnership(taskId: String, projectId: String): GlafiraTaskOwnershipRecord? {
+        require(taskId.isNotBlank() && projectId.isNotBlank())
+        return readableDatabase.query(
+            TABLE_OWNERSHIP,
+            null,
+            "task_id = ? AND project_id = ?",
+            arrayOf(taskId, projectId),
+            null, null, null, "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else GlafiraTaskOwnershipRecord(
+                taskId = taskId,
+                projectId = projectId,
+                ownerCoreId = cursor.getString(cursor.getColumnIndexOrThrow("owner_core_id")),
+                ownerGeneration = cursor.getLong(cursor.getColumnIndexOrThrow("owner_generation")),
+                stateVersion = cursor.getLong(cursor.getColumnIndexOrThrow("state_version")),
+                payloadSha256 = cursor.getString(cursor.getColumnIndexOrThrow("payload_sha256")),
+                idempotencyKey = cursor.getString(cursor.getColumnIndexOrThrow("idempotency_key")),
+                effectRisk = cursor.getString(cursor.getColumnIndexOrThrow("effect_risk")),
+                approvalRef = cursor.getColumnIndexOrThrow("approval_ref").let {
+                    if (cursor.isNull(it)) null else cursor.getString(it)
+                },
+                createdAtMillis = cursor.getLong(cursor.getColumnIndexOrThrow("created_at")),
+                updatedAtMillis = cursor.getLong(cursor.getColumnIndexOrThrow("updated_at"))
+            )
+        }
     }
 
     @Synchronized
@@ -1573,11 +1720,12 @@ class GlafiraTaskStore(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 10
+        private const val DATABASE_VERSION = 11
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
         private const val TABLE_CORE_RESULTS = "core_task_results"
         private const val TABLE_DEPENDENCIES = "core_task_dependencies"
+        private const val TABLE_OWNERSHIP = "core_task_ownership"
     }
 }
