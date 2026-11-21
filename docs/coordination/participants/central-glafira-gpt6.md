@@ -11,9 +11,9 @@
 
 | Priority | Issue / PR | Scope and files | Branch | Dependencies | Status | Exact head SHA |
 |---|---|---|---|---|---|---|
-| P2 | PR #369, Issue #350, stacked on PR #352 → #347 | Backup button accessibility semantics and emulator regression assertion only | `fix/android-backup-button-merged-semantics-352` | #352 on #347; exact-head emulator acceptance | CI queued/running at last check | `d6e3d8306acd432fed3f4d3de916641388b098eb` |
+| P2 | PR #369, Issue #350, stacked on PR #352 → #347 | Backup button accessibility semantics and emulator regression assertion only | `fix/android-backup-button-merged-semantics-352` | #352 on #347; exact-head emulator acceptance | Android JVM, Shared Contracts and debug APK passed at exact head; managed emulator acceptance still in progress | `b46a1d8496a63a40718192d37571b1ca7359a0de` |
 | P1 audit | Issue #366, PR #347 | Review ownership-generation bypasses; no production edit yet | audit only | #347 must gain complete handoff and all mutation paths must be fenced | Findings recorded in #366 | `be1d81586cd506176db712494ec77f6364faac83` |
-| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Changes committed; docs-only exact-head CI passed on `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd`; all platform checks skipped as expected | `afa441adc3a3e6cc55ec0bbb51d0a0d57c5630cd` |
+| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Changes committed; docs-only exact-head CI passed at `b7f6b6b3010bdba54caf4080401cb55e10dde423`; all platform checks skipped as expected | `b7f6b6b3010bdba54caf4080401cb55e10dde423` |
 
 ## 150-step program tracker
 
@@ -21,7 +21,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 | Cycle | Status | Completed actions | Evidence index / PRs | Validation summary | Open blockers |
 |---:|---|---:|---|---|---|
-| 01 | partial | 6/150 | PR #369; PR #362; Issue #350; Issue #366; Issue #370; PR #347 | Repository state and logs inspected; #369 CI pending; #362 docs CI pending after latest commits | Core generation handoff incomplete; backup emulator regression pending |
+| 01 | partial | 11/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
 
 ## Cycle 01 — capacity audit and parallel portfolio
 
@@ -54,3 +54,9 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 
 
 | C01-A006 | P1 security | Confirmed `main` has branch protection disabled and opened a focused admin-configuration issue. The issue specifies required PR review, exact-head checks, no force-push/direct-push and future CODEOWNERS after collaborator identities are known. | https://github.com/micronizationlab/glafira-ai-hub/issues/370 | Read-only configuration inspection; no settings changed because this requires repository-admin authorization. | complete |
+
+| C01-A007 | P2 | Rechecked exact-head PR #369 CI after removing the invalid Kotlin import. Android JVM suite, shared contracts and debug APK package passed; emulator acceptance is still running. | https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44925230284 ; head `b46a1d8496a63a40718192d37571b1ca7359a0de` | Android JVM success; Shared Contracts success; APK success; Android emulator in progress; Windows/iOS/workflow lint skipped. | in progress |
+| C01-A008 | P4 | Revalidated PR #362 exact-head documentation CI. | https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44925297244 ; head `b7f6b6b3010bdba54caf4080401cb55e10dde423` | Exact-head docs summary success; all platform jobs skipped because docs-only. | complete |
+| C01-A009 | P1 | Read the full owner-approval persistence path on PR #347: request, pending expiry, grant consumption, approve and reject still use task/state predicates without owner-generation binding. Confirmed issue #366's required fix is not covered by executor fencing alone. | https://github.com/micronizationlab/glafira-ai-hub/issues/366 ; PR #347 head `be1d81586cd506176db712494ec77f6364faac83` | Read-only source audit; implementation and regression tests remain outstanding. | complete |
+| C01-A010 | P3 | Audited current Bridge/Desktop integration PRs and dependencies: PR #140 remains draft and stacked on an old backup/Council UI base; PR #61/#62 are already non-draft with historical green evidence but are stacked on predecessor branches, not proof of current-main end-to-end Bridge/Desktop acceptance. | PR #140, #61, #62 | Read-only metadata and scope review; no current end-to-end device test claimed. | complete |
+| C01-A011 | P2 | Opened a focused tracking issue for the exact-head emulator failure and explicitly distinguished the existing conditional guidance from the still-unverified UI/test failure cause. | https://github.com/micronizationlab/glafira-ai-hub/issues/371 | Issue created; waiting for PR #369 emulator result before product-code changes. | complete |
