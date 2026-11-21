@@ -113,6 +113,53 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun portableBackupRestoresMetadataOnlyTraceEvents() = runBlocking {
+        store.enqueue(task("trace-backup-task"))
+        val trace = GlafiraCoreTraceSqliteRepository(store)
+        trace.append(GlafiraCoreTraceDraft(
+            eventId = "backup-trace-event",
+            projectId = "backup-project",
+            taskId = "trace-backup-task",
+            correlationId = "backup-correlation",
+            occurredAtMillis = 2_000L,
+            actorType = GlafiraCoreTraceActorType.CORE,
+            actorId = "core-main",
+            component = "BackupCoordinator",
+            eventType = GlafiraCoreTraceEventType.TASK_CREATED,
+            actionCode = "task.created"
+        ))
+
+        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
+        val archive = coordinator.create(passphrase)
+        try {
+            trace.append(GlafiraCoreTraceDraft(
+                eventId = "trace-created-after-backup",
+                projectId = "backup-project",
+                correlationId = "backup-correlation",
+                occurredAtMillis = 3_000L,
+                actorType = GlafiraCoreTraceActorType.SYSTEM,
+                actorId = "system-main",
+                component = "BackupCoordinator",
+                eventType = GlafiraCoreTraceEventType.BACKUP_STARTED,
+                actionCode = "backup.started"
+            ))
+
+            coordinator.restore(archive, passphrase)
+
+            val restored = trace.query(
+                GlafiraCoreTraceQuery("backup-project"),
+                GlafiraCoreTraceAccessContext("backup-project")
+            ).events
+            assertEquals(listOf("backup-trace-event"), restored.map { it.eventId })
+            assertEquals("trace-backup-task", restored.single().taskId)
+        } finally {
+            archive.delete()
+            passphrase.fill('\\u0000')
+        }
+    }
+
+    @Test
     fun restoreResetsRunningTasksAndDropsSourceDeviceLeasesAndAuthority() = runBlocking {
         store.enqueue(task("running-task"))
         assertEquals("running-task", store.claimNext(nowMillis = 2_500L)?.taskId)
