@@ -14,6 +14,7 @@ class GlafiraCoreOwnerApprovalStore(
 
     private val db: SQLiteDatabase
         get() = taskStore.writableDatabase.also(::ensureSchema)
+    private val traceStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { GlafiraCoreTraceStore(taskStore) }
 
     init {
         ensureSchema(taskStore.writableDatabase)
@@ -37,6 +38,34 @@ class GlafiraCoreOwnerApprovalStore(
         )
         database.execSQL("CREATE INDEX IF NOT EXISTS core_action_approval_status_idx ON core_action_approvals(status, requested_at)")
         database.execSQL("CREATE INDEX IF NOT EXISTS core_action_approval_expiry_idx ON core_action_approvals(status, expires_at)")
+    }
+
+    private fun appendApprovalTrace(
+        database: SQLiteDatabase,
+        task: GlafiraTask,
+        eventType: GlafiraCoreTraceEventType,
+        actionCode: String,
+        nowMillis: Long,
+        actorType: GlafiraCoreTraceActorType = GlafiraCoreTraceActorType.CORE,
+        actorId: String = "core",
+        resultStatus: String
+    ) {
+        traceStore.appendInTransaction(
+            database,
+            GlafiraCoreTraceDraft(
+                projectId = task.projectId,
+                taskId = task.taskId,
+                correlationId = task.taskId,
+                occurredAtMillis = nowMillis,
+                actorType = actorType,
+                actorId = actorId,
+                component = "CoreOwnerApprovalStore",
+                eventType = eventType,
+                actionCode = actionCode,
+                approvalRef = task.taskId,
+                resultStatus = resultStatus
+            )
+        )
     }
 
     @Synchronized
@@ -156,7 +185,15 @@ class GlafiraCoreOwnerApprovalStore(
                 )
             )
             queued = approvalChanged == 1 && taskChanged == 1
-            if (queued) database.setTransactionSuccessful()
+            if (queued) {
+                appendApprovalTrace(
+                    database, currentTask,
+                    GlafiraCoreTraceEventType.APPROVAL_REQUESTED,
+                    "OWNER_APPROVAL_REQUESTED", nowMillis,
+                    resultStatus = "pending"
+                )
+                database.setTransactionSuccessful()
+            }
         } finally {
             database.endTransaction()
         }
@@ -191,10 +228,18 @@ class GlafiraCoreOwnerApprovalStore(
                     "task_id = ? AND status = ? AND action_hash = ?",
                     arrayOf(task.taskId, APPROVED, hash)
                 )
-                if (consumed == 1) grant = ToolApprovalGrant(
-                    row.projectId, row.toolId, row.actionHash,
-                    row.approvedAt, row.grantExpiresAt, task.taskId
-                )
+                if (consumed == 1) {
+                    appendApprovalTrace(
+                        db, task,
+                        GlafiraCoreTraceEventType.APPROVAL_CONSUMED,
+                        "OWNER_APPROVAL_CONSUMED", nowMillis,
+                        resultStatus = "consumed"
+                    )
+                    grant = ToolApprovalGrant(
+                        row.projectId, row.toolId, row.actionHash,
+                        row.approvedAt, row.grantExpiresAt, task.taskId
+                    )
+                }
             } else if (row != null && row.status == APPROVED && row.grantExpiresAt <= nowMillis) {
                 db.update("core_action_approvals", ContentValues().apply { put("status", EXPIRED) },
                     "task_id = ? AND status = ?", arrayOf(task.taskId, APPROVED))
@@ -313,6 +358,14 @@ class GlafiraCoreOwnerApprovalStore(
                         }, "task_id = ? AND state = ?",
                             arrayOf(taskId, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue))
                         if (approved == 1 && requeued == 1) {
+                            appendApprovalTrace(
+                                db, task,
+                                GlafiraCoreTraceEventType.APPROVAL_GRANTED,
+                                "OWNER_APPROVAL_GRANTED", nowMillis,
+                                actorType = GlafiraCoreTraceActorType.OWNER,
+                                actorId = "owner",
+                                resultStatus = "approved"
+                            )
                             result = GlafiraCoreOwnerApprovalMutation.APPROVED
                             db.setTransactionSuccessful()
                         } else result = GlafiraCoreOwnerApprovalMutation.ALREADY_DECIDED
@@ -352,6 +405,14 @@ class GlafiraCoreOwnerApprovalStore(
                 }, "task_id = ? AND state = ?",
                     arrayOf(taskId, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue))
                 if (taskChanged == 1) {
+                    appendApprovalTrace(
+                        db, currentTask,
+                        GlafiraCoreTraceEventType.APPROVAL_REJECTED,
+                        "OWNER_APPROVAL_REJECTED", nowMillis,
+                        actorType = GlafiraCoreTraceActorType.OWNER,
+                        actorId = "owner",
+                        resultStatus = "rejected"
+                    )
                     result = GlafiraCoreOwnerApprovalMutation.REJECTED
                     db.setTransactionSuccessful()
                 } else {
