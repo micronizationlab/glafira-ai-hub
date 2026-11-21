@@ -246,7 +246,7 @@ internal class GlafiraPortableCoreSnapshot(
             .put("result_status", event.resultStatus ?: JSONObject.NULL)
             .put("error_code", event.errorCode ?: JSONObject.NULL)
             .put("approval_ref", event.approvalRef ?: JSONObject.NULL)
-            .put("evidence_refs", JSONArray(event.evidenceRefs))
+            .put("evidence_refs", JSONArray(event.evidenceRefs).toString())
             .put("data_classification", event.dataClassification.name)
             .put("redaction_applied", if (event.redactionApplied) 1 else 0)
             .put("secret_values_stored", if (event.secretValuesStored) 1 else 0)
