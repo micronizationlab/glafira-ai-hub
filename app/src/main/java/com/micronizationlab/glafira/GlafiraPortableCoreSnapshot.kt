@@ -177,9 +177,45 @@ internal class GlafiraPortableCoreSnapshot(
                     require(row.getLong("redaction_applied") == 1L && row.getLong("secret_values_stored") == 0L)
                     val evidence = JSONArray(row.getString("evidence_refs"))
                     require(evidence.length() <= GlafiraCoreTraceEvent.MAX_EVIDENCE_REFS)
-                    for (index in 0 until evidence.length()) {
-                        require(evidence.get(index) is String && GlafiraCoreTraceEvent.isSafeIdentifier(evidence.getString(index)))
+                    val evidenceRefs = buildList {
+                        for (index in 0 until evidence.length()) {
+                            require(evidence.get(index) is String)
+                            add(evidence.getString(index))
+                        }
                     }
+                    val draft = GlafiraCoreTraceDraft(
+                        eventId = row.getString("event_id"),
+                        projectId = row.getString("project_id"),
+                        taskId = taskId,
+                        parentEventId = if (row.isNull("parent_event_id")) null else row.getString("parent_event_id"),
+                        correlationId = row.getString("correlation_id"),
+                        occurredAtMillis = row.getLong("occurred_at"),
+                        actorType = GlafiraCoreTraceActorType.valueOf(row.getString("actor_type")),
+                        actorId = row.getString("actor_id"),
+                        component = row.getString("component"),
+                        eventType = GlafiraCoreTraceEventType.valueOf(row.getString("event_type")),
+                        actionCode = row.getString("action_code"),
+                        targetType = if (row.isNull("target_type")) null else row.getString("target_type"),
+                        targetId = if (row.isNull("target_id")) null else row.getString("target_id"),
+                        resultStatus = if (row.isNull("result_status")) null else row.getString("result_status"),
+                        errorCode = if (row.isNull("error_code")) null else row.getString("error_code"),
+                        approvalRef = if (row.isNull("approval_ref")) null else row.getString("approval_ref"),
+                        evidenceRefs = evidenceRefs,
+                        dataClassification = GlafiraCoreTraceDataClassification.valueOf(row.getString("data_classification")),
+                        durationMs = if (row.isNull("duration_ms")) null else row.getLong("duration_ms")
+                    )
+                    val redacted = GlafiraCoreTraceRedactor.redact(draft)
+                    require(
+                        redacted.actorId == draft.actorId &&
+                        redacted.component == draft.component &&
+                        redacted.actionCode == draft.actionCode &&
+                        redacted.targetType == draft.targetType &&
+                        redacted.targetId == draft.targetId &&
+                        redacted.resultStatus == draft.resultStatus &&
+                        redacted.errorCode == draft.errorCode &&
+                        redacted.approvalRef == draft.approvalRef &&
+                        redacted.evidenceRefs == draft.evidenceRefs
+                    ) { "Trace snapshot contains unredacted metadata." }
                 } else {
                     val project = projects[row.getString("task_id")] ?: error("Запись без исходной задачи.")
                     if (row.has("project_id")) require(project == row.getString("project_id"))
