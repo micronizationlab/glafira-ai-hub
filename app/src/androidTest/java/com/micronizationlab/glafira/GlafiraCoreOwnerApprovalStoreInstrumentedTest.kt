@@ -233,7 +233,7 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
             3_000L
         ))
         val pending = approvals.pendingApprovals(3_001L).single()
-        assertTrue(approvals.pendingApprovals(pending.expiresAt).isEmpty())
+        assertTrue(approvals.pendingApprovals(pending.expiresAtMillis).isEmpty())
         assertEquals(GlafiraTaskState.FAILED, taskStore.getTask(original.taskId)?.state)
         val expired = GlafiraCoreTraceStore(taskStore).query(
             GlafiraCoreTraceQuery("approval-project", taskId = original.taskId),
