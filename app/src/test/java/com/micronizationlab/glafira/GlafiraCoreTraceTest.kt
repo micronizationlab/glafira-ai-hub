@@ -96,6 +96,21 @@ class GlafiraCoreTraceTest {
     }
 
     @Test
+    fun uuidIdentifiersAreNotMistakenForPhoneNumbers() {
+        val numericUuid = "12345678-1234-4234-9234-123456789012"
+        val event = GlafiraCoreTraceRedactor.redact(draft().copy(
+            eventId = numericUuid,
+            projectId = numericUuid,
+            taskId = numericUuid,
+            correlationId = numericUuid
+        ))
+        assertEquals(numericUuid, event.eventId)
+        assertEquals(numericUuid, event.projectId)
+        assertEquals(numericUuid, event.taskId)
+        assertEquals(numericUuid, event.correlationId)
+    }
+
+    @Test
     fun projectScopedAccessCanOptIntoProjectLevelEventsOnlyExplicitly() {
         val projectEvent = GlafiraCoreTraceRedactor.redact(draft().copy(taskId = null))
         assertFalse(GlafiraCoreTraceAccessContext("project-001", setOf("task-001")).canRead(projectEvent))

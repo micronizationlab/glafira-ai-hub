@@ -42,8 +42,12 @@ data class GlafiraTaskEnqueueResult(
 
 internal object GlafiraTaskPolicy {
     fun validate(task: GlafiraTask) {
-        require(task.taskId.isNotBlank()) { "Task ID is required." }
-        require(task.projectId.isNotBlank()) { "Project ID is required." }
+        require(GlafiraCoreTraceEvent.isSafeIdentifier(task.taskId)) {
+            "Task ID must be a safe, stable Core identifier."
+        }
+        require(GlafiraCoreTraceEvent.isSafeIdentifier(task.projectId)) {
+            "Project ID must be a safe, stable Core identifier."
+        }
         require(task.taskType.isNotBlank()) { "Task type is required." }
         require(task.origin.isNotBlank()) { "Task origin is required." }
         require(task.idempotencyKey.isNotBlank()) { "Idempotency key is required." }
