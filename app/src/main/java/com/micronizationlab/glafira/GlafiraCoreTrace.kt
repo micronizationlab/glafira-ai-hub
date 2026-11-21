@@ -24,7 +24,7 @@ enum class GlafiraCoreTraceDataClassification { PUBLIC, INTERNAL, CONFIDENTIAL, 
  * Producers must pass it through GlafiraCoreTraceRedactor before persistence.
  */
 data class GlafiraCoreTraceDraft(
-    val eventId: String = UUID.randomUUID().toString(),
+    val eventId: String = "evt${UUID.randomUUID()}",
     val projectId: String,
     val taskId: String? = null,
     val parentEventId: String? = null,
@@ -114,6 +114,8 @@ object GlafiraCoreTraceRedactor {
     private val email = Regex("(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b")
     private val url = Regex("(?i)\\b[a-z][a-z0-9+.-]*://[^\\s]+")
     private val phone = Regex("(?<![A-Za-z0-9])\\+?[0-9][0-9 ()-]{8,}[0-9](?![A-Za-z0-9])")
+    // UUIDs are opaque stable identifiers, not telephone numbers. Strip them before phone scanning.
+    private val uuid = Regex("(?i)(?:evt)?[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 
     fun redact(draft: GlafiraCoreTraceDraft): GlafiraCoreTraceEvent {
         require(draft.occurredAtMillis > 0L) { "TRACE_TIMESTAMP_INVALID" }
@@ -154,9 +156,11 @@ object GlafiraCoreTraceRedactor {
         return value
     }
 
-    private fun containsSensitiveValue(value: String): Boolean =
-        secretPatterns.any { it.containsMatchIn(value) } ||
-            email.containsMatchIn(value) || url.containsMatchIn(value) || phone.containsMatchIn(value)
+    private fun containsSensitiveValue(value: String): Boolean {
+        val withoutUuids = uuid.replace(value, "")
+        return secretPatterns.any { it.containsMatchIn(value) } ||
+            email.containsMatchIn(value) || url.containsMatchIn(value) || phone.containsMatchIn(withoutUuids)
+    }
 
     private fun safeIdentifier(raw: String): String =
         sanitize(raw, GlafiraCoreTraceEvent::isSafeIdentifier)
