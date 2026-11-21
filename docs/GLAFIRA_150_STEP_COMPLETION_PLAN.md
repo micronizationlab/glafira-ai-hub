@@ -206,7 +206,7 @@
 
 ## Execution ledger — 2026-11-21
 
-**Refreshed main after this wave:** `60ba9b5a95eefaaed351c3f769a6c725a27b35d5`.
+**Refreshed main after this wave:** `92e34759378c7636bd148766e7553bd1e1fde29c`.
 
 ### Verified complete
 
@@ -217,7 +217,7 @@
 
 ### In progress
 
-- Step 73: DPAPI-protected active-lease journal and durable terminal-result outbox in PR #231, merged as `85fcf6779b15b045bef663ce8bede67398a6300b`. Initial Windows CI exposed that System.Text.Json cannot deserialize `IReadOnlySet<string>`; a dedicated converter was added in commit `832e7f0e9b74e38c447b67f63291c45a29614b6b`. Exact-head Windows Agent tests/build, shared contracts and x64 package validation passed.
+- Step 73: complete. PR #231 added the DPAPI journal; PR #235 added the full lease envelope to every pending result so a restarted Agent can reconstruct the exact result submission. PR #235 merged as `92e34759378c7636bd148766e7553bd1e1fde29c` after exact-head Windows Agent tests/build, shared contracts and package validation passed.
 - Android voice delivery PR #225: JVM tests and debug APK pass on head `c9a5039d760c28a8f78eff25107f2a7c0ae42aa3`; the emulator suite is still running. The unrelated backup guidance selector was corrected from content-description lookup to visible-text lookup.
 - PR #232 merged after exact-head Windows Agent tests, Desktop Hub tests, shared contract conformance and both x64 package builds passed.
 
