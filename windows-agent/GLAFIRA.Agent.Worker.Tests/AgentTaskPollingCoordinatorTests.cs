@@ -82,6 +82,51 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task MismatchedProgressAckKeepsProgressDurableAndDoesNotStartHandler()
+    {
+        var state = ReadyState();
+        var handler = new TestHandler("web.research");
+        var transport = new FakeTransport(Lease()) { ReturnMismatchedProgressAck = true };
+        var journal = Journal();
+        var coordinator = Coordinator(state, [handler], transport, journal);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            coordinator.PollOnceAsync(Credential(), CancellationToken.None));
+
+        Assert.Equal(0, handler.Calls);
+        var snapshot = await journal.LoadAsync(CancellationToken.None);
+        Assert.Single(snapshot.ActiveLeases);
+        Assert.Single(snapshot.PendingProgresses);
+    }
+
+    [Fact]
+    public async Task UnacknowledgedProgressIsRetriedAfterRestartBeforeHandlerRuns()
+    {
+        var state = ReadyState();
+        var handler = new TestHandler("web.research");
+        var lease = Lease();
+        var journal = Journal();
+        var interruptedTransport = new FakeTransport(lease) { FailInitialRunningUpdates = 1 };
+        var interruptedCoordinator = Coordinator(state, [handler], interruptedTransport, journal);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            interruptedCoordinator.PollOnceAsync(Credential(), CancellationToken.None));
+        Assert.Equal(0, handler.Calls);
+        var interrupted = await journal.LoadAsync(CancellationToken.None);
+        Assert.Single(interrupted.ActiveLeases);
+        Assert.Single(interrupted.PendingProgresses);
+
+        var restartedTransport = new FakeTransport();
+        var restartedCoordinator = Coordinator(state, [handler], restartedTransport, journal);
+        Assert.True(await restartedCoordinator.PollOnceAsync(Credential(), CancellationToken.None));
+
+        Assert.Equal(1, handler.Calls);
+        Assert.Contains(restartedTransport.Updates, update => update.State == "RUNNING");
+        Assert.Empty((await journal.LoadAsync(CancellationToken.None)).PendingProgresses);
+        Assert.Empty((await journal.LoadAsync(CancellationToken.None)).PendingResults);
+    }
+
+    [Fact]
     public async Task StaleLeaseRejectionBeforeStartNeverInvokesHandler()
     {
         var state = ReadyState();
@@ -295,9 +340,11 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
         public int RejectTerminalUpdates { get; set; }
         public int FailRenewalUpdates { get; set; }
         public int RejectInitialRunningUpdates { get; set; }
+        public int FailInitialRunningUpdates { get; set; }
         private int _runningAttempts;
         public int TerminalAttempts { get; private set; }
         public bool ReturnMismatchedAck { get; set; }
+        public bool ReturnMismatchedProgressAck { get; set; }
         public IReadOnlyList<string> LastSupportedTaskTypes { get; private set; } = [];
         public List<RecordedUpdate> Updates { get; } = [];
 
@@ -332,6 +379,11 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
                     RejectInitialRunningUpdates--;
                     throw new InvalidDataException("LEASE_FENCING_REJECTED");
                 }
+                if (_runningAttempts == 1 && FailInitialRunningUpdates > 0)
+                {
+                    FailInitialRunningUpdates--;
+                    throw new HttpRequestException("simulated lost progress ACK");
+                }
                 if (_runningAttempts > 1 && FailRenewalUpdates > 0)
                 {
                     FailRenewalUpdates--;
@@ -354,7 +406,8 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
             }
 
             var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson))).ToLowerInvariant();
-            var taskId = ReturnMismatchedAck && (state is "SUCCEEDED" or "FAILED") ? "wrong-task" : lease.TaskId;
+            var taskId = ReturnMismatchedProgressAck && state == "RUNNING" ||
+                ReturnMismatchedAck && (state is "SUCCEEDED" or "FAILED") ? "wrong-task" : lease.TaskId;
             var leaseExpiry = state is "ACCEPTED" or "RUNNING"
                 ? DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeMilliseconds()
                 : 0L;
