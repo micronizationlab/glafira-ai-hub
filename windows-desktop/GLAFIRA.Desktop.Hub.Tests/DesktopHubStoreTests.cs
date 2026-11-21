@@ -312,6 +312,83 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void OwnerCanCancelQueuedTaskAndItCannotBeClaimed()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-cancel", "device-cancel", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("queued-cancel"), now);
+
+        Assert.True(_store.CancelTask("queued-cancel", now.AddSeconds(1)));
+        Assert.Equal(HubTaskState.Cancelled, _store.GetTaskState("queued-cancel"));
+        Assert.Null(_store.ClaimNext("agent-cancel", now.AddSeconds(2), TimeSpan.FromMinutes(1)));
+        Assert.False(_store.CancelTask("queued-cancel", now.AddSeconds(3)));
+
+        var last = Assert.Last(_store.GetTaskHistory("queued-cancel"));
+        Assert.Equal(HubTaskState.Cancelled, last.State);
+        Assert.Equal("TASK_CANCELLED_OWNER_REQUEST", last.EventCode);
+    }
+
+    [Fact]
+    public void OwnerCancellationFencesAnActiveReadOnlyLease()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-cancel-read", "device-cancel-read", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("leased-read-cancel", risk: HubTaskEffectRisk.ReadOnly), now);
+        var lease = _store.ClaimNext("agent-cancel-read", now, TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+
+        Assert.True(_store.CancelTask("leased-read-cancel", now.AddSeconds(1)));
+        Assert.Equal(HubTaskState.Cancelled, _store.GetTaskState("leased-read-cancel"));
+        Assert.False(_store.ReportProgress("agent-cancel-read", lease.TaskId, lease.LeaseId,
+            lease.FencingToken, 50, "late progress", now.AddSeconds(2)));
+        Assert.False(_store.Complete("agent-cancel-read", lease.TaskId, lease.LeaseId,
+            lease.FencingToken, succeeded: true, now.AddSeconds(3)));
+        Assert.Equal("TASK_CANCELLED_OWNER_REQUEST",
+            Assert.Last(_store.GetTaskHistory("leased-read-cancel")).EventCode);
+    }
+
+    [Theory]
+    [InlineData(HubTaskEffectRisk.LocalWrite)]
+    [InlineData(HubTaskEffectRisk.ExternalSideEffect)]
+    public void CancellingLeasedNonReadOnlyTaskBecomesOutcomeUnknown(HubTaskEffectRisk risk)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var agentId = "agent-cancel-risk";
+        var taskId = "leased-risk-cancel-" + risk;
+        _store.RegisterAgent(new HubAgentRegistration(agentId, "device-cancel-risk", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask(taskId, risk: risk), now);
+        var lease = _store.ClaimNext(agentId, now, TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+
+        Assert.True(_store.CancelTask(taskId, now.AddSeconds(1)));
+
+        Assert.Equal(HubTaskState.OutcomeUnknown, _store.GetTaskState(taskId));
+        Assert.False(_store.ReportProgress(agentId, lease.TaskId, lease.LeaseId,
+            lease.FencingToken, 50, "late progress", now.AddSeconds(2)));
+        Assert.False(_store.Complete(agentId, lease.TaskId, lease.LeaseId,
+            lease.FencingToken, succeeded: true, now.AddSeconds(3)));
+        Assert.Empty(_store.RecoverExpiredLeases(now.AddMinutes(2)));
+        var last = Assert.Last(_store.GetTaskHistory(taskId));
+        Assert.Equal(HubTaskState.OutcomeUnknown, last.State);
+        Assert.Equal("TASK_CANCELLED_OUTCOME_UNKNOWN", last.EventCode);
+    }
+
+    [Fact]
+    public void OwnerCannotCancelAlreadyTerminalTask()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration("agent-cancel-terminal", "device-cancel-terminal", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("terminal-cancel"), now);
+        var lease = _store.ClaimNext("agent-cancel-terminal", now, TimeSpan.FromMinutes(1));
+        Assert.NotNull(lease);
+        Assert.True(_store.Complete("agent-cancel-terminal", lease.TaskId, lease.LeaseId,
+            lease.FencingToken, succeeded: true, now.AddSeconds(1)));
+
+        Assert.False(_store.CancelTask("terminal-cancel", now.AddSeconds(2)));
+        Assert.Equal(HubTaskState.Succeeded, _store.GetTaskState("terminal-cancel"));
+    }
+
+    [Fact]
     public void ExpiredLeaseRecoveryIsRecordedInTaskHistory()
     {
         var now = DateTimeOffset.UtcNow;
