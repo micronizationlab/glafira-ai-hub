@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.mergeDescendants
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -298,6 +299,9 @@ fun BackupSettingsSection() {
                         enabled = !busy,
                         modifier = Modifier
                             .weight(1f)
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "Создать резервную копию сейчас"
+                            }
                     ) { Text("Сохранить сейчас") }
                     OutlinedButton(
                         onClick = {
