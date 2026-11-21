@@ -14,7 +14,7 @@ public enum BridgeTransportError: Error, Equatable, Sendable {
     case unsupportedResponseVersion
 }
 
-/// HTTPS transport for the Android LAN Bridge. It requires an owner-supplied
+/// HTTPS transport for the authoritative Windows Desktop Hub. It requires an owner-supplied
 /// SHA-256 leaf-certificate pin and independently validates the TLS server
 /// certificate for the requested hostname. Redirects are never followed.
 public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate, @unchecked Sendable {
@@ -38,7 +38,7 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
               url.scheme?.lowercased() == "https",
               let host = url.host, !host.isEmpty,
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
-              url.path.isEmpty || url.path == "/",
+              url.path == "/bridge/v1",
               (url.port == nil || (1...65_535).contains(url.port!)) else {
             throw BridgeTransportError.invalidOrigin
         }
@@ -54,17 +54,23 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
         super.init()
     }
 
-    public func submitPairing(_ submission: BridgePairingSubmission) async throws -> BridgePairingPendingResponse {
-        var request = URLRequest(url: origin.appendingPathComponent("bridge").appendingPathComponent("v1").appendingPathComponent("pairing"))
+    public func redeemPairing(_ invitation: BridgePairingInvitation) async throws -> BridgePairingEnrollmentResponse {
+        guard invitation.endpoint == origin.absoluteString,
+              invitation.certificateSHA256.caseInsensitiveCompare(
+                expectedPin.map { String(format: "%02x", $0) }.joined()
+              ) == .orderedSame else {
+            throw BridgeTransportError.invalidHTTPResponse
+        }
+        var request = URLRequest(url: origin.appendingPathComponent("pair"))
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("close", forHTTPHeaderField: "Connection")
-        request.httpBody = try JSONEncoder().encode(submission)
+        request.httpBody = try JSONEncoder().encode(BridgePairingRequest(invitation: invitation))
         let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 202 else {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw BridgeTransportError.invalidHTTPResponse
         }
         var data = Data()
@@ -72,9 +78,7 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
             guard data.count < maximumResponseBytes else { throw BridgeTransportError.responseTooLarge }
             data.append(byte)
         }
-        let pending = try JSONDecoder().decode(BridgePairingPendingResponse.self, from: data)
-        guard pending.status == "PENDING_OWNER_APPROVAL" else { throw BridgeTransportError.invalidHTTPResponse }
-        return pending
+        return try BridgePairingEnrollmentResponse.decodeStrict(data)
     }
 
     public func send(_ unsignedRequest: BridgeRequest, credentialStore: KeychainBridgeCredentialStore) async throws -> BridgeResponse {
@@ -83,7 +87,7 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
             reason: "Подтвердите использование ключа GLAFIRA Bridge"
         )
         let signed = try BridgeProtocol.sign(unsignedRequest, secret: credential.hmacSecret)
-        var request = URLRequest(url: origin.appendingPathComponent("bridge").appendingPathComponent("v1").appendingPathComponent("requests"))
+        var request = URLRequest(url: origin)
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -153,7 +157,7 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
 private extension JSONEncoder {
     static var bridgeEncoder: JSONEncoder {
         let encoder = JSONEncoder()
-        // Android's JSON contract uses lower camelCase.
+        // Windows Hub's JSON web contract uses lower camelCase.
         return encoder
     }
 }

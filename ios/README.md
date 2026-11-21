@@ -10,9 +10,8 @@ Core, memory authority, or privileged device.
 - `OwnerBiometricAuthenticator`: explicit Face ID/Touch ID owner-presence check for sensitive actions. Cancellation, lockout, unavailable biometrics and errors fail closed.
 - `OwnerBiometricGateView`: reusable SwiftUI confirmation surface; the protected callback runs only after successful biometric authentication.
 - `GlafiraBridgeKit`: versioned Bridge request/response models, Kotlin-compatible canonical HMAC-SHA256 signing, signature verification and envelope validation.
-- `PinnedBridgeHTTPSClient`: HTTPS-only transport for Android `/bridge/v1/requests` and `/bridge/v1/pairing`; checks the owner-supplied SHA-256 leaf pin, validates the certificate for the expected hostname, rejects redirects and bounds response bodies.
-- `BridgePairing`: Android-compatible one-time pairing proof; a successful submission only enters the Android owner-approval queue and never grants scopes or creates credentials.
-- `BridgeCredentialBundleImporter`: parses the exact `GLAFIRA_BRIDGE_CREDENTIAL_V1` bundle currently copied from Android's owner approval screen, verifies the expected HTTPS origin and certificate fingerprint, rejects unknown fields and scope escalation, and stores the 256-bit HMAC key only after fresh Face ID/Touch ID confirmation.
+- `PinnedBridgeHTTPSClient`: HTTPS-only transport for the Windows Hub `/bridge/v1` and `/bridge/v1/pair` routes; checks the owner-supplied SHA-256 leaf pin, validates the certificate for the expected hostname, rejects redirects and bounds response bodies.
+- `BridgePairing`: parses the exact owner-created Windows Hub invitation, redeems its single-use 256-bit code, rejects response correlation or scope escalation, and saves the returned credential only after fresh Face ID/Touch ID confirmation.
 - `GlafiraBridgeKitTests`: protocol tests including a fixed HMAC golden vector
   shared with the Kotlin implementation.
 - `.github/workflows/ios.yml`: macOS CI runs `swift test` for the package.
@@ -35,7 +34,7 @@ Requires Swift 5.9 or later and the Apple CryptoKit framework.
 - Protocol version and typed operation names must match Android/Desktop exactly.
 - HMAC canonicalization uses UTF-16 code-unit lengths to match Kotlin
   `String.length`; the golden test detects accidental serialization drift.
-- Paired device HMAC credentials are stored only in Apple Keychain with device-only accessibility and current-biometric-set protection. Credential import must use the exact bundle shown by Android's owner approval screen after explicit approval. The current Android workflow transfers this bundle by a sensitive clipboard handoff; it is not yet a network grant endpoint.
+- Paired-device HMAC credentials are stored only in Apple Keychain with device-only accessibility and current-biometric-set protection. Enrollment accepts only the exact Windows Hub invitation endpoint and TLS fingerprint, and the response must match its Agent ID, ticket, endpoint and granted-scope subset.
 - Signature verification is not authorization. All operations remain subject
   to Gateway/Core admission, project scope, replay protection, revocation and
   owner approval.
@@ -76,10 +75,6 @@ Requires Swift 5.9 or later and the Apple CryptoKit framework.
    shared Core memory/event contract is stable.
 
 
-## Native Android pairing screen
+## Native Windows Hub pairing screen
 
-The `GlafiraIOSUI` target now includes `BridgePairingView`, linked from the root navigation. The flow accepts the Android one-time invitation JSON, validates its HTTPS origin, certificate fingerprint and expiry, creates the cross-platform HMAC proof, and submits it to `/bridge/v1/pairing`. It displays the server-issued approval ID while the Android owner reviews the request.
-
-After owner approval, paste the Android `GLAFIRA_BRIDGE_CREDENTIAL_V1` bundle into the import section. The importer requires the approval ID returned by this exact request and the original invitation ticket ID, in addition to matching server identity and requested scopes. It then requires local Face ID / Touch ID and stores the 256-bit secret in device-only Keychain. The secret is never sent back to Android or written to ordinary preferences.
-
-The Android handoff schema now includes `approvalId` and `ticketId`. Android obtains these from the durable approval record/outbox relation; neither value is regenerated during credential delivery.
+The `GlafiraIOSUI` target includes `BridgePairingView`, linked from the root navigation. The flow accepts the Windows Hub one-time invitation JSON, validates its `/bridge/v1` HTTPS endpoint, certificate fingerprint, scope set and expiry, then submits the exact typed request to `/bridge/v1/pair`. The correlated 256-bit response secret is stored in the device-only Keychain only after Face ID / Touch ID confirmation.

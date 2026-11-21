@@ -3,119 +3,110 @@ import XCTest
 @testable import GlafiraBridgeKit
 
 final class BridgePairingTests: XCTestCase {
-    func testParsesExactAndroidInvitationBundle() throws {
-        let json = try JSONSerialization.data(withJSONObject: [
-            "format": "GLAFIRA_BRIDGE_INVITATION_V1",
-            "origin": "https://192.168.1.20:47321",
-            "ticketId": "0123456789abcdef",
-            "pairingCapability": Data(repeating: 0x2A, count: 32).base64EncodedString()
-                .replacingOccurrences(of: "+", with: "-")
-                .replacingOccurrences(of: "/", with: "_")
-                .replacingOccurrences(of: "=", with: ""),
-            "serverCertificateSha256": String(repeating: "a", count: 64),
-            "expiresAtEpochMs": 2_000_000
-        ])
-        let invitation = try BridgePairingInvitation.parseAndroidBundle(json, nowEpochMs: 1_950_000)
-        XCTAssertEqual(invitation.origin, "https://192.168.1.20:47321")
-        XCTAssertEqual(invitation.ticketId, "0123456789abcdef")
-        XCTAssertEqual(invitation.expiresAtEpochMs, 2_000_000)
-    }
+    private let endpoint = "https://192.168.1.20:8443/bridge/v1"
+    private let pin = String(repeating: "a", count: 64)
+    private let pairingCode = Data(repeating: 0x2A, count: 32).base64URLForTest()
 
-    func testInvitationParserRejectsUnknownFieldsAndExpiredTickets() throws {
-        let base: [String: Any] = [
-            "format": "GLAFIRA_BRIDGE_INVITATION_V1",
-            "origin": "https://192.168.1.20:47321",
-            "ticketId": "0123456789abcdef",
-            "pairingCapability": Data(repeating: 0x2A, count: 32).base64EncodedString(),
-            "serverCertificateSha256": String(repeating: "a", count: 64),
+    private func bundle(extra: [String: Any] = [:]) throws -> Data {
+        var object: [String: Any] = [
+            "version": 1,
+            "agentId": "ios-device-0001",
+            "endpoint": endpoint,
+            "tlsCertificateSha256": pin,
+            "ticketId": "0123456789abcdef0123456789abcdef",
+            "pairingCode": pairingCode,
+            "scopes": ["ownership.read", "project.read"],
             "expiresAtEpochMs": 2_000_000
         ]
-        var extra = base
-        extra["untrusted"] = true
-        XCTAssertThrowsError(try BridgePairingInvitation.parseAndroidBundle(
-            JSONSerialization.data(withJSONObject: extra), nowEpochMs: 1_950_000
-        ))
-        var expired = base
-        expired["expiresAtEpochMs"] = 1_949_999
-        XCTAssertThrowsError(try BridgePairingInvitation.parseAndroidBundle(
-            JSONSerialization.data(withJSONObject: expired), nowEpochMs: 1_950_000
-        ))
+        extra.forEach { object[$0.key] = $0.value }
+        return try JSONSerialization.data(withJSONObject: object)
     }
 
-    func testPairingProofUsesAndroidCompatibleHmacConstruction() throws {
-        let capability = Data(repeating: 0x2A, count: 32)
-        let invitation = BridgePairingInvitation(
-            origin: "https://192.168.1.20:47321",
-            certificateSHA256: String(repeating: "a", count: 64),
-            ticketId: "0123456789abcdef",
-            pairingCapability: capability.base64URLEncodedStringForTest(),
-            expiresAtEpochMs: 2_000_000
+    func testParsesExactWindowsDesktopHubInvitation() throws {
+        let invitation = try BridgePairingInvitation.parseDesktopHubBundle(
+            bundle(), nowEpochMs: 1_950_000
         )
-
-        let submission = try BridgePairing.makeSubmission(
-            invitation: invitation,
-            deviceLabel: "GLAFIRA iPhone",
-            requestedScopes: ["project.read"],
-            nowEpochMs: 1_950_000
-        )
-
-        XCTAssertEqual(submission.ticketId, invitation.ticketId)
-        XCTAssertEqual(submission.platform, .ios)
-        XCTAssertEqual(submission.proofHex.count, 64)
-        XCTAssertEqual(submission.clientNonce.count, 43)
-        XCTAssertEqual(submission.requestedScopes, ["project.read"])
+        XCTAssertEqual(invitation.endpoint, endpoint)
+        XCTAssertEqual(invitation.agentId, "ios-device-0001")
+        XCTAssertEqual(invitation.ticketId, "0123456789abcdef0123456789abcdef")
+        XCTAssertEqual(invitation.scopes, ["ownership.read", "project.read"])
     }
 
-    func testPairingRejectsExpiredInvitation() {
-        let invitation = BridgePairingInvitation(
-            origin: "https://192.168.1.20:47321",
-            certificateSHA256: String(repeating: "a", count: 64),
-            ticketId: "0123456789abcdef",
-            pairingCapability: Data(repeating: 0x01, count: 32).base64URLEncodedStringForTest(),
-            expiresAtEpochMs: 1_000
-        )
-        XCTAssertThrowsError(try BridgePairing.makeSubmission(
-            invitation: invitation,
-            deviceLabel: "iPhone",
-            requestedScopes: [],
-            nowEpochMs: 1_001
+    func testRejectsUnknownFieldsExpiredTicketAndNonHubPath() throws {
+        XCTAssertThrowsError(try BridgePairingInvitation.parseDesktopHubBundle(
+            bundle(extra: ["untrusted": true]), nowEpochMs: 1_950_000
         ))
-    }
-
-    func testPairingRejectsDuplicateScopesAndInvalidCapability() {
-        let validCapability = Data(repeating: 0x01, count: 32).base64URLEncodedStringForTest()
-        let invitation = BridgePairingInvitation(
-            origin: "https://192.168.1.20:47321",
-            certificateSHA256: String(repeating: "a", count: 64),
-            ticketId: "0123456789abcdef",
-            pairingCapability: validCapability,
-            expiresAtEpochMs: 2_000_000
-        )
-        XCTAssertThrowsError(try BridgePairing.makeSubmission(
-            invitation: invitation,
-            deviceLabel: "iPhone",
-            requestedScopes: ["project.read", "project.read"],
+        XCTAssertThrowsError(try BridgePairingInvitation.parseDesktopHubBundle(
+            bundle(), nowEpochMs: 2_000_000
+        ))
+        XCTAssertThrowsError(try BridgePairingInvitation.parseDesktopHubBundle(
+            bundle(extra: ["endpoint": "https://192.168.1.20:8443/bridge/v1/requests"]),
             nowEpochMs: 1_950_000
         ))
     }
 
-    func testTransportRejectsPlainHTTPAndMalformedPin() {
+    func testEnrollmentResponseYieldsOnlyCorrelatedCredential() throws {
+        let invitation = try BridgePairingInvitation.parseDesktopHubBundle(
+            bundle(), nowEpochMs: 1_950_000
+        )
+        let response = BridgePairingEnrollmentResponse(
+            version: 1,
+            status: "ENROLLED",
+            errorCode: nil,
+            agentId: invitation.agentId,
+            enrollmentId: invitation.ticketId,
+            desktopHubId: "desktop-hub-0001",
+            endpoint: invitation.endpoint,
+            tlsCertificateSha256: invitation.certificateSHA256,
+            sharedSecretBase64: Data(repeating: 0x5C, count: 32).base64EncodedString(),
+            scopes: ["project.read"],
+            enrolledAtEpochMs: 1_940_000,
+            expiresAtEpochMs: 3_000_000
+        )
+        let credential = try response.credential(matching: invitation, nowEpochMs: 1_950_000)
+        XCTAssertEqual(credential.deviceId, invitation.agentId)
+        XCTAssertEqual(credential.hmacSecret, Data(repeating: 0x5C, count: 32))
+
+        let escalated = BridgePairingEnrollmentResponse(
+            version: 1, status: "ENROLLED", errorCode: nil,
+            agentId: invitation.agentId, enrollmentId: invitation.ticketId,
+            desktopHubId: "desktop-hub-0001", endpoint: invitation.endpoint,
+            tlsCertificateSha256: invitation.certificateSHA256,
+            sharedSecretBase64: Data(repeating: 0x5C, count: 32).base64EncodedString(),
+            scopes: ["admin.root"], enrolledAtEpochMs: 1_940_000,
+            expiresAtEpochMs: 3_000_000
+        )
+        XCTAssertThrowsError(try escalated.credential(matching: invitation, nowEpochMs: 1_950_000))
+    }
+
+    func testEnrollmentDecoderRejectsUnknownResponseFields() throws {
+        let response: [String: Any] = [
+            "version": 1, "status": "FAILED", "errorCode": "PAIRING_REJECTED",
+            "agentId": NSNull(), "enrollmentId": NSNull(), "desktopHubId": NSNull(),
+            "endpoint": NSNull(), "tlsCertificateSha256": NSNull(),
+            "sharedSecretBase64": NSNull(), "scopes": [],
+            "enrolledAtEpochMs": NSNull(), "expiresAtEpochMs": NSNull(),
+            "unexpected": "value"
+        ]
+        XCTAssertThrowsError(try BridgePairingEnrollmentResponse.decodeStrict(
+            JSONSerialization.data(withJSONObject: response)
+        ))
+    }
+
+    func testTransportRequiresExactWindowsHubEndpointAndPin() {
+        XCTAssertNoThrow(try PinnedBridgeHTTPSClient(origin: endpoint, certificateSHA256: pin))
         XCTAssertThrowsError(try PinnedBridgeHTTPSClient(
-            origin: "http://192.168.1.20:47321",
-            certificateSHA256: String(repeating: "a", count: 64)
+            origin: "https://192.168.1.20:8443", certificateSHA256: pin
         ))
         XCTAssertThrowsError(try PinnedBridgeHTTPSClient(
-            origin: "https://192.168.1.20:47321",
-            certificateSHA256: "not-a-fingerprint"
+            origin: "http://192.168.1.20:8443/bridge/v1", certificateSHA256: pin
         ))
     }
 }
 
 private extension Data {
-    func base64URLEncodedStringForTest() -> String {
-        base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+    func base64URLForTest() -> String {
+        base64EncodedString().replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
     }
 }

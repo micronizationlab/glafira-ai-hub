@@ -1,157 +1,192 @@
 import Foundation
-import CryptoKit
-import Security
 import CoreFoundation
 
-public enum BridgeClientPlatform: String, Codable, Sendable {
-    case ios = "IOS"
-}
-
-public struct BridgePairingInvitation: Codable, Sendable {
-    public let origin: String
+/// Exact owner-created invitation emitted by the authoritative Windows Desktop Hub.
+public struct BridgePairingInvitation: Sendable {
+    public let version: Int
+    public let agentId: String
+    public let endpoint: String
     public let certificateSHA256: String
     public let ticketId: String
-    public let pairingCapability: String
+    public let pairingCode: String
+    public let scopes: Set<String>
     public let expiresAtEpochMs: Int64
 
-    public init(origin: String, certificateSHA256: String, ticketId: String,
-                pairingCapability: String, expiresAtEpochMs: Int64) {
-        self.origin = origin
+    public init(
+        version: Int = 1,
+        agentId: String,
+        endpoint: String,
+        certificateSHA256: String,
+        ticketId: String,
+        pairingCode: String,
+        scopes: Set<String>,
+        expiresAtEpochMs: Int64
+    ) {
+        self.version = version
+        self.agentId = agentId
+        self.endpoint = endpoint
         self.certificateSHA256 = certificateSHA256
         self.ticketId = ticketId
-        self.pairingCapability = pairingCapability
+        self.pairingCode = pairingCode
+        self.scopes = scopes
         self.expiresAtEpochMs = expiresAtEpochMs
     }
-}
 
-public struct BridgePairingSubmission: Codable, Sendable {
-    public let ticketId: String
-    public let clientNonce: String
-    public let proofHex: String
-    public let deviceLabel: String
-    public let platform: BridgeClientPlatform
-    public let requestedScopes: [String]
-}
-
-public struct BridgePairingPendingResponse: Codable, Sendable {
-    public let status: String
-    public let approvalId: String
-    public let receivedAtEpochMs: Int64
-}
-
-
-public enum BridgeInvitationError: Error, Equatable, Sendable {
-    case invalidFormat
-    case expired
-    case invalidServerIdentity
-}
-
-/// Parses the exact one-time invitation JSON exported by the Android owner screen.
-public extension BridgePairingInvitation {
-    static func parseAndroidBundle(
+    public static func parseDesktopHubBundle(
         _ json: Data,
         nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
     ) throws -> BridgePairingInvitation {
         guard (1...8_192).contains(json.count),
               let object = try JSONSerialization.jsonObject(with: json) as? [String: Any],
               Set(object.keys) == Set([
-                "format", "origin", "ticketId", "pairingCapability",
-                "serverCertificateSha256", "expiresAtEpochMs"
+                "version", "agentId", "endpoint", "tlsCertificateSha256", "ticketId",
+                "pairingCode", "scopes", "expiresAtEpochMs"
               ]),
-              object["format"] as? String == "GLAFIRA_BRIDGE_INVITATION_V1",
-              let origin = object["origin"] as? String,
+              let versionNumber = object["version"] as? NSNumber,
+              CFGetTypeID(versionNumber) != CFBooleanGetTypeID(),
+              versionNumber.intValue == 1,
+              let agentId = object["agentId"] as? String,
+              let endpoint = object["endpoint"] as? String,
+              let pin = object["tlsCertificateSha256"] as? String,
               let ticketId = object["ticketId"] as? String,
-              let capability = object["pairingCapability"] as? String,
-              let pin = object["serverCertificateSha256"] as? String,
+              let pairingCode = object["pairingCode"] as? String,
+              let scopesArray = object["scopes"] as? [String],
               let expiryNumber = object["expiresAtEpochMs"] as? NSNumber,
               CFGetTypeID(expiryNumber) != CFBooleanGetTypeID() else {
             throw BridgeInvitationError.invalidFormat
         }
+
         let expiry = expiryNumber.int64Value
-        guard expiry > nowEpochMs, expiry - nowEpochMs <= 120_000 else {
+        guard expiry > nowEpochMs, expiry - nowEpochMs <= 10 * 60 * 1_000 else {
             throw BridgeInvitationError.expired
         }
-        guard let url = URL(string: origin),
-              url.scheme?.lowercased() == "https",
-              url.host != nil, url.user == nil, url.password == nil,
-              url.query == nil, url.fragment == nil,
-              url.path.isEmpty || url.path == "/",
-              pin.utf8.count == 64, pin.allSatisfy({ $0.isHexDigit }),
-              (16...128).contains(ticketId.utf8.count),
-              ticketId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
-              let capabilityData = Data(base64URLEncoded: capability),
-              capabilityData.count == 32 else {
+        guard let url = URL(string: endpoint),
+              url.scheme?.lowercased() == "https", url.host != nil,
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+              url.path == "/bridge/v1",
+              (url.port == nil || (1...65_535).contains(url.port!)),
+              Self.validIdentifier(agentId, minimum: 8),
+              ticketId.utf8.count == 32, ticketId.allSatisfy(\.isHexDigit),
+              pin.utf8.count == 64, pin.allSatisfy(\.isHexDigit),
+              let pairingBytes = Data(base64URLEncoded: pairingCode), pairingBytes.count == 32 else {
             throw BridgeInvitationError.invalidServerIdentity
         }
+        let scopes = Set(scopesArray)
+        guard !scopes.isEmpty, scopes.count == scopesArray.count, scopes.count <= 32,
+              scopes.allSatisfy(Self.validScope) else {
+            throw BridgeInvitationError.invalidScopes
+        }
         return BridgePairingInvitation(
-            origin: origin,
+            agentId: agentId,
+            endpoint: endpoint,
             certificateSHA256: pin.lowercased(),
-            ticketId: ticketId,
-            pairingCapability: capability,
+            ticketId: ticketId.lowercased(),
+            pairingCode: pairingCode,
+            scopes: scopes,
             expiresAtEpochMs: expiry
         )
     }
+
+    private static func validIdentifier(_ value: String, minimum: Int) -> Bool {
+        (minimum...128).contains(value.utf8.count) && value.allSatisfy {
+            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_")
+        }
+    }
+
+    private static func validScope(_ scope: String) -> Bool {
+        (1...96).contains(scope.utf8.count) && scope.allSatisfy {
+            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "_" || $0 == "-")
+        }
+    }
 }
 
-/// Implements the same one-time HMAC proof as Android. Proof acceptance only
-/// queues a pending owner decision; it never grants scopes or creates secrets.
-public enum BridgePairing {
-    public static func makeSubmission(invitation: BridgePairingInvitation,
-                                      deviceLabel: String,
-                                      requestedScopes: [String],
-                                      nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)) throws -> BridgePairingSubmission {
-        guard (16...128).contains(invitation.ticketId.utf8.count),
-              invitation.ticketId.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
-              invitation.expiresAtEpochMs > nowEpochMs,
-              invitation.expiresAtEpochMs - nowEpochMs <= 120_000,
-              !deviceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              deviceLabel.count <= 64,
-              !deviceLabel.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
-              requestedScopes.count <= 64,
-              Set(requestedScopes).count == requestedScopes.count,
-              requestedScopes.allSatisfy({ scope in
-                  !scope.isEmpty && scope.count <= 96 &&
-                  scope.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "_" || $0 == "-" })
-              }),
-              let capability = Data(base64URLEncoded: invitation.pairingCapability),
-              capability.count == 32 else {
-            throw BridgeTransportError.invalidHTTPResponse
+public struct BridgePairingRequest: Codable, Sendable {
+    public let version: Int
+    public let ticketId: String
+    public let pairingCode: String
+    public let agentId: String
+
+    public init(invitation: BridgePairingInvitation) {
+        version = invitation.version
+        ticketId = invitation.ticketId
+        pairingCode = invitation.pairingCode
+        agentId = invitation.agentId
+    }
+}
+
+public struct BridgePairingEnrollmentResponse: Codable, Sendable {
+    public let version: Int
+    public let status: String
+    public let errorCode: String?
+    public let agentId: String?
+    public let enrollmentId: String?
+    public let desktopHubId: String?
+    public let endpoint: String?
+    public let tlsCertificateSha256: String?
+    public let sharedSecretBase64: String?
+    public let scopes: [String]
+    public let enrolledAtEpochMs: Int64?
+    public let expiresAtEpochMs: Int64?
+
+    public static func decodeStrict(_ data: Data) throws -> BridgePairingEnrollmentResponse {
+        let expectedKeys = Set([
+            "version", "status", "errorCode", "agentId", "enrollmentId", "desktopHubId",
+            "endpoint", "tlsCertificateSha256", "sharedSecretBase64", "scopes",
+            "enrolledAtEpochMs", "expiresAtEpochMs"
+        ])
+        guard (1...8_192).contains(data.count),
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(object.keys) == expectedKeys else {
+            throw BridgeInvitationError.invalidEnrollmentResponse
         }
-        var nonceBytes = Data(count: 32)
-        let randomStatus = nonceBytes.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
-        guard randomStatus == errSecSuccess else { throw BridgeTransportError.invalidHTTPResponse }
-        let nonce = nonceBytes.base64URLEncodedString()
-        let verifier = Data(SHA256.hash(data: capability))
-        let message = Data("GLAFIRA-BRIDGE-PAIRING-V1\0\(invitation.ticketId)\0\(nonce)".utf8)
-        let proof = HMAC<SHA256>.authenticationCode(for: message, using: SymmetricKey(data: verifier))
-        return BridgePairingSubmission(ticketId: invitation.ticketId, clientNonce: nonce,
-                                       proofHex: proof.map { String(format: "%02x", $0) }.joined(),
-                                       deviceLabel: deviceLabel, platform: .ios,
-                                       requestedScopes: requestedScopes.sorted())
+        do {
+            return try JSONDecoder().decode(BridgePairingEnrollmentResponse.self, from: data)
+        } catch {
+            throw BridgeInvitationError.invalidEnrollmentResponse
+        }
     }
 
-    public static func submit(_ submission: BridgePairingSubmission,
-                              invitation: BridgePairingInvitation,
-                              client: PinnedBridgeHTTPSClient) async throws -> BridgePairingPendingResponse {
-        guard submission.ticketId == invitation.ticketId,
-              invitation.expiresAtEpochMs > Int64(Date().timeIntervalSince1970 * 1_000) else {
-            throw BridgeTransportError.invalidHTTPResponse
+    public func credential(
+        matching invitation: BridgePairingInvitation,
+        nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
+    ) throws -> BridgeDeviceCredential {
+        let grantedScopes = Set(scopes)
+        guard version == 1, status == "ENROLLED", errorCode == nil,
+              agentId == invitation.agentId,
+              enrollmentId == invitation.ticketId,
+              endpoint == invitation.endpoint,
+              tlsCertificateSha256?.caseInsensitiveCompare(invitation.certificateSHA256) == .orderedSame,
+              desktopHubId.map({ hubId in
+                (1...128).contains(hubId.utf8.count) && hubId.allSatisfy {
+                    $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_")
+                }
+              }) == true,
+              grantedScopes.count == scopes.count, !grantedScopes.isEmpty,
+              grantedScopes.isSubset(of: invitation.scopes),
+              let enrolledAtEpochMs, let expiresAtEpochMs,
+              enrolledAtEpochMs <= nowEpochMs, expiresAtEpochMs > nowEpochMs,
+              let secretText = sharedSecretBase64,
+              let secret = Data(base64Encoded: secretText), secret.count == 32 else {
+            throw BridgeInvitationError.invalidEnrollmentResponse
         }
-        return try await client.submitPairing(submission)
+        return try BridgeDeviceCredential(deviceId: invitation.agentId, hmacSecret: secret)
     }
+}
+
+public enum BridgeInvitationError: Error, Equatable, Sendable {
+    case invalidFormat
+    case expired
+    case invalidServerIdentity
+    case invalidScopes
+    case invalidEnrollmentResponse
 }
 
 private extension Data {
     init?(base64URLEncoded value: String) {
-        var normalized = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        var normalized = value.replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
         let remainder = normalized.count % 4
         if remainder != 0 { normalized += String(repeating: "=", count: 4 - remainder) }
         self.init(base64Encoded: normalized)
     }
-
-    func base64URLEncodedString() -> String {
-        base64EncodedString().replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-    }
 }
-
