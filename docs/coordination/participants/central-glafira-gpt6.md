@@ -21,7 +21,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 | Cycle | Status | Completed actions | Evidence index / PRs | Validation summary | Open blockers |
 |---:|---|---:|---|---|---|
-| 01 | partial | 13/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
+| 01 | partial | 14/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
 
 ## Cycle 01 — capacity audit and parallel portfolio
 
@@ -64,3 +64,5 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 | C01-A012 | P4 collaboration | Added a separate external-AI-contributor onboarding contract and registered it on the task board. It distinguishes GitHub user identity from AI-provider identity, lists verified Cursor/Codex/GitHub Agentic Workflows/Gemini/Claude paths, leaves DeepSeek/GigaChat write access unverified, and blocks invitations until #370 branch protection is active. | https://github.com/micronizationlab/glafira-ai-hub/commit/4cdb9ed32207f2a09df2c4032203b9e832dd314a ; latest board/ledger head `da3bd6516cbf076b3cc7d3dfdb3b8c3635f9131e` | Documentation-only; prior #362 exact-head docs CI passed at `b7f6b6b3010bdba54caf4080401cb55e10dde423`; CI for the newest head is pending. | complete |
 
 | C01-A013 | P2 | After PR #369's exact-head emulator failure, created draft PR #372 stacked on #369. It adds an explicit Button-role accessibility node and routes the accessibility click through the same callback as the physical button, preserving disabled state while busy. | https://github.com/micronizationlab/glafira-ai-hub/pull/372 ; head `6397a8b5fcad41340c3fb01b2ed9e2fdae889903` | Exact-head CI queued/in progress at last check; no pass claimed. | in progress |
+
+| C01-A014 | P2 | Read the exact Kotlin compiler failure from PR #372's failed Android JVM job (`Unresolved reference: semantics` at the modifier call), added the missing Compose semantics import, and pushed a new exact head. | https://github.com/micronizationlab/glafira-ai-hub/commit/d005cc1fd8e023999db4d7f799ed2e550e3b09fb ; CI run https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44926868960 | Shared contracts passed; Android JVM still running at last check; emulator/APK jobs not yet scheduled. No pass claimed. | in progress |
