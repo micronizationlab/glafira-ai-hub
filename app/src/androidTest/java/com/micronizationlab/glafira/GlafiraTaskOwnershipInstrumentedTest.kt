@@ -248,6 +248,62 @@ class GlafiraTaskOwnershipInstrumentedTest {
         ).use { it.moveToFirst() })
     }
 
+    @Test
+    fun coreB_cannotClaimTaskOwnedByCoreA() {
+        val coreA = store("android-core-owner-a")
+        val coreB = store("android-core-owner-b")
+        val item = task("ownership-isolated-claim")
+        assertTrue(coreA.enqueue(item).inserted)
+
+        assertNull(coreB.claimNextOwned(2_000L))
+        val claim = requireNotNull(coreA.claimNextOwned(2_000L))
+        assertEquals(item.taskId, claim.task.taskId)
+        assertEquals("android-core-owner-a", claim.ownershipToken.ownerCoreId)
+        assertEquals(1L, claim.ownershipToken.ownerGeneration)
+    }
+
+    @Test
+    fun staleOwnerGenerationCannotTransitionOrCommitResultAfterGenerationChanges() {
+        val core = store("android-core-generation-a")
+        val item = task("ownership-stale-generation")
+        assertTrue(core.enqueue(item).inserted)
+        val staleClaim = requireNotNull(core.claimNextOwned(2_000L))
+
+        // Simulate a committed ownership-generation handoff while an old executor is still alive.
+        core.writableDatabase.execSQL(
+            "UPDATE core_task_ownership SET owner_generation = 2 WHERE task_id = ?",
+            arrayOf(item.taskId)
+        )
+        core.writableDatabase.execSQL(
+            "UPDATE core_tasks SET state = ?, updated_at = ? WHERE task_id = ?",
+            arrayOf(GlafiraTaskState.QUEUED.databaseValue, 3_000L, item.taskId)
+        )
+
+        assertFalse(core.transitionOwned(
+            staleClaim.ownershipToken,
+            setOf(GlafiraTaskState.QUEUED),
+            GlafiraTaskState.RUNNING,
+            4_000L
+        ))
+        assertNull(core.claimNextOwned(4_000L)?.takeIf { it.ownershipToken.ownerGeneration == 1L })
+
+        val currentClaim = requireNotNull(core.claimNextOwned(5_000L))
+        assertEquals(2L, currentClaim.ownershipToken.ownerGeneration)
+        assertFalse(core.persistCoreTaskResultOwned(
+            staleClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            "stale-result",
+            6_000L
+        ))
+        assertTrue(core.persistCoreTaskResultOwned(
+            currentClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            "current-result",
+            6_000L
+        ))
+        assertEquals("current-result", core.coreTaskResult(item.taskId, item.projectId)?.result)
+    }
+
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
     }
