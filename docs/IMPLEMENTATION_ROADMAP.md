@@ -6,17 +6,17 @@ This roadmap records the owner's priority order. Features remain on the roadmap 
 
 This order was explicitly reconfirmed by the owner on 2026-11-20 and supersedes older priority groupings for active work. The full mandatory dispatcher policy and rolling 50-item action pool are in `docs/ENGINEERING_DISPATCHER_OPERATING_RULE.md` and `docs/ENGINEERING_ACTION_POOL_A.md`.
 
-1. **P0 — Core kernels and execution foundation:** durable ownership/state, SQLite concurrency, bounded workers, dependency scheduling, cancellation, crash recovery, provider/tool boundaries, idempotency, result delivery and audit.
-2. **P1 — Android instrumentation suite and Bridge:** the suite must exist in `main`, run on a managed emulator for relevant changes, publish non-empty JUnit reports and retain older Core/TaskPlan instrumentation coverage. Bridge requires versioned Task/Result/Lease/Agent contracts, authenticated pairing, durable ingress/delivery, fencing, heartbeats, acknowledgements and reconnect recovery.
-3. **P2 — Windows Desktop and Windows Agent:** laptop-first Desktop control center, authoritative Desktop Hub host, enrollment/revocation, multi-agent scheduling, task lifecycle, Windows Agent service and end-to-end Desktop ↔ Agent acceptance.
-4. **P3 — Oldest unfinished work:** revisit the oldest abandoned PRs/issues and release blockers immediately after Core/Bridge/host foundations; port useful work safely, do not discard it because it is old.
-5. **P4 — Android user-facing and voice/platform work:** backup/council/task queue, Google Drive restore, STT/TTS, Android reliability and iOS parity.
-6. **P5 — Specialist agents, connectors, GCU/GLF and production integrations:** preserve existing specifications and resume implementation after the higher priorities.
-7. **External Project Token/Clover research:** proceed in parallel whenever it does not consume a blocking engineering resource; no token-economy feature may displace P0–P3.
+1. **P1 — GLAFIRA Core:** durable ownership/state, SQLite concurrency, bounded workers, dependency scheduling, cancellation, crash recovery, idempotency, result delivery/ACK, Trace/audit and policy.
+2. **P2 — Backup & Recovery:** encrypted portable backup, integrity verification, restore, interrupted-restore recovery and verified off-device copies. This is a separate owner priority, not a low-priority Android UI feature.
+3. **P3 — Runtime / Bridge / Desktop:** Android instrumentation and Bridge contracts/pairing, Windows Desktop Hub, Windows Agent, reconnect and end-to-end acceptance. Respect internal dependencies: Bridge contracts and authenticated pairing precede production fleet execution; Desktop host/scheduler precedes full Agent-fleet acceptance.
+4. **P4 — Android UX, voice, specialist agents and optional expansions:** user-facing polish, STT/TTS, roles, connectors and other non-foundation modules.
+5. **P5 — GCU/GLF, VPN/commercial integrations and Project Token/Clover:** research may proceed in parallel only when it does not displace P1–P3 or create paid-resource dependencies.
 
-A higher-priority item waiting on CI, hardware, review or a conflicting file is not a reason to idle. Start the highest-priority independent action below it, then rescan from P0 whenever a slot opens. Every GitHub visit requires status refresh, exact-head run/log inspection, test-count verification and immediate dispatch of the next safe action. Never treat a skipped test as a pass.
+Old unfinished work is a cross-cutting obligation at its current owner priority, not a separate priority tier. Preserve useful work and dependencies; re-rank each item into P1–P5 instead of postponing all old work as a single bucket.
 
-## Priority 1 — GLAFIRA Core (the brain and system authority)
+A higher-priority item waiting on CI, hardware, review or a conflicting file is not a reason to idle. Start the highest-priority independent action below it, then rescan from P1 whenever a slot opens. Every GitHub visit requires status refresh, exact-head run/log inspection, test-count verification and immediate dispatch of the next safe action. Never treat a skipped test as a pass.
+
+## P1 — GLAFIRA Core (the brain and system authority)
 
 Goal: make Glafira a reliable coordinator for the entire AI office. Core is the highest engineering priority and the single authority for task execution, permissions and agent coordination.
 
@@ -37,7 +37,7 @@ Foundation contracts are specified in [GLAFIRA CORE — Foundation Technical Spe
 
 No external irreversible action (send, publish, purchase, delete, alter business records) without explicit approval or a narrowly scoped owner policy.
 
-## Priority 2 — Backup & Recovery
+## P2 — Backup & Recovery
 
 Goal: protect user data before expanding the product.
 
@@ -51,7 +51,9 @@ Goal: protect user data before expanding the product.
 
 No rented server or paid backend is required for the initial implementation. Android background execution is best-effort, not an exact-time guarantee. Cloud free-tier quotas can change.
 
-## Priority 3 — Autonomous Runtime, Bridge, Roles and Voice
+## P3 — Runtime, Bridge, Desktop and Windows Agent
+
+Bridge and Desktop execution foundations belong to P3. Android instrumentation is the cross-platform conformance gate for relevant Core/Bridge changes, not a reason to demote Backup & Recovery. Voice, roles and specialist-agent expansion are P4.
 
 1. Make role definitions executable and provider-independent.
 2. Add role registry and project-level assignment.
@@ -61,7 +63,7 @@ No rented server or paid backend is required for the initial implementation. And
 6. Add SMM, Accountant, Medical/Scientific Consultant, Lawyer and Commercial Director roles, then further roles such as Analyst and Procurement/Logistics as prioritized by the owner.
 7. Voice and role behavior must not change facts, permissions, privacy or authority.
 
-## Priority 4 — Knowledge Ingestion and Retrieval Extensions
+## P4 — Knowledge Ingestion and Retrieval Extensions
 
 Unified operational memory is a Priority 1 GLAFIRA Core responsibility and is specified in [GLAFIRA CORE — Foundation Technical Specification](GLAFIRA_CORE_FOUNDATION_SPEC.md). This later priority covers source-document knowledge, not a second memory system.
 
@@ -70,7 +72,7 @@ Unified operational memory is a Priority 1 GLAFIRA Core responsibility and is sp
 3. Add context compaction and long-running task summaries while preserving durable facts and decisions.
 4. Preserve source metadata, jurisdiction/date, access policy and citations for retrieved knowledge.
 
-## Priority 5 — Multi-Agent Workforce
+## P4 — Multi-Agent Workforce
 
 1. Add a coordinator-led team of narrowly scoped specialist agents with explicit role contracts.
 2. Support sequential, conditional, parallel and delegated handoffs with structured inputs and outputs.
@@ -84,7 +86,7 @@ A first JVM 17 Desktop Bridge module is being integrated as a command-line valid
 
 The module is not yet the authoritative Core queue and must not be treated as the completed Windows Desktop host. The next stages are shared Core queue integration, Desktop UI/host, enrollment/heartbeats/result acknowledgements, Windows packaging and fleet management. LIVE external actions remain disabled.
 
-## Priority 6 — Secure Device and Computer Bridge
+## P3 — Secure Device and Computer Bridge
 
 1. Add an authenticated, paired Bridge for desktop and Android device actions.
 2. Provide browser automation and controlled UI automation in isolated environments with minimal privileges.
@@ -92,7 +94,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 4. Require owner approval for public, financial, destructive, privacy-sensitive or irreversible actions.
 5. Add dry-run/preview mode and recovery checkpoints before consequential actions.
 
-## Priority 7 — Skill Engine and Governed Plugin Marketplace
+## P4/P5 — Skill Engine and Governed Plugin Marketplace
 
 1. Versioned skill manifest and package validation.
 2. Local skill library with import/export, install/update/uninstall and rollback.
@@ -100,7 +102,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 4. No implicit tool/network/filesystem permissions from installing a skill.
 5. Add role-specific test cases and acceptance checks.
 
-## Priority 8 — Evaluation, Observability and Self-Monitoring
+## P1/P3 — Evaluation, Observability and Self-Monitoring
 
 1. Project-scoped document ingestion and RAG.
 2. Source metadata, dates, jurisdiction, citations and access filtering.
@@ -108,7 +110,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 4. Fixed role benchmarks, regression tests, prompt-injection and privacy tests.
 5. Staging, owner approval and rollback for production skill changes.
 
-## Priority 9 — Community Exchange
+## P5 — Community Exchange
 
 1. Free sharing and paid package listings.
 2. Publisher identity, rights, license, provenance, privacy/security declaration and version history.
@@ -116,7 +118,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 4. Start with free package exchange; add payment processing only after legal and security review.
 5. Never publish private conversations, customer data, secrets or materials without rights.
 
-## Priority 10 — Model Routing and Adaptation
+## P1/P4 — Model Routing and Adaptation
 
 1. Compare candidate foundation models against role-specific benchmarks.
 2. Evaluate provider fine-tuning and local LoRA only for tasks with demonstrated need.
@@ -125,7 +127,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 5. Require owner approval before deployment. No automatic training on raw chat history.
 
 
-## Priority 11 — GLAFIRA Self-Monitor and Safe Self-Improvement
+## P1/P4 — GLAFIRA Self-Monitor and Safe Self-Improvement
 
 1. Add GLAFIRA SELF-MONITOR: health checks for Core, queue, runtime, backups, Bridge, providers, agents and integrations.
 2. Detect stalled tasks, repeated failures, expired credentials, backup drift, CI regressions and resource-limit breaches.
@@ -134,7 +136,7 @@ The module is not yet the authoritative Core queue and must not be treated as th
 5. Never let self-improvement silently change its own safety policy, authority model, approval requirements or production state.
 6. Require signed/reviewable changes, regression tests, staged rollout and tested rollback for runtime or policy changes.
 
-## Priority 12 — Voice, Model Adaptation and Personal Interaction
+## P4 — Voice, Model Adaptation and Personal Interaction
 
 1. Preserve the optional voice plugin and support multiple selectable voice engines.
 2. Add voice input/output profiles, interruption handling, transcription correction and spoken task confirmations.

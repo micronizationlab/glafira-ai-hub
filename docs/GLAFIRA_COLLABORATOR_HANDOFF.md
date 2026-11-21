@@ -1,10 +1,11 @@
 # GLAFIRA — engineering handoff for collaborating agents
-**Snapshot date:** 2026-11-20  
+**Snapshot date:** 2026-11-21 (status snapshots must be refreshed against live GitHub state before action)  
 **Purpose:** provide a reliable entry point for any collaborating engineer or AI assistant, including Костя.  
 **Important:** this is a handoff and navigation document, not proof that listed features are implemented.
 
 ## 1. Read these documents first
 
+0. [Central Multi-Agent Coordination](../GLAFIRA_COORDINATION.md) — mandatory owner priorities, free-only resource policy, 20 × 150 cycle protocol and task reservation.
 1. [Engineering Roadmap](IMPLEMENTATION_ROADMAP.md) — owner priority order and dependency rules.
 2. [Core Foundation Specification](GLAFIRA_CORE_FOUNDATION_SPEC.md) — Core authority, memory, agent contracts, review, trace and policy.
 3. [Core autonomy, tools and credential security](GLAFIRA_CORE_SECURITY_AND_TOOLS.md) — permissions, credential broker and safe external actions.
@@ -40,19 +41,21 @@ GLAFIRA is a commercial distributed AI + VPN ecosystem. The owner's business ben
 - Never blindly replay an uncertain external write. Quarantine it for owner reconciliation.
 - No secrets in prompts, logs, Git, screenshots or artifacts. No admin/service-role/issuer keys in clients.
 - No user/device resource contribution without clear consent and controls.
+- **Free-only development constraint:** no required paid plan, paid API tier, rented cloud resource or mandatory subscription. Verify free-tier quotas, region availability and terms; free quotas are not unlimited. Any paid exception requires prior explicit owner approval.
 - No public launch or completion claim based on docs, catalog entries or an APK build alone; require exact-head CI and acceptance evidence.
 - Do not merge PRs or close work without explicit owner approval. Do not force-push or rewrite shared branches without coordination.
 
 ## 4. Active implementation order
 
-The owner's engineering priority order remains:
+The owner's current engineering priority order is:
 
-1. **Core:** durable queue, concurrency, dependencies, cancellation, recovery, shared executor, audit and policy.
-2. **Bridge:** versioned authenticated Task/Result/Lease protocol, pairing, revocation, durable delivery, ACK, heartbeat, reconnect and offline recovery.
-3. **Applications:** Android, native iOS, Windows Desktop and Windows Agent; shared contracts and end-to-end acceptance.
-4. **Agents and training:** Кадровик and specialist agent catalog after the foundations are ready.
+1. **P1 — Core:** durable queue, concurrency, dependencies, cancellation, ownership generation, ACK, crash recovery, idempotency, Trace/audit and policy.
+2. **P2 — Backup & Recovery:** encrypted portable backup, integrity verification, restore, interrupted-restore recovery and verified off-device copy. Android manual-backup UX and physical Drive/Yandex checks are part of this priority.
+3. **P3 — Runtime / Bridge / Desktop:** Android instrumentation and shared contracts; authenticated Bridge pairing, revocation, durable delivery, ACK, heartbeat, fencing and reconnect; Windows Desktop Hub and Windows Agent. Bridge contract/pairing dependencies precede production fleet work; Desktop host/scheduler precedes full Agent acceptance.
+4. **P4 — Android UX, voice and specialist agents:** Council/task queue UX, STT/TTS, iOS parity, Кадровик and other roles after foundation gates.
+5. **P5 — Commercial/optional integrations:** GCU/GLF, VPN, token economics and Project Token/Clover research only where they do not displace P1–P3 and never with a required paid resource.
 
-The commercial Network work can proceed in parallel at the specification, threat-model and contract-definition level. Do not leapfrog Core/Bridge dependencies for production implementation.
+Old issues and branches remain visible and must be triaged into the appropriate current priority; age alone is not a priority.
 
 ## 5. Current PR stack and status snapshot
 
