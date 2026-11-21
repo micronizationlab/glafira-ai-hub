@@ -38,3 +38,28 @@ No participant reservations are recorded in this initial board. Each invited par
 ## CI evidence standard
 
 For every PR record: current head SHA, run ID, per-job result, executed test count, skipped tests, artifact/report links and next action. Green checks from an earlier SHA are stale evidence.
+
+## Ten coordinated workstreams (owner-confirmed operating layout)
+
+This section is the dispatch view for the ten parallel lanes. It does not change the P1–P4 priority hierarchy above. A lane may investigate or prepare independent work while a higher-priority lane waits on CI, but lower-priority work must not displace an actionable P1/P2 task.
+
+| Lane | Scope | Current live reference | Next independently verifiable action |
+|---|---|---|---|
+| 01 — GLAFIRA Core | SQLite queue, dispatcher, durable task state, result outbox and ACK | [#366](https://github.com/micronizationlab/glafira-ai-hub/issues/366), [#266](https://github.com/micronizationlab/glafira-ai-hub/issues/266), [#258](https://github.com/micronizationlab/glafira-ai-hub/issues/258) | Map every direct task-state/result mutation to the ownership-fenced API; add a transactional CAS handoff only after full schema and call-path audit. |
+| 02 — Owner Identity & Security | Creator identity, owner sessions, generation fencing, approvals, grants and authorization | [#366](https://github.com/micronizationlab/glafira-ai-hub/issues/366), [#370](https://github.com/micronizationlab/glafira-ai-hub/issues/370) | Bind approvals and grants to owner ID + generation; keep stale-generation operations fail-closed. Branch protection remains an owner/admin configuration dependency. |
+| 03 — Backup & Recovery | Encrypted backup, restore, interrupted restore, portability and recovery evidence | [#371](https://github.com/micronizationlab/glafira-ai-hub/issues/371), [PR #372](https://github.com/micronizationlab/glafira-ai-hub/pull/372), [#350](https://github.com/micronizationlab/glafira-ai-hub/issues/350) | Re-run emulator acceptance on the exact latest PR #372 head; do not merge while any required instrumentation test fails. |
+| 04 — Android | App stability, navigation, permissions, voice, accessibility and physical-device acceptance | [#82](https://github.com/micronizationlab/glafira-ai-hub/issues/82), [#99](https://github.com/micronizationlab/glafira-ai-hub/issues/99), [#107](https://github.com/micronizationlab/glafira-ai-hub/issues/107) | Keep Android feature regressions in an acceptance matrix; verify permission flows and voice on a real device after automated coverage. |
+| 05 — Bridge & Pairing | Authenticated enrollment, TLS pinning, credential scope, revocation, reconnect and ACK | [#138](https://github.com/micronizationlab/glafira-ai-hub/issues/138), [PR #140](https://github.com/micronizationlab/glafira-ai-hub/pull/140) | Reconcile old Bridge branches against current main and prove owner-approved pairing, revocation and reconnect without replay. |
+| 06 — Windows Desktop | Desktop app shell, authoritative host, persistent scheduler, owner workspace and installer | [#95](https://github.com/micronizationlab/glafira-ai-hub/issues/95), [#123](https://github.com/micronizationlab/glafira-ai-hub/issues/123) | Verify current Desktop branch/PR stack; separate UI shell work from HTTPS host and scheduler work to avoid overlapping edits. |
+| 07 — Windows Agent | Enrollment, capability registration, bounded workers, leases, heartbeat and result delivery | [#123](https://github.com/micronizationlab/glafira-ai-hub/issues/123), [#138](https://github.com/micronizationlab/glafira-ai-hub/issues/138) | Test the agent lifecycle against the Desktop host: claim, lease fencing, disconnect, restart, result delivery and duplicate suppression. |
+| 08 — Web & Communications | Web access, GLAFIRA-to-GLAFIRA contacts/protocol, official messaging connectors | [#348](https://github.com/micronizationlab/glafira-ai-hub/issues/348), [#349](https://github.com/micronizationlab/glafira-ai-hub/issues/349) | Keep protocol design provider-neutral; connector execution remains official-API-only, scoped, auditable and owner-revocable. |
+| 09 — Design | Shared visual language and responsive UI specifications for Android/Desktop/Web | [Coordination contract](../../GLAFIRA_COORDINATION.md#11-dedicated-cross-cutting-workstreams) | Maintain tokens, components, navigation and screen specs in a design-only scope; preserve ICQ 2003 + modern Apple/macOS gloss. |
+| 10 — QA & Release | Regression strategy, CI logs, exact-head evidence, release artifacts and install acceptance | [#138](https://github.com/micronizationlab/glafira-ai-hub/issues/138), [#370](https://github.com/micronizationlab/glafira-ai-hub/issues/370) | Record exact SHA, run ID, per-job outcome, executed/skipped tests, artifact links and physical-device acceptance; never treat skipped jobs as passes. |
+
+### Dispatch cadence
+
+- Refresh all ten lanes at each work block; reserve and execute only scopes with a concrete next action.
+- Keep shared-file edits serial. Parallelize independent reads, audits, tests and separate-file PRs.
+- When a lane is blocked by CI or an owner/admin dependency, switch to the highest-priority independent lane.
+- Record completed actions only when a commit, test result, issue/PR update or other durable evidence exists. Do not inflate the 150-step counter with repeated status checks.
+- The ten lanes are a coordinated backlog, not a claim that ten autonomous agents are running. Actual parallel execution is limited to independent tool operations and contributors who have separately registered.
