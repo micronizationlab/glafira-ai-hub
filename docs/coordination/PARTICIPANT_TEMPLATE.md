@@ -18,6 +18,7 @@ Copy this file to `docs/coordination/participants/<unique-participant-id>.md`. E
 - [ ] `docs/GLAFIRA_COLLABORATOR_HANDOFF.md`
 - [ ] `docs/IMPLEMENTATION_ROADMAP.md`
 - [ ] `docs/ENGINEERING_DISPATCHER_OPERATING_RULE.md`
+- [ ] `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md`
 - [ ] `docs/ENGINEERING_ACTION_POOL_A.md`
 - [ ] Current issues, open PRs, relevant source and CI inspected
 - [ ] Task conflicts checked
