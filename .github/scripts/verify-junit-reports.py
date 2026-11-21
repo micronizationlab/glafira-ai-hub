@@ -55,8 +55,8 @@ def main() -> int:
     if failures or errors:
         print("ERROR: JUnit reports contain failures or errors.", file=sys.stderr)
         return 1
-    if total_cases <= skipped:
-        print("ERROR: all reported tests are skipped; no test actually executed.", file=sys.stderr)
+    if skipped:
+        print("ERROR: JUnit reports contain skipped test cases; skipped tests are not accepted as passing coverage.", file=sys.stderr)
         return 1
     return 0
 
