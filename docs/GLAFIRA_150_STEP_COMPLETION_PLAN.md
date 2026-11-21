@@ -26,12 +26,12 @@
 7. [x] Доказать отсутствие двойной выдачи task при конкуренции N workers.
 8. [ ] Разделить maintenance gate и locks отдельных задач.
 9. [ ] Добавить cancellation и тест cancel-vs-complete race.
-10. [x] Проверить DAG: cycles, missing nodes, cross-project edges, duplicate edges.
+10. [ ] Проверить DAG: cycles, missing nodes, cross-project edges, duplicate edges.
 11. [x] Проверить join/unblock только после успешных predecessor tasks.
 12. [x] Добавить fairness/starvation bounds между проектами.
 13. [ ] Проверить bounded worker pool, backpressure и configurable concurrency.
 14. [ ] Проверить stale worker fencing после lease expiry и повторной выдачи.
-15. [x] Добавить crash recovery для каждого non-terminal state.
+15. [ ] Добавить crash recovery для каждого non-terminal state.
 16. [ ] Сделать failure injection между claim, handler, progress, result и ACK.
 17. [ ] Разделить provider outcomes: rejected, unsent, unknown; не replay-ить unknown blindly.
 18. [ ] Завершить durable result outbox с retry/backoff и explicit ACK.
@@ -105,7 +105,7 @@
 77. [ ] Сделать payload fetch allowlisted, hash-verified, size-bounded.
 78. [ ] Добавить per-handler sandbox/time/resource limits.
 79. [x] Подключить lease renewal; остановить execution при невозможности продления.
-80. [x] Сохранять progress/result в durable outbox до ACK.
+80. [ ] Сохранять progress/result в durable outbox до ACK.
 81. [x] Проверять ACK по taskId/leaseId/fencing/result digest.
 82. [ ] Разделить retryable, terminal и outcome-unknown; запретить blind replay.
 83. [x] Добавить crash recovery между handler completion и ACK.
