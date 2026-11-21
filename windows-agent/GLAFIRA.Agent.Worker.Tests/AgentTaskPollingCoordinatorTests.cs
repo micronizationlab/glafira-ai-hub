@@ -21,6 +21,21 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public void PollingBackoffIsFastAfterWorkAndBoundedWhileIdleOrFailing()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(5),
+            AgentPollingBackoff.NextDelay(TimeSpan.FromSeconds(30), worked: true, failed: false));
+        Assert.Equal(TimeSpan.FromSeconds(10),
+            AgentPollingBackoff.NextDelay(TimeSpan.FromSeconds(5), worked: false, failed: false));
+        Assert.Equal(TimeSpan.FromSeconds(30),
+            AgentPollingBackoff.NextDelay(TimeSpan.FromSeconds(30), worked: false, failed: false));
+        Assert.Equal(TimeSpan.FromSeconds(60),
+            AgentPollingBackoff.NextDelay(TimeSpan.FromSeconds(30), worked: false, failed: true));
+        Assert.Equal(TimeSpan.FromSeconds(60),
+            AgentPollingBackoff.NextDelay(TimeSpan.FromSeconds(60), worked: false, failed: true));
+    }
+
+    [Fact]
     public async Task ClaimsOnlyRegisteredTaskTypesAndAcknowledgesDurableResult()
     {
         var state = ReadyState();
