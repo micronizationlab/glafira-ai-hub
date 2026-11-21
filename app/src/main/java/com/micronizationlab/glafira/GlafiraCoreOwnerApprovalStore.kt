@@ -274,7 +274,7 @@ class GlafiraCoreOwnerApprovalStore(
                         val approved = db.update("core_action_approvals", ContentValues().apply {
                             put("status", APPROVED)
                             put("approved_at", nowMillis)
-                            put("grant_expires_at", safeAdd(nowMillis, GRANT_TTL_MILLIS))
+                            put("grant_expires_at", minOf(safeAdd(nowMillis, GRANT_TTL_MILLIS), task.deadlineAtMillis ?: Long.MAX_VALUE))
                             put("decided_by", ownerSession.sessionId)
                         }, "task_id = ? AND status = ? AND action_hash = ?",
                             arrayOf(taskId, PENDING, hash))
