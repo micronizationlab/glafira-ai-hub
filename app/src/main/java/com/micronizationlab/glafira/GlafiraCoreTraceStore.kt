@@ -315,7 +315,7 @@ class GlafiraCoreTraceStore(private val taskStore: GlafiraTaskStore) : GlafiraCo
                         result_status, error_code, approval_ref, evidence_refs, data_classification,
                         redaction_applied, secret_values_stored, duration_ms
                     ) VALUES (
-                        lower(hex(randomblob(16))), NEW.project_id, NEW.task_id, NULL, NEW.task_id,
+                        'evt' || lower(hex(randomblob(16))), NEW.project_id, NEW.task_id, NULL, NEW.task_id,
                         NEW.created_at, 'CORE', 'core', 'CoreTaskStore', 'TASK_CREATED', 'TASK_CREATED',
                         NULL, NULL, NEW.state, NULL, NULL, '[]', 'INTERNAL', 1, 0, NULL
                     );
@@ -332,7 +332,7 @@ class GlafiraCoreTraceStore(private val taskStore: GlafiraTaskStore) : GlafiraCo
                         result_status, error_code, approval_ref, evidence_refs, data_classification,
                         redaction_applied, secret_values_stored, duration_ms
                     ) VALUES (
-                        lower(hex(randomblob(16))), NEW.project_id, NEW.task_id, NULL, NEW.task_id,
+                        'evt' || lower(hex(randomblob(16))), NEW.project_id, NEW.task_id, NULL, NEW.task_id,
                         NEW.updated_at, 'CORE', 'core', 'CoreTaskStore',
                         CASE NEW.state
                             WHEN 'queued' THEN 'TASK_QUEUED'
