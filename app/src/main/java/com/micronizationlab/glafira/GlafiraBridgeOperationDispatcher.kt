@@ -80,6 +80,8 @@ class GlafiraBridgeOperationDispatcher(context: Context) {
                 }
                 GlafiraBridgeOperation.APPROVAL_REQUEST ->
                     failed(request, "APPROVAL_QUEUE_NOT_CONNECTED")
+                GlafiraBridgeOperation.OWNERSHIP_TRANSFER_READ ->
+                    failed(request, "WINDOWS_HUB_CLIENT_OPERATION")
                 GlafiraBridgeOperation.DESKTOP_TASK_CLAIM,
                 GlafiraBridgeOperation.DESKTOP_TASK_RESULT ->
                     failed(request, "DESKTOP_OPERATIONS_REQUIRE_CORE_QUEUE")
