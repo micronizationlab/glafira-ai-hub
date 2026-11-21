@@ -117,6 +117,27 @@ class GlafiraCoreTraceStoreInstrumentedTest {
     }
 
     @Test
+    fun inTransactionAppendRollsBackWithItsOwningCoreTransaction() {
+        val db = taskStore.writableDatabase
+        db.beginTransaction()
+        try {
+            traceStore.appendInTransaction(
+                db,
+                event("trace-transaction-rollback", "trace-project")
+            )
+            // Deliberately do not mark the caller's transaction successful.
+        } finally {
+            db.endTransaction()
+        }
+
+        val page = traceStore.query(
+            GlafiraCoreTraceQuery("trace-project"),
+            GlafiraCoreTraceAccessContext("trace-project", allowProjectEvents = true)
+        )
+        assertTrue(page.events.isEmpty())
+    }
+
+    @Test
     fun sqliteRejectsTraceUpdateAndDeleteOutsidePortableRestore() {
         val eventId = traceStore.append(event("trace-append-only", "trace-project"))
         val db = taskStore.writableDatabase
