@@ -155,7 +155,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertEquals("trace-backup-task", restored.single().taskId)
         } finally {
             archive.delete()
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
         }
     }
 
