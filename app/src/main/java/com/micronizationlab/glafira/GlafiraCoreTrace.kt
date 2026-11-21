@@ -103,7 +103,7 @@ data class GlafiraCoreTraceEvent internal constructor(
 
     companion object {
         const val MAX_EVIDENCE_REFS = 32
-        private val IDENTIFIER = Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+        private val IDENTIFIER = Regex("(?=.*[A-Za-z])[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
         private val CODE = Regex("[A-Za-z][A-Za-z0-9._-]{0,95}")
         internal fun isSafeIdentifier(value: String) = IDENTIFIER.matches(value)
         internal fun isSafeCode(value: String) = CODE.matches(value)
