@@ -201,8 +201,11 @@ public sealed class AgentTaskPollingCoordinator
                 var ack = await _transport.SendTaskUpdateAsync(
                     credential, pending.Lease, "RUNNING", pending.ProgressPercent,
                     pending.ProgressMessage, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var expectedProgressDigest = Convert.ToHexString(
+                    SHA256.HashData(Encoding.UTF8.GetBytes("null"))).ToLowerInvariant();
                 if (ack.TaskId != pending.Lease.TaskId || ack.LeaseId != pending.Lease.LeaseId ||
                     ack.FencingToken != pending.Lease.FencingToken || ack.State != "RUNNING" ||
+                    ack.ResultSha256 != expectedProgressDigest ||
                     ack.LeaseExpiresAtEpochMs <= _timeProvider.GetUtcNow().ToUnixTimeMilliseconds())
                     throw new InvalidDataException("AGENT_PROGRESS_ACK_IDENTITY_MISMATCH");
 
@@ -226,8 +229,11 @@ public sealed class AgentTaskPollingCoordinator
 
     private void UpdateLeaseExpiry(ActiveLeaseState leaseState, AgentTaskUpdateAck ack)
     {
+        var expectedProgressDigest = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes("null"))).ToLowerInvariant();
         if (ack.TaskId != leaseState.Current.TaskId || ack.LeaseId != leaseState.Current.LeaseId ||
             ack.FencingToken != leaseState.Current.FencingToken || ack.State != "RUNNING" ||
+            ack.ResultSha256 != expectedProgressDigest ||
             ack.LeaseExpiresAtEpochMs <= _timeProvider.GetUtcNow().ToUnixTimeMilliseconds())
             throw new InvalidDataException("TASK_LEASE_RENEWAL_ACK_INVALID");
         leaseState.Update(leaseState.Current with { LeaseExpiresAtEpochMs = ack.LeaseExpiresAtEpochMs });
