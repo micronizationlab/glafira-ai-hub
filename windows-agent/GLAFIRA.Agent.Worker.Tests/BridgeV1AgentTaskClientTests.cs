@@ -32,6 +32,7 @@ public sealed class BridgeV1AgentTaskClientTests
                 result = new Dictionary<string, string>
                 {
                     ["available"] = "true", ["taskId"] = "task-001", ["projectId"] = "default",
+                    ["ownerCoreId"] = "windows-core-0001", ["ownerGeneration"] = "3",
                     ["taskType"] = "web.research", ["idempotencyKey"] = "idem-task-001",
                     ["payloadRef"] = "payload://task-001", ["payloadSha256"] = new string('a', 64),
                     ["effectRisk"] = "ReadOnly", ["approvalRef"] = "",
@@ -53,6 +54,8 @@ public sealed class BridgeV1AgentTaskClientTests
 
         Assert.NotNull(lease);
         Assert.Equal("task-001", lease.TaskId);
+        Assert.Equal("windows-core-0001", lease.OwnerCoreId);
+        Assert.Equal(3, lease.OwnerGeneration);
         Assert.Equal("web.research", lease.TaskType);
         Assert.Equal("idem-task-001", lease.IdempotencyKey);
         Assert.Equal("payload://task-001", lease.PayloadRef);
@@ -62,6 +65,8 @@ public sealed class BridgeV1AgentTaskClientTests
         Assert.Equal(_now.AddMinutes(2).ToUnixTimeMilliseconds(), lease.LeaseExpiresAtEpochMs);
         var envelope = lease.ToEnvelope();
         Assert.Equal("web.research", envelope.TaskType);
+        Assert.Equal(lease.OwnerCoreId, envelope.OwnerCoreId);
+        Assert.Equal(lease.OwnerGeneration, envelope.OwnerGeneration);
         Assert.Equal("idem-task-001", envelope.IdempotencyKey);
         Assert.Equal("payload://task-001", envelope.PayloadRef);
         Assert.Equal("Analyze supplied material", envelope.Instruction);
@@ -179,7 +184,9 @@ public sealed class BridgeV1AgentTaskClientTests
         Assert.Null(handler.LastRequestUri);
     }
 
-    private AgentTaskLease Lease() => new("task-001", "default", "web.research", "idem-task-001",
+    private AgentTaskLease Lease() => new(
+        "task-001", "default", "windows-core-0001", 3,
+        "web.research", "idem-task-001",
         "payload://task-001", new string('a', 64), "ReadOnly", null,
         _now.AddMinutes(2).ToUnixTimeMilliseconds(), "parent-001", "sub-001",
         "Research", "Analyze", "RESEARCHER", new HashSet<string> { "web.research" },

@@ -11,6 +11,8 @@ namespace GLAFIRA.Agent.Worker;
 public sealed record AgentTaskLease(
     string TaskId,
     string ProjectId,
+    string OwnerCoreId,
+    long OwnerGeneration,
     string TaskType,
     string IdempotencyKey,
     string PayloadRef,
@@ -31,7 +33,8 @@ public sealed record AgentTaskLease(
     long FencingToken)
 {
     public AgentTaskEnvelope ToEnvelope() => new(
-        TaskId, ProjectId, IdempotencyKey, TaskType, PayloadRef, PayloadSha256,
+        TaskId, ProjectId, OwnerCoreId, OwnerGeneration,
+        IdempotencyKey, TaskType, PayloadRef, PayloadSha256,
         RequiredCapabilities, ApprovalRef, Title, Instruction, Executor,
         ParentTaskId, SubtaskId, CreatedAtEpochMs, ExpiresAtEpochMs,
         Priority, LeaseId, FencingToken, EffectRisk);
@@ -117,6 +120,7 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
 
         var taskId = Required(result, "taskId");
         var projectId = Required(result, "projectId");
+        var ownerCoreId = Required(result, "ownerCoreId");
         var taskType = Required(result, "taskType");
         var idempotencyKey = Required(result, "idempotencyKey");
         var payloadRef = Required(result, "payloadRef");
@@ -130,7 +134,8 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
         var instruction = Required(result, "instruction");
         var executor = Required(result, "executor");
         var leaseId = Required(result, "leaseId");
-        if (!long.TryParse(Required(result, "leaseExpiresAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var leaseExpires) ||
+        if (!long.TryParse(Required(result, "ownerGeneration"), NumberStyles.None, CultureInfo.InvariantCulture, out var ownerGeneration) || ownerGeneration <= 0 ||
+            !long.TryParse(Required(result, "leaseExpiresAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var leaseExpires) ||
             !long.TryParse(Required(result, "fencingToken"), NumberStyles.None, CultureInfo.InvariantCulture, out var fencing) || fencing <= 0 ||
             !long.TryParse(Required(result, "createdAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var created) ||
             !long.TryParse(Required(result, "expiresAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var expires) ||
@@ -141,6 +146,8 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
         try { requiredCapabilities = JsonSerializer.Deserialize<string[]>(Required(result, "requiredCapabilities"), JsonOptions) ?? []; }
         catch (JsonException error) { throw new InvalidDataException("TASK_CLAIM_CAPABILITIES_INVALID", error); }
         if (taskId.Length is < 1 or > 64 || projectId.Length is < 1 or > 128 ||
+            ownerCoreId.Length is < 8 or > 128 ||
+            !System.Text.RegularExpressions.Regex.IsMatch(ownerCoreId, "^[A-Za-z0-9._-]+$") ||
             taskType.Length is < 1 or > 96 || idempotencyKey.Length is < 1 or > 128 ||
             payloadRef.Length is < 1 or > 512 || !System.Text.RegularExpressions.Regex.IsMatch(payloadSha256, "^[a-fA-F0-9]{64}$") ||
             effectRisk is not ("ReadOnly" or "LocalWrite" or "ExternalSideEffect") ||
@@ -154,7 +161,8 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
             requiredCapabilities.Any(capability => !ownerApprovedCapabilities.Contains(capability, StringComparer.Ordinal)))
             throw new InvalidDataException("TASK_CLAIM_RESPONSE_INVALID");
 
-        return new AgentTaskLease(taskId, projectId, taskType, idempotencyKey, payloadRef,
+        return new AgentTaskLease(taskId, projectId, ownerCoreId, ownerGeneration,
+            taskType, idempotencyKey, payloadRef,
             payloadSha256.ToLowerInvariant(), effectRisk, approvalRef, leaseExpires,
             parentTaskId, subtaskId, title, instruction, executor,
             new HashSet<string>(requiredCapabilities, StringComparer.Ordinal),

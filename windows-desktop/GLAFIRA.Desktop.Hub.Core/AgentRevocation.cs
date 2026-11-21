@@ -178,9 +178,12 @@ internal static class AgentRevocationSql
             taskEvent.Transaction = transaction;
             taskEvent.CommandText = """
                 INSERT INTO TaskEvents(
-                    task_id, state, occurred_at_ms, agent_id, lease_id, fencing_token, event_code,
+                    task_id, owner_core_id, owner_generation,
+                    state, occurred_at_ms, agent_id, lease_id, fencing_token, event_code,
                     progress_percent, progress_message)
-                VALUES($task, $state, $now, $agent, $lease, $fence, $code, NULL, NULL);
+                SELECT $task, owner_core_id, owner_generation,
+                       $state, $now, $agent, $lease, $fence, $code, NULL, NULL
+                FROM Tasks WHERE task_id = $task;
                 """;
             taskEvent.Parameters.AddWithValue("$task", lease.TaskId);
             taskEvent.Parameters.AddWithValue("$state", nextState.ToString());

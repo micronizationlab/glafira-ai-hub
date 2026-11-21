@@ -100,6 +100,45 @@ public sealed class DesktopHubStoreTests : IDisposable
     }
 
     [Fact]
+    public void QueuedOwnershipTransferUsesGenerationCasAndBindsLeaseHistory()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _store.RegisterAgent(new HubAgentRegistration(
+            "agent-1", "device-1", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("owner-transfer"), now);
+
+        Assert.False(_store.TransferQueuedTaskOwnership(
+            "owner-transfer", "windows-core-0001", 2,
+            "android-core-0001", 3, now.AddMilliseconds(1)));
+        Assert.True(_store.TransferQueuedTaskOwnership(
+            "owner-transfer", "windows-core-0001", 1,
+            "android-core-0001", 2, now.AddMilliseconds(2)));
+        Assert.False(_store.TransferQueuedTaskOwnership(
+            "owner-transfer", "windows-core-0001", 1,
+            "ios-core-0001", 2, now.AddMilliseconds(3)));
+
+        var task = Assert.Single(_store.GetTasks(), item => item.TaskId == "owner-transfer");
+        Assert.Equal("android-core-0001", task.OwnerCoreId);
+        Assert.Equal(2, task.OwnerGeneration);
+
+        var lease = Assert.IsType<HubTaskLease>(
+            _store.ClaimNext("agent-1", now.AddSeconds(1), TimeSpan.FromMinutes(1)));
+        Assert.Equal("android-core-0001", lease.OwnerCoreId);
+        Assert.Equal(2, lease.OwnerGeneration);
+        Assert.False(_store.TransferQueuedTaskOwnership(
+            "owner-transfer", "android-core-0001", 2,
+            "ios-core-0001", 3, now.AddSeconds(2)));
+
+        var history = _store.GetTaskHistory("owner-transfer");
+        var transfer = Assert.Single(history, item => item.EventCode == "TASK_OWNER_TRANSFERRED");
+        var leased = Assert.Single(history, item => item.EventCode == "TASK_LEASED");
+        Assert.Equal("android-core-0001", transfer.OwnerCoreId);
+        Assert.Equal(2, transfer.OwnerGeneration);
+        Assert.Equal(transfer.OwnerCoreId, leased.OwnerCoreId);
+        Assert.Equal(transfer.OwnerGeneration, leased.OwnerGeneration);
+    }
+
+    [Fact]
     public void ExpiredReadOnlyLeaseReturnsToQueueButExternalSideEffectIsQuarantined()
     {
         var now = DateTimeOffset.UtcNow;
@@ -566,7 +605,8 @@ public sealed class DesktopHubStoreTests : IDisposable
         IReadOnlyCollection<string>? dependencies = null,
         HubTaskEffectRisk risk = HubTaskEffectRisk.ReadOnly,
         string? approval = null) =>
-        new(id, "project-a", "idem-" + id, "research.search", "payload://" + id,
+        new(id, "project-a", "windows-core-0001", 1,
+            "idem-" + id, "research.search", "payload://" + id,
             new string('a', 64), required ?? ["research"], dependencies ?? [],
             risk, approval);
 

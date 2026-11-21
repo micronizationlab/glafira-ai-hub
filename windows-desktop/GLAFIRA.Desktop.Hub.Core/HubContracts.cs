@@ -27,6 +27,8 @@ public sealed record HubAgentRegistration(
 public sealed record HubTaskRequest(
     string TaskId,
     string ProjectId,
+    string OwnerCoreId,
+    long OwnerGeneration,
     string IdempotencyKey,
     string TaskType,
     string PayloadRef,
@@ -40,6 +42,8 @@ public sealed record HubTaskRequest(
 public sealed record HubTaskLease(
     string TaskId,
     string ProjectId,
+    string OwnerCoreId,
+    long OwnerGeneration,
     string AgentId,
     string LeaseId,
     long FencingToken,
@@ -61,12 +65,14 @@ public sealed record HubAgentSnapshot(
     int MaxParallelTasks, bool OwnerApproved, DateTimeOffset LastHeartbeat, bool IsOnline);
 
 public sealed record HubTaskSnapshot(
-    string TaskId, string ProjectId, string TaskType, HubTaskState State,
+    string TaskId, string ProjectId, string OwnerCoreId, long OwnerGeneration,
+    string TaskType, HubTaskState State,
     int Priority, HubTaskEffectRisk EffectRisk, int Attempts,
     DateTimeOffset CreatedAt, string? ApprovalRef);
 
 public sealed record HubTaskEventSnapshot(
-    long EventId, string TaskId, HubTaskState State, DateTimeOffset OccurredAt,
+    long EventId, string TaskId, string OwnerCoreId, long OwnerGeneration,
+    HubTaskState State, DateTimeOffset OccurredAt,
     string? AgentId, string? LeaseId, long? FencingToken, string EventCode,
     int? ProgressPercent = null, string? ProgressMessage = null);
 

@@ -145,6 +145,8 @@ public sealed class BridgeV1TaskOperationDispatcher(
                 ["available"] = "true",
                 ["taskId"] = lease.TaskId,
                 ["projectId"] = lease.ProjectId,
+                ["ownerCoreId"] = lease.OwnerCoreId,
+                ["ownerGeneration"] = lease.OwnerGeneration.ToString(CultureInfo.InvariantCulture),
                 ["taskType"] = lease.TaskType,
                 ["idempotencyKey"] = lease.IdempotencyKey,
                 ["payloadRef"] = lease.PayloadRef,

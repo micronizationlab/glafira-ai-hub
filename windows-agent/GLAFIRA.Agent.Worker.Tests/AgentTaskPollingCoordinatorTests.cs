@@ -298,7 +298,8 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
     {
         var now = DateTimeOffset.UtcNow;
         return new AgentTaskLease(
-            "task-001", "project-001", "web.research", "idem-task-001",
+            "task-001", "project-001", "windows-core-0001", 3,
+            "web.research", "idem-task-001",
             "payload://task-001", new string('a', 64), "ReadOnly", null,
             now.AddMinutes(2).ToUnixTimeMilliseconds(),
             "parent-001", "subtask-001", "Research", "Read the supplied material",

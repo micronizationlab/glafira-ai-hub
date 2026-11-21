@@ -80,6 +80,8 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
         Assert.Equal("ACCEPTED", response.Status);
         Assert.Equal("true", response.Result["available"]);
         Assert.Equal("task-0001", response.Result["taskId"]);
+        Assert.Equal("windows-core-0001", response.Result["ownerCoreId"]);
+        Assert.Equal("1", response.Result["ownerGeneration"]);
         Assert.Equal("web.research", response.Result["taskType"]);
         Assert.Equal("idem-task-01", response.Result["idempotencyKey"]);
         Assert.Equal("payload://task-0001", response.Result["payloadRef"]);
@@ -264,7 +266,8 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     private void EnqueueTask()
     {
         _store.Enqueue(new HubTaskRequest(
-            "task-0001", "project-0001", "idem-task-01", "web.research",
+            "task-0001", "project-0001", "windows-core-0001", 1,
+            "idem-task-01", "web.research",
             "payload://task-0001", Convert.ToHexString(SHA256.HashData(_payload)).ToLowerInvariant(),
             ["web.research"], [], HubTaskEffectRisk.ReadOnly, null, 5), DateTimeOffset.UtcNow);
     }

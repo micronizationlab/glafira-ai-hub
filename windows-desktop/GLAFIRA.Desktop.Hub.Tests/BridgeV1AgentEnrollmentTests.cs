@@ -304,10 +304,14 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
         Assert.False(hubStore.IsAgentOwnerApproved("agent-01"));
         var resolver = new DpapiSqliteHubCredentialResolver(_databasePath, _protector, _clock);
         Assert.Null(await resolver.ResolveAsync("agent-01", default));
-        Assert.Contains(hubStore.GetTaskHistory("read-only"),
+        var readRevocation = Assert.Single(hubStore.GetTaskHistory("read-only"),
             item => item.EventCode == "AGENT_REVOKED_READ_ONLY_REQUEUED");
-        Assert.Contains(hubStore.GetTaskHistory("external"),
+        var externalRevocation = Assert.Single(hubStore.GetTaskHistory("external"),
             item => item.EventCode == "AGENT_REVOKED_OUTCOME_UNKNOWN");
+        Assert.Equal("windows-core-0001", readRevocation.OwnerCoreId);
+        Assert.Equal(1, readRevocation.OwnerGeneration);
+        Assert.Equal(readRevocation.OwnerCoreId, externalRevocation.OwnerCoreId);
+        Assert.Equal(readRevocation.OwnerGeneration, externalRevocation.OwnerGeneration);
     }
 
     [Fact]
@@ -348,7 +352,8 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
     }
 
     private static HubTaskRequest CreateTask(string id, HubTaskEffectRisk risk) => new(
-        id, "project-a", "idem-" + id, "research.search", "payload://" + id,
+        id, "project-a", "windows-core-0001", 1,
+        "idem-" + id, "research.search", "payload://" + id,
         new string('a', 64), ["research"], [], risk,
         risk == HubTaskEffectRisk.ExternalSideEffect ? "owner-approval-1" : null);
 

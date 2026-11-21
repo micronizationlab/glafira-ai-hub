@@ -263,6 +263,9 @@ public sealed class DesktopHubStore
         ArgumentNullException.ThrowIfNull(task);
         ValidateIdentifier(task.TaskId, nameof(task.TaskId));
         ValidateIdentifier(task.ProjectId, nameof(task.ProjectId));
+        ValidateOwnerCoreId(task.OwnerCoreId, nameof(task.OwnerCoreId));
+        if (task.OwnerGeneration <= 0)
+            throw new ArgumentOutOfRangeException(nameof(task.OwnerGeneration));
         ValidateIdentifier(task.IdempotencyKey, nameof(task.IdempotencyKey));
         ValidateIdentifier(task.TaskType, nameof(task.TaskType));
         ArgumentException.ThrowIfNullOrWhiteSpace(task.PayloadRef);
@@ -284,16 +287,20 @@ public sealed class DesktopHubStore
             command.Transaction = transaction;
             command.CommandText = """
                 INSERT INTO Tasks(
-                    task_id, project_id, idempotency_key, task_type, payload_ref, payload_sha256,
+                    task_id, project_id, owner_core_id, owner_generation,
+                    idempotency_key, task_type, payload_ref, payload_sha256,
                     required_capabilities_json, effect_risk, approval_ref, priority, state,
                     created_at_ms, attempts, fencing_token)
                 VALUES(
-                    $task, $project, $idempotency, $type, $payload, $sha,
+                    $task, $project, $owner, $generation,
+                    $idempotency, $type, $payload, $sha,
                     $capabilities, $risk, $approval, $priority, 'Queued',
                     $created, 0, 0);
                 """;
             command.Parameters.AddWithValue("$task", task.TaskId);
             command.Parameters.AddWithValue("$project", task.ProjectId);
+            command.Parameters.AddWithValue("$owner", task.OwnerCoreId);
+            command.Parameters.AddWithValue("$generation", task.OwnerGeneration);
             command.Parameters.AddWithValue("$idempotency", task.IdempotencyKey);
             command.Parameters.AddWithValue("$type", task.TaskType);
             command.Parameters.AddWithValue("$payload", task.PayloadRef);
@@ -317,6 +324,53 @@ public sealed class DesktopHubStore
         }
         AppendTaskEvent(connection, transaction, task.TaskId, HubTaskState.Queued, now, null, null, null, "TASK_ENQUEUED");
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// Atomically advances authoritative task ownership. A leased task cannot transfer:
+    /// its current Agent lease is bound to the old owner generation and must settle first.
+    /// </summary>
+    public bool TransferQueuedTaskOwnership(
+        string taskId,
+        string expectedOwnerCoreId,
+        long expectedOwnerGeneration,
+        string newOwnerCoreId,
+        long newOwnerGeneration,
+        DateTimeOffset now)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        ValidateOwnerCoreId(expectedOwnerCoreId, nameof(expectedOwnerCoreId));
+        ValidateOwnerCoreId(newOwnerCoreId, nameof(newOwnerCoreId));
+        if (expectedOwnerGeneration <= 0 || expectedOwnerGeneration == long.MaxValue ||
+            newOwnerGeneration != expectedOwnerGeneration + 1)
+            throw new ArgumentOutOfRangeException(nameof(newOwnerGeneration));
+        if (StringComparer.Ordinal.Equals(expectedOwnerCoreId, newOwnerCoreId))
+            throw new ArgumentException("Ownership transfer requires a different Core ID.", nameof(newOwnerCoreId));
+
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+        using var update = connection.CreateCommand();
+        update.Transaction = transaction;
+        update.CommandText = """
+            UPDATE Tasks
+            SET owner_core_id = $newOwner, owner_generation = $newGeneration
+            WHERE task_id = $task AND state = 'Queued'
+              AND owner_core_id = $expectedOwner AND owner_generation = $expectedGeneration;
+            """;
+        update.Parameters.AddWithValue("$newOwner", newOwnerCoreId);
+        update.Parameters.AddWithValue("$newGeneration", newOwnerGeneration);
+        update.Parameters.AddWithValue("$task", taskId);
+        update.Parameters.AddWithValue("$expectedOwner", expectedOwnerCoreId);
+        update.Parameters.AddWithValue("$expectedGeneration", expectedOwnerGeneration);
+        if (update.ExecuteNonQuery() != 1)
+        {
+            transaction.Commit();
+            return false;
+        }
+        AppendTaskEvent(connection, transaction, taskId, HubTaskState.Queued, now,
+            null, null, null, "TASK_OWNER_TRANSFERRED");
+        transaction.Commit();
+        return true;
     }
 
     public HubTaskLease? ClaimNext(
@@ -391,7 +445,8 @@ public sealed class DesktopHubStore
         {
             command.Transaction = transaction;
             command.CommandText = """
-                SELECT t.task_id, t.project_id, t.task_type, t.payload_ref, t.payload_sha256,
+                SELECT t.task_id, t.project_id, t.owner_core_id, t.owner_generation,
+                       t.task_type, t.payload_ref, t.payload_sha256,
                        t.required_capabilities_json, t.effect_risk, t.approval_ref, t.fencing_token,
                        t.idempotency_key
                 FROM Tasks t
@@ -411,15 +466,15 @@ public sealed class DesktopHubStore
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                var taskType = reader.GetString(2);
+                var taskType = reader.GetString(4);
                 if (supportedTypes is not null && !supportedTypes.Contains(taskType)) continue;
-                var required = JsonSerializer.Deserialize<string[]>(reader.GetString(5)) ?? [];
+                var required = JsonSerializer.Deserialize<string[]>(reader.GetString(7)) ?? [];
                 if (required.All(agentCapabilities.Contains))
                 {
                     candidates.Add(new Candidate(
-                        reader.GetString(0), reader.GetString(1), taskType,
-                        reader.GetString(3), reader.GetString(4), (HubTaskEffectRisk)reader.GetInt32(6),
-                        reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt64(8), reader.GetString(9)));
+                        reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), taskType,
+                        reader.GetString(5), reader.GetString(6), (HubTaskEffectRisk)reader.GetInt32(8),
+                        reader.IsDBNull(9) ? null : reader.GetString(9), reader.GetInt64(10), reader.GetString(11)));
                     break;
                 }
             }
@@ -468,7 +523,8 @@ public sealed class DesktopHubStore
         transaction.Commit();
 
         return new HubTaskLease(
-            selected.TaskId, selected.ProjectId, agentId, leaseId, nextFence, expires,
+            selected.TaskId, selected.ProjectId, selected.OwnerCoreId, selected.OwnerGeneration,
+            agentId, leaseId, nextFence, expires,
             selected.TaskType, selected.IdempotencyKey, selected.PayloadRef, selected.PayloadSha256,
             selected.EffectRisk, selected.ApprovalRef);
     }
@@ -915,7 +971,7 @@ public sealed class DesktopHubStore
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT task_id, project_id, task_type, state, priority,
+            SELECT task_id, project_id, owner_core_id, owner_generation, task_type, state, priority,
                    effect_risk, attempts, created_at_ms, approval_ref
             FROM Tasks
             ORDER BY created_at_ms DESC, task_id COLLATE BINARY
@@ -926,13 +982,13 @@ public sealed class DesktopHubStore
         var tasks = new List<HubTaskSnapshot>();
         while (reader.Read())
         {
-            if (!Enum.TryParse<HubTaskState>(reader.GetString(3), out var state))
+            if (!Enum.TryParse<HubTaskState>(reader.GetString(5), out var state))
                 continue;
             tasks.Add(new HubTaskSnapshot(
-                reader.GetString(0), reader.GetString(1), reader.GetString(2), state,
-                reader.GetInt32(4), (HubTaskEffectRisk)reader.GetInt32(5),
-                reader.GetInt32(6), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
-                reader.IsDBNull(8) ? null : reader.GetString(8)));
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3),
+                reader.GetString(4), state, reader.GetInt32(6), (HubTaskEffectRisk)reader.GetInt32(7),
+                reader.GetInt32(8), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(9)),
+                reader.IsDBNull(10) ? null : reader.GetString(10)));
         }
         return tasks;
     }
@@ -956,7 +1012,8 @@ public sealed class DesktopHubStore
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT event_id, task_id, state, occurred_at_ms, agent_id, lease_id, fencing_token,
+            SELECT event_id, task_id, owner_core_id, owner_generation,
+                   state, occurred_at_ms, agent_id, lease_id, fencing_token,
                    event_code, progress_percent, progress_message
             FROM TaskEvents
             WHERE task_id = $task
@@ -969,17 +1026,17 @@ public sealed class DesktopHubStore
         var events = new List<HubTaskEventSnapshot>();
         while (reader.Read())
         {
-            if (!Enum.TryParse<HubTaskState>(reader.GetString(2), out var state))
+            if (!Enum.TryParse<HubTaskState>(reader.GetString(4), out var state))
                 continue;
             events.Add(new HubTaskEventSnapshot(
-                reader.GetInt64(0), reader.GetString(1), state,
-                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3)),
-                reader.IsDBNull(4) ? null : reader.GetString(4),
-                reader.IsDBNull(5) ? null : reader.GetString(5),
-                reader.IsDBNull(6) ? null : reader.GetInt64(6),
-                reader.GetString(7),
-                reader.IsDBNull(8) ? null : reader.GetInt32(8),
-                reader.IsDBNull(9) ? null : reader.GetString(9)));
+                reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), state,
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(5)),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetInt64(8),
+                reader.GetString(9),
+                reader.IsDBNull(10) ? null : reader.GetInt32(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11)));
         }
         return events;
     }
@@ -1001,9 +1058,12 @@ public sealed class DesktopHubStore
         command.Transaction = transaction;
         command.CommandText = """
             INSERT INTO TaskEvents(
-                task_id, state, occurred_at_ms, agent_id, lease_id, fencing_token, event_code,
+                task_id, owner_core_id, owner_generation,
+                state, occurred_at_ms, agent_id, lease_id, fencing_token, event_code,
                 progress_percent, progress_message)
-            VALUES($task, $state, $occurred, $agent, $lease, $fence, $code, $progress, $message);
+            SELECT $task, owner_core_id, owner_generation,
+                   $state, $occurred, $agent, $lease, $fence, $code, $progress, $message
+            FROM Tasks WHERE task_id = $task;
             """;
         command.Parameters.AddWithValue("$task", taskId);
         command.Parameters.AddWithValue("$state", state.ToString());
@@ -1038,6 +1098,8 @@ public sealed class DesktopHubStore
             CREATE TABLE IF NOT EXISTS Tasks(
                 task_id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
+                owner_core_id TEXT NOT NULL,
+                owner_generation INTEGER NOT NULL CHECK(owner_generation > 0),
                 idempotency_key TEXT NOT NULL,
                 task_type TEXT NOT NULL,
                 payload_ref TEXT NOT NULL,
@@ -1076,6 +1138,8 @@ public sealed class DesktopHubStore
             CREATE TABLE IF NOT EXISTS TaskEvents(
                 event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT NOT NULL REFERENCES Tasks(task_id) ON DELETE CASCADE,
+                owner_core_id TEXT NOT NULL,
+                owner_generation INTEGER NOT NULL CHECK(owner_generation > 0),
                 state TEXT NOT NULL,
                 occurred_at_ms INTEGER NOT NULL,
                 agent_id TEXT NULL,
@@ -1095,6 +1159,10 @@ public sealed class DesktopHubStore
                 ON Leases(agent_id, expires_at_ms);
             """;
         command.ExecuteNonQuery();
+        EnsureTaskColumn(connection, "owner_core_id", "TEXT NOT NULL DEFAULT 'legacy-owner'");
+        EnsureTaskColumn(connection, "owner_generation", "INTEGER NOT NULL DEFAULT 1");
+        EnsureTaskEventColumn(connection, "owner_core_id", "TEXT NOT NULL DEFAULT 'legacy-owner'");
+        EnsureTaskEventColumn(connection, "owner_generation", "INTEGER NOT NULL DEFAULT 1");
         EnsureTaskEventColumn(connection, "progress_percent", "INTEGER NULL");
         EnsureTaskEventColumn(connection, "progress_message", "TEXT NULL");
     }
@@ -1117,6 +1185,21 @@ public sealed class DesktopHubStore
         if (exists) return;
         using var alter = connection.CreateCommand();
         alter.CommandText = $"ALTER TABLE TaskEvents ADD COLUMN {columnName} {columnDefinition};";
+        alter.ExecuteNonQuery();
+    }
+
+    private static void EnsureTaskColumn(SqliteConnection connection, string columnName, string columnDefinition)
+    {
+        using var query = connection.CreateCommand();
+        query.CommandText = "PRAGMA table_info(Tasks);";
+        using var reader = query.ExecuteReader();
+        var exists = false;
+        while (reader.Read())
+            exists |= StringComparer.Ordinal.Equals(reader.GetString(1), columnName);
+        reader.Close();
+        if (exists) return;
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE Tasks ADD COLUMN {columnName} {columnDefinition};";
         alter.ExecuteNonQuery();
     }
 
@@ -1144,9 +1227,21 @@ public sealed class DesktopHubStore
             throw new ArgumentException("Identifier exceeds 128 characters.", name);
     }
 
+    private static void ValidateOwnerCoreId(string value, string name)
+    {
+        ValidateIdentifier(value, name);
+        if (value.Length < 8 ||
+            !System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$"))
+            throw new ArgumentException(
+                "Owner Core ID must be 8–128 characters using letters, digits, dot, underscore, or hyphen.",
+                name);
+    }
+
     private sealed record Candidate(
         string TaskId,
         string ProjectId,
+        string OwnerCoreId,
+        long OwnerGeneration,
         string TaskType,
         string PayloadRef,
         string PayloadSha256,
