@@ -49,6 +49,7 @@ public sealed class AgentExecutionJournalTests : IDisposable
         var restored = await CreateJournal().LoadAsync(CancellationToken.None);
         Assert.Empty(restored.ActiveLeases);
         Assert.Equal(pending, Assert.Single(restored.PendingResults));
+        Assert.Equal(lease.PayloadSha256, Assert.Single(restored.PendingResults).Lease.PayloadSha256);
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             journal.AcknowledgeResultAsync(lease.TaskId, lease.LeaseId, lease.FencingToken + 1, CancellationToken.None));
@@ -122,9 +123,8 @@ public sealed class AgentExecutionJournalTests : IDisposable
     {
         const string resultJson = "\"{\\\"outcome\\\":\\\"SUCCEEDED\\\"}\"";
         var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson))).ToLowerInvariant();
-        return new AgentPendingResult(lease.TaskId, lease.LeaseId, lease.FencingToken,
-            "SUCCEEDED", 100, "completed", resultJson, "none",
-            lease.LeaseExpiresAtEpochMs, digest);
+        return new AgentPendingResult(lease, "SUCCEEDED", 100, "completed",
+            resultJson, "none", digest);
     }
 
     public void Dispose()
