@@ -10,6 +10,7 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
     private readonly DesktopHubStore _store;
     private string _status = "Готово";
     private DateTimeOffset _refreshedAt;
+    private HubTaskSnapshot? _selectedTask;
 
     public HubDashboardViewModel(DesktopHubStore store, DesktopHubHostController bridgeHost)
     {
@@ -23,6 +24,16 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
     public ObservableCollection<HubTaskEventSnapshot> TaskHistory { get; } = [];
     public string Status { get => _status; private set => Set(ref _status, value); }
     public DateTimeOffset RefreshedAt { get => _refreshedAt; private set => Set(ref _refreshedAt, value); }
+    public HubTaskSnapshot? SelectedTask
+    {
+        get => _selectedTask;
+        private set
+        {
+            if (!Set(ref _selectedTask, value)) return;
+            OnPropertyChanged(nameof(CanCancelSelectedTask));
+        }
+    }
+    public bool CanCancelSelectedTask => SelectedTask?.State is HubTaskState.Queued or HubTaskState.Leased;
     public int OnlineAgents => Agents.Count(agent => agent.IsOnline && agent.OwnerApproved);
     public int PendingTasks => Tasks.Count(task => task.State == HubTaskState.Queued);
     public int AttentionTasks => Tasks.Count(task => task.State is HubTaskState.OutcomeUnknown or HubTaskState.Failed);
@@ -39,6 +50,8 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
             foreach (var agent in agents) Agents.Add(agent);
             Tasks.Clear();
             foreach (var task in tasks) Tasks.Add(task);
+            if (_selectedTask is not null)
+                SelectedTask = Tasks.SingleOrDefault(task => task.TaskId == _selectedTask.TaskId);
             RefreshedAt = now;
             Status = $"Обновлено: {now.ToLocalTime():dd.MM.yyyy HH:mm:ss}";
             OnPropertyChanged(nameof(OnlineAgents));
@@ -80,6 +93,7 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
 
     public void LoadTaskHistory(HubTaskSnapshot? task)
     {
+        SelectedTask = task;
         TaskHistory.Clear();
         if (task is null)
         {
@@ -97,6 +111,26 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
         {
             Status = $"Не удалось загрузить историю задачи: {error.Message}";
         }
+    }
+
+    public void CancelSelectedTask(string taskId)
+    {
+        var selected = SelectedTask;
+        if (selected is null || !StringComparer.Ordinal.Equals(selected.TaskId, taskId))
+            throw new InvalidOperationException("Выбранная задача больше не актуальна.");
+        if (!_store.CancelTask(taskId, DateTimeOffset.UtcNow))
+        {
+            Refresh();
+            Status = "Задача уже завершена или требует отдельной сверки результата; отмена не применена.";
+            return;
+        }
+
+        Refresh();
+        var updated = Tasks.SingleOrDefault(task => task.TaskId == taskId);
+        LoadTaskHistory(updated);
+        Status = updated?.State == HubTaskState.OutcomeUnknown
+            ? "Остановка задачи не доказывает, что побочный эффект не произошёл. Задача переведена в OutcomeUnknown и требует сверки владельца."
+            : "Задача отменена. Поздние progress/result сообщения от Agent будут отклонены по lease/fencing.";
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
