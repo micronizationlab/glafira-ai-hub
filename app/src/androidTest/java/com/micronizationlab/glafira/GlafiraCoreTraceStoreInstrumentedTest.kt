@@ -73,7 +73,8 @@ class GlafiraCoreTraceStoreInstrumentedTest {
             GlafiraCoreTraceQuery(projectId = "trace-project"),
             GlafiraCoreTraceAccessContext(projectId = "trace-project", taskIds = setOf("trace-task-a"))
         )
-        assertEquals(listOf("trace-task-a"), taskOnly.events.map { it.taskId })
+        assertEquals(2, taskOnly.events.size) // Explicit event plus transactional TASK_CREATED.
+        assertTrue(taskOnly.events.all { it.taskId == "trace-task-a" })
 
         val taskAndProject = traceStore.query(
             GlafiraCoreTraceQuery(projectId = "trace-project"),
@@ -206,6 +207,189 @@ class GlafiraCoreTraceStoreInstrumentedTest {
                 arrayOf("preserved-other-project-event")
             )
         }
+    }
+
+    @Test
+    fun taskLifecycleTraceSharesTransactionsWithQueueAndResultWrites() {
+        val taskId = "trace-lifecycle-task"
+        val projectId = "trace-lifecycle-project"
+        val db = taskStore.writableDatabase
+
+        assertThrows(IllegalArgumentException::class.java) {
+            taskStore.enqueue(task("unsafe task id", projectId))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            taskStore.enqueue(task("safe-task-id", "unsafe project id"))
+        }
+
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_task_create
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'TASK_CREATED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) { taskStore.enqueue(task(taskId, projectId)) }
+        assertNull(taskStore.getTask(taskId))
+        db.execSQL("DROP TRIGGER fail_trace_task_create")
+        taskStore.enqueue(task(taskId, projectId))
+
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_task_start
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'TASK_STARTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) { taskStore.claimNext(2_000L) }
+        assertEquals(GlafiraTaskState.QUEUED, taskStore.getTask(taskId)?.state)
+        assertEquals(0, taskStore.getTask(taskId)?.attemptCount)
+        db.execSQL("DROP TRIGGER fail_trace_task_start")
+
+        assertNotNull(taskStore.claimNext(3_000L))
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_result_commit
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.action_code = 'TASK_RESULT_COMMITTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) {
+            taskStore.persistCoreTaskResult(
+                taskId,
+                setOf(GlafiraTaskState.RUNNING),
+                "durable-result",
+                4_000L
+            )
+        }
+        assertEquals(GlafiraTaskState.RUNNING, taskStore.getTask(taskId)?.state)
+        assertNull(taskStore.coreTaskResult(taskId, projectId))
+        db.execSQL("DROP TRIGGER fail_trace_result_commit")
+
+        assertTrue(taskStore.persistCoreTaskResult(
+            taskId,
+            setOf(GlafiraTaskState.RUNNING),
+            "durable-result",
+            5_000L
+        ))
+        val page = traceStore.query(
+            GlafiraCoreTraceQuery(projectId, taskId = taskId),
+            GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
+        )
+        assertEquals(4, page.events.size)
+        assertEquals(
+            setOf(
+                GlafiraCoreTraceEventType.TASK_CREATED,
+                GlafiraCoreTraceEventType.TASK_STARTED,
+                GlafiraCoreTraceEventType.TASK_SUCCEEDED
+            ),
+            page.events.map { it.eventType }.toSet()
+        )
+        assertEquals(
+            setOf("TASK_CREATED", "TASK_STATE_CHANGED", "TASK_RESULT_COMMITTED"),
+            page.events.map { it.actionCode }.toSet()
+        )
+    }
+
+    @Test
+    fun dryRunPreviewAndPolicyTraceCommitOrRollBackTogether() {
+        val taskId = "trace-dry-run-task"
+        val projectId = "trace-dry-run-project"
+        val original = task(taskId, projectId).copy(
+            payload = org.json.JSONObject().put("actionSummary", "Preview this task").toString()
+        )
+        taskStore.enqueue(original)
+        assertNotNull(taskStore.claimNext(2_000L))
+        val plan = GlafiraDryRunPlanner.build(
+            original,
+            GlafiraTaskAuthorizationResult(
+                GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER,
+                "OWNER_APPROVAL_REQUIRED"
+            )
+        )
+        val db = taskStore.writableDatabase
+        db.execSQL("""
+            CREATE TRIGGER fail_dry_run_trace
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.action_code = 'DRY_RUN_PREVIEW_STORED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_DRY_RUN_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) {
+            taskStore.persistDryRunPreview(
+                taskId, setOf(GlafiraTaskState.RUNNING), plan, 3_000L
+            )
+        }
+        assertEquals(GlafiraTaskState.RUNNING, taskStore.getTask(taskId)?.state)
+        assertNull(taskStore.dryRunPreview(taskId))
+        db.execSQL("DROP TRIGGER fail_dry_run_trace")
+
+        assertTrue(taskStore.persistDryRunPreview(
+            taskId, setOf(GlafiraTaskState.RUNNING), plan, 4_000L
+        ))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, taskStore.getTask(taskId)?.state)
+        assertNotNull(taskStore.dryRunPreview(taskId))
+        db.execSQL("""
+            CREATE TRIGGER fail_dry_run_review_trace
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'REVIEW_ACCEPTED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_REVIEW_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) {
+            taskStore.reviewDryRunPreview(
+                taskId, plan.planHash, GlafiraDryRunReviewStatus.ACKNOWLEDGED, 5_000L
+            )
+        }
+        assertEquals(GlafiraDryRunReviewStatus.PENDING, taskStore.dryRunPreview(taskId)?.reviewStatus)
+        db.execSQL("DROP TRIGGER fail_dry_run_review_trace")
+        assertTrue(taskStore.reviewDryRunPreview(
+            taskId, plan.planHash, GlafiraDryRunReviewStatus.ACKNOWLEDGED, 6_000L
+        ))
+        assertEquals(GlafiraDryRunReviewStatus.ACKNOWLEDGED, taskStore.dryRunPreview(taskId)?.reviewStatus)
+        val events = traceStore.query(
+            GlafiraCoreTraceQuery(projectId, taskId = taskId),
+            GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
+        ).events
+        assertTrue(events.any {
+            it.eventType == GlafiraCoreTraceEventType.POLICY_CHECKED &&
+                it.actionCode == "DRY_RUN_PREVIEW_STORED"
+        })
+        assertTrue(events.any {
+            it.eventType == GlafiraCoreTraceEventType.REVIEW_ACCEPTED &&
+                it.actionCode == "DRY_RUN_REVIEW_ACCEPTED" &&
+                it.actorType == GlafiraCoreTraceActorType.OWNER
+        })
+    }
+
+    @Test
+    fun interruptedTaskRecoveryAndTraceTransitionCommitOrRollBackTogether() {
+        val taskId = "trace-recovery-task"
+        val projectId = "trace-recovery-project"
+        taskStore.enqueue(task(taskId, projectId))
+        assertNotNull(taskStore.claimNext(2_000L))
+        val db = taskStore.writableDatabase
+        db.execSQL("""
+            CREATE TRIGGER fail_trace_recovery
+            BEFORE INSERT ON ${GlafiraCoreTraceStore.TABLE}
+            WHEN NEW.event_type = 'TASK_QUEUED'
+            BEGIN SELECT RAISE(ABORT, 'TRACE_RECOVERY_INJECTED_FAILURE'); END
+        """.trimIndent())
+        assertThrows(SQLiteException::class.java) {
+            taskStore.recoverInterruptedCoreTasks(3_000L, maxRetries = 3)
+        }
+        assertEquals(GlafiraTaskState.RUNNING, taskStore.getTask(taskId)?.state)
+        db.execSQL("DROP TRIGGER fail_trace_recovery")
+
+        assertEquals(1, taskStore.recoverInterruptedCoreTasks(4_000L, maxRetries = 3))
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, taskStore.getTask(taskId)?.state)
+        val events = traceStore.query(
+            GlafiraCoreTraceQuery(projectId, taskId = taskId),
+            GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
+        ).events
+        assertEquals(
+            setOf(
+                GlafiraCoreTraceEventType.TASK_CREATED,
+                GlafiraCoreTraceEventType.TASK_STARTED,
+                GlafiraCoreTraceEventType.TASK_QUEUED
+            ),
+            events.map { it.eventType }.toSet()
+        )
     }
 
     @Test
