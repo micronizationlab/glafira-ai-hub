@@ -203,6 +203,87 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(2, store.taskHistory("legacy", "project").size)
     }
 
+    @Test fun versionSevenUpgradeAddsLeaseFencingWithoutDroppingLegacyRows() {
+        store.enqueue(task("legacy-desktop").copy(taskType = GlafiraTaskStore.DESKTOP_TASK_TYPE))
+        store.close()
+        val database = android.database.sqlite.SQLiteDatabase.openDatabase(
+            context.getDatabasePath("glafira_core_tasks.db").path,
+            null,
+            android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+        )
+        try {
+            database.execSQL("DROP TABLE core_desktop_leases")
+            database.execSQL("DROP TABLE core_desktop_results")
+            database.execSQL("""
+                CREATE TABLE core_desktop_leases (
+                    task_id TEXT PRIMARY KEY NOT NULL REFERENCES core_tasks(task_id) ON DELETE CASCADE,
+                    device_id TEXT NOT NULL,
+                    lease_expires_at INTEGER NOT NULL,
+                    attempt_count INTEGER NOT NULL,
+                    progress_percent INTEGER NOT NULL DEFAULT 0,
+                    progress_message TEXT,
+                    updated_at INTEGER NOT NULL
+                )
+            """.trimIndent())
+            database.execSQL("""
+                CREATE TABLE core_desktop_results (
+                    task_id TEXT PRIMARY KEY NOT NULL REFERENCES core_tasks(task_id) ON DELETE CASCADE,
+                    result_ciphertext TEXT,
+                    error_code TEXT,
+                    completed_at INTEGER NOT NULL
+                )
+            """.trimIndent())
+            database.execSQL("""
+                INSERT INTO core_desktop_leases(
+                    task_id, device_id, lease_expires_at, attempt_count,
+                    progress_percent, progress_message, updated_at
+                ) VALUES('legacy-desktop', 'agent-legacy', 9000, 3, 50, 'legacy progress', 2000)
+            """.trimIndent())
+            database.version = 7
+        } finally {
+            database.close()
+        }
+
+        store = GlafiraTaskStore(context)
+        val lease = store.readableDatabase.rawQuery(
+            "SELECT lease_id, fencing_token FROM core_desktop_leases WHERE task_id = ?",
+            arrayOf("legacy-desktop")
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            cursor.getString(0) to cursor.getLong(1)
+        }
+        assertTrue(lease.first.startsWith("legacy-"))
+        assertEquals(3L, lease.second)
+        assertNotNull(store.getTask("legacy-desktop"))
+        assertTrue(store.readableDatabase.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_live_run_grants'",
+            null
+        ).use { it.moveToFirst() })
+    }
+
+    @Test fun versionEightUpgradeAddsLiveRunGrantSchemaWithoutDroppingTasks() {
+        store.enqueue(task("legacy-v8"))
+        store.close()
+        val database = android.database.sqlite.SQLiteDatabase.openDatabase(
+            context.getDatabasePath("glafira_core_tasks.db").path,
+            null,
+            android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+        )
+        try {
+            database.execSQL("DROP TABLE IF EXISTS core_live_run_grants")
+            database.version = 8
+        } finally {
+            database.close()
+        }
+
+        store = GlafiraTaskStore(context)
+        assertNotNull(store.getTask("legacy-v8"))
+        assertTrue(store.readableDatabase.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_live_run_grants'",
+            null
+        ).use { it.moveToFirst() })
+    }
+
     @Test fun versionFourUpgradeCreatesEncryptedCoreResultTable() {
         store.enqueue(task("legacy-v4"))
         store.writableDatabase.execSQL("DROP TABLE core_task_results")
