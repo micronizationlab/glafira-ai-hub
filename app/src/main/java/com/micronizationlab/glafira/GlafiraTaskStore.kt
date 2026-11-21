@@ -1410,16 +1410,18 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             put("last_error", "DEPENDENCY_FAILED")
             putNull("retry_at")
         }
+        val ownerClause = if (ownerCoreId == null) "" else
+            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
         val selection = "state IN (?, ?) AND task_id IN (" +
             "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
             "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
-            "WHERE p.state IN (?, ?))"
+            "WHERE p.state IN (?, ?))$ownerClause"
         val args = arrayOf(
             GlafiraTaskState.QUEUED.databaseValue,
             GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
             GlafiraTaskState.FAILED.databaseValue,
             GlafiraTaskState.CANCELLED.databaseValue
-        )
+        ) + if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
         while (db.update(TABLE_TASKS, values, selection, args) > 0) {
             // Iterate so failure propagates to grandchildren in the same transaction.
         }
