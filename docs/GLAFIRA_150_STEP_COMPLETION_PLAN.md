@@ -390,3 +390,17 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - **Superseded candidates:** PRs #315, #316 and #317 were closed without merge to avoid stale or duplicate branches. Their relevant deltas were consolidated into #320/#321; earlier failed emulator assertions are not acceptance evidence.
 
 **Open work:** #260 (full Core failure matrix), #262 (provider/coordinator reconciliation), #258/#266 (owner-generation and signed cross-Core handoff), and step 22 (full Trace producer/atomicity/recovery coverage) remain open. No complete program step is marked complete solely because one implementation slice has merged.
+
+
+## Execution ledger update — 2026-11-21 13:10 UTC
+
+**Verified main baseline:** `c0e7f110d9f9b6aac06c0b8344e7496a6cc9ba0f`.
+
+- **Step 18 — still partial; no cross-Core failover.** PR #322 merged Windows Desktop installation identity. Android and Windows installation-backed ownership-transfer signing are now present via PR #336 (`a1d7d32e8d641e6e7f1b09dbfb843b4e5c3cdc09`) and PR #339 (`7efb91fb17f0c2965144f1866ada11a3e9af9a76`), using the shared canonical v1 payload and 64-byte P1363 signatures. PR #334 adds canonical per-task owner metadata and legacy-task quarantine, but remains open: its branch is four commits behind main and its earlier emulator run failed on an unrelated Backup Settings accessibility test. Do not count the PR as merged or the owner-generation fence as complete. Remote-key trust/revocation, signed handoff acceptance, replay inbox/outbox, atomic owner-generation CAS and stale-owner execution fencing remain pending.
+- **Step 21 — storage/portable Backup foundation remains merged.** PR #308 remains the baseline foundation.
+- **Step 22 — materially advanced, still partial.** PR #320 merged as `e1db667e0dc58508e3a11cd851767960f021c257`, adding task lifecycle Trace producers and transactional result/preview/review events. PR #335 merged as `0eb205fa7ecc44f414413774b52eb1549abe4e01`, adding approval request/grant/reject/consume events in the same SQLite transactions as approval mutations, with rollback/failure-injection coverage. Full producer coverage, recovery/reconciliation and end-to-end atomicity acceptance remain open.
+- **Android acceptance blocker fixed independently.** PR #340 merged as `c0e7f110d9f9b6aac06c0b8344e7496a6cc9ba0f`. Exact-head run `44906440204` passed Android JVM tests, managed-emulator acceptance, debug APK packaging and exact-head CI summary. The fix gives the manual backup action and missing-folder guidance explicit accessibility semantics; the smoke test now targets the actionable control. This resolves the unrelated UI failure seen in PR #334's earlier emulator run, but does not itself revalidate #334.
+- **Next ownership slice after #334 refresh/acceptance:** enforce exact current ownerCoreId/ownerGeneration in claim, transition, recovery and result-commit mutation paths. Preserve the independent Windows Hub/Agent execution lease and fencing model; it is not Core ownership.
+- **Parallel P0 work remains open:** #260 full Core failure-injection matrix, #262 provider/coordinator reconciliation, #258/#266 dual-Core owner identity/generation and signed handoff. No automatic failover is enabled.
+
+**Acceptance discipline:** PR #334 must be refreshed onto the current main, rerun on the exact resulting head (including managed emulator), and reviewed before merge. Skipped platform jobs are not passes; no full program step is marked complete from a foundation-only slice.
