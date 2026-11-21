@@ -202,11 +202,13 @@ public sealed class BridgeV1PairingTicketStore
 
     public async ValueTask<BridgeV1RePairingTicketResult> RevokeAndCreateForAgentAsync(
         string agentId,
+        string ownerDeviceId,
         IEnumerable<string> requestedScopes,
         TimeSpan lifetime,
         CancellationToken cancellationToken = default)
     {
         ValidateIdentity(agentId, nameof(agentId));
+        ValidateOwnerDeviceId(ownerDeviceId);
         if (lifetime < MinimumLifetime || lifetime > MaximumLifetime)
             throw new ArgumentOutOfRangeException(nameof(lifetime),
                 "Pairing tickets must live for 30 seconds to 10 minutes.");
@@ -242,7 +244,7 @@ public sealed class BridgeV1PairingTicketStore
                         "revoke-" + Guid.NewGuid().ToString("N"),
                         enrollmentId,
                         agentId,
-                        "desktop-owner",
+                        ownerDeviceId,
                         now,
                         AgentRevocationReason.DEVICE_REPLACED);
                     revocationDecision = AgentRevocationSql.Apply(connection, transaction, request, now);
@@ -692,6 +694,15 @@ public sealed class BridgeV1PairingTicketStore
         if (value.Length > 128 ||
             !value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_'))
             throw new ArgumentException("Identity must be a bounded ASCII identifier.", parameterName);
+    }
+
+    private static void ValidateOwnerDeviceId(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        if (value.Length is < 8 or > 128 ||
+            !value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.'))
+            throw new ArgumentException(
+                "Owner device ID must be an 8–128 character ASCII identifier.", nameof(value));
     }
 
     private static void ValidateEndpoint(Uri endpoint)

@@ -14,6 +14,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
 {
     private const int HttpsPort = 8443;
     private readonly string _databasePath;
+    private readonly string _ownerDeviceId;
     private readonly DesktopHubStore _store;
     private readonly BridgeV1HubIdentityStore _hubIdentityStore;
     private readonly BridgeV1TlsCertificateStore _tlsCertificateStore;
@@ -33,14 +34,25 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     private string _pairingStatus = "Укажите Agent ID, затем создайте краткоживущий код.";
     private string? _visiblePairingTicketId;
 
-    public DesktopHubHostController(string rootDirectory, string databasePath, DesktopHubStore store)
+    public DesktopHubHostController(
+        string rootDirectory,
+        string databasePath,
+        DesktopHubStore store,
+        string ownerDeviceId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerDeviceId);
+        if (ownerDeviceId.Length is < 8 or > 128 ||
+            !ownerDeviceId.All(character =>
+                char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.'))
+            throw new ArgumentException(
+                "Owner device ID must be an 8–128 character ASCII identifier.", nameof(ownerDeviceId));
 
         var root = Path.GetFullPath(rootDirectory);
         _databasePath = Path.GetFullPath(databasePath);
+        _ownerDeviceId = ownerDeviceId;
         _store = store;
         _hubIdentityStore = new BridgeV1HubIdentityStore(Path.Combine(root, "hub-id.txt"));
         _tlsCertificateStore = new BridgeV1TlsCertificateStore();
@@ -240,7 +252,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
                 "revoke-" + Guid.NewGuid().ToString("N"),
                 enrollmentId,
                 agentId,
-                "desktop-owner",
+                _ownerDeviceId,
                 now,
                 AgentRevocationReason.OWNER_REQUEST));
             revoked = decision.Status is AgentRevocationStatus.REVOKED or AgentRevocationStatus.ALREADY_REVOKED;
@@ -264,7 +276,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             throw new InvalidOperationException("Запустите HTTPS, укажите Agent ID и аннулируйте прежний код.");
         var endpoint = GetRunningEndpoint();
         var result = await _pairingTickets.RevokeAndCreateForAgentAsync(
-            PairingAgentId, ParseScopes(), TimeSpan.FromMinutes(2), cancellationToken)
+            PairingAgentId, _ownerDeviceId, ParseScopes(), TimeSpan.FromMinutes(2), cancellationToken)
             .ConfigureAwait(true);
         PublishInvitation(
             result.Ticket,

@@ -8,6 +8,7 @@ namespace GLAFIRA.Desktop.Hub.Tests;
 public sealed class BridgeV1AgentEnrollmentTests : IDisposable
 {
     private const string HubId = "desktop-hub-01";
+    private const string OwnerCoreId = "desktop-core-0001";
     private const string TlsPin = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private static readonly Uri Endpoint = new("https://192.168.10.5:8443/");
     private readonly string _databasePath = Path.Combine(
@@ -218,12 +219,13 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
         Assert.True(hubStore.IsAgentOwnerApproved("agent-01"));
 
         var replacement = await store.RevokeAndCreateForAgentAsync(
-            "agent-01", ["desktop.task.result"], TimeSpan.FromMinutes(2));
+            "agent-01", OwnerCoreId, ["desktop.task.result"], TimeSpan.FromMinutes(2));
 
         Assert.True(replacement.RevokedExistingEnrollment);
         Assert.Equal("agent-01", replacement.Ticket.AgentId);
         Assert.Null(await resolver.ResolveAsync("agent-01", default));
         Assert.False(hubStore.IsAgentOwnerApproved("agent-01"));
+        Assert.Equal(OwnerCoreId, ReadLatestRevocationOwnerDeviceId());
         var second = await EnrollAsync(store, replacement.Ticket, "agent-01");
         Assert.True(second.Accepted);
         Assert.NotEqual(first.Credential!.SharedSecretBase64, second.Credential!.SharedSecretBase64);
@@ -241,9 +243,27 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
 
         await Assert.ThrowsAsync<ArgumentException>(async () =>
             await store.RevokeAndCreateForAgentAsync(
-                "agent-01", ["desktop.task.claim", "desktop.task.claim"], TimeSpan.FromMinutes(2)));
+                "agent-01", OwnerCoreId,
+                ["desktop.task.claim", "desktop.task.claim"], TimeSpan.FromMinutes(2)));
 
         Assert.NotNull(await resolver.ResolveAsync("agent-01", default));
+    }
+
+    [Fact]
+    public async Task InvalidOwnerCoreIdentityCannotStartRePairingOrRevokeCredential()
+    {
+        var store = CreateStore();
+        var ticket = store.CreateForAgent(
+            "agent-01", ["desktop.task.claim"], TimeSpan.FromMinutes(1));
+        Assert.True((await EnrollAsync(store, ticket, "agent-01")).Accepted);
+        var resolver = new DpapiSqliteHubCredentialResolver(_databasePath, _protector, _clock);
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await store.RevokeAndCreateForAgentAsync(
+                "agent-01", "bad owner", ["desktop.task.result"], TimeSpan.FromMinutes(2)));
+
+        Assert.NotNull(await resolver.ResolveAsync("agent-01", default));
+        Assert.Null(ReadLatestRevocationOwnerDeviceId());
     }
 
     [Fact]
@@ -351,6 +371,18 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
 
     private SqliteConnection OpenConnection() => new(
         new SqliteConnectionStringBuilder { DataSource = _databasePath }.ToString());
+
+    private string? ReadLatestRevocationOwnerDeviceId()
+    {
+        using var connection = OpenConnection();
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT owner_device_id FROM HubAgentRevocations
+            ORDER BY decided_at_ms DESC, revocation_id DESC LIMIT 1;
+            """;
+        return command.ExecuteScalar() as string;
+    }
 
     public void Dispose()
     {

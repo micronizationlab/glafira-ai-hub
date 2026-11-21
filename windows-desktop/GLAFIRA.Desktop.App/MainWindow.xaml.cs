@@ -19,7 +19,8 @@ public partial class MainWindow : Window
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GLAFIRA", "DesktopHub");
         var databasePath = Path.Combine(root, "hub.db");
         var store = new DesktopHubStore(databasePath);
-        _bridgeHost = new DesktopHubHostController(root, databasePath, store);
+        var ownerCoreId = ((App)Application.Current).CoreIdentity.CoreId;
+        _bridgeHost = new DesktopHubHostController(root, databasePath, store, ownerCoreId);
         _pairingTicketTimer.Tick += (_, _) =>
         {
             _pairingTicketTimer.Stop();
