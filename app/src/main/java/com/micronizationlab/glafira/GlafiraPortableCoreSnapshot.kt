@@ -92,6 +92,8 @@ internal class GlafiraPortableCoreSnapshot(
         try {
             // Restore is the sole controlled replacement path for the append-only trace table.
             GlafiraCoreTraceStore.dropAppendOnlyTriggers(db)
+            // Restoring historical tasks must not manufacture new lifecycle audit events.
+            GlafiraCoreTraceStore.dropCoreTaskLifecycleTriggers(db)
             NON_PORTABLE.filter { exists(db, it) }.forEach { db.delete(it, null, null) }
             TABLES.asReversed().forEach { db.delete(it.name, null, null) }
             TABLES.forEach { table ->
@@ -131,6 +133,7 @@ internal class GlafiraPortableCoreSnapshot(
             }
             db.rawQuery("PRAGMA foreign_key_check", null).use { require(!it.moveToFirst()) { "Нарушены связи снимка Core." } }
             GlafiraCoreTraceStore.createAppendOnlyTriggers(db)
+            GlafiraCoreTraceStore.createCoreTaskLifecycleTriggers(db)
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
