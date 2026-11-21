@@ -1,6 +1,6 @@
 # Action Pool A — rolling 50-item GLAFIRA backlog
 
-**Snapshot:** 2026-11-21 16:00 UTC — priority labels reconciled to the current owner hierarchy. Linked PR/CI statuses remain snapshots and must be re-fetched against exact head SHA before assignment or acceptance.  
+**Snapshot:** 2026-11-21 — priority labels reconciled to the current owner hierarchy. Linked PR/CI statuses remain snapshots and must be re-fetched against exact head SHA before assignment or acceptance.  
 **Current owner priority:** P2 Core → P2 Backup & Recovery → P3 Runtime/Bridge/Android instrumentation/Windows Desktop/Windows Agent → P4 Android UX/voice/iOS/specialist agents → P5 optional commercial integrations.
 
 **Current owner priority:** P1 Core → P2 Backup & Recovery → P3 Runtime/Bridge/Android instrumentation/Windows Desktop/Windows Agent → P4 Android UX/voice/iOS/specialist agents → P5 optional commercial integrations.
