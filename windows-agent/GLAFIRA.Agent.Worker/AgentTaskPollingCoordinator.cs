@@ -92,11 +92,20 @@ public sealed class AgentTaskPollingCoordinator
 
         using var renewalCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var renewalTask = RenewWhileRunningAsync(credential, leaseState, renewalCancellation);
-        AgentTaskResult result;
+        AgentTaskResult? result = null;
+        Exception? executionFailure = null;
         Exception? renewalFailure = null;
         try
         {
             result = await _executor.ExecuteAsync(leaseState.Current.ToEnvelope(), renewalCancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException error) when (renewalCancellation.IsCancellationRequested)
+        {
+            executionFailure = error;
+        }
+        catch (Exception error)
+        {
+            executionFailure = error;
         }
         finally
         {
@@ -106,8 +115,12 @@ public sealed class AgentTaskPollingCoordinator
             catch (Exception error) { renewalFailure = error; }
         }
 
-        if (renewalFailure is not null || result.Outcome == "CANCELLED")
-            result = new AgentTaskResult(lease.TaskId, "FAILED", ErrorCode: "LEASE_RENEWAL_OR_EXECUTION_CANCELLED");
+        if (renewalFailure is not null || executionFailure is not null || result is null ||
+            result.Outcome == "CANCELLED")
+            result = new AgentTaskResult(lease.TaskId, "FAILED",
+                ErrorCode: renewalFailure is not null
+                    ? "LEASE_RENEWAL_FAILED"
+                    : executionFailure is not null ? "AGENT_HANDLER_FAILED" : "AGENT_EXECUTION_CANCELLED");
 
         var resultText = JsonSerializer.Serialize(result);
         var resultJson = JsonSerializer.Serialize(resultText);
