@@ -13,7 +13,7 @@
 |---|---|---|---|---|---|---|
 | P2 | PR #369, Issue #350, stacked on PR #352 → #347 | Backup button accessibility semantics and emulator regression assertion only | `fix/android-backup-button-merged-semantics-352` | #352 on #347; exact-head emulator acceptance | Android JVM, Shared Contracts and debug APK passed at exact head; managed emulator acceptance still in progress | `b46a1d8496a63a40718192d37571b1ca7359a0de` |
 | P1 audit | Issue #366, PR #347 | Review ownership-generation bypasses; no production edit yet | audit only | #347 must gain complete handoff and all mutation paths must be fenced | Findings recorded in #366 | `be1d81586cd506176db712494ec77f6364faac83` |
-| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Changes committed; docs-only exact-head CI passed at `b7f6b6b3010bdba54caf4080401cb55e10dde423`; all platform checks skipped as expected | `b7f6b6b3010bdba54caf4080401cb55e10dde423` |
+| P4 coordination docs | PR #362 | Register GLAFIRA DESIGN and QA & Quality Intelligence as independent workstreams | `docs/multi-agent-coordination-control-plane` | owner review and exact-head docs CI | Added external AI contributor onboarding and task-board lane; latest head `da3bd6516cbf076b3cc7d3dfdb3b8c3635f9131e`; CI for the newest head not yet observed | `da3bd6516cbf076b3cc7d3dfdb3b8c3635f9131e` |
 
 ## 150-step program tracker
 
@@ -21,7 +21,7 @@ Target: 20 complete cycles × 150 distinct evidence-backed actions. No cycle is 
 
 | Cycle | Status | Completed actions | Evidence index / PRs | Validation summary | Open blockers |
 |---:|---|---:|---|---|---|
-| 01 | partial | 11/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
+| 01 | partial | 12/150 | PR #369; PR #362; Issues #366, #370, #371; PRs #347, #352, #353, #140, #61, #62 | #369 JVM/shared/APK passed; managed emulator still running. #362 docs-only CI passed; platform jobs skipped. #347 exact-head emulator had 1/117 failure. | Approval mutations not generation-fenced; #369 emulator pending; main branch protection disabled |
 
 ## Cycle 01 — capacity audit and parallel portfolio
 
@@ -60,3 +60,5 @@ Not started. Must inspect historical builds, stale branches/PRs, forgotten requi
 | C01-A009 | P1 | Read the full owner-approval persistence path on PR #347: request, pending expiry, grant consumption, approve and reject still use task/state predicates without owner-generation binding. Confirmed issue #366's required fix is not covered by executor fencing alone. | https://github.com/micronizationlab/glafira-ai-hub/issues/366 ; PR #347 head `be1d81586cd506176db712494ec77f6364faac83` | Read-only source audit; implementation and regression tests remain outstanding. | complete |
 | C01-A010 | P3 | Audited current Bridge/Desktop integration PRs and dependencies: PR #140 remains draft and stacked on an old backup/Council UI base; PR #61/#62 are already non-draft with historical green evidence but are stacked on predecessor branches, not proof of current-main end-to-end Bridge/Desktop acceptance. | PR #140, #61, #62 | Read-only metadata and scope review; no current end-to-end device test claimed. | complete |
 | C01-A011 | P2 | Opened a focused tracking issue for the exact-head emulator failure and explicitly distinguished the existing conditional guidance from the still-unverified UI/test failure cause. | https://github.com/micronizationlab/glafira-ai-hub/issues/371 | Issue created; waiting for PR #369 emulator result before product-code changes. | complete |
+
+| C01-A012 | P4 collaboration | Added a separate external-AI-contributor onboarding contract and registered it on the task board. It distinguishes GitHub user identity from AI-provider identity, lists verified Cursor/Codex/GitHub Agentic Workflows/Gemini/Claude paths, leaves DeepSeek/GigaChat write access unverified, and blocks invitations until #370 branch protection is active. | https://github.com/micronizationlab/glafira-ai-hub/commit/4cdb9ed32207f2a09df2c4032203b9e832dd314a ; latest board/ledger head `da3bd6516cbf076b3cc7d3dfdb3b8c3635f9131e` | Documentation-only; prior #362 exact-head docs CI passed at `b7f6b6b3010bdba54caf4080401cb55e10dde423`; CI for the newest head is pending. | complete |
