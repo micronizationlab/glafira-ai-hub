@@ -143,3 +143,57 @@ Compare candidates against a fixed baseline using the same test set and provider
 - Do not install arbitrary model code, plugins or scripts without review and sandboxing.
 - Do not equate a high user rating or long usage history with expert correctness.
 - Do not let community packages override Glafira's authority model, project isolation, privacy policy or owner approvals.
+
+
+## GLAFIRA Network Messenger and federated competence proposals
+
+### Product boundary
+
+GLAFIRA Network Messenger is an owner-to-owner conversation service inside GLAFIRA. A conversation may contain human account owners and one separately authenticated GLAFIRA agent per participating account. The UI must label human and agent identities explicitly; an agent never impersonates its owner or another account's agent.
+
+Participants may address their own GLAFIRA, another participant's GLAFIRA when that owner has enabled participation for the conversation, or both. Human owners may join, leave, pause their agent or take over at any time. Agent-to-agent exchanges are visible in the conversation timeline and attributable to the sending account/agent.
+
+### Conversation intelligence and shared files
+
+Agents may analyze the current conversation and files explicitly attached/shared into it. Useful operations include summaries, extraction, translation, comparison, source-grounded answers, contradiction detection and collaborative drafts. Results should cite the originating message and attachment/version wherever possible.
+
+Conversation context is not a grant to an owner's whole account. Enforce membership and per-attachment ACLs before retrieval, indexing, model routing or tool execution. Do not retrieve unrelated chats, private memory, personal knowledge collections, credentials or files. The owner controls whether their agent can read a conversation, inspect individual attachments, retain a derived fact in private memory, or share a result with other participants. Revoking access blocks future reads; the UI must not claim that previously disclosed content can be recalled from another participant.
+
+All messages, filenames, extracted text and attachments are untrusted input. Prompt injection in a shared document must not override system policy, expand scopes, trigger external actions or exfiltrate private data. Tool execution remains governed by the originating owner's Core policy and approval requirements.
+
+### Equal baseline, private individuality
+
+Every new account starts from the same signed, versioned baseline Core capabilities and approved starter skill catalog. Over time, each account develops separate private memory, knowledge collections, preferences, project context, task history and owner-approved specializations.
+
+Keep four layers distinct:
+1. **Global baseline** — signed common application/Core capabilities.
+2. **Published competence catalog** — reviewed, versioned skills and evaluation assets that have explicit redistribution rights.
+3. **Account-private intelligence** — owner-specific memory, knowledge, task history and adaptations; never shared by default.
+4. **Conversation-local context** — messages and attachments shared with the conversation, governed by membership and retention policy.
+
+A conversation between two accounts does not merge their memories or silently transfer a skill. A participant may explicitly export or share a permitted artifact, but that is a separate consented action.
+
+### Mother competence contribution setting
+
+Add a third-page Settings control named **“Участвовать в развитии проекта GLAFIRA”**. The owner requested ON as the default for new installations/accounts. The setting must explain precisely what may be submitted and provide a clear OFF state.
+
+ON permits the client, during suitable idle windows, to propose a bounded competence package to GLAFIRA-Mother / Update Center. It is not blanket consent to upload private user data. Eligible proposal contents may include generalized skill workflows, schemas, non-identifying evaluation cases, benchmark results, provenance, license/rights declaration, compatibility metadata and integrity hashes.
+
+Never submit raw conversations, attachments, private memory, customer records, secrets, credentials, personal identifiers or identifying traces as part of routine competence exchange. Any future use of real user content for a training dataset requires a separate explicit, specific consent and rights/privacy review; it is not covered by the default ON switch.
+
+Mother validates origin and contributor rights, privacy, schema and archive safety, malware, prompt-injection resistance, quality, regressions and compatibility. Mother may accept, reject or request revision. Acceptance first places a package in a staged catalog; it does not silently modify production agents. Promotion and rollout require signed versioning, changelog, compatibility checks, staged deployment, rollback and revocation. Attribution and contributor consent remain attached to each package; public distribution or commercial resale requires explicit rights.
+
+OFF stops new submissions and cancels pending proposals where technically possible. Explain any already accepted package's retention/distribution status and the limits of retroactive recall. Keep an auditable record of consent version, setting changes, proposal IDs and decisions without logging private content.
+
+### Acceptance gates
+
+- Two independently authenticated accounts can exchange messages with distinct human and agent identities.
+- Each owner's agent can be independently paused, scoped and removed from a conversation.
+- Shared attachments are readable only by authorized conversation participants and agents; revoke blocks future access.
+- Tests prove no cross-tenant retrieval of private memory, unrelated files, credentials or other conversations.
+- Malicious message/file instructions cannot expand permissions or trigger unapproved tools.
+- The participation switch defaults ON for new accounts, can be disabled, and OFF prevents new competence submissions.
+- Mother can validate, reject, stage, version, distribute, roll back and revoke competence packages.
+- Offline delivery, idempotent retries, audit, deletion/retention and backup/restore are covered.
+
+Implementation is staged after the Core/Bridge/Desktop foundations. The messenger, identity, permission and competence-exchange contracts can be designed in parallel without changing Core task authority or bypassing existing approval and signed-update controls.
