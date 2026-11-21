@@ -162,12 +162,11 @@ class GlafiraTaskOwnershipInstrumentedTest {
         stores.remove(legacy)
 
         val migrated = store("android-core-migrated-01")
-        val record = requireNotNull(ownership(migrated, item.taskId))
-        assertEquals("android-core-migrated-01", record["owner_core_id"])
-        assertEquals("1", record["owner_generation"])
-        assertEquals("0", record["state_version"])
-        assertEquals(sha256(item.payload), record["payload_sha256"])
-        assertEquals("READ_ONLY", record["effect_risk"])
+        // v10 databases have no proof binding their rows to the noBackup Core identity.
+        // A reinstall may have generated this new Core ID, so legacy tasks stay unowned.
+        assertNull(ownership(migrated, item.taskId))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, migrated.getTask(item.taskId)?.state)
+        assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", migrated.getTask(item.taskId)?.lastError)
     }
 
     @Test
