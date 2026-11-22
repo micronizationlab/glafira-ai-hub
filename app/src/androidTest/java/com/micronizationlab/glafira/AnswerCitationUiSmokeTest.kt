@@ -121,7 +121,7 @@ class AnswerCitationUiSmokeTest {
                 .performClick()
             compose.onNodeWithText(sourceBody)
                 .assertExists("Exact encrypted source version was not opened in-app")
-            compose.onNodeWithText(sourceId, substring = true)
+            compose.onNodeWithText("ИСТОЧНИК · $sourceId · v7")
                 .assertExists("Source version identity is absent from the opened snapshot")
         } finally {
             scenario?.close()
