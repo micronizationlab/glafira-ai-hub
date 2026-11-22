@@ -87,7 +87,10 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         ) {
             Text("←  НАЗАД", color = Color.White, modifier = Modifier.clickable { onBack() }.padding(4.dp))
             Text("ОЧЕРЕДЬ ЗАДАЧ", color = Color.White, fontWeight = FontWeight.Bold)
-            Text("＋", color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 8.dp).clickable { showAddDialog = true }.semantics { contentDescription = "Добавить задачу" })
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("↻", color = Color.White, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 8.dp).clickable { refresh() }.semantics { contentDescription = "Обновить очередь и подтверждения" })
+                Text("＋", color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 8.dp).clickable { showAddDialog = true }.semantics { contentDescription = "Добавить задачу" })
+            }
         }
         Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
