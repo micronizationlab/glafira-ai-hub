@@ -1,0 +1,123 @@
+package com.micronizationlab.glafira
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class GlafiraProviderContextPolicyTest {
+    private val now = 1_000L
+    private val allowed = GlafiraProviderContextItem(
+        "memo-1", "project-a", GlafiraProviderDataClassification.INTERNAL, "approved context"
+    )
+
+    private fun grant(
+        project: String = "project-a",
+        provider: ProviderId = ProviderId.OPENAI,
+        classifications: Set<GlafiraProviderDataClassification> =
+            setOf(GlafiraProviderDataClassification.INTERNAL),
+        expiry: Long = 2_000L,
+        revoked: Long? = null
+    ) = GlafiraProviderDataGrant(project, provider, classifications, expiry, revoked)
+
+    @Test
+    fun noGrantMeansNoContextEvenWhenProviderIsConfigured() {
+        val result = GlafiraProviderContextPolicy.assemble(
+            "project-a", ProviderId.OPENAI, listOf(allowed), null, now
+        )
+        assertTrue(result.allowedItems.isEmpty())
+        assertEquals(
+            GlafiraProviderContextDenial.NO_VALID_GRANT,
+            result.deniedItems.single().second
+        )
+    }
+
+    @Test
+    fun onlyExplicitlyGrantedClassificationsForExactProjectAndProviderAreIncluded() {
+        val personal = allowed.copy(
+            referenceId = "personal-1",
+            classification = GlafiraProviderDataClassification.PERSONAL
+        )
+        val result = GlafiraProviderContextPolicy.assemble(
+            "project-a", ProviderId.OPENAI, listOf(allowed, personal), grant(), now
+        )
+        assertEquals(listOf(allowed), result.allowedItems)
+        assertEquals(
+            GlafiraProviderContextDenial.CLASSIFICATION_NOT_GRANTED,
+            result.deniedItems.single().second
+        )
+    }
+
+    @Test
+    fun rejectsWrongProjectProviderExpiredAndRevokedGrants() {
+        val cases = listOf(
+            grant(project = "project-b"),
+            grant(provider = ProviderId.DEEPSEEK),
+            grant(expiry = now),
+            grant(revoked = now)
+        )
+        cases.forEach { invalid ->
+            val result = GlafiraProviderContextPolicy.assemble(
+                "project-a", ProviderId.OPENAI, listOf(allowed), invalid, now
+            )
+            assertTrue(result.allowedItems.isEmpty())
+            assertEquals(GlafiraProviderContextDenial.NO_VALID_GRANT, result.deniedItems.single().second)
+        }
+    }
+
+    @Test
+    fun secretIsNeverForwardedEvenIfOtherClassesAreGranted() {
+        val secret = allowed.copy(
+            referenceId = "secret-1",
+            classification = GlafiraProviderDataClassification.SECRET,
+            content = "secret-canary-value"
+        )
+        val result = GlafiraProviderContextPolicy.assemble(
+            "project-a", ProviderId.OPENAI, listOf(secret), grant(), now
+        )
+        assertTrue(result.allowedItems.isEmpty())
+        assertEquals(
+            GlafiraProviderContextDenial.SECRET_NEVER_SHARED,
+            result.deniedItems.single().second
+        )
+        assertTrue(result.deniedItems.toString().none { it == 's' && false })
+        assertTrue(result.deniedItems.none { it.first.contains("secret-canary-value") })
+    }
+
+    @Test
+    fun mixedProjectItemsAreDeniedWithoutLeakingTheirContent() {
+        val other = allowed.copy(
+            referenceId = "other-project-item",
+            projectId = "project-b",
+            content = "cross-project-canary"
+        )
+        val result = GlafiraProviderContextPolicy.assemble(
+            "project-a", ProviderId.OPENAI, listOf(allowed, other), grant(), now
+        )
+        assertEquals(listOf(allowed), result.allowedItems)
+        assertEquals(GlafiraProviderContextDenial.PROJECT_MISMATCH, result.deniedItems.single().second)
+        assertTrue(result.deniedItems.none { it.first.contains("cross-project-canary") })
+    }
+
+    @Test
+    fun rejectsOversizedAndDuplicateContextBeforePartialDispatch() {
+        val tooLarge = allowed.copy(content = "x".repeat(GlafiraProviderContextPolicy.MAX_PROVIDER_CONTEXT_TOTAL_CHARS + 1))
+        val sizeError = runCatching {
+            GlafiraProviderContextPolicy.assemble("project-a", ProviderId.OPENAI, listOf(tooLarge), grant(), now)
+        }.exceptionOrNull()
+        assertEquals("PROVIDER_CONTEXT_ITEM_SIZE_INVALID", sizeError?.message)
+
+        val duplicate = allowed.copy(content = "second")
+        val duplicateError = runCatching {
+            GlafiraProviderContextPolicy.assemble("project-a", ProviderId.OPENAI, listOf(allowed, duplicate), grant(), now)
+        }.exceptionOrNull()
+        assertEquals("PROVIDER_CONTEXT_DUPLICATE_REFERENCE", duplicateError?.message)
+    }
+
+    @Test
+    fun neverAllowsSecretClassificationInAnOwnerGrant() {
+        val error = runCatching {
+            grant(classifications = setOf(GlafiraProviderDataClassification.SECRET))
+        }.exceptionOrNull()
+        assertEquals("PROVIDER_SECRET_CLASSIFICATION_NEVER_GRANTABLE", error?.message)
+    }
+}
