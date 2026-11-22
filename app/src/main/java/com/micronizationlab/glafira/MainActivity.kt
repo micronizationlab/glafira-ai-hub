@@ -1068,16 +1068,41 @@ fun ChatScreen(
                     Text("Получатель: ${manifest.recipient}", fontSize = 11.sp, color = Tx)
                     Text("Операция: ${manifest.operationId}", fontSize = 9.sp, color = Tx)
                     Text(
-                        "Документы ниже подтверждают использованные факты. Остальной текст ответа может быть выводом модели.",
+                        "Только предложения с проверенной привязкой ниже считаются подтверждёнными источниками. Остальной текст ответа может быть выводом модели.",
                         fontSize = 10.sp,
                         color = Tx
                     )
+                    Spacer(Modifier.height(8.dp))
+                    when (manifest.attributionStatus) {
+                        SentenceAttributionStatus.PENDING -> Text(
+                            "Привязка предложений ещё не завершена.", fontSize = 10.sp, color = Tx
+                        )
+                        SentenceAttributionStatus.ABSENT -> Text(
+                            "В ответе нет проверенных маркеров источников; все утверждения считаются выводом модели.",
+                            fontSize = 10.sp, color = Color(0xFF9A5A00)
+                        )
+                        SentenceAttributionStatus.REJECTED -> Text(
+                            "Привязка предложений отклонена: ответ содержит неизвестный или неразрешённый маркер источника.",
+                            fontSize = 10.sp, color = Color(0xFF9A2020)
+                        )
+                        SentenceAttributionStatus.VALIDATED -> {
+                            Text("Проверенные привязки", fontWeight = FontWeight.Bold)
+                            manifest.sentenceAttributions.forEach { attribution ->
+                                Text(
+                                    "Предложение ${attribution.sentenceOrdinal} → ${attribution.sourceAliases.joinToString(", ")}",
+                                    fontSize = 10.sp,
+                                    color = Gr,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                     if (manifest.documents.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
                         Text("Документы", fontWeight = FontWeight.Bold)
-                        manifest.documents.forEach { citation ->
+                        manifest.documents.forEachIndexed { index, citation ->
                             Text(
-                                "${citation.title} · ${citation.sourceId} · v${citation.version} · ${citation.classification}",
+                                "D${index + 1} · ${citation.title} · ${citation.sourceId} · v${citation.version} · ${citation.classification}",
                                 fontSize = 11.sp,
                                 color = Gr,
                                 modifier = Modifier
@@ -1090,9 +1115,9 @@ fun ChatScreen(
                     if (manifest.chats.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
                         Text("Чаты проекта", fontWeight = FontWeight.Bold)
-                        manifest.chats.forEach { citation ->
+                        manifest.chats.forEachIndexed { index, citation ->
                             Text(
-                                "${citation.agentName} · ${citation.sourceId} · ${citation.contentVersion.take(12)} · ${citation.classification}",
+                                "C${index + 1} · ${citation.agentName} · ${citation.sourceId} · ${citation.contentVersion.take(12)} · ${citation.classification}",
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(vertical = 5.dp)
                             )

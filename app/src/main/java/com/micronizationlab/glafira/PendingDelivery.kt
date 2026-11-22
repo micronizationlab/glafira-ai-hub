@@ -87,6 +87,15 @@ internal suspend fun executePendingMessage(context: Context, pending: PendingMes
         withContext(NonCancellable + Dispatchers.IO) {
             when (reply) {
                 is AiProviderResult.Success -> {
+                    val attributionResult = GlafiraContextCitationManifestRuntime.store(context)
+                        .finalizeAnswerAttributions(
+                            claimed.id,
+                            reply.text,
+                            ContextCitationAccess(ProjectIdentifier(claimed.projectId), "local-owner")
+                        )
+                    check(attributionResult != SentenceAttributionWriteResult.CONFLICT) {
+                        "ANSWER_ATTRIBUTION_CONFLICT"
+                    }
                     store.result(claimed.id, reply.text)
                     deliverSavedResult(context, claimed.copy(state = PendingDeliveryState.RESULT_READY, result = reply.text))
                 }

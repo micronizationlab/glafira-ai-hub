@@ -133,7 +133,7 @@ data class KnowledgeContextPreview(
             citations.forEachIndexed { index, citation ->
                 appendLine()
                 appendLine(
-                    "[Источник ${index + 1}: ${citation.source.sourceId.value}; " +
+                    "[D${index + 1} · Документ: ${citation.source.sourceId.value}; " +
                         "версия ${citation.source.version}; ${citation.title}]"
                 )
                 appendLine(citation.excerpt)

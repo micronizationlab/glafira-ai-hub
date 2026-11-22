@@ -63,6 +63,47 @@ class GlafiraContextCitationManifestStoreTest {
         assertNull(store.get("operation-2", projectOne))
     }
 
+    @Test fun sentenceAttributionFinalizesOnceAndRejectsUnknownAliasesFailClosed() {
+        val store = repository()
+        store.put(manifest(), projectOne)
+
+        assertEquals(
+            SentenceAttributionWriteResult.VALIDATED,
+            store.finalizeAnswerAttributions(
+                "operation-1",
+                "Договор подписан [D1]. Это вывод модели. Юрист подтвердил риск [C1].",
+                projectOne
+            )
+        )
+        val saved = store.get("operation-1", projectOne)!!
+        assertEquals(SentenceAttributionStatus.VALIDATED, saved.attributionStatus)
+        assertEquals(listOf(1, 3), saved.sentenceAttributions.map { it.sentenceOrdinal })
+        assertEquals(listOf("D1"), saved.sentenceAttributions[0].sourceAliases)
+        assertEquals(listOf("C1"), saved.sentenceAttributions[1].sourceAliases)
+        assertEquals(
+            SentenceAttributionWriteResult.ALREADY_FINALIZED,
+            store.finalizeAnswerAttributions(
+                "operation-1",
+                "Договор подписан [D1]. Это вывод модели. Юрист подтвердил риск [C1].",
+                projectOne
+            )
+        )
+        assertEquals(
+            SentenceAttributionWriteResult.CONFLICT,
+            store.finalizeAnswerAttributions("operation-1", "Иной ответ [D1].", projectOne)
+        )
+
+        store.put(manifest().copy(operationId = "operation-2"), projectOne)
+        assertEquals(
+            SentenceAttributionWriteResult.REJECTED,
+            store.finalizeAnswerAttributions("operation-2", "Неизвестный источник [D2].", projectOne)
+        )
+        assertEquals(SentenceAttributionStatus.REJECTED, store.get("operation-2", projectOne)?.attributionStatus)
+        val durable = temporary.root.resolve("context_citation_manifests_v1.json").readText()
+        assertFalse(durable.contains("Договор подписан"))
+        assertFalse(durable.contains("Юрист подтвердил риск"))
+    }
+
     private fun repository() = GlafiraContextCitationManifestStore(
         temporary.root,
         AesGcmMemoryPayloadProtector(SecretKeySpec(ByteArray(32) { (it + 9).toByte() }, "AES"))

@@ -67,7 +67,7 @@ class AnswerCitationUiSmokeTest {
             )
             saveHistory(context, historyKey, listOf(
                 Msg("Покажи источники", true, "08:00", "2026-11-21", operationId),
-                Msg("Ответ с проверяемыми источниками", false, "08:01", "2026-11-21", operationId)
+                Msg("Ответ с проверяемыми источниками [D1].", false, "08:01", "2026-11-21", operationId)
             ))
             assertTrue(
                 manifestStore.put(
@@ -93,6 +93,13 @@ class AnswerCitationUiSmokeTest {
                     manifestAccess
                 ) == CitationManifestWriteResult.STORED
             )
+            assertTrue(
+                manifestStore.finalizeAnswerAttributions(
+                    operationId,
+                    "Ответ с проверяемыми источниками [D1].",
+                    manifestAccess
+                ) == SentenceAttributionWriteResult.VALIDATED
+            )
 
             scenario = ActivityScenario.launch(
                 Intent(context, MainActivity::class.java).addFlags(
@@ -103,7 +110,7 @@ class AnswerCitationUiSmokeTest {
                 compose.onAllNodesWithText("СЕТЬ АГЕНТОВ · 2003").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("ГЛАФИРА").assertExists("Agent list did not open").performClick()
-            compose.onNodeWithText("Ответ с проверяемыми источниками")
+            compose.onNodeWithText("Ответ с проверяемыми источниками [D1].")
                 .assertExists("Seeded durable response was not rendered")
             compose.onNodeWithContentDescription("Показать источники ответа")
                 .assertExists("Citation action is absent from the response")
@@ -115,8 +122,10 @@ class AnswerCitationUiSmokeTest {
                 .assertExists("Exact chat citation is not visible")
             compose.onNodeWithText(operationId, substring = true)
                 .assertExists("Operation identity is not visible")
-            compose.onNodeWithText("Документы ниже подтверждают использованные факты", substring = true)
+            compose.onNodeWithText("Только предложения с проверенной привязкой", substring = true)
                 .assertExists("Fact versus model-inference boundary is not visible")
+            compose.onNodeWithText("Предложение 1 → D1")
+                .assertExists("Sentence-level attribution is not visible")
             compose.onNodeWithContentDescription("Открыть источник UI citation document")
                 .performClick()
             compose.onNodeWithText(sourceBody)

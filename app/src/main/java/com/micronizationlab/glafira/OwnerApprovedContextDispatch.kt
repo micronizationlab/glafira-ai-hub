@@ -30,6 +30,10 @@ data class OwnerApprovedContextDispatch(
 
     fun primarySystemPrompt(basePrompt: String): String = listOf(
         basePrompt,
+        GlafiraSentenceAttribution.instruction(
+            documentPreview?.citations.orEmpty().size,
+            chatPreview?.citations.orEmpty().size
+        ),
         chatPreview?.renderForProvider().orEmpty(),
         documentPreview?.renderForProvider().orEmpty()
     ).filter { it.isNotBlank() }.joinToString("\n\n")

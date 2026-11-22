@@ -44,17 +44,27 @@ data class ContextCitationManifest(
     val recipient: String,
     val createdAt: Instant,
     val documents: List<DocumentCitationReference>,
-    val chats: List<ChatCitationReference>
+    val chats: List<ChatCitationReference>,
+    val attributionStatus: SentenceAttributionStatus = SentenceAttributionStatus.PENDING,
+    val sentenceAttributions: List<SentenceCitationAttribution> = emptyList()
 ) {
     init {
         require(operationId.isNotBlank() && recipient.isNotBlank())
         require(documents.isNotEmpty() || chats.isNotEmpty())
         require(documents.distinctBy { it.sourceId to it.version }.size == documents.size)
         require(chats.distinctBy { it.sourceId to it.contentVersion }.size == chats.size)
+        require((attributionStatus == SentenceAttributionStatus.VALIDATED) == sentenceAttributions.isNotEmpty())
+        val allowedAliases = buildSet {
+            documents.indices.forEach { add("D${it + 1}") }
+            chats.indices.forEach { add("C${it + 1}") }
+        }
+        require(sentenceAttributions.flatMap { it.sourceAliases }.all { it in allowedAliases })
+        require(sentenceAttributions.map { it.sentenceOrdinal }.distinct().size == sentenceAttributions.size)
     }
 }
 
 enum class CitationManifestWriteResult { STORED, ALREADY_STORED }
+enum class SentenceAttributionWriteResult { VALIDATED, ABSENT, REJECTED, ALREADY_FINALIZED, NOT_FOUND, CONFLICT }
 
 class GlafiraContextCitationManifestStore(
     directory: File,
@@ -88,6 +98,38 @@ class GlafiraContextCitationManifestStore(
         val record = store.read { emptyList() }.firstOrNull { it.operationId == operationId } ?: return null
         if (record.projectId != access.projectId) return null
         return decrypt(record).takeIf { it.projectId == access.projectId }
+    }
+
+    fun finalizeAnswerAttributions(
+        operationId: String,
+        answer: String,
+        access: ContextCitationAccess
+    ): SentenceAttributionWriteResult {
+        if (operationId.isBlank()) return SentenceAttributionWriteResult.NOT_FOUND
+        var result = SentenceAttributionWriteResult.NOT_FOUND
+        store.update({ emptyList() }) { records ->
+            val index = records.indexOfFirst { it.operationId == operationId && it.projectId == access.projectId }
+            if (index < 0) return@update records
+            val manifest = decrypt(records[index])
+            val parsed = GlafiraSentenceAttribution.parse(answer, manifest.documents.size, manifest.chats.size)
+            val finalized = manifest.copy(
+                attributionStatus = parsed.status,
+                sentenceAttributions = parsed.attributions
+            )
+            if (manifest.attributionStatus != SentenceAttributionStatus.PENDING) {
+                result = if (manifest == finalized) SentenceAttributionWriteResult.ALREADY_FINALIZED
+                else SentenceAttributionWriteResult.CONFLICT
+                return@update records
+            }
+            result = when (parsed.status) {
+                SentenceAttributionStatus.VALIDATED -> SentenceAttributionWriteResult.VALIDATED
+                SentenceAttributionStatus.ABSENT -> SentenceAttributionWriteResult.ABSENT
+                SentenceAttributionStatus.REJECTED -> SentenceAttributionWriteResult.REJECTED
+                SentenceAttributionStatus.PENDING -> error("Parser returned pending attribution")
+            }
+            records.toMutableList().apply { this[index] = encrypt(finalized) }
+        }
+        return result
     }
 
     fun delete(operationId: String, access: ContextCitationAccess) {
@@ -150,6 +192,14 @@ class GlafiraContextCitationManifestStore(
                 put("sourceId", citation.sourceId); put("contentVersion", citation.contentVersion)
                 put("agentName", citation.agentName); put("classification", citation.classification.name)
             }) } })
+            put("attributionStatus", manifest.attributionStatus.name)
+            put("sentenceAttributions", JSONArray().apply {
+                manifest.sentenceAttributions.forEach { attribution -> put(JSONObject().apply {
+                    put("sentenceOrdinal", attribution.sentenceOrdinal)
+                    put("statementDigest", attribution.statementDigest)
+                    put("sourceAliases", JSONArray(attribution.sourceAliases))
+                }) }
+            })
         }.toString()
 
         fun decodeManifest(raw: String): ContextCitationManifest {
@@ -172,7 +222,22 @@ class GlafiraContextCitationManifestStore(
                         item.getString("sourceId"), item.getString("contentVersion"), item.getString("agentName"),
                         CoreDataClassification.valueOf(item.getString("classification"))
                     )
-                } }
+                } },
+                attributionStatus = SentenceAttributionStatus.valueOf(
+                    value.optString("attributionStatus", SentenceAttributionStatus.PENDING.name)
+                ),
+                sentenceAttributions = value.optJSONArray("sentenceAttributions")?.let { array ->
+                    List(array.length()) { index ->
+                        val item = array.getJSONObject(index)
+                        SentenceCitationAttribution(
+                            sentenceOrdinal = item.getInt("sentenceOrdinal"),
+                            statementDigest = item.getString("statementDigest"),
+                            sourceAliases = item.getJSONArray("sourceAliases").let { aliases ->
+                                List(aliases.length()) { aliasIndex -> aliases.getString(aliasIndex) }
+                            }
+                        )
+                    }
+                }.orEmpty()
             )
         }
 

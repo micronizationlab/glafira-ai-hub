@@ -41,7 +41,7 @@ data class ProjectChatContextPreview(
             citations.forEachIndexed { index, citation ->
                 appendLine()
                 appendLine(
-                    "[Чат ${index + 1}: ${citation.source.sourceId}; " +
+                    "[C${index + 1} · Чат: ${citation.source.sourceId}; " +
                         "версия ${citation.source.contentVersion.take(12)}; ${citation.agentName}]"
                 )
                 appendLine(citation.excerpt)
