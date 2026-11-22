@@ -16,7 +16,7 @@ class VoiceDeliveryPolicyTest {
         assertFalse(shouldAutoSpeakAgentReply(message("old"), message("question", true, "op-2"), true))
     }
 
-    @Test fun messagesWithoutStableOperationIdentityAreNeverSpoken() {
+    @Test fun messagesWithoutStableOperationIdentityAreNeverSpokenAfterAnAssistantReply() {
         assertFalse(shouldAutoSpeakAgentReply(message("old"), message("imported", operationId = ""), true))
     }
 
@@ -25,14 +25,24 @@ class VoiceDeliveryPolicyTest {
         assertFalse(shouldAutoSpeakAgentReply(reply, reply.copy(), true))
     }
 
-    @Test fun sameOperationIsNotReplayedWhenSnapshotMetadataChanges() {
+    @Test fun sameAssistantOperationIsNotReplayedWhenSnapshotMetadataChanges() {
         val previous = message("answer", operationId = "op-1")
         val changedSnapshot = previous.copy(time = "12:01")
         assertFalse(shouldAutoSpeakAgentReply(previous, changedSnapshot, true))
     }
 
+    @Test fun assistantReplySpeaksWhenItSharesOperationIdWithItsUserRequest() {
+        val request = message("question", isUser = true, operationId = "request-42")
+        val reply = message("answer", isUser = false, operationId = "request-42")
+        assertTrue(shouldAutoSpeakAgentReply(request, reply, true))
+    }
+
     @Test fun newlyDeliveredAssistantReplyIsSpoken() {
-        assertTrue(shouldAutoSpeakAgentReply(message("question", true), message("answer", operationId = "op-2"), true))
+        assertTrue(shouldAutoSpeakAgentReply(message("old answer"), message("new answer", operationId = "op-2"), true))
+    }
+
+    @Test fun firstAssistantReplyInAnEmptyChatCanBeSpoken() {
+        assertTrue(shouldAutoSpeakAgentReply(null, message("answer"), true))
     }
 
     @Test fun identicalTextFromANewOperationIsStillASpeakableReply() {
