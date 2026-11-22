@@ -4,7 +4,7 @@ import GlafiraBridgeKit
 /// Native adaptive iPhone/iPad client. Live project data is supplied by the
 /// authoritative Windows Hub; this view intentionally contains no mock projects.
 public struct GlafiraRootView: View {
-    @State private var pairedDeviceIds: [String] = []
+    @State private var pairingStates: [MobileHubPairingState] = []
     @State private var credentialStatus = "Проверяем локальные учётные данные…"
     @StateObject private var workspace = GlafiraWorkspaceViewModel()
 
@@ -14,14 +14,21 @@ public struct GlafiraRootView: View {
         NavigationSplitView {
             List {
                 Section("Подключение и устройства") {
-                    Label(credentialStatus, systemImage: pairedDeviceIds.isEmpty ? "lock" : "checkmark.shield")
+                    Label(credentialStatus, systemImage: hasActivePairing ? "checkmark.shield" : "lock")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    ForEach(pairedDeviceIds, id: \.self) { deviceId in
-                        Label(deviceId, systemImage: "iphone")
-                            .font(.subheadline)
+                    ForEach(pairingStates, id: \.deviceId) { pairingState in
+                        Label(
+                            "\(pairingState.deviceId ?? "Неизвестное устройство") — \(stateTitle(pairingState.status))",
+                            systemImage: pairingState.status == .paired ? "iphone" : "exclamationmark.shield"
+                        )
+                        .font(.subheadline)
                     }
-                    Label("Сопряжение через Windows Hub", systemImage: "desktopcomputer.and.arrow.down")
+                    NavigationLink {
+                        BridgePairingView()
+                    } label: {
+                        Label("Сопряжение через Windows Hub", systemImage: "desktopcomputer.and.arrow.down")
+                    }
                     Text("iPhone остаётся клиентом. Одноразовый допуск и отзыв устройства подтверждаются владельцем на Windows Hub.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -49,7 +56,7 @@ public struct GlafiraRootView: View {
             }
             .navigationTitle("GLAFIRA")
         } detail: {
-            GlafiraWelcomeView(hasPairedDevice: !pairedDeviceIds.isEmpty)
+            GlafiraWelcomeView(hasPairedDevice: hasActivePairing)
         }
         .navigationSplitViewStyle(.balanced)
         .task {
@@ -63,13 +70,29 @@ public struct GlafiraRootView: View {
 
     private func refreshCredentialState() {
         do {
-            pairedDeviceIds = try KeychainBridgeCredentialStore().listDeviceIds()
-            credentialStatus = pairedDeviceIds.isEmpty
+            pairingStates = try KeychainBridgeCredentialStore().pairingStates()
+            credentialStatus = pairingStates.isEmpty
                 ? "Нет сохранённых сопряжённых устройств"
-                : "Ключи сопряжения сохранены в Keychain"
+                : hasActivePairing
+                    ? "Активный credential сохранён в Keychain"
+                    : "Подключения требуют внимания"
         } catch {
-            pairedDeviceIds = []
+            pairingStates = []
             credentialStatus = "Не удалось прочитать состояние Keychain"
+        }
+    }
+
+    private var hasActivePairing: Bool {
+        pairingStates.contains { $0.status == .paired }
+    }
+
+    private func stateTitle(_ status: MobileHubPairingStatus) -> String {
+        switch status {
+        case .unpaired: return "не подключено"
+        case .paired: return "подключено"
+        case .expired: return "истёк"
+        case .revoked: return "локально отозвано"
+        case .invalid: return "ошибка состояния"
         }
     }
 }
