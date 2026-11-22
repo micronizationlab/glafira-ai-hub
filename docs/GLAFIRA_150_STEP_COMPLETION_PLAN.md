@@ -33,7 +33,7 @@
 14. [x] Проверить stale worker fencing после lease expiry и повторной выдачи.
 15. [x] Добавить crash recovery для каждого non-terminal state.
 16. [ ] Сделать failure injection между claim, handler, progress, result и ACK.
-17. [ ] Разделить provider outcomes: rejected, unsent, unknown; не replay-ить unknown blindly.
+17. [x] Разделить provider outcomes: rejected, unsent, unknown; не replay-ить unknown blindly. Подтверждено в `AiProviderResult.kt`, `AiProviderClient.kt`, `GlafiraCoordinator.kt`; тесты `AiProviderOutcomeTest` и `AiProviderTransportPolicyTest` покрывают HTTP 4xx/408/5xx, dispatch boundary, Retry-After и partial composite UNKNOWN. Долговременные checkpoints/reconciliation после process death остаются отдельным пробелом #262 / step 18.
 18. [ ] Завершить durable result outbox с retry/backoff и explicit ACK.
 19. [ ] Проверить end-to-end idempotency для task, provider request, result и ACK.
 20. [ ] Закрепить persistent owner grants, deny-by-default и approval binding к task hash/scope/expiry.
