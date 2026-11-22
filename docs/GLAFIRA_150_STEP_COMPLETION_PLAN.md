@@ -1,7 +1,7 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `0649b3a24592e2ccd73b6997db04e2664f055be4` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
-**Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
+**Baseline main for this ledger revision:** `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193` (verified 2026-11-22 during the ten-workstream source/test inventory; refresh after the next mainline integration).  
+**Owner priority:** P1 Core → P2 Backup & Recovery → P3 Runtime / Bridge / Windows Desktop → P4 Android UI & Voice, Windows Agent handler expansion, iOS and specialist agents. CI/release gates remain cross-cutting acceptance requirements at every priority.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
 ## Reframed delivery strategy
