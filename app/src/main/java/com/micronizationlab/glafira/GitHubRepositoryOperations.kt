@@ -312,7 +312,6 @@ internal class GitHubRepositoryOperations(
                 normalized == "settings.gradle" || normalized == "settings.gradle.kts" ||
                 normalized == "gradlew" || normalized == "gradlew.bat" ||
                 segments.firstOrNull()?.let { it in setOf(".github", ".gitlab", ".circleci") } == true ||
-                
                 fileName.endsWith(".gradle") || fileName.endsWith(".gradle.kts") ||
                 fileName == "jenkinsfile" || fileName == "azure-pipelines.yml" ||
                 fileName == "dockerfile" || fileName.startsWith("docker-compose")
