@@ -10,9 +10,9 @@ Core, memory authority, or privileged device.
 - `OwnerBiometricAuthenticator`: explicit Face ID/Touch ID owner-presence check for sensitive actions. Cancellation, lockout, unavailable biometrics and errors fail closed.
 - `OwnerBiometricGateView`: reusable SwiftUI confirmation surface; the protected callback runs only after successful biometric authentication.
 - `GlafiraBridgeKit`: versioned Bridge request/response models, Kotlin-compatible canonical HMAC-SHA256 signing, signature verification and envelope validation.
-- `PinnedBridgeHTTPSClient`: HTTPS-only transport for Android `/bridge/v1/requests` and `/bridge/v1/pairing`; checks the owner-supplied SHA-256 leaf pin, validates the certificate for the expected hostname, rejects redirects and bounds response bodies.
-- `BridgePairing`: Android-compatible one-time pairing proof; a successful submission only enters the Android owner-approval queue and never grants scopes or creates credentials.
-- `BridgeCredentialBundleImporter`: parses the exact `GLAFIRA_BRIDGE_CREDENTIAL_V1` bundle currently copied from Android's owner approval screen, verifies the expected HTTPS origin and certificate fingerprint, rejects unknown fields and scope escalation, and stores the 256-bit HMAC key only after fresh Face ID/Touch ID confirmation.
+- `PinnedBridgeHTTPSClient`: HTTPS-only transport prototype for the historical Android-hosted `/bridge/v1/requests` and `/bridge/v1/pairing` routes; it checks the owner-supplied SHA-256 leaf pin, hostname, redirects and response bounds. It is **not yet interoperable with the current Windows Desktop Hub**.
+- `BridgePairing`: proof implementation for the historical Android owner-approval queue. Its route/status semantics do not match the current Windows Hub Agent enrollment endpoint; do not claim production peer pairing until #392 is resolved.
+- `BridgeCredentialBundleImporter`: strict importer for the historical Android `GLAFIRA_BRIDGE_CREDENTIAL_V1` owner bundle. The current repository does not yet provide a matching end-to-end Android peer-client grant/delivery flow; keep this as a prototype and do not use Agent credentials as Core peer credentials.
 - `GlafiraBridgeKitTests`: protocol tests including a fixed HMAC golden vector
   shared with the Kotlin implementation.
 - `.github/workflows/ios.yml`: macOS CI runs `swift test` for the package.
@@ -35,7 +35,7 @@ Requires Swift 5.9 or later and the Apple CryptoKit framework.
 - Protocol version and typed operation names must match Android/Desktop exactly.
 - HMAC canonicalization uses UTF-16 code-unit lengths to match Kotlin
   `String.length`; the golden test detects accidental serialization drift.
-- Paired device HMAC credentials are stored only in Apple Keychain with device-only accessibility and current-biometric-set protection. Credential import must use the exact bundle shown by Android's owner approval screen after explicit approval. The current Android workflow transfers this bundle by a sensitive clipboard handoff; it is not yet a network grant endpoint.
+- Paired device HMAC credentials are stored only in Apple Keychain with device-only accessibility and current-biometric-set protection. The current importer expects a historical Android owner bundle; do not describe the clipboard flow as a live production pairing/grant endpoint. The current cross-platform peer protocol and server-side owner approval semantics are tracked by #392.
 - Signature verification is not authorization. All operations remain subject
   to Gateway/Core admission, project scope, replay protection, revocation and
   owner approval.
@@ -76,10 +76,10 @@ Requires Swift 5.9 or later and the Apple CryptoKit framework.
    shared Core memory/event contract is stable.
 
 
-## Native Android pairing screen
+## Legacy Android-hosted pairing prototype — not end-to-end against current Hub
 
-The `GlafiraIOSUI` target now includes `BridgePairingView`, linked from the root navigation. The flow accepts the Android one-time invitation JSON, validates its HTTPS origin, certificate fingerprint and expiry, creates the cross-platform HMAC proof, and submits it to `/bridge/v1/pairing`. It displays the server-issued approval ID while the Android owner reviews the request.
+The `GlafiraIOSUI` target includes `BridgePairingView` and a pinned HTTPS client for the historical Android-hosted Bridge contract. It parses the old invitation format and submits to `POST /bridge/v1/pairing`, expecting `PENDING_OWNER_APPROVAL`.
 
-After owner approval, paste the Android `GLAFIRA_BRIDGE_CREDENTIAL_V1` bundle into the import section. The importer requires the approval ID returned by this exact request and the original invitation ticket ID, in addition to matching server identity and requested scopes. It then requires local Face ID / Touch ID and stores the 256-bit secret in device-only Keychain. The secret is never sent back to Android or written to ordinary preferences.
+The current Windows Desktop Hub exposes a different Agent enrollment route (`POST /bridge/v1/pair`) and different enrollment semantics. Agent enrollment is not Core peer enrollment. Therefore this iOS flow is **not currently end-to-end compatible** with the Windows Hub and must not be used as evidence of successful Android↔iOS↔Desktop pairing.
 
-The Android handoff schema now includes `approvalId` and `ticketId`. Android obtains these from the durable approval record/outbox relation; neither value is regenerated during credential delivery.
+Issue #392 owns the canonical cross-platform peer contract and server implementation decision. After that contract is approved, update the Swift client, UI copy, Android client and Hub peer endpoint together; add shared fixtures and physical LAN pairing/revocation tests. Keychain import remains device-only and must never accept an Agent credential as a Core peer credential.
