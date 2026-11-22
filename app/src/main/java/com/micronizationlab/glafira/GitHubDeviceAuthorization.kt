@@ -45,7 +45,7 @@ internal class GitHubDeviceAuthorization(
         require(clientId.isNotBlank()) { "GitHub App Client ID is not configured." }
         val response = postForm(
             DEVICE_CODE_URL,
-            mapOf("client_id" to clientId)
+            mapOf("client_id" to clientId, "scope" to "offline_access")
         )
         val json = JSONObject(response)
         val verificationUri = json.optString("verification_uri")
@@ -92,6 +92,29 @@ internal class GitHubDeviceAuthorization(
         }
     }
 
+    suspend fun refresh(refreshToken: String): GitHubDevicePollResult.Authorized = withContext(Dispatchers.IO) {
+        require(refreshToken.isNotBlank()) { "GitHub refresh token is missing." }
+        val json = JSONObject(
+            postForm(
+                ACCESS_TOKEN_URL,
+                mapOf(
+                    "client_id" to clientId,
+                    "grant_type" to "refresh_token",
+                    "refresh_token" to refreshToken
+                )
+            )
+        )
+        val accessToken = json.optString("access_token")
+        require(accessToken.isNotBlank()) {
+            "GitHub could not refresh authorization: " + json.optString("error", "unknown_error")
+        }
+        GitHubDevicePollResult.Authorized(
+            accessToken = accessToken,
+            refreshToken = json.optString("refresh_token").takeIf(String::isNotBlank),
+            expiresInSeconds = json.optLong("expires_in").takeIf { it > 0L },
+            refreshTokenExpiresInSeconds = json.optLong("refresh_token_expires_in").takeIf { it > 0L }
+        )
+    }
     private fun postForm(endpoint: String, values: Map<String, String>): String {
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -169,7 +192,11 @@ internal class GitHubTokenStore(context: Context) {
     }
 
     @Synchronized
-    fun loadRefreshToken(): String? = decryptStored(REFRESH_TOKEN)
+    fun loadRefreshToken(): String? {
+        val expiresAt = preferences.getLong(REFRESH_EXPIRES_AT, 0L)
+        if (expiresAt > 0L && expiresAt <= System.currentTimeMillis()) return null
+        return decryptStored(REFRESH_TOKEN)
+    }
 
     fun hasAccessToken(): Boolean {
         val expiresAt = preferences.getLong(ACCESS_EXPIRES_AT, 0L)
@@ -248,5 +275,24 @@ internal class GitHubTokenStore(context: Context) {
         private const val REFRESH_TOKEN = "refresh_token"
         private const val ACCESS_EXPIRES_AT = "access_expires_at"
         private const val REFRESH_EXPIRES_AT = "refresh_expires_at"
+    }
+}
+
+/** Refreshes short-lived GitHub access tokens without exposing credentials to callers. */
+internal class GitHubSession(context: Context) {
+    private val store = GitHubTokenStore(context.applicationContext)
+    private val authorization = GitHubDeviceAuthorization()
+
+    suspend fun accessTokenOrRefresh(): String? {
+        store.loadAccessToken()?.let { return it }
+        val refreshToken = store.loadRefreshToken() ?: return null
+        val refreshed = authorization.refresh(refreshToken)
+        val saved = store.save(
+            accessToken = refreshed.accessToken,
+            refreshToken = refreshed.refreshToken,
+            expiresInSeconds = refreshed.expiresInSeconds,
+            refreshTokenExpiresInSeconds = refreshed.refreshTokenExpiresInSeconds
+        )
+        return if (saved) store.loadAccessToken() else null
     }
 }
