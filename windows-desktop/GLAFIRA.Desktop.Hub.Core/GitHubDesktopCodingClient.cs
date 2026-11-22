@@ -249,6 +249,8 @@ public sealed class GitHubDesktopCodingClient
         var fileName = segments[^1];
         var blocked =
             normalized == ".gitmodules" ||
+            normalized == ".gitlab-ci.yml" ||
+            normalized == ".travis.yml" ||
             normalized == "global.json" ||
             normalized == "nuget.config" ||
             normalized == "nuget.lock" ||
