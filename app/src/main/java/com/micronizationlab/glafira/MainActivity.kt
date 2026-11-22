@@ -423,17 +423,20 @@ fun ContactList(
             Spacer(Modifier.width(6.dp))
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
-                    .clickable { onSettingsClick() },
+                    .clickable { onSettingsClick() }
+                    // UiAutomator on API 35 exposed the child label but not the click
+                    // action on this custom Box. Publish the accessibility action on
+                    // the same merged node and route it through the same callback.
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Открыть настройки"
+                        onClick(label = "Открыть настройки") {
+                            onSettingsClick()
+                            true
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                // clickable merges this child label into its own accessibility node.
-                Text(
-                    "⚙",
-                    fontSize = 12.sp,
-                    modifier = Modifier.semantics {
-                        contentDescription = "Открыть настройки"
-                    }
-                )
+                Text("⚙", fontSize = 12.sp)
             }
         }
 
