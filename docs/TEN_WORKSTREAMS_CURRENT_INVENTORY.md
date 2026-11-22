@@ -139,3 +139,20 @@ The 150-step ledger currently names baseline `0649b3a24592e2ccd73b6997db04e2664f
 - No treating a workflow dispatcher as platform validation.
 - No claiming Windows task execution until a handler is registered and end-to-end result ACK is proven.
 - Every fix gets a focused test, exact-head CI inspection and a recorded acceptance result.
+
+
+## Pull-request topology snapshot
+
+At the time of this inventory, the repository had 76 open pull requests. Several are stacked on other feature branches rather than targeting `main`; treat their base branch as a dependency, not a cosmetic setting.
+
+Examples found in the open-PR list:
+- Android backup/accessibility: #372 → #369 → #352 → #347. All four are one dependent delivery chain; the current exact-head emulator blocker is at the top of that chain.
+- Core project fairness: #119 is based on #104 (task dependency/parallel-claim work).
+- Delivery and portable recovery: #58 is based on #57.
+- Desktop queue reliability: #64 is based on #62, which is based on #61.
+- Older runtime stack: #37 is based on #35; #35 is based on #32.
+- Bridge owner APK validation: #69 is based on the Android Keystore signer fix branch (#63).
+- Older Android Bridge integration and runtime PRs (#50, #47, #48, #37, #35) form another stack and must be reconciled with the newer mainline implementation before reuse.
+- Earlier iOS/Bridge/voice PRs (#17, #18, #21, #23, #27, #28) are based on feature branches, not all on current main.
+
+**Action:** before any merge, compare the PR head with current `main`, identify the complete dependency chain, inspect every changed file, and check whether the change has already landed through a newer implementation. Rebase/retarget only after that analysis; never merge an intermediate PR to make its descendants appear ready.
