@@ -119,4 +119,31 @@ class GlafiraProviderContextPolicyTest {
         }.exceptionOrNull()
         assertEquals("PROVIDER_SECRET_CLASSIFICATION_NEVER_GRANTABLE", error?.message)
     }
+
+    @Test
+    fun grantClassificationSnapshotCannotBeExpandedByMutatingInputSet() {
+        val source = mutableSetOf(GlafiraProviderDataClassification.INTERNAL)
+        val immutableGrant = grant(classifications = source)
+        source += GlafiraProviderDataClassification.RESTRICTED
+
+        val restricted = allowed.copy(
+            referenceId = "restricted-1",
+            classification = GlafiraProviderDataClassification.RESTRICTED
+        )
+        val result = GlafiraProviderContextPolicy.assemble(
+            "project-a", ProviderId.OPENAI, listOf(restricted), immutableGrant, now
+        )
+        assertTrue(result.allowedItems.isEmpty())
+        assertEquals(
+            GlafiraProviderContextDenial.CLASSIFICATION_NOT_GRANTED,
+            result.deniedItems.single().second
+        )
+
+        val exposedMutation = runCatching {
+            @Suppress("UNCHECKED_CAST")
+            (immutableGrant.allowedClassifications as MutableSet<GlafiraProviderDataClassification>)
+                .add(GlafiraProviderDataClassification.CONFIDENTIAL)
+        }.exceptionOrNull()
+        assertTrue(exposedMutation is UnsupportedOperationException)
+    }
 }
