@@ -28,7 +28,15 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     val owner = remember(context) { GlafiraCoreRuntimeOwner.get(context) }
     val scope = rememberCoroutineScope()
     var tasks by remember { mutableStateOf(owner.taskStore.listTasks(limit = 200)) }
-    val projectTasks = tasks.filter { it.projectId == currentProject.id }
+    var plans by remember { mutableStateOf(owner.taskPlans(currentProject.id)) }
+    var previews by remember {
+        mutableStateOf(owner.dryRunPreviewRecords(200).filter { it.projectId == currentProject.id })
+    }
+    val planRows = remember(plans, previews) { GlafiraOwnerPlanPresentation.build(plans, previews) }
+    val plannedTaskIds = remember(plans) { plans.flatMap { it.nodes }.map { it.taskId }.toSet() }
+    val projectTasks = tasks.filter {
+        it.projectId == currentProject.id && it.taskId !in plannedTaskIds
+    }
     var showAddDialog by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var instruction by remember { mutableStateOf("") }
@@ -40,6 +48,8 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
 
     fun refresh() {
         tasks = owner.taskStore.listTasks(limit = 200)
+        plans = owner.taskPlans(currentProject.id)
+        previews = owner.dryRunPreviewRecords(200).filter { it.projectId == currentProject.id }
     }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
@@ -86,13 +96,16 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         message?.let {
             Text(it, color = Tx, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
         }
-        if (projectTasks.isEmpty()) {
+        if (projectTasks.isEmpty() && planRows.isEmpty()) {
             Column(Modifier.fillMaxWidth().padding(24.dp)) {
                 Text("Очередь пока пуста.", color = Tx)
                 Text("Нажми «＋ ЗАДАЧА», чтобы добавить поручение в текущий проект.", color = Tx, fontSize = 11.sp)
             }
         } else {
             LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp)) {
+                items(planRows) { plan ->
+                    OwnerPlanCard(plan)
+                }
                 items(projectTasks, key = { it.taskId }) { task ->
                     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Column(Modifier.padding(12.dp)) {
@@ -206,3 +219,41 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
 }
 
 private fun newPlanningIdempotencyKey(): String = "owner-plan-" + UUID.randomUUID().toString()
+
+@Composable
+private fun OwnerPlanCard(plan: GlafiraOwnerPlanRow) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("План ${plan.displayId}", color = Gr, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(plan.status.name, color = Gr, fontSize = 10.sp)
+            }
+            Text(
+                "Завершено узлов: ${plan.completedCount}/${plan.totalCount}",
+                color = Tx,
+                fontSize = 10.sp
+            )
+            plan.nodes.forEach { node ->
+                HorizontalDivider()
+                Text(node.title, color = Color(0xFF202020), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                Text(
+                    "Этап ${node.stage} · ${node.executor} · ${node.state.databaseValue} · зависимостей: ${node.dependencyCount}",
+                    color = Tx,
+                    fontSize = 9.sp
+                )
+                val preview = when (node.previewState) {
+                    GlafiraOwnerPreviewState.NOT_READY -> "Dry Run ещё не сформирован"
+                    GlafiraOwnerPreviewState.INVALID -> "Dry Run отклонён: нарушена целостность"
+                    GlafiraOwnerPreviewState.READY ->
+                        "Dry Run: ${node.simulationStatus?.name} · риск ${node.previewRisk?.name} · review ${node.reviewStatus?.name}"
+                }
+                Text(preview, color = if (node.previewState == GlafiraOwnerPreviewState.INVALID) Red else Tx, fontSize = 9.sp)
+            }
+            Text(
+                "Показаны только безопасные поля плана; инструкции, provider-ответ и секреты здесь не отображаются.",
+                color = Tx,
+                fontSize = 9.sp
+            )
+        }
+    }
+}
