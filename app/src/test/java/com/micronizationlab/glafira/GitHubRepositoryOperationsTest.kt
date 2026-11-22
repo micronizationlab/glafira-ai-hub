@@ -1,6 +1,5 @@
 package com.micronizationlab.glafira
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -32,7 +31,6 @@ class GitHubRepositoryOperationsTest {
     @Test
     fun acceptsRepositoryRelativePaths() {
         GitHubRepositoryOperations.requireSafePath("app/src/main/Example.kt")
-        assertEquals("app/src/main/Example.kt", "app/src/main/Example.kt")
     }
 
     @Test
