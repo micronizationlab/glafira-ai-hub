@@ -37,8 +37,9 @@ class BackupSettingsSmokeTest {
         )
         try {
             val device = UiDevice.getInstance(instrumentation)
+            device.waitForIdle()
             assertTrue("GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.desc("Открыть настройки")), 20_000))
+                device.wait(Until.hasObject(By.text("СЕТЬ АГЕНТОВ · 2003")), 20_000))
             device.findObject(By.desc("Открыть настройки")).click()
 
             var saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))

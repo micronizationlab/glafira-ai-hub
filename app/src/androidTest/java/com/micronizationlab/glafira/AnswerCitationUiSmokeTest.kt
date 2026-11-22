@@ -11,6 +11,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 import java.time.Instant
 import java.util.UUID
 
@@ -22,6 +23,8 @@ class AnswerCitationUiSmokeTest {
         val device = UiDevice.getInstance(instrumentation)
         val operationId = "ui-citation-${UUID.randomUUID()}"
         val historyKey = "default_ГЛАФИРА"
+        val historyFile = File(context.filesDir, "chat_$historyKey.json")
+        val historyExisted = historyFile.exists() || File(historyFile.path + ".bak").exists()
         val previousHistory = loadHistory(context, historyKey)
         val previousBiometric = isBiometricEnabled(context)
         val previousProviderKey = loadProviderKey(context, ProviderId.GIGACHAT)
@@ -29,7 +32,10 @@ class AnswerCitationUiSmokeTest {
         val manifestAccess = ContextCitationAccess(ProjectIdentifier("default"), "local-owner")
         var scenario: ActivityScenario<MainActivity>? = null
         try {
-            setBiometricEnabled(context, false)
+            assertTrue(
+                context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
+                    .edit().putBoolean("biometric_enabled", false).commit()
+            )
             assertTrue(saveProviderKey(context, ProviderId.GIGACHAT, "instrumentation-ui-placeholder"))
             saveHistory(context, historyKey, listOf(
                 Msg("Покажи источники", true, "08:00", "2026-11-21", operationId),
@@ -61,13 +67,16 @@ class AnswerCitationUiSmokeTest {
             )
 
             scenario = ActivityScenario.launch(
-                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                Intent(context, MainActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                )
             )
+            device.waitForIdle()
             assertNotNull(
                 "Agent list did not open",
-                device.wait(Until.findObject(By.desc("Открыть чат ГЛАФИРА")), 10_000)
+                device.wait(Until.findObject(By.text("ГЛАФИРА")), 20_000)
             )
-            device.findObject(By.desc("Открыть чат ГЛАФИРА")).click()
+            device.findObject(By.text("ГЛАФИРА")).click()
             assertNotNull(
                 "Seeded durable response was not rendered",
                 device.wait(Until.findObject(By.text("Ответ с проверяемыми источниками")), 10_000)
@@ -97,9 +106,11 @@ class AnswerCitationUiSmokeTest {
         } finally {
             scenario?.close()
             manifestStore.delete(operationId, manifestAccess)
-            saveHistory(context, historyKey, previousHistory)
+            if (historyExisted) saveHistory(context, historyKey, previousHistory)
+            else deleteHistory(context, historyKey)
             saveProviderKey(context, ProviderId.GIGACHAT, previousProviderKey)
-            setBiometricEnabled(context, previousBiometric)
+            context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
+                .edit().putBoolean("biometric_enabled", previousBiometric).commit()
         }
     }
 }

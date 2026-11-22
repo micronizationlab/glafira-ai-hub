@@ -32,8 +32,9 @@ class MainActivitySmokeTest {
         )
         context.startActivity(intent)
         return UiDevice.getInstance(instrumentation).also {
+            it.waitForIdle()
             assertTrue("GLAFIRA home screen did not open",
-                it.wait(Until.hasObject(By.desc("Открыть очередь задач")), 20_000))
+                it.wait(Until.hasObject(By.text("СЕТЬ АГЕНТОВ · 2003")), 20_000))
         }
     }
 

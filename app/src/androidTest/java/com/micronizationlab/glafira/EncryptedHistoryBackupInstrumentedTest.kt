@@ -1,9 +1,11 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.content.ContextWrapper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
+import java.util.UUID
 import javax.crypto.spec.SecretKeySpec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,10 +15,11 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class EncryptedHistoryBackupInstrumentedTest {
-    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val baseContext: Context = ApplicationProvider.getApplicationContext()
 
     @Test
     fun portableBackupReencryptsHistoryWithReplacementDeviceKeyWithoutPlaintextResidue() {
+        val (context, testRoot) = isolatedContext("history")
         val historyKey = "portable-history-test_${System.nanoTime()}"
         val secret = "portable-secret-${System.nanoTime()}"
         val passphrase = "GLAFIRA-portable-history-test".toCharArray()
@@ -44,11 +47,13 @@ class EncryptedHistoryBackupInstrumentedTest {
             archive?.delete()
             passphrase.fill('\u0000')
             HistoryCryptoRuntime.setProtectorForTesting(null)
+            testRoot.deleteRecursively()
         }
     }
 
     @Test
     fun portableBackupReencryptsOutboxWithReplacementDeviceKeyWithoutPlaintextResidue() {
+        val (context, testRoot) = isolatedContext("outbox")
         val operationId = "portable-outbox-${System.nanoTime()}"
         val prompt = "portable-outbox-prompt-${System.nanoTime()}"
         val result = "portable-outbox-result-${System.nanoTime()}"
@@ -88,7 +93,19 @@ class EncryptedHistoryBackupInstrumentedTest {
             archive?.delete()
             passphrase.fill('\u0000')
             PendingCryptoRuntime.setProtectorForTesting(null)
+            testRoot.deleteRecursively()
         }
+    }
+
+    private fun isolatedContext(name: String): Pair<Context, File> {
+        val root = File(baseContext.cacheDir, "encrypted-backup-$name-${UUID.randomUUID()}")
+        check(root.mkdirs())
+        val files = File(root, "files").apply { check(mkdirs()) }
+        val cache = File(root, "cache").apply { check(mkdirs()) }
+        return object : ContextWrapper(baseContext) {
+            override fun getFilesDir(): File = files
+            override fun getCacheDir(): File = cache
+        } to root
     }
 
     private fun protector(seed: Int): MemoryPayloadProtector = AesGcmMemoryPayloadProtector(
