@@ -37,7 +37,23 @@ class VoiceDeliveryPolicyTest {
         assertTrue(shouldAutoSpeakAgentReply(request, reply, true))
     }
 
-    @Test fun partialFailurePreviewIsNeverSpoken() {\n        val request = message("question", true, "request-7")\n        val partial = message("partial answer", operationId = "request-7:partial")\n        assertFalse(shouldAutoSpeakAgentReply(request, partial, true))\n    }\n\n    @Test fun finalAnswerAfterPartialPreviewIsSpokenOnce() {\n        val partial = message("partial answer", operationId = "request-7:partial")\n        val final = message("final answer", operationId = "request-7")\n        assertTrue(shouldAutoSpeakAgentReply(partial, final, true))\n    }\n\n    @Test fun assistantWithoutStableIdentityIsNeverSpokenEvenAsFirstMessage() {\n        assertFalse(shouldAutoSpeakAgentReply(null, message("imported", operationId = ""), true))\n    }\n\n    @Test fun newlyDeliveredAssistantReplyIsSpoken() {
+    @Test fun partialFailurePreviewIsNeverSpoken() {
+        val request = message("question", true, "request-7")
+        val partial = message("partial answer", operationId = "request-7:partial")
+        assertFalse(shouldAutoSpeakAgentReply(request, partial, true))
+    }
+
+    @Test fun finalAnswerAfterPartialPreviewIsSpokenOnce() {
+        val partial = message("partial answer", operationId = "request-7:partial")
+        val final = message("final answer", operationId = "request-7")
+        assertTrue(shouldAutoSpeakAgentReply(partial, final, true))
+    }
+
+    @Test fun assistantWithoutStableIdentityIsNeverSpokenEvenAsFirstMessage() {
+        assertFalse(shouldAutoSpeakAgentReply(null, message("imported", operationId = ""), true))
+    }
+
+    @Test fun newlyDeliveredAssistantReplyIsSpoken() {
         assertTrue(shouldAutoSpeakAgentReply(message("old answer"), message("new answer", operationId = "op-2"), true))
     }
 
