@@ -41,7 +41,7 @@ The 150-step ledger currently names baseline `0649b3a24592e2ccd73b6997db04e2664f
 
 **Current evidence / blockers:**
 - Android backup accessibility work is split across dependent PRs: [#347](https://github.com/micronizationlab/glafira-ai-hub/pull/347) → [#352](https://github.com/micronizationlab/glafira-ai-hub/pull/352) → [#369](https://github.com/micronizationlab/glafira-ai-hub/pull/369) → [#372](https://github.com/micronizationlab/glafira-ai-hub/pull/372). Do not merge an intermediate branch independently.
-- PR #372 exact-head run [44934756011](https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44934756011): Android JVM, contracts and APK passed; emulator acceptance failed the backup-button clickable-node assertion (1 failure / 117 cases). Logs were inspected; this is a real UI accessibility/action failure, not a reason to weaken the test.
+- Earlier #372 head run [44934756011](https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44934756011) failed the backup-button clickable-node assertion (1/117). The branch now has a newer head `30dd5ab5d11630c5509d612c0aedba124ce1bfa0`; run [44964979933](https://github.com/micronizationlab/glafira-ai-hub/actions/runs/44964979933) has Android JVM, shared contracts and APK passed, while managed-emulator acceptance is still running. The latest implementation uses one Box clickable semantics node with `Role.Button` and a stable content description. Do not call this fixed until the emulator result and exact-head summary pass.
 - Issue [#350](https://github.com/micronizationlab/glafira-ai-hub/issues/350) tracks the click/guidance regression.
 - Issue [#387](https://github.com/micronizationlab/glafira-ai-hub/issues/387) separately requires provider upload → remote read-back → authenticated verification and clean-device restore. A clickable button is not backup acceptance.
 
@@ -156,3 +156,15 @@ Examples found in the open-PR list:
 - Earlier iOS/Bridge/voice PRs (#17, #18, #21, #23, #27, #28) are based on feature branches, not all on current main.
 
 **Action:** before any merge, compare the PR head with current `main`, identify the complete dependency chain, inspect every changed file, and check whether the change has already landed through a newer implementation. Rebase/retarget only after that analysis; never merge an intermediate PR to make its descendants appear ready.
+
+
+## Source-audit refresh — 2026-11-22
+
+This update supersedes only the moving CI/source observations above; historical run references remain useful for the earlier commits.
+
+- **Current baseline remains** `main` = `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193`. The 150-step plan now records this baseline and the agreed priority order: Core → Backup & Recovery → Runtime/Bridge/Desktop → Android UI/Voice, Agent handler expansion, iOS and specialist agents; CI is cross-cutting.
+- **#372 latest head** is `30dd5ab5d11630c5509d612c0aedba124ce1bfa0`, still stacked #372 → #369 → #352 → #347. Latest run `44964979933`: Android JVM, Shared Contracts and APK passed; emulator acceptance was still running at the time of this refresh. Windows/iOS/workflow lint were skipped, not passed. Branch compare against main is 33 commits ahead / 4 behind; review the whole dependency stack and rebase only after the dependency chain is resolved.
+- **#380 and #382** are each based directly on current main (not behind). Their exact-head Android matrices passed: #380 run `44940462816` (238 JVM cases, 118 emulator cases) and #382 run `44941044671` (238 JVM cases, 119 emulator cases). Both remain draft and need independent code review; skipped Windows/iOS jobs are not passes. #380 does not implement the production atomic ownership-transfer CAS required by #366. #382 persists Runtime config in a separate SQLite database; portable snapshot scope must remain explicit and restore must stay fail-closed/paused.
+- **Windows Agent** source verification: Program.cs registers no concrete `IAgentTaskHandler`; AgentWorker polls only when status is Ready and the registry contains at least one handler. Coordinator and Hub task claim/result operations exist, including durable journal and exact ACK checks. Issue #384 remains the activation gate for bounded result artifacts and the first read-only handler.
+- **Protected branch policy** was tested by attempting to merge a documentation-only PR after its exact-head summary passed: GitHub rejected it because at least one approving review is required and 7 of 9 required status checks were still expected (platform jobs were skipped). Do not bypass this rule. Documentation changes remain open for owner review.
+- **No source/runtime fixes are represented as merged by this inventory.** A docs PR or green partial workflow is not a product acceptance result.
