@@ -198,6 +198,16 @@ internal class GitHubTokenStore(context: Context) {
         return decryptStored(REFRESH_TOKEN)
     }
 
+    /** Returns the remaining refresh-token lifetime, or null when no expiry is recorded. */
+    @Synchronized
+    fun loadRefreshTokenExpiresInSeconds(): Long? {
+        val expiresAt = preferences.getLong(REFRESH_EXPIRES_AT, 0L)
+        if (expiresAt <= 0L) return null
+        val remainingMillis = expiresAt - System.currentTimeMillis()
+        if (remainingMillis <= 0L) return null
+        return (remainingMillis + 999L) / 1000L
+    }
+
     fun hasAccessToken(): Boolean {
         val expiresAt = preferences.getLong(ACCESS_EXPIRES_AT, 0L)
         return !preferences.getString(ACCESS_TOKEN, null).isNullOrBlank() &&
@@ -287,11 +297,16 @@ internal class GitHubSession(context: Context) {
         store.loadAccessToken()?.let { return it }
         val refreshToken = store.loadRefreshToken() ?: return null
         val refreshed = authorization.refresh(refreshToken)
+        // GitHub may omit refresh_token when it does not rotate the credential.
+        // In that case retain the existing token and its remaining lifetime.
+        val nextRefreshToken = refreshed.refreshToken ?: refreshToken
+        val nextRefreshTokenLifetime = refreshed.refreshTokenExpiresInSeconds
+            ?: store.loadRefreshTokenExpiresInSeconds()
         val saved = store.save(
             accessToken = refreshed.accessToken,
-            refreshToken = refreshed.refreshToken,
+            refreshToken = nextRefreshToken,
             expiresInSeconds = refreshed.expiresInSeconds,
-            refreshTokenExpiresInSeconds = refreshed.refreshTokenExpiresInSeconds
+            refreshTokenExpiresInSeconds = nextRefreshTokenLifetime
         )
         return if (saved) store.loadAccessToken() else null
     }
