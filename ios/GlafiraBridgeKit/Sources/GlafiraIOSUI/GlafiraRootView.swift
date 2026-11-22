@@ -49,7 +49,7 @@ public struct GlafiraRootView: View {
                     }
 
                     NavigationLink {
-                        GlafiraOwnershipView(model: ownership)
+                        GlafiraOwnershipView(model: ownership, projects: workspace.projects)
                     } label: {
                         Label("Владение", systemImage: "person.crop.circle.badge.checkmark")
                     }
@@ -108,6 +108,7 @@ public struct GlafiraRootView: View {
 
 private struct GlafiraOwnershipView: View {
     @ObservedObject var model: OwnershipSyncViewModel
+    let projects: [MobileWorkspaceProjectSummary]
 
     var body: some View {
         List {
@@ -118,6 +119,37 @@ private struct GlafiraOwnershipView: View {
                 Text("iPhone только читает подписанное состояние. Передача владения, lease и разрешение выполнения остаются на Windows Hub.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if !projects.isEmpty {
+                Section("Проверить Windows Hub") {
+                    ForEach(model.pairings, id: \.deviceId) { pairing in
+                        if let deviceId = pairing.deviceId, pairing.status == .paired {
+                            ForEach(projects) { project in
+                                Button {
+                                    Task {
+                                        await model.discoverTransfers(
+                                            projectId: project.id,
+                                            deviceId: deviceId
+                                        )
+                                    }
+                                } label: {
+                                    Label(
+                                        "\(project.name) · \(deviceId)",
+                                        systemImage: "arrow.triangle.2.circlepath"
+                                    )
+                                }
+                                .disabled(model.isDiscovering(
+                                    projectId: project.id,
+                                    deviceId: deviceId
+                                ))
+                            }
+                        }
+                    }
+                    Text("Список transfer ID получает только подписанный project-scoped запрос; ручной ввод ID недоступен.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if !model.pending.isEmpty {

@@ -78,6 +78,38 @@ final class OwnershipSyncViewModelTests: XCTestCase {
         XCTAssertEqual(model.status, "Состояние владения проверено и сохранено")
     }
 
+    func testProjectScopedDiscoveryPublishesNewDurableWorkWithoutManualTransferId() async throws {
+        let pairing = try pairingState()
+        let fixture = OwnershipDiscoveryFixture(work: pendingWork())
+        let model = OwnershipSyncViewModel(
+            pairingLoader: { _ in [pairing] },
+            queueSnapshot: { await fixture.workSnapshot() },
+            projectionSnapshot: { [] },
+            consume: { _, _ in .noPendingWork },
+            discover: { suppliedPairing, projectId, suppliedNow in
+                XCTAssertEqual(suppliedPairing, pairing)
+                XCTAssertEqual(projectId, "project-0001")
+                XCTAssertEqual(suppliedNow, self.now)
+                return await fixture.discover()
+            }
+        )
+        await model.reload(nowEpochMs: now)
+
+        await model.discoverTransfers(
+            projectId: "project-0001",
+            deviceId: "ios-device-0001",
+            nowEpochMs: now
+        )
+
+        XCTAssertEqual(model.pending.count, 1)
+        XCTAssertEqual(model.pending.first?.projectId, "project-0001")
+        XCTAssertEqual(model.status, "Windows Hub подтвердил новые изменения владения: 1")
+        XCTAssertFalse(model.isDiscovering(
+            projectId: "project-0001",
+            deviceId: "ios-device-0001"
+        ))
+    }
+
     private func pairingState() throws -> MobileHubPairingState {
         try .paired(
             deviceId: "ios-device-0001",
@@ -140,6 +172,30 @@ private actor OwnershipFixture {
         return .synchronized(
             current,
             MobileOwnershipSyncResult(disposition: .applied, projection: projection)
+        )
+    }
+}
+
+private actor OwnershipDiscoveryFixture {
+    private var work: MobileOwnershipReadWork?
+
+    init(work: MobileOwnershipReadWork) {
+        self.work = nil
+        discoveredWork = work
+    }
+
+    private let discoveredWork: MobileOwnershipReadWork
+
+    func workSnapshot() -> [MobileOwnershipReadWork] {
+        work.map { [$0] } ?? []
+    }
+
+    func discover() -> MobileOwnershipDiscoveryResult {
+        work = discoveredWork
+        return MobileOwnershipDiscoveryResult(
+            discoveredCount: 1,
+            enqueuedCount: 1,
+            alreadyKnownCount: 0
         )
     }
 }

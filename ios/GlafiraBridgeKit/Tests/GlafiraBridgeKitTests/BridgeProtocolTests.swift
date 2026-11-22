@@ -184,4 +184,17 @@ final class BridgeProtocolTests: XCTestCase {
             .invalidPayloadValue
         )
     }
+
+    func testOwnershipDiscoveryRequiresEmptyPayload() {
+        let valid = request(operation: .ownershipTransferDiscover)
+        XCTAssertNil(BridgeProtocol.validate(valid, nowEpochMs: 1_050_000))
+        let unexpected = request(
+            operation: .ownershipTransferDiscover,
+            payload: ["transferId": "transfer-owner-0001"]
+        )
+        XCTAssertEqual(
+            BridgeProtocol.validate(unexpected, nowEpochMs: 1_050_000),
+            .unknownPayloadField
+        )
+    }
 }

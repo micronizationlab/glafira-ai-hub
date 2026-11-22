@@ -481,6 +481,50 @@ public sealed class DesktopHubStore
             DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(8)), reader.GetString(9));
     }
 
+    /// <summary>
+    /// Returns a bounded, stable list of the newest still-valid transfer for each task in the
+    /// exact project. The caller must already have authenticated and authorized the signed
+    /// Bridge request; this method never widens project scope.
+    /// </summary>
+    public IReadOnlyList<string> GetDiscoverableOwnershipTransferIds(
+        string projectId,
+        DateTimeOffset now,
+        int limit = 100)
+    {
+        if (projectId != "default") ValidateIdentifier(projectId, nameof(projectId));
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT current.transfer_id
+            FROM OwnershipTransfers current
+            WHERE current.project_id = $project
+              AND current.expires_at_ms > $now
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM OwnershipTransfers newer
+                  WHERE newer.task_id = current.task_id
+                    AND (
+                        newer.new_owner_generation > current.new_owner_generation OR
+                        (newer.new_owner_generation = current.new_owner_generation AND
+                         newer.issued_at_ms > current.issued_at_ms) OR
+                        (newer.new_owner_generation = current.new_owner_generation AND
+                         newer.issued_at_ms = current.issued_at_ms AND
+                         newer.transfer_id > current.transfer_id)
+                    )
+              )
+            ORDER BY current.issued_at_ms ASC, current.transfer_id ASC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$project", projectId);
+        command.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$limit", limit);
+        using var reader = command.ExecuteReader();
+        var transferIds = new List<string>();
+        while (reader.Read()) transferIds.Add(reader.GetString(0));
+        return transferIds;
+    }
+
     private static HubTaskEffectRisk ParseOwnershipRisk(string value) => value switch
     {
         "READ_ONLY" => HubTaskEffectRisk.ReadOnly,

@@ -6,6 +6,7 @@ public enum BridgeOperation: String, Codable, CaseIterable, Sendable {
     case conversationRead = "CONVERSATION_READ"
     case conversationAppend = "CONVERSATION_APPEND"
     case approvalRequest = "APPROVAL_REQUEST"
+    case ownershipTransferDiscover = "OWNERSHIP_TRANSFER_DISCOVER"
     case ownershipTransferRead = "OWNERSHIP_TRANSFER_READ"
 }
 
@@ -101,6 +102,7 @@ public enum BridgeProtocol {
         .conversationRead: ["conversationId"],
         .conversationAppend: ["conversationId", "messageText"],
         .approvalRequest: ["toolId", "actionSummary"],
+        .ownershipTransferDiscover: [],
         .ownershipTransferRead: ["transferId"]
     ]
 

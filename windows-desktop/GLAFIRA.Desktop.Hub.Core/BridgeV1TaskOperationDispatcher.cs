@@ -47,6 +47,8 @@ public sealed class BridgeV1TaskOperationDispatcher(
             RequestId = request.RequestId
         };
 
+        if (request.Operation == BridgeV1Operation.OWNERSHIP_TRANSFER_DISCOVER)
+            return Correlate(DiscoverOwnershipTransfers(request, now));
         if (request.Operation == BridgeV1Operation.OWNERSHIP_TRANSFER_READ)
             return Correlate(ReadOwnershipTransfer(request));
         if (request.Operation is not (BridgeV1Operation.DESKTOP_TASK_CLAIM or BridgeV1Operation.DESKTOP_TASK_RESULT or BridgeV1Operation.DESKTOP_TASK_ARTIFACT or BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT))
@@ -97,6 +99,17 @@ public sealed class BridgeV1TaskOperationDispatcher(
         {
             ["available"] = "true",
             ["envelope"] = transfer.EnvelopeJson
+        });
+    }
+
+    private BridgeV1DispatchResponse DiscoverOwnershipTransfers(
+        BridgeV1SignedRequest request,
+        DateTimeOffset now)
+    {
+        var transferIds = store.GetDiscoverableOwnershipTransferIds(request.ProjectId, now);
+        return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["transferIds"] = JsonSerializer.Serialize(transferIds)
         });
     }
 

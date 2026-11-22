@@ -11,6 +11,21 @@ class GlafiraBridgeProtocolInstrumentedTest {
     private val now = 1_730_000_000_000L
 
     @Test
+    fun ownershipDiscoveryRequiresEmptyPayload() {
+        val valid = bridgeRequest(GlafiraBridgeOperation.OWNERSHIP_TRANSFER_DISCOVER, emptyMap())
+        val unexpected = bridgeRequest(
+            GlafiraBridgeOperation.OWNERSHIP_TRANSFER_DISCOVER,
+            mapOf("transferId" to "transfer-0001")
+        )
+
+        assertNull(GlafiraBridgeProtocol.validate(valid, now))
+        assertEquals(
+            GlafiraBridgeValidationError.UNKNOWN_PAYLOAD_FIELD,
+            GlafiraBridgeProtocol.validate(unexpected, now)
+        )
+    }
+
+    @Test
     fun desktopTaskResultRequiresLeaseIdentityAndFencingToken() {
         val request = taskResult(
             mapOf(
@@ -107,6 +122,21 @@ class GlafiraBridgeProtocolInstrumentedTest {
         deviceId = "device-0001",
         projectId = "project-0001",
         operation = GlafiraBridgeOperation.DESKTOP_TASK_RESULT,
+        issuedAtEpochMs = now - 1_000L,
+        expiresAtEpochMs = now + 60_000L,
+        payload = payload
+    )
+
+    private fun bridgeRequest(
+        operation: GlafiraBridgeOperation,
+        payload: Map<String, String>
+    ) = GlafiraBridgeRequest(
+        protocolVersion = GlafiraBridgeProtocol.CURRENT_VERSION,
+        requestId = "request-0001",
+        idempotencyKey = "idem-0001",
+        deviceId = "device-0001",
+        projectId = "project-0001",
+        operation = operation,
         issuedAtEpochMs = now - 1_000L,
         expiresAtEpochMs = now + 60_000L,
         payload = payload

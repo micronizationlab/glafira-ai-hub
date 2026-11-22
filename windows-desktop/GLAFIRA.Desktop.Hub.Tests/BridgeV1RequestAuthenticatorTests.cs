@@ -95,6 +95,41 @@ public sealed class BridgeV1RequestAuthenticatorTests
     }
 
     [Fact]
+    public async Task OwnershipTransferDiscoveryRequiresReadScopeAndEmptyPayload()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var request = new BridgeV1SignedRequest(
+            1, "request-owner-list-01", "idem-owner-list-01", "device-0001", "project-0001",
+            BridgeV1Operation.OWNERSHIP_TRANSFER_DISCOVER,
+            now.AddSeconds(-1).ToUnixTimeMilliseconds(), now.AddMinutes(1).ToUnixTimeMilliseconds(),
+            new Dictionary<string, string>(), new string('0', 64));
+        var acceptedReplay = new FakeReplayGuard();
+        var accepted = new BridgeV1RequestAuthenticator(
+            new FakeCredentialResolver(new HubRequestCredential(
+                "device-0001", Secret, new HashSet<string> { "ownership.read" })), acceptedReplay);
+
+        Assert.True((await accepted.AuthenticateAsync(Sign(request), now)).Accepted);
+
+        var unexpectedPayload = await accepted.AuthenticateAsync(Sign(request with
+        {
+            RequestId = "request-owner-list-02",
+            Payload = new Dictionary<string, string> { ["transferId"] = "transfer-owner-0001" }
+        }), now);
+        Assert.Equal(BridgeV1AdmissionFailure.InvalidEnvelope, unexpectedPayload.Failure);
+
+        var deniedReplay = new FakeReplayGuard();
+        var denied = new BridgeV1RequestAuthenticator(
+            new FakeCredentialResolver(new HubRequestCredential(
+                "device-0001", Secret, new HashSet<string> { "project.read" })), deniedReplay);
+        var denial = await denied.AuthenticateAsync(Sign(request with
+        {
+            RequestId = "request-owner-list-03"
+        }), now);
+        Assert.Equal(BridgeV1AdmissionFailure.ScopeDenied, denial.Failure);
+        Assert.Equal(0, deniedReplay.Claims);
+    }
+
+    [Fact]
     public async Task RejectsPayloadTamperingBeforeReplayClaim()
     {
         var replay = new FakeReplayGuard();

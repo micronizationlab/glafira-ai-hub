@@ -91,6 +91,49 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task OwnershipDiscoveryIsBoundedToExactProjectAndStillValidTransfers()
+    {
+        var now = new DateTimeOffset(2026, 11, 22, 12, 0, 0, TimeSpan.Zero);
+        _store.Enqueue(new HubTaskRequest(
+            "ownership-list-task-01", "project-0001", "windows-core-0001", 1,
+            "ownership-list-idem-01", "web.research", "payload://ownership-list-task-01",
+            new string('a', 64), ["web.research"], [], HubTaskEffectRisk.ReadOnly, null), now);
+        _store.Enqueue(new HubTaskRequest(
+            "ownership-list-task-02", "project-other-01", "windows-core-0001", 1,
+            "ownership-list-idem-02", "web.research", "payload://ownership-list-task-02",
+            new string('b', 64), ["web.research"], [], HubTaskEffectRisk.ReadOnly, null), now);
+        _store.Enqueue(new HubTaskRequest(
+            "ownership-list-task-03", "project-0001", "windows-core-0001", 1,
+            "ownership-list-idem-03", "web.research", "payload://ownership-list-task-03",
+            new string('c', 64), ["web.research"], [], HubTaskEffectRisk.ReadOnly, null), now);
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var publicKey = signingKey.ExportSubjectPublicKeyInfo();
+        var issuer = new DesktopHubOwnershipTransferIssuer(
+            _store, "windows-core-0001", 1, publicKey,
+            Convert.ToHexString(SHA256.HashData(publicKey)).ToLowerInvariant(),
+            payload => CoreOwnershipTransferCryptography.Sign(signingKey, payload));
+        var first = issuer.Issue(
+            "ownership-list-task-01", "ios-core-0001", now.AddSeconds(1), TimeSpan.FromMinutes(5));
+        _ = issuer.Issue(
+            "ownership-list-task-02", "ios-core-0001", now.AddSeconds(2), TimeSpan.FromMinutes(5));
+        _ = issuer.Issue(
+            "ownership-list-task-03", "ios-core-0001", now.AddSeconds(3), TimeSpan.FromSeconds(1));
+        var request = Request(
+            BridgeV1Operation.OWNERSHIP_TRANSFER_DISCOVER,
+            new Dictionary<string, string>());
+
+        var response = await CreateDispatcher(_payload).DispatchAsync(request, now.AddSeconds(5));
+
+        Assert.Equal("ACCEPTED", response.Status);
+        Assert.Null(response.ErrorCode);
+        Assert.Equal(request.RequestId, response.RequestId);
+        Assert.Equal(
+            new[] { first.Payload.TransferId },
+            JsonSerializer.Deserialize<string[]>(response.Result["transferIds"]));
+        Assert.Single(response.Result);
+    }
+
+    [Fact]
     public async Task UnapprovedAgentHeartbeatDoesNotRefreshLivenessOrRevealProfile()
     {
         var now = DateTimeOffset.UtcNow;

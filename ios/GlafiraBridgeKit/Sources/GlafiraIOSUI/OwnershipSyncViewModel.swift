@@ -34,18 +34,25 @@ final class OwnershipSyncViewModel: ObservableObject {
     typealias QueueSnapshot = () async throws -> [MobileOwnershipReadWork]
     typealias ProjectionSnapshot = () async -> [MobileOwnershipProjection]
     typealias Consume = (MobileHubPairingState, Int64) async throws -> MobileOwnershipReadOutcome
+    typealias Discover = (
+        MobileHubPairingState,
+        String,
+        Int64
+    ) async throws -> MobileOwnershipDiscoveryResult
 
     @Published private(set) var pairings: [MobileHubPairingState] = []
     @Published private(set) var pending: [OwnershipPendingRow] = []
     @Published private(set) var projections: [OwnershipProjectionRow] = []
     @Published private(set) var attempts: [String: OwnershipSyncAttempt] = [:]
     @Published private(set) var syncingDeviceIds: Set<String> = []
+    @Published private(set) var discoveringKeys: Set<String> = []
     @Published private(set) var status = "Проверяем локальное состояние владения…"
 
     private let pairingLoader: PairingLoader
     private let queueSnapshot: QueueSnapshot
     private let projectionSnapshot: ProjectionSnapshot
     private let consume: Consume
+    private let discover: Discover
     private let bootstrapFailure: Bool
 
     init() {
@@ -54,6 +61,11 @@ final class OwnershipSyncViewModel: ObservableObject {
             let queue = try MobileOwnershipReadQueue(directory: directory)
             let syncStore = try MobileOwnershipSyncStore(directory: directory)
             let consumer = MobileOwnershipReadConsumer(
+                queue: queue,
+                syncStore: syncStore,
+                credentialStore: KeychainBridgeCredentialStore()
+            )
+            let discovery = MobileOwnershipDiscoveryClient(
                 queue: queue,
                 syncStore: syncStore,
                 credentialStore: KeychainBridgeCredentialStore()
@@ -69,12 +81,20 @@ final class OwnershipSyncViewModel: ObservableObject {
                     nowEpochMs: nowEpochMs
                 )
             }
+            discover = { pairing, projectId, nowEpochMs in
+                try await discovery.discover(
+                    pairingState: pairing,
+                    projectId: projectId,
+                    nowEpochMs: nowEpochMs
+                )
+            }
             bootstrapFailure = false
         } catch {
             pairingLoader = { _ in [] }
             queueSnapshot = { [] }
             projectionSnapshot = { [] }
             consume = { _, _ in throw OwnershipSyncViewModelError.unavailable }
+            discover = { _, _, _ in throw OwnershipSyncViewModelError.unavailable }
             bootstrapFailure = true
             status = "Локальное состояние владения недоступно"
         }
@@ -84,12 +104,20 @@ final class OwnershipSyncViewModel: ObservableObject {
         pairingLoader: @escaping PairingLoader,
         queueSnapshot: @escaping QueueSnapshot,
         projectionSnapshot: @escaping ProjectionSnapshot,
-        consume: @escaping Consume
+        consume: @escaping Consume,
+        discover: @escaping Discover = { _, _, _ in
+            MobileOwnershipDiscoveryResult(
+                discoveredCount: 0,
+                enqueuedCount: 0,
+                alreadyKnownCount: 0
+            )
+        }
     ) {
         self.pairingLoader = pairingLoader
         self.queueSnapshot = queueSnapshot
         self.projectionSnapshot = projectionSnapshot
         self.consume = consume
+        self.discover = discover
         bootstrapFailure = false
     }
 
@@ -170,6 +198,40 @@ final class OwnershipSyncViewModel: ObservableObject {
         }
     }
 
+    func discoverTransfers(
+        projectId: String,
+        deviceId: String,
+        nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
+    ) async {
+        let key = discoveryKey(projectId: projectId, deviceId: deviceId)
+        guard !discoveringKeys.contains(key),
+              let pairing = pairings.first(where: {
+                  $0.deviceId == deviceId && $0.evaluated(at: nowEpochMs).status == .paired
+              }) else {
+            status = "Поиск изменений заблокирован: восстановите сопряжение с Windows Hub"
+            return
+        }
+        discoveringKeys.insert(key)
+        defer { discoveringKeys.remove(key) }
+        do {
+            let result = try await discover(pairing, projectId, nowEpochMs)
+            await reload(nowEpochMs: nowEpochMs)
+            if result.enqueuedCount > 0 {
+                status = "Windows Hub подтвердил новые изменения владения: \(result.enqueuedCount)"
+            } else if result.discoveredCount == 0 {
+                status = "Windows Hub подтвердил: новых изменений владения нет"
+            } else {
+                status = "Все найденные изменения уже сохранены или ожидают чтения"
+            }
+        } catch {
+            status = discoveryFailureStatus(error)
+        }
+    }
+
+    func isDiscovering(projectId: String, deviceId: String) -> Bool {
+        discoveringKeys.contains(discoveryKey(projectId: projectId, deviceId: deviceId))
+    }
+
     func pendingCount(deviceId: String) -> Int {
         pending.filter { $0.deviceId == deviceId }.count
     }
@@ -193,6 +255,22 @@ final class OwnershipSyncViewModel: ObservableObject {
             return "Запрос отклонён локальной проверкой; запись сохранена для безопасного повтора"
         case nil:
             return "Windows Hub недоступен; запись сохранена для безопасного повтора"
+        }
+    }
+
+    private func discoveryKey(projectId: String, deviceId: String) -> String {
+        deviceId + "|" + projectId
+    }
+
+    private func discoveryFailureStatus(_ error: Error) -> String {
+        switch error as? MobileOwnershipDiscoveryError {
+        case .invalidPairingState, .credentialBindingMismatch,
+             .ownershipReadScopeMissing, .ownershipTrustAnchorMissing:
+            return "Поиск изменений заблокирован проверкой доверия; восстановите сопряжение"
+        case .invalidRequest, .invalidHubResponse:
+            return "Windows Hub вернул неподтверждённый ответ; очередь владения не изменена"
+        case nil:
+            return "Windows Hub недоступен; очередь владения не изменена"
         }
     }
 }

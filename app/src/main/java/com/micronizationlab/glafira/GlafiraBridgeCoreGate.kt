@@ -65,6 +65,7 @@ object GlafiraBridgeCoreGate {
             GlafiraBridgeOperation.CONVERSATION_READ -> "conversation.read"
             GlafiraBridgeOperation.CONVERSATION_APPEND -> "conversation.append"
             GlafiraBridgeOperation.APPROVAL_REQUEST -> error("Handled above")
+            GlafiraBridgeOperation.OWNERSHIP_TRANSFER_DISCOVER,
             GlafiraBridgeOperation.OWNERSHIP_TRANSFER_READ ->
                 return denied(GlafiraBridgeAuthorizationError.UNKNOWN_TOOL)
             GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> "desktop.task.claim"
@@ -82,6 +83,7 @@ object GlafiraBridgeCoreGate {
             GlafiraBridgeOperation.CONVERSATION_APPEND ->
                 "Append message to conversation ${request.payload.getValue("conversationId")}"
             GlafiraBridgeOperation.APPROVAL_REQUEST -> error("Handled above")
+            GlafiraBridgeOperation.OWNERSHIP_TRANSFER_DISCOVER,
             GlafiraBridgeOperation.OWNERSHIP_TRANSFER_READ ->
                 error("Windows Hub client-only operation")
             GlafiraBridgeOperation.DESKTOP_TASK_CLAIM -> "Claim next Desktop task"
