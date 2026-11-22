@@ -11,6 +11,12 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
     private string _status = "Готово";
     private DateTimeOffset _refreshedAt;
     private HubTaskSnapshot? _selectedTask;
+    private string _diagnosticsProjectId = "default";
+    private string _selectedTaskResultSummary =
+        "Выберите задачу, чтобы увидеть безопасное состояние результата.";
+    private string _selectedTaskArtifactReference = "—";
+    private string _selectedTaskArtifactDigest = "—";
+    private string _selectedTaskArtifactContract = "—";
 
     public HubDashboardViewModel(DesktopHubStore store, DesktopHubHostController bridgeHost)
     {
@@ -34,6 +40,36 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
         }
     }
     public bool CanCancelSelectedTask => SelectedTask?.State is HubTaskState.Queued or HubTaskState.Leased;
+    public string DiagnosticsProjectId
+    {
+        get => _diagnosticsProjectId;
+        set
+        {
+            if (!Set(ref _diagnosticsProjectId, value)) return;
+            OnPropertyChanged(nameof(CanQueueDiagnostics));
+        }
+    }
+    public bool CanQueueDiagnostics => !string.IsNullOrWhiteSpace(DiagnosticsProjectId);
+    public string SelectedTaskResultSummary
+    {
+        get => _selectedTaskResultSummary;
+        private set => Set(ref _selectedTaskResultSummary, value);
+    }
+    public string SelectedTaskArtifactReference
+    {
+        get => _selectedTaskArtifactReference;
+        private set => Set(ref _selectedTaskArtifactReference, value);
+    }
+    public string SelectedTaskArtifactDigest
+    {
+        get => _selectedTaskArtifactDigest;
+        private set => Set(ref _selectedTaskArtifactDigest, value);
+    }
+    public string SelectedTaskArtifactContract
+    {
+        get => _selectedTaskArtifactContract;
+        private set => Set(ref _selectedTaskArtifactContract, value);
+    }
     public int OnlineAgents => Agents.Count(agent => agent.IsOnline && agent.OwnerApproved);
     public int PendingTasks => Tasks.Count(task => task.State == HubTaskState.Queued);
     public int AttentionTasks => Tasks.Count(task => task.State is HubTaskState.OutcomeUnknown or HubTaskState.Failed);
@@ -52,6 +88,7 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
             foreach (var task in tasks) Tasks.Add(task);
             if (_selectedTask is not null)
                 SelectedTask = Tasks.SingleOrDefault(task => task.TaskId == _selectedTask.TaskId);
+            RefreshSelectedTaskResult();
             RefreshedAt = now;
             Status = $"Обновлено: {now.ToLocalTime():dd.MM.yyyy HH:mm:ss}";
             OnPropertyChanged(nameof(OnlineAgents));
@@ -71,9 +108,15 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         var allowed = new HashSet<string>(
-            ["document.analysis", "code.build", "web.research", "core.orchestration"],
+            [
+                "document.analysis",
+                "code.build",
+                "web.research",
+                "core.orchestration",
+                HubDiagnosticsTaskContract.RequiredCapability
+            ],
             StringComparer.Ordinal);
-        if (capabilities.Length is < 1 or > 4 || capabilities.Any(value => !allowed.Contains(value)))
+        if (capabilities.Length is < 1 or > 5 || capabilities.Any(value => !allowed.Contains(value)))
             throw new ArgumentException("Выберите одну или несколько поддерживаемых возможностей Agent.");
         if (!_store.ConfigureAgentApproval(agent.AgentId, capabilities, maxParallelTasks))
             throw new InvalidOperationException("Не удалось применить одобрение Agent.");
@@ -97,6 +140,7 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
         TaskHistory.Clear();
         if (task is null)
         {
+            RefreshSelectedTaskResult();
             Status = "Выберите задачу, чтобы просмотреть её историю.";
             return;
         }
@@ -105,12 +149,27 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
         {
             foreach (var item in _store.GetTaskHistory(task.TaskId, 500))
                 TaskHistory.Add(item);
+            RefreshSelectedTaskResult();
             Status = $"История задачи {task.TaskId}: {TaskHistory.Count} событий";
         }
         catch (Exception error)
         {
             Status = $"Не удалось загрузить историю задачи: {error.Message}";
         }
+    }
+
+    public async Task QueueDiagnosticsSnapshotAsync(CancellationToken cancellationToken = default)
+    {
+        var projectId = DiagnosticsProjectId.Trim();
+        if (projectId.Length is < 1 or > 128)
+            throw new ArgumentException("Project ID must contain 1–128 characters.", nameof(DiagnosticsProjectId));
+
+        var submission = await BridgeHost.QueueDiagnosticsSnapshotAsync(projectId, cancellationToken)
+            .ConfigureAwait(true);
+        Refresh();
+        var queued = Tasks.SingleOrDefault(task => task.TaskId == submission.TaskId);
+        LoadTaskHistory(queued);
+        Status = $"Безопасный локальный снимок диагностики поставлен в очередь: {submission.TaskId}";
     }
 
     public void CancelSelectedTask(string taskId)
@@ -131,6 +190,39 @@ public sealed class HubDashboardViewModel : INotifyPropertyChanged
         Status = updated?.State == HubTaskState.OutcomeUnknown
             ? "Остановка задачи не доказывает, что побочный эффект не произошёл. Задача переведена в OutcomeUnknown и требует сверки владельца."
             : "Задача отменена. Поздние progress/result сообщения от Agent будут отклонены по lease/fencing.";
+    }
+
+    private void RefreshSelectedTaskResult()
+    {
+        if (SelectedTask is null)
+        {
+            SelectedTaskResultSummary = "Выберите задачу, чтобы увидеть безопасное состояние результата.";
+            SelectedTaskArtifactReference = "—";
+            SelectedTaskArtifactDigest = "—";
+            SelectedTaskArtifactContract = "—";
+            return;
+        }
+
+        var result = _store.GetTaskOwnerResult(SelectedTask.TaskId);
+        if (result is null)
+        {
+            SelectedTaskResultSummary = "Состояние результата недоступно.";
+            SelectedTaskArtifactReference = "—";
+            SelectedTaskArtifactDigest = "—";
+            SelectedTaskArtifactContract = "—";
+            return;
+        }
+
+        var completedAt = result.CompletedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "—";
+        var error = string.IsNullOrWhiteSpace(result.ErrorCode) ? "нет" : result.ErrorCode;
+        SelectedTaskResultSummary = result.TerminalResultAvailable
+            ? $"{result.State} · завершено {completedAt} · код ошибки: {error}"
+            : $"{result.State} · терминальный результат ещё не получен";
+        SelectedTaskArtifactReference = result.ResultReference ?? "—";
+        SelectedTaskArtifactDigest = result.ResultSha256 ?? "—";
+        SelectedTaskArtifactContract = result.ArtifactAvailable
+            ? $"{result.ArtifactSchemaId} v{result.ArtifactSchemaVersion} · {result.ArtifactRedactionStatus}"
+            : "Артефакт ещё не подтверждён или недоступен";
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

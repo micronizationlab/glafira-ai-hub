@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text.Json;
+using GLAFIRA.Desktop.Core.Ownership;
 using GLAFIRA.Desktop.Hub.Core;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -97,6 +100,102 @@ public sealed class DesktopHubStoreTests : IDisposable
         var child = _store.ClaimNext("agent-1", now.AddSeconds(2), TimeSpan.FromMinutes(1));
         Assert.NotNull(child);
         Assert.Equal("child", child.TaskId);
+    }
+
+    [Fact]
+    public void SignedOwnershipTransferIsVerifiedAppliedAndJournaledAtomically()
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 18, 0, 0, TimeSpan.Zero);
+        _store.RegisterAgent(new HubAgentRegistration(
+            "agent-signed", "device-signed", ["research"], 1, true), now);
+        _store.Enqueue(CreateTask("signed-transfer"), now);
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var publicKey = signingKey.ExportSubjectPublicKeyInfo();
+        var fingerprint = Convert.ToHexString(SHA256.HashData(publicKey)).ToLowerInvariant();
+        var issuer = new DesktopHubOwnershipTransferIssuer(
+            _store, "windows-core-0001", 1, publicKey, fingerprint,
+            payload => CoreOwnershipTransferCryptography.Sign(signingKey, payload));
+
+        var envelope = issuer.Issue(
+            "signed-transfer", "android-core-0001", now.AddSeconds(1), TimeSpan.FromMinutes(5));
+
+        Assert.True(_store.MatchesTaskOwnership("signed-transfer", "android-core-0001", 2));
+        Assert.True(CoreOwnershipTransferCryptography.Verify(
+            envelope.Payload, publicKey, Convert.FromBase64String(envelope.SignatureBase64)));
+        var saved = Assert.IsType<HubOwnershipTransferSnapshot>(
+            _store.GetOwnershipTransfer(envelope.Payload.TransferId));
+        Assert.Equal("windows-core-0001", saved.OldOwnerCoreId);
+        Assert.Equal("android-core-0001", saved.NewOwnerCoreId);
+        Assert.Equal(envelope.ToWireJson(), saved.EnvelopeJson);
+        using var document = JsonDocument.Parse(saved.EnvelopeJson);
+        Assert.Equal(21, document.RootElement.EnumerateObject().Count());
+        Assert.Equal(envelope.SignatureBase64,
+            document.RootElement.GetProperty("signature").GetString());
+        Assert.True(_store.ApplySignedQueuedTaskOwnershipTransfer(
+            envelope, publicKey, now.AddSeconds(2)));
+        var lease = Assert.IsType<HubTaskLease>(_store.ClaimNext(
+            "agent-signed", now.AddSeconds(3), TimeSpan.FromMinutes(1)));
+        Assert.Equal("android-core-0001", lease.OwnerCoreId);
+        Assert.Equal(2, lease.OwnerGeneration);
+        var history = _store.GetTaskHistory("signed-transfer");
+        var transfer = Assert.Single(history,
+            item => item.EventCode == "TASK_OWNER_TRANSFERRED_SIGNED");
+        var leased = Assert.Single(history, item => item.EventCode == "TASK_LEASED");
+        Assert.Equal(transfer.OwnerCoreId, leased.OwnerCoreId);
+        Assert.Equal(transfer.OwnerGeneration, leased.OwnerGeneration);
+    }
+
+    [Fact]
+    public void SignedOwnershipTransferRejectsTamperingBeforeTaskMutation()
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 18, 0, 0, TimeSpan.Zero);
+        _store.Enqueue(CreateTask("tamper-transfer"), now);
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var publicKey = signingKey.ExportSubjectPublicKeyInfo();
+        var payload = CreateSigningPayload(
+            _store.GetQueuedOwnershipTransferSource("tamper-transfer")!, publicKey, now);
+        var signature = CoreOwnershipTransferCryptography.Sign(signingKey, payload);
+        var tampered = new SignedOwnershipTransferEnvelope(
+            payload with { NewOwnerCoreId = "ios-core-0000001" },
+            Convert.ToBase64String(signature));
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            _store.ApplySignedQueuedTaskOwnershipTransfer(tampered, publicKey, now.AddSeconds(1)));
+
+        Assert.Equal("OWNERSHIP_TRANSFER_SIGNATURE_INVALID", error.Message);
+        Assert.True(_store.MatchesTaskOwnership("tamper-transfer", "windows-core-0001", 1));
+        Assert.Null(_store.GetOwnershipTransfer(payload.TransferId));
+    }
+
+    [Fact]
+    public void SignedOwnershipJournalFailureRollsBackOwnershipCas()
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 18, 0, 0, TimeSpan.Zero);
+        _store.Enqueue(CreateTask("rollback-transfer"), now);
+        using (var connection = new SqliteConnection($"Data Source={_databasePath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TRIGGER fail_ownership_journal
+                BEFORE INSERT ON OwnershipTransfers
+                BEGIN SELECT RAISE(ABORT, 'injected ownership journal failure'); END;
+                """;
+            command.ExecuteNonQuery();
+        }
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var publicKey = signingKey.ExportSubjectPublicKeyInfo();
+        var fingerprint = Convert.ToHexString(SHA256.HashData(publicKey)).ToLowerInvariant();
+        var issuer = new DesktopHubOwnershipTransferIssuer(
+            _store, "windows-core-0001", 1, publicKey, fingerprint,
+            payload => CoreOwnershipTransferCryptography.Sign(signingKey, payload));
+
+        Assert.Throws<SqliteException>(() => issuer.Issue(
+            "rollback-transfer", "android-core-0001", now.AddSeconds(1), TimeSpan.FromMinutes(5)));
+
+        Assert.True(_store.MatchesTaskOwnership("rollback-transfer", "windows-core-0001", 1));
+        Assert.DoesNotContain(_store.GetTaskHistory("rollback-transfer"),
+            item => item.EventCode == "TASK_OWNER_TRANSFERRED_SIGNED");
     }
 
     [Fact]
@@ -566,9 +665,25 @@ public sealed class DesktopHubStoreTests : IDisposable
         IReadOnlyCollection<string>? dependencies = null,
         HubTaskEffectRisk risk = HubTaskEffectRisk.ReadOnly,
         string? approval = null) =>
-        new(id, "project-a", "idem-" + id, "research.search", "payload://" + id,
+        new(id, "project-a", "windows-core-0001", 1,
+            "idem-" + id, "research.search", "payload://" + id,
             new string('a', 64), required ?? ["research"], dependencies ?? [],
             risk, approval);
+
+    private static OwnershipTransferSigningPayload CreateSigningPayload(
+        HubOwnershipTransferSource source,
+        byte[] publicKey,
+        DateTimeOffset now) =>
+        new(
+            1, "transfer-tamper-0001", "nonce-tamper-0001", source.TaskId, source.ProjectId,
+            source.OwnerCoreId, "android-core-0001", source.OwnerGeneration,
+            source.OwnerGeneration + 1, source.StateVersion, source.PayloadSha256,
+            source.IdempotencyKey, "READ_ONLY", source.ApprovalRef,
+            now.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+            now.AddMinutes(5).ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+            1, Convert.ToHexString(SHA256.HashData(publicKey)).ToLowerInvariant(),
+            CoreOwnershipTransferCryptography.Algorithm,
+            CoreOwnershipTransferCryptography.SignatureFormat);
 
     public void Dispose()
     {

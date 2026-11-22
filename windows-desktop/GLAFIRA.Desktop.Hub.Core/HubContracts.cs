@@ -27,6 +27,8 @@ public sealed record HubAgentRegistration(
 public sealed record HubTaskRequest(
     string TaskId,
     string ProjectId,
+    string OwnerCoreId,
+    long OwnerGeneration,
     string IdempotencyKey,
     string TaskType,
     string PayloadRef,
@@ -40,6 +42,8 @@ public sealed record HubTaskRequest(
 public sealed record HubTaskLease(
     string TaskId,
     string ProjectId,
+    string OwnerCoreId,
+    long OwnerGeneration,
     string AgentId,
     string LeaseId,
     long FencingToken,
@@ -61,13 +65,89 @@ public sealed record HubAgentSnapshot(
     int MaxParallelTasks, bool OwnerApproved, DateTimeOffset LastHeartbeat, bool IsOnline);
 
 public sealed record HubTaskSnapshot(
-    string TaskId, string ProjectId, string TaskType, HubTaskState State,
+    string TaskId, string ProjectId, string OwnerCoreId, long OwnerGeneration,
+    string TaskType, HubTaskState State,
     int Priority, HubTaskEffectRisk EffectRisk, int Attempts,
     DateTimeOffset CreatedAt, string? ApprovalRef);
 
 public sealed record HubTaskEventSnapshot(
-    long EventId, string TaskId, HubTaskState State, DateTimeOffset OccurredAt,
+    long EventId, string TaskId, string OwnerCoreId, long OwnerGeneration,
+    HubTaskState State, DateTimeOffset OccurredAt,
     string? AgentId, string? LeaseId, long? FencingToken, string EventCode,
     int? ProgressPercent = null, string? ProgressMessage = null);
 
 public sealed record HubTaskResult(string? Result, string? ErrorCode, DateTimeOffset CompletedAt);
+
+/// <summary>
+/// Owner-visible terminal projection. It deliberately contains no result text or artifact
+/// payload bytes; only exact, non-secret contract identity and availability are exposed.
+/// </summary>
+public sealed record HubTaskOwnerResultSnapshot(
+    string TaskId,
+    string TaskType,
+    HubTaskState State,
+    bool TerminalResultAvailable,
+    DateTimeOffset? CompletedAt,
+    string? ErrorCode,
+    string? ResultReference,
+    string? ResultSha256,
+    bool ArtifactAvailable,
+    string? ArtifactSchemaId,
+    int? ArtifactSchemaVersion,
+    string? ArtifactRedactionStatus);
+
+public sealed record HubDiagnosticsTaskSubmission(
+    string TaskId,
+    string ProjectId,
+    string PayloadRef,
+    string PayloadSha256,
+    DateTimeOffset QueuedAt);
+
+public sealed record HubTaskArtifactMetadata(
+    int ContractVersion,
+    string ArtifactId,
+    string TaskId,
+    string OwnerCoreId,
+    long OwnerGeneration,
+    string LeaseId,
+    long FencingToken,
+    string SchemaId,
+    int SchemaVersion,
+    string ContentType,
+    int ByteLength,
+    string Sha256,
+    string RedactionStatus,
+    DateTimeOffset CreatedAt);
+
+public sealed record HubTaskArtifact(HubTaskArtifactMetadata Metadata, byte[] Payload);
+
+public enum HubTaskArtifactAcceptance
+{
+    Accepted,
+    Duplicate,
+    Conflict,
+    LeaseRejected
+}
+
+public sealed record HubOwnershipTransferSource(
+    string TaskId,
+    string ProjectId,
+    string OwnerCoreId,
+    long OwnerGeneration,
+    long StateVersion,
+    string PayloadSha256,
+    string IdempotencyKey,
+    HubTaskEffectRisk EffectRisk,
+    string? ApprovalRef);
+
+public sealed record HubOwnershipTransferSnapshot(
+    string TransferId,
+    string TaskId,
+    string ProjectId,
+    string OldOwnerCoreId,
+    string NewOwnerCoreId,
+    long OldOwnerGeneration,
+    long NewOwnerGeneration,
+    DateTimeOffset IssuedAt,
+    DateTimeOffset ExpiresAt,
+    string EnvelopeJson);

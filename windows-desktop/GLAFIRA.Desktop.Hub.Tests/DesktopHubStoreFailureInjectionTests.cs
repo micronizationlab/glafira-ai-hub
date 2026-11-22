@@ -21,7 +21,8 @@ public sealed class DesktopHubStoreFailureInjectionTests : IDisposable
         _store.RegisterAgent(new HubAgentRegistration(
             agentId, "device-claim-fault", ["web.research"], 1, true), now);
         _store.Enqueue(new HubTaskRequest(
-            taskId, "claim-fault-project", "claim-fault-idempotency", "web.research",
+            taskId, "claim-fault-project", "windows-core-0001", 1,
+            "claim-fault-idempotency", "web.research",
             "payload://claim-fault-task", new string('a', 64), ["web.research"], [],
             HubTaskEffectRisk.ReadOnly, null, 5), now);
 
@@ -73,7 +74,8 @@ public sealed class DesktopHubStoreFailureInjectionTests : IDisposable
         _store.RegisterAgent(new HubAgentRegistration(
             agentId, "device-cancel-fault", ["web.research"], 1, true), now);
         _store.Enqueue(new HubTaskRequest(
-            taskId, "cancel-fault-project", "cancel-fault-idempotency", "web.research",
+            taskId, "cancel-fault-project", "windows-core-0001", 1,
+            "cancel-fault-idempotency", "web.research",
             "payload://cancel-fault-task", new string('a', 64), ["web.research"], [],
             HubTaskEffectRisk.ExternalSideEffect, "owner-approval-cancel-fault", 5), now);
         var lease = _store.ClaimNext(agentId, now.AddSeconds(1), TimeSpan.FromMinutes(1));
@@ -135,6 +137,8 @@ public sealed class DesktopHubStoreFailureInjectionTests : IDisposable
         _store.Enqueue(new HubTaskRequest(
             "result-fault-task",
             "result-fault-project",
+            "windows-core-0001",
+            1,
             "result-fault-idempotency",
             "web.research",
             "payload://result-fault-task",
