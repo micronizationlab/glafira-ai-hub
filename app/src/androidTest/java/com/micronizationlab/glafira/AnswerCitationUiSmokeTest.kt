@@ -4,11 +4,14 @@ import android.content.Intent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.By
-import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
-import org.junit.Assert.assertNotNull
+import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -17,10 +20,12 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class AnswerCitationUiSmokeTest {
+    @get:Rule
+    val compose = createEmptyComposeRule()
+
     @Test fun durableResponseShowsOwnerVisibleExactSourcesWithoutProviderCall() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        val device = UiDevice.getInstance(instrumentation)
         val operationId = "ui-citation-${UUID.randomUUID()}"
         val historyKey = "default_ГЛАФИРА"
         val historyFile = File(context.filesDir, "chat_$historyKey.json")
@@ -71,53 +76,22 @@ class AnswerCitationUiSmokeTest {
                     Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 )
             )
-            device.waitForIdle()
-            assertNotNull(
-                "GLAFIRA home screen did not open",
-                device.wait(Until.findObject(By.text("СЕТЬ АГЕНТОВ · 2003")), 30_000)
-            )
-            assertNotNull(
-                "Agent list did not open",
-                device.wait(Until.findObject(By.text("ГЛАФИРА")), 20_000)
-            )
-            device.findObject(By.text("ГЛАФИРА")).click()
-            assertNotNull(
-                "Seeded durable response was not rendered",
-                device.wait(Until.findObject(By.text("Ответ с проверяемыми источниками")), 10_000)
-            )
-            val citationAction = device.wait(
-                Until.findObject(By.desc("Показать источники ответа")),
-                5_000
-            )
-            assertNotNull(
-                "Citation action is absent from the response",
-                citationAction
-            )
-            val citationButton = generateSequence(citationAction) { it.parent }
-                .firstOrNull { it.isClickable }
-            assertNotNull(
-                "Citation action is not contained in an accessible clickable control",
-                citationButton
-            )
-            citationButton!!.click()
-            device.waitForIdle()
-
-            assertNotNull(
-                "Citation dialog did not open",
-                device.wait(Until.findObject(By.text("Источники ответа")), 5_000)
-            )
-            assertNotNull(
-                "Exact document citation is not visible",
-                device.wait(Until.findObject(By.textContains("UI citation document")), 3_000)
-            )
-            assertNotNull(
-                "Exact chat citation is not visible",
-                device.wait(Until.findObject(By.textContains("chat:default:Юрист")), 3_000)
-            )
-            assertNotNull(
-                "Operation identity is not visible",
-                device.wait(Until.findObject(By.textContains(operationId)), 3_000)
-            )
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("СЕТЬ АГЕНТОВ · 2003").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("ГЛАФИРА").assertExists("Agent list did not open").performClick()
+            compose.onNodeWithText("Ответ с проверяемыми источниками")
+                .assertExists("Seeded durable response was not rendered")
+            compose.onNodeWithContentDescription("Показать источники ответа")
+                .assertExists("Citation action is absent from the response")
+                .performClick()
+            compose.onNodeWithText("Источники ответа").assertExists("Citation dialog did not open")
+            compose.onNodeWithText("UI citation document", substring = true)
+                .assertExists("Exact document citation is not visible")
+            compose.onNodeWithText("chat:default:Юрист", substring = true)
+                .assertExists("Exact chat citation is not visible")
+            compose.onNodeWithText(operationId, substring = true)
+                .assertExists("Operation identity is not visible")
         } finally {
             scenario?.close()
             manifestStore.delete(operationId, manifestAccess)

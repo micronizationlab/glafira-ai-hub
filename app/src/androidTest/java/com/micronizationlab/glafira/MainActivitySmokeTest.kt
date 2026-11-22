@@ -2,19 +2,26 @@ package com.micronizationlab.glafira
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.By
-import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainActivitySmokeTest {
+    @get:Rule
+    val compose = createEmptyComposeRule()
+
     private fun prepareUnlockedHome(context: Context) {
         assertTrue(
             "Could not disable biometric lock for the home-screen smoke test",
@@ -23,18 +30,17 @@ class MainActivitySmokeTest {
         )
     }
 
-    private fun launch(): UiDevice {
+    private fun launch(): ActivityScenario<MainActivity> {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         prepareUnlockedHome(context)
         val intent = Intent(context, MainActivity::class.java).addFlags(
             Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         )
-        context.startActivity(intent)
-        return UiDevice.getInstance(instrumentation).also {
-            it.waitForIdle()
-            assertTrue("GLAFIRA home screen did not open",
-                it.wait(Until.hasObject(By.text("СЕТЬ АГЕНТОВ · 2003")), 20_000))
+        return ActivityScenario.launch<MainActivity>(intent).also {
+            compose.waitUntil(20_000) {
+                compose.onAllNodesWithText("СЕТЬ АГЕНТОВ · 2003").fetchSemanticsNodes().isNotEmpty()
+            }
         }
     }
 
@@ -59,26 +65,25 @@ class MainActivitySmokeTest {
 
     @Test
     fun taskQueueEntryOpensAndShowsAddTaskDialog() {
-        val device = launch()
-        device.findObject(By.desc("Открыть очередь задач")).click()
-        assertTrue("Task queue screen did not open",
-            device.wait(Until.hasObject(By.text("ОЧЕРЕДЬ ЗАДАЧ")), 10_000))
-        device.findObject(By.text("＋ ЗАДАЧА")).click()
-        assertTrue("Add task dialog did not open",
-            device.wait(Until.hasObject(By.text("Добавить задачу в очередь")), 10_000))
+        launch().use {
+            compose.onNodeWithContentDescription("Открыть очередь задач").performClick()
+            compose.onNodeWithText("ОЧЕРЕДЬ ЗАДАЧ").assertExists("Task queue screen did not open")
+            compose.onNodeWithContentDescription("Добавить задачу").performClick()
+            compose.onNodeWithText("Добавить задачу в очередь")
+                .assertExists("Add task dialog did not open")
+        }
     }
 
     @Test
     fun councilEntryOpensAndItsActionButtonIsEnabled() {
-        val device = launch()
-        device.findObject(By.desc("Открыть совет директоров")).click()
-        assertTrue("Council screen did not open",
-            device.wait(Until.hasObject(By.text("СОБРАТЬ СОВЕТ")), 10_000))
-        val button = device.findObject(By.text("СОБРАТЬ СОВЕТ"))
-        assertNotNull(button)
-        assertTrue("Council action button is disabled", button.isEnabled)
-        button.click()
-        assertTrue("Empty-question guidance was not shown",
-            device.wait(Until.hasObject(By.textContains("Сначала напиши вопрос")), 10_000))
+        launch().use {
+            compose.onNodeWithContentDescription("Открыть совет директоров").performClick()
+            compose.onNodeWithText("СОБРАТЬ СОВЕТ")
+                .assertExists("Council screen did not open")
+                .assertIsEnabled()
+                .performClick()
+            compose.onNodeWithText("Сначала напиши вопрос", substring = true)
+                .assertExists("Empty-question guidance was not shown")
+        }
     }
 }
