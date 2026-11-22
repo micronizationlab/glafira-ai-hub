@@ -15,15 +15,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 @Composable
 fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     val context = LocalContext.current
     val owner = remember(context) { GlafiraCoreRuntimeOwner.get(context) }
+    val scope = rememberCoroutineScope()
     var tasks by remember { mutableStateOf(owner.taskStore.listTasks(limit = 200)) }
     val projectTasks = tasks.filter { it.projectId == currentProject.id }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -31,6 +34,9 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     var instruction by remember { mutableStateOf("") }
     var priority by remember { mutableIntStateOf(5) }
     var message by remember { mutableStateOf<String?>(null) }
+    var runtimeEnabled by remember { mutableStateOf(owner.isEnabled) }
+    var planning by remember { mutableStateOf(false) }
+    var planningIdempotencyKey by remember { mutableStateOf(newPlanningIdempotencyKey()) }
 
     fun refresh() {
         tasks = owner.taskStore.listTasks(limit = 200)
@@ -51,6 +57,31 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                 Text("Сохранение в зашифрованную очередь Core", color = Tx, fontSize = 10.sp)
             }
             Button(onClick = { showAddDialog = true }) { Text("＋ ЗАДАЧА") }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text("Автообработка Core", color = Gr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Text(
+                    "Обрабатывает durable-очередь и создаёт Dry Run. Desktop LIVE, публикации и платежи остаются выключены.",
+                    color = Tx,
+                    fontSize = 10.sp
+                )
+            }
+            Switch(
+                checked = runtimeEnabled,
+                onCheckedChange = { enabled ->
+                    runCatching { owner.setEnabled(enabled) }
+                        .onSuccess {
+                            runtimeEnabled = enabled
+                            message = if (enabled) "Core включён владельцем." else "Core приостановлен владельцем."
+                        }
+                        .onFailure { message = it.message ?: "Не удалось изменить режим Core." }
+                },
+                modifier = Modifier.semantics { contentDescription = "Автообработка Core" }
+            )
         }
         message?.let {
             Text(it, color = Tx, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
@@ -87,39 +118,85 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
 
     if (showAddDialog) {
         AlertDialog(
-            onDismissRequest = { showAddDialog = false },
+            onDismissRequest = { if (!planning) showAddDialog = false },
             title = { Text("Добавить задачу в очередь") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Название") }, singleLine = true)
                     OutlinedTextField(value = instruction, onValueChange = { instruction = it }, label = { Text("Что нужно сделать") }, minLines = 3)
-                    Text("Приоритет: $priority (0 — обычный, 10 — высокий)", fontSize = 11.sp, color = Tx)
+                    Text("Приоритет черновика: $priority (0 — обычный, 10 — высокий)", fontSize = 11.sp, color = Tx)
                     Slider(value = priority.toFloat(), onValueChange = { priority = it.toInt() }, valueRange = 0f..10f, steps = 9)
-                    Text("Задача сохраняется как черновое поручение. Внешние действия, публикации и платежи не выполняются без отдельного подтверждения владельца.", color = Tx, fontSize = 10.sp)
+                    Text(
+                        "Черновик только сохраняется. «Сформировать план» обращается к выбранному ИИ-провайдеру, проверяет DAG и атомарно сохраняет его в Core. Внешние действия, публикации и платежи не выполняются.",
+                        color = Tx,
+                        fontSize = 10.sp
+                    )
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    runCatching {
-                        val task = GlafiraManualTaskFactory.create(
-                            projectId = currentProject.id,
-                            title = title,
-                            instruction = instruction,
-                            priority = priority
-                        )
-                        val result = owner.enqueue(task)
-                        check(result.inserted || result.task.taskId == task.taskId) { "Задача с таким ключом уже существует." }
-                    }.onSuccess {
-                        title = ""
-                        instruction = ""
-                        priority = 5
-                        showAddDialog = false
-                        message = "Задача сохранена в зашифрованной очереди."
-                        refresh()
-                    }.onFailure {
-                        message = it.message ?: "Не удалось добавить задачу."
-                    }
-                }) { Text("ДОБАВИТЬ") }
+                Row {
+                    TextButton(enabled = !planning, onClick = {
+                        val request = runCatching {
+                            GlafiraOwnerPlanRequestFactory.create(
+                                projectId = currentProject.id,
+                                title = title,
+                                instruction = instruction,
+                                idempotencyKey = planningIdempotencyKey
+                            )
+                        }.onFailure {
+                            message = it.message ?: "Не удалось подготовить запрос планирования."
+                        }.getOrNull() ?: return@TextButton
+                        planning = true
+                        scope.launch {
+                            runCatching { owner.submitInstruction(request) }
+                                .onSuccess { result ->
+                                    title = ""
+                                    instruction = ""
+                                    priority = 5
+                                    planningIdempotencyKey = newPlanningIdempotencyKey()
+                                    showAddDialog = false
+                                    message = if (result.inserted) {
+                                        "План проверен и сохранён: ${result.plan.nodes.size} задач."
+                                    } else {
+                                        "Этот план уже сохранён; дублирование не выполнено."
+                                    }
+                                    refresh()
+                                }
+                                .onFailure {
+                                    message = when (it.message) {
+                                        "TASK_PLANNER_PROVIDER_NOT_CONFIGURED" ->
+                                            "Сначала настрой выбранного ИИ-провайдера. Черновик можно сохранить без него."
+                                        "TASK_PLANNER_PROVIDER_REQUEST_FAILED" ->
+                                            "ИИ-провайдер не вернул проверяемый план. Повтор использует тот же ключ и не создаст дубликат."
+                                        else -> it.message ?: "Не удалось сформировать план."
+                                    }
+                                }
+                            planning = false
+                        }
+                    }) { Text(if (planning) "ПЛАНИРОВАНИЕ…" else "СФОРМИРОВАТЬ ПЛАН") }
+                    TextButton(enabled = !planning, onClick = {
+                        runCatching {
+                            val task = GlafiraManualTaskFactory.create(
+                                projectId = currentProject.id,
+                                title = title,
+                                instruction = instruction,
+                                priority = priority
+                            )
+                            val result = owner.enqueue(task)
+                            check(result.inserted || result.task.taskId == task.taskId) { "Задача с таким ключом уже существует." }
+                        }.onSuccess {
+                            title = ""
+                            instruction = ""
+                            priority = 5
+                            planningIdempotencyKey = newPlanningIdempotencyKey()
+                            showAddDialog = false
+                            message = "Черновик сохранён в зашифрованной очереди."
+                            refresh()
+                        }.onFailure {
+                            message = it.message ?: "Не удалось добавить задачу."
+                        }
+                    }) { Text("СОХРАНИТЬ ЧЕРНОВИК") }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) { Text("ОТМЕНА") }
@@ -127,3 +204,5 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         )
     }
 }
+
+private fun newPlanningIdempotencyKey(): String = "owner-plan-" + UUID.randomUUID().toString()

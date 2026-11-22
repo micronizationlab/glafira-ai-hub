@@ -410,4 +410,55 @@ class GlafiraCoreTaskExecutorTest {
         assertFalse(GlafiraRuntimeFoundation.allowsDesktopTaskClaims)
     }
 
+    @Test
+    fun plannedDesktopNodeCreatesDryRunWithoutInvokingDelegationSentinel() = runBlocking {
+        val planned = task().copy(
+            taskType = GlafiraTaskStore.DESKTOP_TASK_TYPE,
+            payload = """{"actionSummary":"Проверить проект","requiredCapabilities":["document.analysis"]}""",
+            requiredScopes = setOf("desktop.task.execute")
+        )
+        val queue = FakeQueue(planned)
+        var sentinelCalls = 0
+        var persistedPlan: GlafiraDryRunPlan? = null
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = object : GlafiraTaskAuthorizer {
+                override fun authorize(task: GlafiraTask, nowMillis: Long) =
+                    error("DRAFT Desktop node must not enter LIVE authorization")
+
+                override fun inspectForDryRun(task: GlafiraTask, nowMillis: Long) =
+                    GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf(GlafiraTaskStore.DESKTOP_TASK_TYPE to GlafiraTaskHandler {
+                sentinelCalls++
+                GlafiraTaskExecutionOutcome.PermanentFailure("must-not-run")
+            }),
+            clock = { 10_000L },
+            executionMode = { GlafiraExecutionMode.LIVE },
+            liveTaskAdmission = GlafiraLiveTaskAdmission.DENY_ALL,
+            dryRunPreviewPersistence = object : GlafiraDryRunPreviewPersistence {
+                override fun persistDryRunPreview(
+                    taskId: String,
+                    expectedStates: Set<GlafiraTaskState>,
+                    plan: GlafiraDryRunPlan,
+                    nowMillis: Long
+                ): Boolean {
+                    persistedPlan = plan
+                    return queue.transition(
+                        taskId, expectedStates, GlafiraTaskState.WAITING_FOR_OWNER,
+                        nowMillis, null, null
+                    )
+                }
+            }
+        )
+
+        val result = worker.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED, result.status)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.task?.state)
+        assertEquals(GlafiraTaskStore.DESKTOP_TASK_TYPE, persistedPlan?.toolId)
+        assertEquals(GlafiraDryRunSimulationStatus.PREVIEW_ONLY, persistedPlan?.simulationStatus)
+        assertEquals(0, sentinelCalls)
+    }
+
 }
