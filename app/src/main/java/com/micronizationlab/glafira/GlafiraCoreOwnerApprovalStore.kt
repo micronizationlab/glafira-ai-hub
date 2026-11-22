@@ -232,11 +232,14 @@ class GlafiraCoreOwnerApprovalStore(
                     put("updated_at", nowMillis)
                     put("last_error", "OWNER_APPROVAL_REQUIRED")
                 },
-                "task_id = ? AND state IN (?, ?)",
+                "task_id = ? AND state IN (?, ?) AND EXISTS (" +
+                    "SELECT 1 FROM core_task_ownership o WHERE o.task_id = core_tasks.task_id " +
+                    "AND o.project_id = ? AND o.owner_core_id = ? AND o.owner_generation = ?)",
                 arrayOf(
                     task.taskId,
                     GlafiraTaskState.RUNNING.databaseValue,
-                    GlafiraTaskState.WAITING_FOR_OWNER.databaseValue
+                    GlafiraTaskState.WAITING_FOR_OWNER.databaseValue,
+                    task.projectId, ownership.ownerCoreId, ownership.ownerGeneration.toString()
                 )
             )
             queued = approvalChanged == 1 && taskChanged == 1
@@ -442,8 +445,11 @@ class GlafiraCoreOwnerApprovalStore(
                             put("state", GlafiraTaskState.QUEUED.databaseValue)
                             put("updated_at", nowMillis)
                             putNull("last_error")
-                        }, "task_id = ? AND state = ?",
-                            arrayOf(taskId, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue))
+                        }, "task_id = ? AND state = ? AND EXISTS (" +
+                            "SELECT 1 FROM core_task_ownership o WHERE o.task_id = core_tasks.task_id " +
+                            "AND o.project_id = ? AND o.owner_core_id = ? AND o.owner_generation = ?)",
+                            arrayOf(taskId, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue,
+                                row.projectId, row.ownerCoreId.orEmpty(), row.ownerGeneration.toString()))
                         if (approved == 1 && requeued == 1) {
                             appendApprovalTrace(
                                 db, task,
@@ -492,8 +498,11 @@ class GlafiraCoreOwnerApprovalStore(
                     put("state", GlafiraTaskState.FAILED.databaseValue)
                     put("updated_at", nowMillis)
                     put("last_error", "OWNER_REJECTED")
-                }, "task_id = ? AND state = ?",
-                    arrayOf(taskId, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue))
+                }, "task_id = ? AND state = ? AND EXISTS (" +
+                    "SELECT 1 FROM core_task_ownership o WHERE o.task_id = core_tasks.task_id " +
+                    "AND o.project_id = ? AND o.owner_core_id = ? AND o.owner_generation = ?)",
+                    arrayOf(taskId, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue,
+                        currentTask.projectId, ownership.ownerCoreId, ownership.ownerGeneration.toString()))
                 if (taskChanged == 1) {
                     appendApprovalTrace(
                         db, currentTask,
