@@ -66,7 +66,7 @@ public sealed class GitHubDesktopCodingClientTests
     [InlineData("../outside")]
     [InlineData("app/../secret")]
     [InlineData("folder/")]
-    [InlineData("folder\\\\secret")]
+    [InlineData("folder\\secret")]
     public void RejectsUnsafePaths(string path)
     {
         Assert.Throws<ArgumentException>(() =>
