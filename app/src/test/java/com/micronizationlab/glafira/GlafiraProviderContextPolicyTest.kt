@@ -99,11 +99,21 @@ class GlafiraProviderContextPolicyTest {
 
     @Test
     fun rejectsOversizedAndDuplicateContextBeforePartialDispatch() {
-        val tooLarge = allowed.copy(content = "x".repeat(GlafiraProviderContextPolicy.MAX_PROVIDER_CONTEXT_TOTAL_CHARS + 1))
+        // Each item remains within the per-item limit; together the five items exceed
+        // the total dispatch budget. Constructing one oversized item would correctly
+        // fail earlier in GlafiraProviderContextItem.init and would not test assembly.
+        val oversizedBatch = (1..5).map { index ->
+            allowed.copy(
+                referenceId = "memo-$index",
+                content = "x".repeat(GlafiraProviderContextPolicy.MAX_PROVIDER_CONTEXT_ITEM_CHARS)
+            )
+        }
         val sizeError = runCatching {
-            GlafiraProviderContextPolicy.assemble("project-a", ProviderId.OPENAI, listOf(tooLarge), grant(), now)
+            GlafiraProviderContextPolicy.assemble(
+                "project-a", ProviderId.OPENAI, oversizedBatch, grant(), now
+            )
         }.exceptionOrNull()
-        assertEquals("PROVIDER_CONTEXT_ITEM_SIZE_INVALID", sizeError?.message)
+        assertEquals("PROVIDER_CONTEXT_TOTAL_SIZE_EXCEEDED", sizeError?.message)
 
         val duplicate = allowed.copy(content = "second")
         val duplicateError = runCatching {
