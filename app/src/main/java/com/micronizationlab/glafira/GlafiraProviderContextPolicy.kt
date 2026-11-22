@@ -49,7 +49,7 @@ data class GlafiraProviderContextItem(
     init {
         require(isSafePolicyId(referenceId)) { "PROVIDER_CONTEXT_REFERENCE_INVALID" }
         require(isSafePolicyId(projectId)) { "PROVIDER_CONTEXT_PROJECT_INVALID" }
-        require(content.isNotBlank() && content.length <= MAX_PROVIDER_CONTEXT_ITEM_CHARS) {
+        require(content.isNotBlank() && content.length <= GlafiraProviderContextPolicy.MAX_PROVIDER_CONTEXT_ITEM_CHARS) {
             "PROVIDER_CONTEXT_ITEM_SIZE_INVALID"
         }
     }
