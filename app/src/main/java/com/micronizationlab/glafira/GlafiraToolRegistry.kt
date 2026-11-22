@@ -90,6 +90,26 @@ object GlafiraToolRegistry {
             "record.delete", "Удаление данных", "Удаление записей или файлов.",
             ToolRiskLevel.DESTRUCTIVE, setOf("data.delete")
         )
+        GlafiraToolDefinition(
+            "github.repository.tree", "Просмотр дерева GitHub", "Чтение структуры разрешённого репозитория.",
+            ToolRiskLevel.READ_ONLY, setOf("github.repo.read")
+        ),
+        GlafiraToolDefinition(
+            "github.file.read", "Чтение файла GitHub", "Чтение файла из разрешённого репозитория.",
+            ToolRiskLevel.READ_ONLY, setOf("github.repo.read")
+        ),
+        GlafiraToolDefinition(
+            "github.branch.create", "Создание ветки GitHub", "Создание рабочей ветки от указанной базы.",
+            ToolRiskLevel.EXTERNAL_WRITE, setOf("github.branch.write")
+        ),
+        GlafiraToolDefinition(
+            "github.file.write", "Изменение файла GitHub", "Запись файла только в разрешённую рабочую ветку.",
+            ToolRiskLevel.EXTERNAL_WRITE, setOf("github.contents.write")
+        ),
+        GlafiraToolDefinition(
+            "github.pull_request.draft", "Создание Draft PR", "Создание чернового Pull Request без слияния.",
+            ToolRiskLevel.EXTERNAL_WRITE, setOf("github.pull_request.write")
+        )
     )
 
     fun all(): List<GlafiraToolDefinition> = definitions.toList()
