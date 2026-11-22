@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Linq;
 using GLAFIRA.Desktop.Hub.Core;
 
 
@@ -18,10 +19,12 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private readonly HttpClient _githubHttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
     private readonly GitHubDesktopTokenStore _githubTokenStore = new();
+    private readonly GitHubDesktopCodingClient _githubCodingClient;
     private CancellationTokenSource? _githubAuthorizationCancellation;
     public MainWindow()
     {
         InitializeComponent();
+        _githubCodingClient = new GitHubDesktopCodingClient(_githubHttpClient);
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GLAFIRA", "DesktopHub");
         var databasePath = Path.Combine(root, "hub.db");
         var store = new DesktopHubStore(databasePath);
@@ -270,6 +273,80 @@ public partial class MainWindow : Window
             _githubAuthorizationCancellation = null;
             GitHubConnectButton.IsEnabled = true;
             GitHubCancelButton.IsEnabled = false;
+        }
+    }
+
+
+    private async Task<string> GetGitHubAccessTokenAsync(CancellationToken cancellationToken)
+    {
+        var current = _githubTokenStore.Load()
+            ?? throw new InvalidOperationException("Сначала подключите GitHub.");
+        if (current.AccessTokenExpiresAtUtc is null ||
+            current.AccessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(2))
+            return current.AccessToken;
+
+        if (string.IsNullOrWhiteSpace(current.RefreshToken))
+            throw new InvalidOperationException("Сессия GitHub истекла. Переподключите GitHub.");
+
+        var flow = new GitHubDesktopDeviceFlowClient(_githubHttpClient);
+        var refreshed = await flow.RefreshAsync(current, cancellationToken);
+        _githubTokenStore.Save(refreshed);
+        return refreshed.AccessToken;
+    }
+
+    private async void GitHubLoadTree_Click(object sender, RoutedEventArgs e)
+    {
+        GitHubLoadTreeButton.IsEnabled = false;
+        GitHubWorkspaceStatusText.Text = "Читаем дерево разрешённого репозитория…";
+        try
+        {
+            var token = await GetGitHubAccessTokenAsync(CancellationToken.None);
+            var snapshot = await _githubCodingClient.ReadTreeAsync(
+                token, GitHubDesktopAppConfiguration.AllowedRepository, "main");
+            GitHubTreeGrid.ItemsSource = snapshot.Entries
+                .OrderBy(item => item.Path, StringComparer.Ordinal)
+                .Take(2_000)
+                .ToArray();
+            GitHubWorkspaceStatusText.Text =
+                $"Получено записей: {snapshot.Entries.Count}. " +
+                (snapshot.Truncated ? "GitHub сообщил, что дерево усечено." : "Дерево прочитано полностью.");
+            GitHubStatusText.Text = "GitHub подключён · дерево репозитория доступно";
+        }
+        catch (Exception error)
+        {
+            GitHubWorkspaceStatusText.Text = error.Message;
+        }
+        finally
+        {
+            GitHubLoadTreeButton.IsEnabled = true;
+        }
+    }
+
+    private async void GitHubReadFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (GitHubTreeGrid.SelectedItem is not GitHubDesktopTreeEntry selected ||
+            !StringComparer.Ordinal.Equals(selected.Type, "blob"))
+        {
+            GitHubWorkspaceStatusText.Text = "Выберите файл (blob) в дереве репозитория.";
+            return;
+        }
+
+        GitHubReadFileButton.IsEnabled = false;
+        GitHubWorkspaceStatusText.Text = $"Читаем {selected.Path}…";
+        try
+        {
+            var token = await GetGitHubAccessTokenAsync(CancellationToken.None);
+            GitHubFileContentText.Text = await _githubCodingClient.ReadFileAsync(
+                token, GitHubDesktopAppConfiguration.AllowedRepository, selected.Path, "main");
+            GitHubWorkspaceStatusText.Text = $"Файл прочитан: {selected.Path}";
+        }
+        catch (Exception error)
+        {
+            GitHubWorkspaceStatusText.Text = error.Message;
+        }
+        finally
+        {
+            GitHubReadFileButton.IsEnabled = true;
         }
     }
 
