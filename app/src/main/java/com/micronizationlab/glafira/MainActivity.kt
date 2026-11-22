@@ -423,13 +423,17 @@ fun ContactList(
             Spacer(Modifier.width(6.dp))
             IconButton(
                 onClick = onSettingsClick,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier
+                    .size(28.dp)
+                    // Keep the accessible label on the clickable IconButton node itself.
+                    // A semantics modifier on the child Text creates a separate node, so
+                    // UiAutomator can find the label but report that node as non-clickable.
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Открыть настройки"
+                    }
             ) {
                 Text(
                     "⚙",
-                    modifier = Modifier.semantics {
-                        contentDescription = "Открыть настройки"
-                    },
                     color = Gr,
                     fontSize = 12.sp
                 )
