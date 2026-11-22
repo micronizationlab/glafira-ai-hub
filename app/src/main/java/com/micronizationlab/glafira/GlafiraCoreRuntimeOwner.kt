@@ -7,9 +7,9 @@ import java.util.UUID
 /**
  * Application-scoped owner for the persistent Core queue and its single executor.
  *
- * Execution is deliberately fail-closed until the durable owner grant store and reviewed
- * production handler adapters are installed. The current runtime can persist and schedule work,
- * but it cannot perform arbitrary actions or silently authorize model-generated requests.
+ * Execution is allow-listed and fail-closed. Only registered handlers can run; GitHub writes
+ * additionally require exact, durable owner approval. Model-generated requests cannot authorize
+ * themselves, and no provider is permitted to veto Core-owned tool dispatch.
  */
 class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     private val appContext = context.applicationContext
@@ -31,8 +31,10 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     private val liveRunStore = GlafiraCoreLiveRunStore(taskStore)
 
     private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
-    // Core evaluates LIVE per task. Only a fresh, durable, owner-approved read grant can pass;
-    // every other task falls back to a new Dry Run preview without invoking its handler.
+    private val githubTaskHandlers = GitHubCoreTaskHandlers(appContext)
+    // Core evaluates LIVE per task. Read-only tools require an acknowledged preview and a fresh
+    // owner grant. GitHub mutations may enter the dispatcher only because the task authorizer
+    // immediately enforces exact durable owner approval and scopes before handler invocation.
     private val executionMode = GlafiraExecutionMode.LIVE
     private val desktopExecutionMode = GlafiraExecutionMode.DRY_RUN
     internal val executionLimiter = GlafiraCoreExecutionLimiter()
@@ -45,7 +47,12 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             "conversation.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             // Draft-only content never executes or publishes, even if LIVE mode is enabled later.
-            "content.draft" to GlafiraTaskHandler { GlafiraTaskExecutionOutcome.WaitingForOwner }
+            "content.draft" to GlafiraTaskHandler { GlafiraTaskExecutionOutcome.WaitingForOwner },
+            "github.repository.tree" to githubTaskHandlers.handler("github.repository.tree"),
+            "github.file.read" to githubTaskHandlers.handler("github.file.read"),
+            "github.branch.create" to githubTaskHandlers.handler("github.branch.create"),
+            "github.file.write" to githubTaskHandlers.handler("github.file.write"),
+            "github.pull_request.draft" to githubTaskHandlers.handler("github.pull_request.draft")
         ),
         runtimeBudget = { loadRuntimeBudget() },
         executionMode = { executionMode },
