@@ -45,6 +45,16 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     var runtimeEnabled by remember { mutableStateOf(owner.isEnabled) }
     var planning by remember { mutableStateOf(false) }
     var planningIdempotencyKey by remember { mutableStateOf(newPlanningIdempotencyKey()) }
+    var showOperationalMemory by remember { mutableStateOf(false) }
+
+    if (showOperationalMemory) {
+        OperationalMemoryScreen(
+            currentProject = currentProject,
+            owner = owner,
+            onBack = { showOperationalMemory = false }
+        )
+        return
+    }
 
     fun refresh() {
         tasks = owner.taskStore.listTasks(limit = 200)
@@ -59,7 +69,17 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         ) {
             Text("←  НАЗАД", color = Color.White, modifier = Modifier.clickable { onBack() }.padding(4.dp))
             Text("ОЧЕРЕДЬ ЗАДАЧ", color = Color.White, fontWeight = FontWeight.Bold)
-            Text("＋", color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 8.dp).clickable { showAddDialog = true }.semantics { contentDescription = "Добавить задачу" })
+            Row {
+                Text(
+                    "ПАМЯТЬ",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp).clickable {
+                        showOperationalMemory = true
+                    }.semantics { contentDescription = "Operational memory проекта" }
+                )
+                Text("＋", color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 8.dp).clickable { showAddDialog = true }.semantics { contentDescription = "Добавить задачу" })
+            }
         }
         Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {

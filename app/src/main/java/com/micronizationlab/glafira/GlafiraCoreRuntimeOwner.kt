@@ -2,6 +2,7 @@ package com.micronizationlab.glafira
 
 import android.content.Context
 import androidx.work.WorkManager
+import java.io.File
 import java.util.UUID
 
 /**
@@ -19,6 +20,13 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     val taskStore = GlafiraTaskStore(appContext, installationIdentity.coreId)
     val traceStore = GlafiraCoreTraceStore(taskStore)
+    private val operationalMemory = GlafiraOwnerOperationalMemory(
+        repository = GlafiraOperationalMemoryStore(
+            File(appContext.filesDir, "core_operational_memory"),
+            AndroidKeystoreMemoryPayloadProtector()
+        ),
+        ownerId = installationIdentity.coreId
+    )
     private val ownerApprovalStore = GlafiraCoreOwnerApprovalStore(taskStore)
     // Pairing approval writes device credentials into this same encrypted approval DB.
     // Reading from the legacy SharedPreferences store would make newly paired devices
@@ -194,6 +202,29 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     /** Full project-scoped plan journal with task histories and persisted results. */
     fun taskPlanJournal(planId: String, projectId: String): GlafiraCoreTaskPlanJournal? =
         taskStore.taskPlanJournal(planId, projectId)
+
+    suspend fun createOperationalMemoryFact(
+        projectId: String,
+        draft: GlafiraOwnerMemoryFactDraft
+    ): MemoryWriteResult = operationalMemory.createFact(projectId, draft)
+
+    suspend fun operationalMemory(projectId: String): List<CoreMemoryRecord> =
+        operationalMemory.list(projectId)
+
+    suspend fun correctOperationalMemory(
+        projectId: String,
+        memoryId: String,
+        content: String,
+        tags: Set<String>
+    ): MemoryWriteResult = operationalMemory.correct(projectId, memoryId, content, tags)
+
+    suspend fun deleteOperationalMemory(
+        projectId: String,
+        memoryId: String
+    ): MemoryDeleteResult = operationalMemory.delete(projectId, memoryId)
+
+    suspend fun exportOperationalMemory(projectId: String): MemoryExport =
+        operationalMemory.export(projectId)
 
     internal suspend fun executeNext(): GlafiraTaskExecutionResult {
         check(isEnabled) { "GLAFIRA autonomous runtime is paused by owner." }
