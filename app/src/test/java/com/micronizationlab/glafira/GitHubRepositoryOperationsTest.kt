@@ -21,7 +21,7 @@ class GitHubRepositoryOperationsTest {
 
     @Test
     fun rejectsMalformedBranchNames() {
-        listOf("../main", "feature//unsafe", "feature/", "feature with spaces", "-leading").forEach { branch ->
+        listOf("../main", "feature//unsafe", "feature/", "feature with spaces", "-leading", "master/hotfix", "feature/.hidden", "feature/release.lock").forEach { branch ->
             assertThrows(IllegalArgumentException::class.java) {
                 GitHubRepositoryOperations.requireWritableBranch(branch)
             }
