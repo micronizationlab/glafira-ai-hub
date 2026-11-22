@@ -14,11 +14,7 @@ public sealed class GitHubDesktopAuthorizationTests
         using var http = new HttpClient(new StubHandler(async (request, cancellationToken) =>
         {
             submittedForm = await request.Content!.ReadAsStringAsync(cancellationToken);
-            return Json("""
-                {"device_code":"device-secret","user_code":"ABCD-EFGH",
-                 "verification_uri":"https://github.com/login/device",
-                 "expires_in":900,"interval":5}
-                """);
+            return Json("{\"device_code\":\"device-secret\",\"user_code\":\"ABCD-EFGH\",\"verification_uri\":\"https://github.com/login/device\",\"expires_in\":900,\"interval\":5}");
         }));
         var client = new GitHubDesktopDeviceFlowClient(http);
 
@@ -35,10 +31,9 @@ public sealed class GitHubDesktopAuthorizationTests
     {
         var responses = new Queue<string>(
         [
-            """{"error":"authorization_pending"}""",
-            """{"error":"slow_down"}""",
-            """{"access_token":"access-value","refresh_token":"refresh-value",
-               "expires_in":28800,"refresh_token_expires_in":15897600}"""
+            "{\"error\":\"authorization_pending\"}",
+            "{\"error\":\"slow_down\"}",
+            "{\"access_token\":\"access-value\",\"refresh_token\":\"refresh-value\",\"expires_in\":28800,\"refresh_token_expires_in\":15897600}"
         ]);
         using var http = new HttpClient(new StubHandler((_, _) =>
             Task.FromResult(Json(responses.Dequeue()))));
@@ -63,7 +58,7 @@ public sealed class GitHubDesktopAuthorizationTests
     public async Task RefreshPreservesExistingRefreshTokenWhenResponseOmitsRotationField()
     {
         using var http = new HttpClient(new StubHandler((_, _) =>
-            Task.FromResult(Json("""{"access_token":"new-access","expires_in":3600}"""))));
+            Task.FromResult(Json("{\"access_token\":\"new-access\",\"expires_in\":3600}"))));
         var client = new GitHubDesktopDeviceFlowClient(http);
         var current = new GitHubDesktopAuthorizationTokens(
             "old-access", "old-refresh", DateTimeOffset.UtcNow.AddMinutes(-1), null);
@@ -79,10 +74,7 @@ public sealed class GitHubDesktopAuthorizationTests
     public async Task ApiClientRejectsRepositoryOutsideExactAllowlist()
     {
         using var http = new HttpClient(new StubHandler((_, _) =>
-            Task.FromResult(Json("""
-                {"repositories":[{"id":42,"full_name":"someone/other-project",
-                  "private":false,"default_branch":"main"}]}
-                """))));
+            Task.FromResult(Json("{\"repositories\":[{\"id\":42,\"full_name\":\"someone/other-project\",\"private\":false,\"default_branch\":\"main\"}]}"))));
         var client = new GitHubDesktopApiClient(http);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
