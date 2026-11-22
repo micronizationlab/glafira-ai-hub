@@ -174,3 +174,5 @@ This update supersedes only the moving CI/source observations above; historical 
 - **Windows Desktop recheck (2026-11-22):** confirmed the HTTPS host is lifecycle-wired into WPF, and task claim/result dispatch is present. Issue #123 now distinguishes implemented Hub transport/store from the still-unproven Desktop Core plan/DAG/multi-Agent integration and physical acceptance.
 
 - **Android UI recheck (2026-11-22):** confirmed Council and Add Task controls exist in source; Bridge entry point is still absent from SettingsScreen. Issue #137 now distinguishes source-present controls from installed-APK/physical acceptance and focuses remaining work on the Bridge entry point plus reproduced regressions.
+
+- **Voice/settings recheck (2026-11-22):** confirmed the existing «ЗВУК И ГОЛОС» card, TTS/auto-speak toggles, mic permission status/request and sound-volume slider. Issue #99 was annotated to narrow remaining work to missing controls/session behavior.
