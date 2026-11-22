@@ -1,8 +1,12 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `0649b3a24592e2ccd73b6997db04e2664f055be4` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
-**Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
+**Baseline main for this ledger revision:** `4f97c19afa8f997c4977014398aa33b9dfae67d9` (verified after Android GitHub chat command PR #428 was merged on 2026-11-22).
+**Owner priority (owner's latest instruction, 2026-11-22):** (1) GLAFIRA Android must be able to perform GitHub work; (2) Windows Desktop Agent must independently perform GitHub work; (3) resume the previously established Core, Backup & Recovery, Bridge and remaining priorities. Keep the ten workstreams active in parallel, but do not let lower-priority work displace these first two deliverables.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
+
+## Scope and denominator clarification
+
+The original owner-requested Program 150 remains the first 150 numbered acceptance steps. The working ledger was subsequently expanded with 50 additional follow-on tasks (items 151–200); these are useful backlog extensions, not a silent change to the original Program 150 target. The current exact checkbox audit finds 200 unique numbered items, with 27 checked: all 27 belong to items 1–150, and none of items 151–200 is checked. Therefore report both figures: **Program 150 core = 27/150 (18%)**; **expanded 200-item ledger = 27/200 (13.5%)**. Do not describe the extended ledger as the original Program 150 or mix denominators.
 
 ## Reframed delivery strategy
 
@@ -421,3 +425,177 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - **Parallel P0 continuation.** Keep #260 failure-injection matrix, #266 durable result outbox/exact ACK, and #258 owner identity/credential autonomy/ownership handoff active. Do not count issue creation, documentation, skipped CI jobs or partial platform checks as implementation completion.
 
 **Acceptance discipline:** PR #347 remains open and blocked by the emulator failure. The communications work is scoped but not implemented. Skipped platform jobs are not passes; no automatic cross-Core failover or unrestricted personal-account access is implied.
+
+
+## Execution ledger — 2026-11-22 (live ten-workstream refresh)
+
+**Verified repository baseline:** `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193` (`main` HEAD).  
+**Formal checklist count:** 27 of the original 150 numbered steps are currently marked `[x]` in this document; 123 remain `[ ]`. This is a literal checkbox count, not a claim that every other step has no implementation. The narrative evidence below records partial implementations separately. Several previously evidenced steps are not yet reflected consistently in the checkboxes; reconcile them only after exact-head evidence is refreshed.
+
+### Ten workstreams — current verified snapshot
+
+1. **Core / task dispatch:** Core has durable task-store, planning, ownership-generation fencing, approval and Trace foundations. Issue #407 confirms Android chat still does not route GitHub commands into Core; no GitHub handler is registered. Core acceptance remains open under #91 and #260; result outbox / exact ACK is tracked by #266 and depends on canonical Core identity/ownership prerequisites (#258).
+2. **Android ↔ GitHub:** PR #404 is open Draft at `20d2fe778ee666dbc89142187f9a07a4d7765f56`. Exact-head run `44985860261`: Android JVM, shared contracts, emulator acceptance and debug APK passed. Other platform jobs were skipped. Physical Realme 8i acceptance remains outstanding. This is an authorization foundation, not the Program 150 command dispatcher (#407).
+3. **Windows Desktop GitHub Agent:** PR #411 is open Draft at `c4216c61e48e8123cb03762a423c992c61111e7c`. Exact-head run `44989876926`: Windows Desktop UI, Hub tests/build, shared contracts and exact-head summary passed; Android, iOS and Agent jobs were skipped. The PR supplies Device Flow + DPAPI session foundation and read-only verification, not the full typed GitHub work loop. Owner unlock and typed operations remain open (#408/#409).
+4. **Windows Hub / Agent / Bridge:** Existing Windows HTTPS Hub, TLS identity, pairing tickets, Agent registry, lease journal and fencing are real code, not future placeholders. However, issue #228 explicitly states typed lease metadata does not yet enable production Agent task claiming. First allowlisted read-only handler, payload isolation, unknown-outcome handling and physical two-PC acceptance remain open. Android is not currently an HTTPS Hub host; do not describe it as one.
+5. **Android voice and microphone:** PR #402 is open Draft at `392e074190a664a6667efc62094716f66f72db10`. Exact-head run `44989948562`: Android JVM, shared contracts, debug APK and managed emulator acceptance passed; non-Android jobs were skipped. It fixes the same-operation user→assistant auto-speech policy and partial-preview suppression. It does not establish physical-device TTS behavior and does not fix the chat microphone crash. Issue #401 still requires Realme 8i Logcat and physical acceptance.
+6. **Backup / restore:** PR #412 is open Draft at `85e880304bb645d0b56a855a152ea1c3f4a5a254`. Exact-head run `44988435228`: Android JVM, shared contracts, debug APK and emulator acceptance passed; other platform jobs were skipped. This is a focused visibility fix, not full backup/restore acceptance. Issue #398 still tracks the Realme folder-picker requestCode exception and device restore evidence.
+7. **Android UX / settings / secrets:** PR #399 is open Draft and changes only `SettingsScreen.kt` to avoid hydrating saved provider secrets into visible fields, mask newly entered keys and clear UI state after save. Exact-head run `44983262126` passed Android JVM, shared contracts, managed emulator acceptance, debug APK and exact-head summary. iOS/Windows/workflow-lint lanes were skipped by change-aware selection. Physical Realme validation is outstanding. Other #398 defects (voice settings crash, image picker crash, sound playback, pairing/update controls) remain open.
+8. **iOS:** Native Xcode project and Simulator target exist; BridgeKit tests/build have passed in prior exact-head CI evidence. The current audit identifies pairing and ownership as prototypes/foundations until canonical authenticated peer pairing and real Core-backed workspace/task flows are accepted. Physical iPhone acceptance remains open.
+9. **Security / owner identity / recovery:** Android GitHub token storage uses Android Keystore AES-GCM and Desktop uses DPAPI, but encryption at rest is not equivalent to an owner-unlock/biometric gate. Issue #408 requires a consistent locked-state gate for settings, chat dispatch and token refresh. Dual-Core ownership, signed transfer and update trust remain separate gates (#258).
+10. **CI / roadmap / integration control:** CI exact-head evidence is recorded per PR above; skipped jobs are not passes. PR #390 contains a 12-file ten-workstream inventory refresh but remains open, so its inventory is not yet on `main`. PR #410 is a 75-commit / 124-file Draft with a very broad cross-platform diff; it is not a safe integration unit and must be decomposed into bounded, independently tested slices. No PR in this snapshot is authorized for merge solely by this audit.
+
+### Immediate execution order
+
+- First complete the Android GLAFIRA GitHub work loop, including chat/Core dispatch and the owner-unlock gate (#407/#408).
+- Second complete the independent Windows Desktop GitHub work loop and its owner-unlock gate (#409/#408).
+- Then resume the previous order: Core ownership/failure-injection/result-ACK, Backup & Recovery, Bridge, Windows Agent production handler and remaining platform/release gates.
+- Continue Windows Agent's first real read-only handler and Hub/Core ownership handoff; do not enable arbitrary execution.
+- Finish Android voice policy integration and obtain physical-device Logcat for microphone and settings crashes (#401/#398).
+- Reconcile focused backup and secret-field PRs with exact-head checks and Realme testing.
+- Keep design work in a separate Android UI branch; do not mix cosmetic changes with Core, voice, credentials or Bridge behavior.
+- Refresh this ledger after each accepted exact-head evidence update. Do not infer completion from an open PR, documentation, a successful compile or skipped CI jobs.
+
+
+## Verification refresh — 2026-11-22 (latest exact-head audit)
+
+- **PR #399 — provider secret fields:** exact head `3072120c784720664feac148bb38b373dac60bd8`, run `44983262126`. Android JVM, shared contracts, managed emulator acceptance, debug APK and exact-head summary all passed. iOS, Windows Agent, Windows Hub and workflow lint were skipped by change-aware selection. The code change keeps persisted provider credentials out of Compose text-field state, preserves an existing key when the field is blank, masks new input and clears plaintext UI state after successful save. This is strong automated evidence, not physical Realme acceptance.
+- **PR #410 — broad cross-platform implementation stack:** exact head `807d4396af19569a028a9653738cf1b13610be41`, run `44992526034`. Android JVM, managed emulator, debug APK, shared contracts, iOS Swift package, Windows Hub, Windows Agent, Windows Desktop UI, Windows deployment packages and exact-head summary all passed. Workflow lint was skipped. The PR still spans 124 files, 75 commits, +14,577/−940 lines, across Android, iOS, Desktop Bridge, Hub and Agent. Passing CI does not make this a safe review/merge unit: it needs decomposition and security review before any integration. Source inspection confirms `windows-agent/GLAFIRA.Agent.Worker/Program.cs` registers an empty `AgentTaskHandlerRegistry`; the executor fails closed with `NO_AGENT_HANDLER`. Therefore production Agent task execution is still not enabled.
+- **PR #390 — inventory refresh:** latest head `c12b68dc0c4e023d5b943c0f7d60a77872a34c23`, run `44974869469`. Android JVM, shared contracts, iOS package and APK passed; the managed emulator failed 1 of 115 tests: `BackupSettingsSmokeTest.manualBackupActionRemainsEnabledAndExplainsMissingFolder`, assertion: “Missing-folder guidance was not shown beside the manual backup action”. Windows Hub, Agent and workflow lint were skipped. Keep the inventory PR unmerged until the test failure is reconciled with the focused fix in #412 and the latest emulator run.
+- **PR #413 — Program 150 baseline:** this document remains a documentation-only Draft PR. After the latest evidence refresh, exact-head run `44995542218` passed change detection and exact-head summary; Android, iOS, Windows, shared-contract and workflow-lint jobs were skipped by change-aware selection. This is documentation validation, not platform testing or implementation progress.
+- **Windows Agent / typed lease note:** issue #228 is now closed: the Hub claim response carries task type, idempotency key, payload reference/hash, effect-risk, approval reference and lease expiry, and Agent mapping to a typed envelope is covered. Closing #228 closes the wire-metadata gap only; it explicitly does not enable polling/claim execution. The remaining result-artifact, durable payload and first bounded handler gate is tracked by open issue #384. Source inspection of PR #410 confirms `Program.cs` registers an `AgentTaskHandlerRegistry` but no concrete handler; the executor fails closed with `NO_AGENT_HANDLER`. Keep Agent Ready/production claims disabled until #384 and two-PC acceptance pass.
+- **Core / ownership note from #410 source:** signed ownership-transfer issuance and transactional Hub-side ownership CAS/journaling tests are present in the broad stack, but this does not by itself establish canonical Android Core handoff, trusted old-owner key resolution, replay protection across process restart, or production cross-Core reconciliation. Keep #258/#266 acceptance open until the full Core path is proven.
+- **Android ↔ Windows Bridge note from #410 source:** Android has a pinned-HTTPS client and read-side ownership sync worker in the stack. The source explicitly describes the Android client as read-only; it cannot sign a transfer, issue a lease or enqueue work. Treat this as transport/ownership-read groundwork, not a complete peer task channel.
+- **Formal progress remains 27/150 core steps checked (18%); 27/200 across the expanded ledger (13.5%) in the original numbered checklist.** This is a literal checkbox count. The new exact-head evidence adds verified partial implementation detail but does not justify checking off whole steps.
+
+
+- **Issue-state correction:** #228 is closed, not open. Its completion is the typed lease metadata contract only; #384 is the current explicit blocker for bounded result artifacts and first safe production Agent handler. Do not report #228 as an outstanding issue.
+
+
+## Verification refresh — 2026-11-22 (Android/Desktop GitHub coding APIs and Core ownership audit)
+
+- **Owner priority correction:** the latest explicit owner instruction supersedes the older P0-first ordering above: Android GLAFIRA GitHub work first, Windows Desktop GitHub-capable Agent second, then the previous priorities. Ten workstreams remain active in parallel.
+- **PR #416 — Android branch-scoped GitHub coding API:** exact head `f035f031aa30f054a141f0aa2ee503a10eaa8150`, run `45003098387`. Shared contracts, Android JVM tests, debug APK and managed Android emulator acceptance passed; exact-head summary passed. Windows, iOS and Agent jobs were skipped. PR is Draft and stacked on #415/#404. Physical Realme 8i validation and owner-facing chat/Core/owner-unlock integration are still outstanding.
+- **PR #417 — Windows Desktop branch-scoped GitHub coding API:** exact head `b5a3aa562617387c2fe64dbdf09a4bbad2a17dd9`, CI run `45003398881`: Windows Desktop Hub tests/build, shared contract conformance and exact-head summary passed. Windows Desktop x64 and Windows Agent x64 packages passed in run `45003398913`. Android, iOS and Agent test jobs were skipped in the change-aware run. PR remains Draft, stacked on #411; WPF owner-facing coding workspace, owner unlock and Core task/Trace/ACK integration remain open.
+- **PR #418 — Windows Agent bounded result-artifact store:** exact head `b55fb551f5e0daab01e50d9468c058cdc6ab88e4`. Windows Agent tests/build, shared contracts and exact-head summary passed in run `45003345467`; Agent compile passed in `45003345452`; Agent and Desktop x64 package builds passed in `45003345456`. This is only the typed local artifact store. Production handler registration, durable Agent outbox/ACK acceptance and two-PC acceptance remain open under #384.
+- **Core issue #381 — fresh source audit:** on current `main`, `GlafiraTaskStore.claimNext()` returns a plain task after updating by task ID/state; `transition()` and `persistCoreTaskResult()` likewise do not compare the immutable owner Core ID/generation/state-version captured before handler execution. `GlafiraCoreTaskExecutor` carries no claim tuple into handler completion. An audit comment was added to #381 with exact code findings and a focused implementation/test boundary. Do not treat the ownership table or #380 approval-generation fencing as a substitute for execution-result fencing.
+- **Program 150 count:** remains 27/150 core steps checked (18%); 27/200 across the expanded ledger (13.5%). New PRs and audit comments are partial evidence, not completed checklist steps. No PR above is merged; no physical-device or production Agent readiness is claimed.
+
+
+## Verification refresh — 2026-11-22 (Android and Windows GitHub integration contracts)
+
+- **PR #421 — Android chat-to-GitHub dispatch contract:** exact head `cc3b52645d1f376a21ea94806d0c37fd06f6db49`. Workflow run `45006022195` (change-aware platform validation) and run `45006022203` (Project Dispatcher) both completed successfully. The document defines typed intents, repository allowlist, preview-hash-bound one-time owner approval, Core owner-generation checks, durable Trace/ACK, fail-closed behavior and reconciliation of uncertain writes. It is documentation only: Android chat dispatch is not implemented by this PR.
+- **PR #422 — Windows Desktop GitHub workspace contract:** exact head `34775633573f9b0eee69f46c5493a54dbe88669e`. The PR was created as Draft; no workflow runs were returned at the time of this refresh. The document specifies the missing WPF workspace, read-only browsing, diff preview, owner session, preview-bound approval, Core Trace/ACK and Windows acceptance tests. It does not implement the workspace.
+- **PR #419 Android sensitive-path guard:** exact-head runs `45004485858` (change-aware validation) and `45004485836` (Project Dispatcher) completed successfully.
+- **PR #420 Windows sensitive-path guard:** exact-head runs `45004438257` (Windows Hub), `45004438235` (Windows Desktop UI), `45004438241` (Windows deployment packages), `45004438231` (change-aware validation) and `45004438205` (Project Dispatcher) completed successfully. Platform jobs skipped by change-aware selection are not claimed as passed.
+- **Formal Program 150 count remains 27/150 core steps checked (18%); 27/200 across the expanded ledger (13.5%).** PRs #421 and #422 are documentation/contract artifacts, not completed numbered implementation steps. Their successful documentation CI is useful evidence but does not justify checking off an implementation milestone. No PR in this refresh was merged.
+
+
+## Verification refresh — 2026-11-22 (latest helper contributions and exact-head checks)
+
+- **Android GitHub Core dispatch — PR #424:** exact head `4c9a17cc6c37e9489560001d8e8266735468925e`. CI run `45012419029`: Android JVM, managed emulator acceptance, debug APK, shared contract conformance and exact-head summary passed. Windows/iOS/Agent/workflow-lint lanes were skipped by change-aware selection. This adds five registered Core GitHub handlers and owner-scoped authorization; ordinary chat still does not create these Core tasks, and the PR remains Draft with no submitted review.
+- **Windows Desktop GitHub workspace — PR #425:** exact head `640760f3be4e019355a6a5739e17a6141062e376`. CI run `45012478059`, Windows Desktop Hub `45012478047`, Windows Desktop UI `45012478036`, deployment packages `45012478166`, dispatcher `45012478012`: all completed successfully. The WPF workspace currently reads the allowlisted `main` tree and selected files only. It does not write, create branches/PRs, or merge. The PR remains Draft with no submitted review.
+- **Android intent preview — PR #423:** exact-head run `45007338718` failed Android compilation because the preview builder called the undefined `isWritableFeatureBranch` helper. The helper contribution was repaired in the PR branch by commit `be0bf7ffa47868e85de55767d0b7023529c9ad82`; it now delegates to the canonical `GitHubRepositoryOperations.requireWritableBranch` guard and rejects the base branch as a write target. New exact-head CI `45013577991` was still running at the time of this update; do not count the fix as validated until it completes.
+- **Windows Agent artifact store — PR #418:** exact-head `b55fb551f5e0daab01e50d9468c058cdc6ab88e4`; Agent tests/build, shared contracts, deployment packages and dispatcher passed (runs `45003345467`, `45003345452`, `45003345456`, `45003345496`). This is a local bounded artifact store only. It does not register a production handler or implement durable Core ACK/outbox; issue #384 and two-PC acceptance remain open.
+- **Voice and recovery slices:** PR #402 auto-speech policy CI `44989948562`, PR #414 recognizer startup guard CI `44997073730`, and PR #412 backup guidance CI `44988435228` all passed their Android change-aware suites. These results do not establish physical Realme 8i acceptance. Mic process-exit root cause and the backup folder-picker requestCode exception remain unresolved pending device Logcat.
+- **Dependency / merge discipline:** Android chain is #404 → #415 → #416 → #419 → #424; Windows chain is #411 → #417 → #420 → #425. All listed dependency PRs have successful exact-head CI evidence, but they remain Draft and currently have no submitted GitHub reviews. Do not merge a downstream PR ahead of its base or mark these chains integrated on `main` until the review and ordered integration gates are satisfied.
+- **Core ownership:** #347 and #380 remain open; the separate #381 audit still identifies missing immutable owner-generation fencing on claim completion/result persistence. Keep execution-fencing acceptance open.
+- **Formal Program 150 count remains 27/150 core steps checked (18%); 27/200 across the expanded ledger (13.5%).** PRs, green builds, documentation and partial feature slices do not increment the original checklist unless a complete numbered acceptance step is met.
+
+
+### Follow-up correction — PR #423 preview guard (2026-11-22)
+
+The initial repair commit `be0bf7ffa47868e85de55767d0b7023529c9ad82` removed the missing helper but referenced `GitHubRepositoryOperations`, which is supplied by stacked PR #416 and is not present on PR #423's `main` base. The resulting base-branch compile failure was inspected from the exact CI job log. The preview model has now been made self-contained: it repeats the deterministic branch syntax/protected-branch checks locally, while the eventual API layer independently repeats the same policy at dispatch. CREATE_BRANCH previews now reject protected/default branches as well; tests cover main/master, protected prefixes, refs/, dot-segments and .lock names. Latest PR #423 head: `60c6156cf9116298a4c600cded2338010a5fe85a`; Android JVM CI run `45013775184` is in progress at this update. The earlier failing runs remain historical failures; do not count this repair as validated until the latest exact-head run completes.
+
+
+## Live execution update — 2026-11-22 (ten directions + Program 150)
+
+### Exact-head CI reconciliation
+
+- **PR #423 Android GitHub intent preview:** exact head `60c6156cf9116298a4c600cded2338010a5fe85a`, workflow `45013775184`. Android JVM tests **passed**, debug APK package **passed**, shared contract conformance **passed**; managed Android emulator acceptance **failed**. The exact failing test is `BackupSettingsSmokeTest.manualBackupActionRemainsEnabledAndExplainsMissingFolder`: UiAutomator did not find the missing-folder guidance after tapping the manual backup action. This is a backup-settings UI/accessibility regression in the current main baseline, not a Kotlin compilation failure in the GitHub preview. Do not describe #423 as fully green.
+- **Backup follow-up PR #426:** branch `fix/android-backup-guidance-visible-with-action`, exact head `a8840fcb475b65ca2362ae7de64ec94a7a6ceebe`. It exposes the active missing-folder prerequisite in the manual backup button's accessible description. Exact-head CI `45015827522` passed Android JVM, shared contract, debug APK and managed emulator acceptance; Windows/iOS/workflow-lint jobs were correctly skipped for this Android-only change. This does not prove cloud-folder picker, remote read-back, clean restore or physical Realme 8i acceptance.
+- **PR #424 Android Core GitHub handlers:** exact head `4c9a17cc6c37e9489560001d8e8266735468925e`; CI `45012419029` passed Android JVM, emulator, APK, shared contract and exact-head summary. This remains a stacked Draft PR; ordinary chat-to-Core routing and owner-facing preview/approval/result UI are not included.
+- **PR #425 Windows Desktop GitHub workspace:** exact head `640760f3be4e019355a6a5739e17a6141062e376`; CI `45012478059`, `45012478047`, `45012478036`, `45012478166` and dispatcher `45012478012` all passed. It is read-only (allowlisted main tree/file inspection), not autonomous branch/write/PR execution.
+- **PR #413 ledger refresh:** exact head `20135534f5f45870634d7523c1792242e9e2d098`; change-aware documentation CI `45013895616` and dispatcher `45013895653` passed. Documentation validation does not increase implementation completion.
+- **PR #410:** exact head `4bdaabb5e5882c371ef4cd5779e996ba4b41984d`; all reported platform and dispatcher jobs passed in run family `45010889753`–`45010889892`. It remains Draft and has known overlap with #418 in the Agent result artifact store files; do not merge both implementations unchanged.
+- **PR #418 Windows Agent artifact store:** exact head `b55fb551f5e0daab01e50d9468c058cdc6ab88e4`; Agent, packages, change-aware CI and dispatcher passed. This is artifact persistence, not yet the production read-only handler registration / end-to-end ACK path.
+- **Voice / restore:** #402, #414 and #412 retain their earlier successful change-aware checks, but no new physical Realme 8i acceptance evidence was obtained in this execution window. The microphone exit and folder-picker requestCode exception remain owner-device diagnostics, not declared fixed.
+
+### Ten workstreams — current disposition
+
+1. Android ↔ GitHub: API/authorization handlers exist in #424; chat-to-Core intent adapter, preview/approval UX and user-visible result routing remain.
+2. Windows Desktop ↔ GitHub: read-only WPF repository workspace exists in #425; owner-session gate, approved write flow and independent two-PC acceptance remain.
+3. Owner authentication: Compose biometric UI state is not yet a shared Core owner session consumed at the execution boundary.
+4. Microphone: #414 startup guard passed CI; root cause and Realme 8i test remain.
+5. Automatic TTS: #402 policy passed CI; physical test of automatic playback, interruptions and dedup remains.
+6. Core: #347/#380 checks are green, but immutable owner-generation tuple must be carried through claim, handler completion and result persistence (#381).
+7. Backup/Restore: #426 addresses the emulator-discovered accessibility failure; folder picker, remote read-back, clean restore and device acceptance remain.
+8. Android ↔ Windows Bridge: pairing/transport exists in slices, but authenticated durable handoff, one-owner semantics, outbox/ACK and restart/replay acceptance remain.
+9. Windows Agent: #418 bounded artifact store passed tests; first production allowlisted handler, ACK reconciliation and two-PC acceptance remain.
+10. Coordination / Program 150: exact-head CI and issues were refreshed; no whole numbered milestone was newly completed in this window.
+
+### Program 150 status
+
+**Formal count remains 27/150 core steps checked (18%); 27/200 across the expanded ledger (13.5%).** This is the count of fully checked numbered milestones in the ordered checklist, not a count of PRs, commits, green CI jobs or partial feature slices. No new numbered step is checked by this update. The next unblocked evidence targets remain step 16 (full failure-injection matrix), step 17 (provider outcome/replay safeguards), step 18 (durable result outbox + explicit ACK), step 20 (persistent owner grants and approval binding), step 28 (TaskPlan instrumentation preservation), and steps 91–110 for Android acceptance. Step 16 has useful merged slices but remains open until the complete claim→handler→progress→result→ACK→restart and stale-owner matrix is demonstrated.
+
+
+## Follow-up validation — 2026-11-22 (Backup emulator fix + owner approval inbox)
+
+- **PR #426 backup guidance accessibility fix:** exact head `a8840fcb475b65ca2362ae7de64ec94a7a6ceebe`; run `45015827522` completed successfully. Android JVM, shared contract conformance, debug APK, managed emulator acceptance and exact-head summary all passed. This specifically closes the emulator assertion that failed in #423; it does not prove cloud-folder picker/remote restore or physical Realme 8i acceptance. #423's earlier failed run remains historical and must be rerun against main after #426 integration.
+- **PR #427 Android Core owner approval inbox:** Draft PR stacked on #424, exact head `f433a0f791ae8a82d9295921e918f7525b8224f3`. It adds a Task Queue approval list, redacted action details and exact requested scopes, manual refresh, and fresh BiometricPrompt authentication to mint a one-use `GlafiraCoreOwnerSession` before approve/reject mutations. Exact-head CI `45016574315` passed Android JVM, managed emulator acceptance, debug APK, shared contract and exact-head summary; iOS, Windows Agent, Windows Desktop and workflow lint were skipped because this is an Android-only change. This remains only the approval-inbox slice, not the global owner-session gate or chat-to-Core routing.
+- **PR #428 Android GitHub connect command:** new Draft PR stacked on #427, exact head `a1bc16cae00bae9793fad4e498a32dad144b5807`. It recognizes explicit Russian/English connect commands in the GLAFIRA chat and opens the existing GitHub Device Flow section in Settings without adding a chat/outbox item or granting access; unit tests cover accepted and rejected phrases. Dispatcher `45018987704` passed; change-aware CI `45018987717` was still running Android JVM tests at this update, while shared contract passed and unrelated platform jobs were skipped. This is navigation only: repository read/write task creation, Dry Run preview, approval binding and result presentation remain outstanding.
+- **PR #413 ledger scope correction:** exact head `85e4834cdd3610edc62841ca6d4447eb3c1b4684`; documentation CI `45016120966` and dispatcher `45016120978` passed. The ledger now explicitly distinguishes the original 150-step target from the expanded 200-item backlog.
+- **Formal count:** original Program 150 = **27/150 (18%)**; expanded 200-item ledger = **27/200 (13.5%)**. The 50 extension items (151–200) are all unchecked. No new numbered milestone is checked by PR #426 or #427; they are partial implementation evidence toward existing acceptance gates.
+
+
+## Owner priority and verification update — 2026-11-22 (latest instruction)
+
+The owner has since refined the execution order. This order supersedes earlier priority lines in this ledger:
+
+1. **Integrate helper contributions first:** inspect helper PRs/files, reconcile overlaps against current `main`, integrate bounded slices, run exact-head validation, and notify the helper after every change. The helper must refresh from current `main` before starting another slice.
+2. **Android app:** complete the ordinary-chat → intent → Core task → preview → fresh owner approval → execution → result/Trace loop, then validate voice, backup and device behavior.
+3. **Windows Desktop:** complete the independent GitHub-capable Desktop workflow and owner-gated write path.
+4. **Core, Backup & Recovery, Bridge:** continue ownership fencing, crash recovery, durable result outbox/ACK, portable restore and authenticated peer transport.
+5. **Remaining work:** continue iOS, Windows Agent production handler, release gates and other backlog items without displacing the first four priorities.
+
+Keep ten workstreams active in parallel; this is a merge/integration order, not an instruction to stop independent work.
+
+### Latest integration evidence
+
+- **Integration PR #429** now includes the focused Android backup-guidance accessibility fix from #426. Exact head `f6652b41ee0bedc3fff37884e43ffca148aadd3d` also adds UI-smoke test isolation in `AndroidUiSmokeTestSupport.kt`, `BackupSettingsSmokeTest.kt` and `MainActivitySmokeTest.kt`.
+- Previous exact-head run `45071442557` completed 115 emulator tests with 3 failures. All three failed before reaching the expected home-screen accessibility elements; Logcat confirms `MainActivity` was displayed. The UI-smoke tests now clear only the app's no-backup restore journal before launch, because an interrupted-restore state routes the app to a recovery screen rather than the normal workspace. This is a test-isolation hypothesis/fix, not yet accepted evidence.
+- New exact-head CI for `f6652b41ee0bedc3fff37884e43ffca148aadd3d` is run `45072600522`; at this ledger update Android JVM, Windows, iOS and contract jobs are still running. Do not mark the emulator gate passed until its executed-test report is green.
+- PR #429 remains open and unmerged. Its overlapping Windows Desktop UI files are also in #425; resolve that overlap only after the #429 exact-head gate passes.
+- PR #426's backup change has been copied into #429. Keep duplicate backup PRs #426/#412 open until the integrated exact-head emulator gate passes, then mark them superseded rather than merging duplicate edits.
+- PR #418 overlaps #429 on the Windows Agent result-artifact store and tests. Do not merge both versions unchanged.
+- Helper was notified in PR #410 and PR #429 of the new test-only changes and instructed not to duplicate the touched files.
+
+**Formal Program 150 count remains 27/150 (18%); expanded ledger remains 27/200 (13.5%)** until a complete numbered acceptance step is evidenced. No new numbered milestone is checked by this update.
+
+
+## Execution ledger — verified refresh after PR #428 merge (2026-11-22 22:45 UTC)
+
+**Current main:** `4f97c19afa8f997c4977014398aa33b9dfae67d9`. **Formal checkbox count:** 27/150 checked (18.0%); this is the literal checklist count, not a claim that all unmarked steps have zero implementation. The expanded 151–200 backlog is reported separately and does not change the original 150-step denominator.
+
+### Ten workstreams — current evidence
+
+1. **Android GitHub/Core:** PR #435 head was rebased onto current main as `fdd4aa6153c72692e192fb04fd74c262bd5b5891`; fresh exact-head CI is pending. Prior head passed JVM, contracts, APK and emulator, but the shared owner-unlock gate in #408 remains a security blocker for production/autonomous credential use.
+2. **Android owner approval inbox:** PR #437 head `ca957a6bd65658d9a5420f30900fc8dcd36f1bac` passed JVM, contracts, APK and emulator on its parent stack. Rebase and rerun after #435 integration; do not merge it independently from its dependency.
+3. **Android chat GitHub command:** PR #428 merged as `4f97c19afa8f997c4977014398aa33b9dfae67d9`. Explicit connect commands navigate to Settings; this is not an authorization bypass or automatic login.
+4. **Backup & Recovery:** #426 and #438 are in main. Physical Realme 8i backup/restore acceptance remains outstanding.
+5. **Windows GitHub Workspace:** #436 is in main. Workspace remains first-stage; physical Windows validation, owner unlock and diff-preview/explicit approval before writes remain open.
+6. **Windows Agent:** #433 is in main. The older #418 artifact-store extraction was closed as superseded after source comparison confirmed main has a newer superset with ProjectId binding and pending-artifact enumeration. Production handler and end-to-end Core ACK remain open.
+7. **Windows Desktop Hub:** #434 is in main; tests/build/package passed. Runtime validation on the owner's Windows machine remains outstanding.
+8. **Shared contracts:** #431 is in main. Cross-platform end-to-end acceptance remains open.
+9. **Android voice/auto-speech:** #432 is in main; physical Realme 8i validation remains outstanding. #414 is a separate older draft candidate and is not counted as merged.
+10. **Android ↔ Windows ↔ Core integration:** still requires canonical peer pairing, one-owner task handoff, durable result/ACK reconciliation and two-device acceptance. Legacy CLI pairing is not production peer pairing.
+
+### Active validation / blockers
+
+- PR #435: rebased onto current main; awaiting fresh exact-head CI. Do not merge until the shared owner-unlock/session gate is implemented and tested at every GitHub token and network boundary.
+- PR #437: exact-head checks passed on the previous stacked base; must be rebased and retested after #435.
+- PR #423: side-effect-free GitHub intent preview model rebased onto current main; CI is running. The previous emulator failure was a stale BackupSettingsSmokeTest expectation (missing-folder guidance), not a failure in the preview model; rerun on current main is required before any promotion.
+- PR #428: merged; physical-device test remains outstanding.
+- PR #418: closed as superseded by the more complete implementation already in main.
+- Skipped CI jobs and physical-device gates are not counted as passes.
+
