@@ -421,16 +421,18 @@ fun ContactList(
                 Text("+", color = Gr, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.width(6.dp))
-            Box(
-                Modifier.size(24.dp)
-                    .border(1.dp, Gr, RoundedCornerShape(2.dp))
-                    // Match the known-good Compose semantics order from the passing
-                    // baseline: clickable first, then the accessible label.
-                    .clickable { onSettingsClick() }
-                    .semantics { contentDescription = "Открыть настройки" },
-                contentAlignment = Alignment.Center
+            IconButton(
+                onClick = onSettingsClick,
+                modifier = Modifier.size(28.dp)
             ) {
-                Text("⚙", fontSize = 12.sp)
+                Text(
+                    "⚙",
+                    modifier = Modifier.semantics {
+                        contentDescription = "Открыть настройки"
+                    },
+                    color = Gr,
+                    fontSize = 12.sp
+                )
             }
         }
 
