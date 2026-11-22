@@ -90,13 +90,13 @@ public static partial class CanonicalTaskContractJson
     }
 
     public static TaskEnvelopeV1 ParseTaskEnvelope(string json) =>
-        Parse(json, Validate<TaskEnvelopeV1>);
+        Parse<TaskEnvelopeV1>(json, value => Validate(value));
 
     public static TaskLeaseV1 ParseTaskLease(string json) =>
-        Parse(json, Validate<TaskLeaseV1>);
+        Parse<TaskLeaseV1>(json, value => Validate(value));
 
     public static TaskResultEnvelopeV1 ParseTaskResult(string json) =>
-        Parse(json, Validate<TaskResultEnvelopeV1>);
+        Parse<TaskResultEnvelopeV1>(json, value => Validate(value));
 
     public static void Validate(TaskEnvelopeV1 value)
     {
@@ -238,14 +238,4 @@ public static partial class CanonicalTaskContractJson
     [GeneratedRegex("^[A-Z0-9_]{1,64}$", RegexOptions.CultureInvariant)]
     private static partial Regex ErrorCodePattern();
 
-    private static void Validate<T>(T value)
-    {
-        switch (value)
-        {
-            case TaskEnvelopeV1 task: Validate(task); break;
-            case TaskLeaseV1 lease: Validate(lease); break;
-            case TaskResultEnvelopeV1 result: Validate(result); break;
-            default: throw new InvalidDataException("TASK_CONTRACT_TYPE_UNSUPPORTED");
-        }
-    }
 }
