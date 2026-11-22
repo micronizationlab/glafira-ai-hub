@@ -27,6 +27,7 @@ class MainActivitySmokeTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         prepareUnlockedHome(context)
+        forceStopTargetApp(instrumentation)
         val intent = Intent(context, MainActivity::class.java).addFlags(
             Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         )
@@ -42,6 +43,7 @@ class MainActivitySmokeTest {
     fun mainActivityLaunchesAndRemainsForegrounded() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         prepareUnlockedHome(context)
+        forceStopTargetApp(InstrumentationRegistry.getInstrumentation())
         val scenario = ActivityScenario.launch<MainActivity>(
             Intent(context, MainActivity::class.java).addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK

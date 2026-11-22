@@ -66,12 +66,17 @@ class AnswerCitationUiSmokeTest {
                 ) == CitationManifestWriteResult.STORED
             )
 
+            forceStopTargetApp(instrumentation)
             scenario = ActivityScenario.launch(
                 Intent(context, MainActivity::class.java).addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 )
             )
             device.waitForIdle()
+            assertNotNull(
+                "GLAFIRA home screen did not open",
+                device.wait(Until.findObject(By.text("СЕТЬ АГЕНТОВ · 2003")), 30_000)
+            )
             assertNotNull(
                 "Agent list did not open",
                 device.wait(Until.findObject(By.text("ГЛАФИРА")), 20_000)
