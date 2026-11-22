@@ -36,6 +36,7 @@ builder.Services.AddSingleton<AgentTaskExecutor>(services =>
         maxParallelTasks: 1));
 builder.Services.AddSingleton<IAgentLocalDataProtector, WindowsDpapiAgentDataProtector>();
 builder.Services.AddSingleton<IAgentExecutionJournal, DpapiAgentExecutionJournal>();
+builder.Services.AddSingleton<IAgentResultArtifactStore, FileAgentResultArtifactStore>();
 builder.Services.AddSingleton<IAgentTaskTransport, BridgeV1AgentTaskClient>();
 builder.Services.AddSingleton<AgentTaskPollingCoordinator>();
 builder.Services.AddSingleton<IAgentCredentialStore, DpapiAgentCredentialStore>();
