@@ -42,7 +42,7 @@ class GlafiraCoreResultReviewTest {
         val trace = GlafiraTraceStore(temporary.root)
         val rejected = GlafiraIndependentCoreResultReviewer(
             candidates,
-            service(GlafiraCoreResultContractEvaluator(candidates), trace)
+            service(GlafiraCoreResultContractEvaluator(candidates), trace, "rejected")
         ).review(task(), "not-json")
         assertEquals(GlafiraCoreResultReviewStatus.REJECTED, rejected.status)
 
@@ -56,7 +56,8 @@ class GlafiraCoreResultReviewTest {
                     ): IndependentReviewAssessment =
                         throw IllegalStateException("provider secret")
                 },
-                trace
+                trace,
+                "unavailable"
             )
         ).review(task().copy(taskId = "task-2"), "{\"ok\":true}")
         assertEquals(GlafiraCoreResultReviewStatus.UNAVAILABLE, unavailable.status)
@@ -70,7 +71,8 @@ class GlafiraCoreResultReviewTest {
 
     private fun service(
         evaluator: IndependentReviewEvaluator,
-        repository: TraceRepository
+        repository: TraceRepository,
+        eventPrefix: String = "review"
     ): GlafiraIndependentReviewService {
         var nextEvent = 0
         return GlafiraIndependentReviewService(
@@ -86,7 +88,7 @@ class GlafiraCoreResultReviewTest {
             },
             traceService = GlafiraTraceService(repository),
             now = { Instant.parse("2026-11-22T20:30:00Z") },
-            eventId = { TraceEventIdentifier("review-event-${++nextEvent}") }
+            eventId = { TraceEventIdentifier("$eventPrefix-event-${++nextEvent}") }
         )
     }
 
