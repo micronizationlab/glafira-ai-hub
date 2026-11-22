@@ -50,3 +50,11 @@ No PR was merged in this refresh. Keep stacked PR dependencies intact. Do not me
 - Added source-audit implementation guardrails to #123 (Core↔Hub transactional outbox/inbox), #392 (Core-peer pairing contract distinct from Agent enrollment), #393 (Android as owner-facing pinned HTTPS client), #387 (provider read-back/clean-profile restore remains unverified) and #394 (default-deny provider/project/classification policy).
 - Reconfirmed #366 production transfer requirements and #384 empty Agent handler registry/step-76 blocker in prior comments. No production handler is enabled.
 - No PR merged; #372 remains Draft. These CI runs are still in progress at this snapshot; no emulator result is inferred from a running step.
+
+
+## Core PR review gate — 2026-11-22 02:12 UTC
+
+- PR #347 current head `ea7b7878efe074ae2cb9a542efada25dd388c820`; exact-head CI run `44970287760` completed successfully (Android JVM, shared contracts, APK, managed emulator 118/118 as previously verified). No submitted PR review is present in the current review query.
+- PR #380 current head `dcb8e1e3cd48becd30fced431793f8bb93a2051c`; exact-head CI run `44970170966` completed successfully (Android JVM, shared contracts, APK, managed emulator 119/119 as previously verified). No submitted PR review is present in the current review query.
+- PR #382 remains open; previous exact-head CI passed its selected lanes, but the earlier merge attempt was rejected by branch protection (approval + required checks). No bypass attempted.
+- These are review-gated, not technically failing. Do not merge without the required approving review and current required checks.
