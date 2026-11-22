@@ -26,7 +26,13 @@ precondition(enrollment.agentID == "agent-00001")
 let decision = try AgentEnrollmentDecision(data: messageData(5))
 precondition(decision.agentID == "agent-00001")
 
-let lease = try TaskLease(data: messageData(6))
+let revocation = try AgentRevocationRequest(data: messageData(6))
+precondition(revocation.enrollmentID == "enroll-001")
+
+let revocationDecision = try AgentRevocationDecision(data: messageData(7))
+precondition(revocationDecision.lastAcceptedFencingToken == 7)
+
+let lease = try TaskLease(data: messageData(8))
 precondition(lease.taskID == "task-000001")
 
-print("Swift contract fixture round-trip checks passed for all seven message families.")
+print("Swift contract fixture round-trip checks passed for all nine message families.")

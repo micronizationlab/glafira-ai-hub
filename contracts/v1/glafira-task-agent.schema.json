@@ -22,6 +22,12 @@
       "$ref": "#/$defs/AgentEnrollmentDecision"
     },
     {
+      "$ref": "#/$defs/AgentRevocationRequest"
+    },
+    {
+      "$ref": "#/$defs/AgentRevocationDecision"
+    },
+    {
       "$ref": "#/$defs/TaskLease"
     }
   ],
@@ -558,8 +564,7 @@
         "decision": {
           "enum": [
             "APPROVED",
-            "REJECTED",
-            "REVOKED"
+            "REJECTED"
           ]
         },
         "decidedAt": {
@@ -578,6 +583,193 @@
           "$ref": "#/$defs/Identifier"
         }
       }
+    },
+    "AgentRevocationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "revocationId",
+        "enrollmentId",
+        "agentId",
+        "requestedByDeviceId",
+        "requestedAt",
+        "reasonCode"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "revocationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "enrollmentId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "agentId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "requestedByDeviceId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "requestedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reasonCode": {
+          "enum": [
+            "OWNER_REQUEST",
+            "DEVICE_REPLACED",
+            "CREDENTIAL_COMPROMISE",
+            "DECOMMISSIONED"
+          ]
+        }
+      }
+    },
+    "AgentRevocationDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "revocationId",
+        "enrollmentId",
+        "agentId",
+        "status",
+        "decidedAt",
+        "revokedAt",
+        "lastAcceptedFencingToken",
+        "activeLeaseDisposition",
+        "requiresOwnerReconciliation"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "revocationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "enrollmentId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "agentId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "status": {
+          "enum": [
+            "REVOKED",
+            "ALREADY_REVOKED",
+            "CONFLICT",
+            "NOT_FOUND"
+          ]
+        },
+        "decidedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revokedAt": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastAcceptedFencingToken": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "activeLeaseDisposition": {
+          "enum": [
+            "NONE",
+            "READ_ONLY_REQUEUED",
+            "OUTCOME_UNKNOWN"
+          ]
+        },
+        "requiresOwnerReconciliation": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "REVOKED",
+                  "ALREADY_REVOKED"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "revokedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "revokedAt": {
+                "type": "null"
+              },
+              "activeLeaseDisposition": {
+                "const": "NONE"
+              },
+              "lastAcceptedFencingToken": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "activeLeaseDisposition": {
+                "const": "OUTCOME_UNKNOWN"
+              }
+            },
+            "required": [
+              "activeLeaseDisposition"
+            ]
+          },
+          "then": {
+            "properties": {
+              "requiresOwnerReconciliation": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "CONFLICT"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "requiresOwnerReconciliation": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
     },
     "TaskLease": {
       "type": "object",
