@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `0649b3a24592e2ccd73b6997db04e2664f055be4` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
+**Baseline main for this ledger revision:** `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193` (verified 2026-11-22 before the current GitHub-integration and priority-documentation PRs).  
 **Owner priority (owner override, 2026-11-22):** P0 Android GLAFIRA ↔ GitHub integration and automatic start on the owner's “работаем над программой 150” command → parallel P0 defect fixes → P1 Core/Backup/Bridge/Desktop/Agent workstreams → P2 iOS and remaining UX/release work. This override changes active execution priority, not historical step numbering or dependency truth.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
