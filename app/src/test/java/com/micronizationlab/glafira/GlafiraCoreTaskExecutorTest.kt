@@ -122,7 +122,8 @@ class GlafiraCoreTaskExecutorTest {
                     reviewerVersion = 1,
                     independence = ReviewIndependence.INDEPENDENT_EVALUATOR
                 )
-            }
+            },
+            clock = { 10_000L }
         )
 
         assertEquals(GlafiraTaskExecutionStatus.SUCCEEDED, worker.executeNext().status)
@@ -147,7 +148,8 @@ class GlafiraCoreTaskExecutorTest {
                 }),
                 resultReviewer = GlafiraCoreTaskResultReviewer { _, _ ->
                     GlafiraCoreTaskResultReviewOutcome(status)
-                }
+                },
+                clock = { 10_000L }
             )
 
             val result = worker.executeNext()

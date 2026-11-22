@@ -86,7 +86,8 @@ class GlafiraCoreResultReviewInstrumentedTest {
         handlers = listOf("project.read" to GlafiraTaskHandler {
             GlafiraTaskExecutionOutcome.Succeeded(summary)
         }),
-        resultReviewer = GlafiraCoreResultReviewFactory.create(taskStore, traceStore)
+        resultReviewer = GlafiraCoreResultReviewFactory.create(taskStore, traceStore),
+        clock = { 2_000L }
     )
 
     private fun reviewEvents(taskId: String) = traceStore.query(

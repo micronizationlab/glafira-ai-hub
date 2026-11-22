@@ -68,8 +68,12 @@ class GlafiraCoreResultReviewTest {
         assertFalse(raw.contains("provider secret"))
     }
 
-    private fun service(evaluator: IndependentReviewEvaluator, repository: TraceRepository) =
-        GlafiraIndependentReviewService(
+    private fun service(
+        evaluator: IndependentReviewEvaluator,
+        repository: TraceRepository
+    ): GlafiraIndependentReviewService {
+        var nextEvent = 0
+        return GlafiraIndependentReviewService(
             evaluator = evaluator,
             contextResolver = object : ReviewTraceContextResolver {
                 override suspend fun resolve(taskId: TaskIdentifier) = ReviewTraceContext(
@@ -81,8 +85,10 @@ class GlafiraCoreResultReviewTest {
                 )
             },
             traceService = GlafiraTraceService(repository),
-            now = { Instant.parse("2026-11-22T20:30:00Z") }
+            now = { Instant.parse("2026-11-22T20:30:00Z") },
+            eventId = { TraceEventIdentifier("review-event-${++nextEvent}") }
         )
+    }
 
     private fun task() = GlafiraTask(
         taskId = "task-1",
