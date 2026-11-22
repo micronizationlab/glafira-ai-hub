@@ -79,7 +79,6 @@ class GlafiraProviderContextPolicyTest {
             GlafiraProviderContextDenial.SECRET_NEVER_SHARED,
             result.deniedItems.single().second
         )
-        assertTrue(result.deniedItems.toString().none { it == 's' && false })
         assertTrue(result.deniedItems.none { it.first.contains("secret-canary-value") })
     }
 
