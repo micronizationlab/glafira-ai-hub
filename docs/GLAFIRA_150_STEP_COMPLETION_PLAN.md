@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `0649b3a24592e2ccd73b6997db04e2664f055be4` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
+**Baseline main for this ledger revision:** `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193` (verified 2026-11-22; this supersedes the 2026-11-21 historical snapshots below).  
 **Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -421,3 +421,19 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - **Parallel P0 continuation.** Keep #260 failure-injection matrix, #266 durable result outbox/exact ACK, and #258 owner identity/credential autonomy/ownership handoff active. Do not count issue creation, documentation, skipped CI jobs or partial platform checks as implementation completion.
 
 **Acceptance discipline:** PR #347 remains open and blocked by the emulator failure. The communications work is scoped but not implemented. Skipped platform jobs are not passes; no automatic cross-Core failover or unrestricted personal-account access is implied.
+
+
+## Audit refresh — 2026-11-22, main `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193`
+
+This section records the latest verified state without rewriting historical entries above.
+
+- **PR #347 — Android owner-generation execution fence:** remains open and unmerged. Exact-head run `44912132854` passed Android JVM, Shared Contracts and Debug APK packaging but failed managed-emulator acceptance on the backup-settings regression. The executor fencing work must not be considered integrated until the full exact-head acceptance passes.
+- **PR #380 — canonical owner-generation approval fencing:** exact-head run `44940462816` passed Android JVM, Shared Contracts, managed-emulator acceptance, Debug APK packaging and exact-head summary. Windows/iOS jobs were skipped by change-aware selection. PR remains draft and open; this is a validated candidate, not a merged feature.
+- **PR #382 — durable Runtime configuration:** exact-head run `44941044671` passed Android JVM, Shared Contracts, managed-emulator acceptance, Debug APK packaging and exact-head summary. Windows/iOS jobs were skipped. PR remains draft and open.
+- **PR #372 — manual-backup accessibility:** current head is `30dd5ab5d11630c5509d612c0aedba124ce1bfa0`, stacked on #352, which is itself stacked on #347. Its exact-head validation run `44964979933` is in progress as of this audit; only Shared Contract conformance has completed successfully. Do not merge or count it complete until Android JVM, managed emulator, APK and exact-head summary all pass. Its branch is 33 commits ahead and 4 behind main, so review the entire stacked delta rather than treating it as a one-file change.
+- **Backup acceptance remains broader than button accessibility.** Even after the UI test passes, provider upload/read-back, archive integrity, clean-install restore, rollback, interrupted provider operations and owner re-approval remain separate acceptance gates under the backup contract/issues.
+- **Windows Agent boundary remains explicit:** secure pairing, owner approval and heartbeat/online status are implemented; task polling, lease renewal, typed task execution and result ACK are not enabled. Two-PC pairing acceptance is not remote-task-execution acceptance.
+- **Core recovery gaps remain:** full failure-injection matrix, durable result outbox/ACK reconciliation, stale-owner generation fencing through every state/result mutation, provider outcome reconciliation and complete Trace atomicity remain open. Do not infer completion from metadata presence or one passing test suite.
+- **Platform evidence discipline:** skipped Windows, iOS or workflow-lint jobs are not passes. Physical two-Windows-PC and owner-device restore checks remain pending until performed on real hardware.
+
+**Next safe sequence:** resolve #372 on its current exact head; validate/rebase the #347 execution-fence change against current main without importing unrelated stacked backup commits; then integrate #380/#382 only after dependency review and branch protection checks. Continue independent Windows Hub/Agent, iOS, provider and CI audits in parallel.
