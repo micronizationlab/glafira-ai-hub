@@ -618,17 +618,20 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     }
 
     fun launchSpeechRecognition() {
-        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-            ToastHelper.short(context, "Распознавание речи недоступно")
-            return
-        }
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Говорите...")
-        }
-        isListening = true
+        // Device/vendor recognizer discovery can fail before ActivityResult launch.
+        // Keep the entire discovery + intent + launch sequence inside one recovery boundary.
         try {
+            if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+                isListening = false
+                ToastHelper.short(context, "Распознавание речи недоступно")
+                return
+            }
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Говорите...")
+            }
+            isListening = true
             speechLauncher.launch(intent)
         } catch (e: Exception) {
             isListening = false
