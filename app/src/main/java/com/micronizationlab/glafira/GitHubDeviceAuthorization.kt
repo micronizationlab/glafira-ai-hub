@@ -38,6 +38,10 @@ internal sealed interface GitHubDevicePollResult {
     data object Expired : GitHubDevicePollResult
 }
 
+/** Keeps a previously issued refresh credential when GitHub omits token rotation. */
+internal fun resolveGitHubRefreshToken(candidate: String?, existing: String): String =
+    candidate?.takeIf(String::isNotBlank) ?: existing
+
 internal class GitHubDeviceAuthorization(
     private val clientId: String = BuildConfig.GITHUB_APP_CLIENT_ID
 ) {
@@ -299,7 +303,7 @@ internal class GitHubSession(context: Context) {
         val refreshed = authorization.refresh(refreshToken)
         // GitHub may omit refresh_token when it does not rotate the credential.
         // In that case retain the existing token and its remaining lifetime.
-        val nextRefreshToken = refreshed.refreshToken ?: refreshToken
+        val nextRefreshToken = resolveGitHubRefreshToken(refreshed.refreshToken, refreshToken)
         val nextRefreshTokenLifetime = refreshed.refreshTokenExpiresInSeconds
             ?: store.loadRefreshTokenExpiresInSeconds()
         val saved = store.save(
