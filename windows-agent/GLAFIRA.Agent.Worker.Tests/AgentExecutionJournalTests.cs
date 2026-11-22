@@ -201,6 +201,8 @@ public sealed class AgentExecutionJournalTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             journal.SaveActiveLeaseAsync(lease with { LeaseId = "different-lease" }, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            journal.SaveActiveLeaseAsync(lease with { OwnerGeneration = lease.OwnerGeneration + 1 }, CancellationToken.None));
         Assert.Equal(lease.LeaseId,
             Assert.Single((await journal.LoadAsync(CancellationToken.None)).ActiveLeases).LeaseId);
     }
@@ -241,7 +243,8 @@ public sealed class AgentExecutionJournalTests : IDisposable
     private DpapiAgentExecutionJournal CreateJournal() => new(_path, _protector);
 
     private static AgentTaskLease Lease() => new(
-        "task-001", "project-001", "web.research", "idem-task-001",
+        "task-001", "project-001", "windows-core-0001", 3,
+        "web.research", "idem-task-001",
         "payload://task-001", new string('a', 64), "ReadOnly", null,
         DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeMilliseconds(),
         "parent-001", "subtask-001", "Research", "Read the supplied material",

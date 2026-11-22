@@ -7,6 +7,8 @@ namespace GLAFIRA.Agent.Worker;
 public sealed record AgentTaskEnvelope(
     string TaskId,
     string ProjectId,
+    string OwnerCoreId,
+    long OwnerGeneration,
     string IdempotencyKey,
     string TaskType,
     string PayloadRef,

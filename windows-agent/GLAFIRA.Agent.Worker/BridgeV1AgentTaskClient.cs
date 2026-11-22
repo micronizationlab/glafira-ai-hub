@@ -11,6 +11,8 @@ namespace GLAFIRA.Agent.Worker;
 public sealed record AgentTaskLease(
     string TaskId,
     string ProjectId,
+    string OwnerCoreId,
+    long OwnerGeneration,
     string TaskType,
     string IdempotencyKey,
     string PayloadRef,
@@ -31,7 +33,8 @@ public sealed record AgentTaskLease(
     long FencingToken)
 {
     public AgentTaskEnvelope ToEnvelope() => new(
-        TaskId, ProjectId, IdempotencyKey, TaskType, PayloadRef, PayloadSha256,
+        TaskId, ProjectId, OwnerCoreId, OwnerGeneration,
+        IdempotencyKey, TaskType, PayloadRef, PayloadSha256,
         RequiredCapabilities, ApprovalRef, Title, Instruction, Executor,
         ParentTaskId, SubtaskId, CreatedAtEpochMs, ExpiresAtEpochMs,
         Priority, LeaseId, FencingToken, EffectRisk);
@@ -45,11 +48,24 @@ public sealed record AgentTaskUpdateAck(
     string ResultSha256,
     long LeaseExpiresAtEpochMs);
 
+public sealed record AgentTaskArtifactAck(
+    string ArtifactId,
+    string TaskId,
+    string OwnerCoreId,
+    long OwnerGeneration,
+    string LeaseId,
+    long FencingToken,
+    string SchemaId,
+    int SchemaVersion,
+    int ByteLength,
+    string Sha256,
+    bool Duplicate);
+
 /// <summary>
 /// Signed Bridge v1 task-claim and result transport for the Windows Agent.
 /// This class transports typed task metadata only; it never executes instructions.
 /// </summary>
-public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
+public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport, IAgentResultArtifactTransport
 {
     private const int MaximumResponseBytes = 64 * 1024;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
@@ -106,7 +122,7 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
         };
         if (normalizedTaskTypes is not null)
             payload["taskTypes"] = JsonSerializer.Serialize(normalizedTaskTypes);
-        var response = await SendAsync(credential, "DESKTOP_TASK_CLAIM", payload, cancellationToken).ConfigureAwait(false);
+        var response = await SendAsync(credential, "default", "DESKTOP_TASK_CLAIM", payload, cancellationToken).ConfigureAwait(false);
         if (response.Status != "ACCEPTED" || response.Result is null)
             throw new InvalidDataException(response.ErrorCode ?? "TASK_CLAIM_REJECTED");
         var result = response.Result;
@@ -117,6 +133,7 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
 
         var taskId = Required(result, "taskId");
         var projectId = Required(result, "projectId");
+        var ownerCoreId = Required(result, "ownerCoreId");
         var taskType = Required(result, "taskType");
         var idempotencyKey = Required(result, "idempotencyKey");
         var payloadRef = Required(result, "payloadRef");
@@ -130,7 +147,8 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
         var instruction = Required(result, "instruction");
         var executor = Required(result, "executor");
         var leaseId = Required(result, "leaseId");
-        if (!long.TryParse(Required(result, "leaseExpiresAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var leaseExpires) ||
+        if (!long.TryParse(Required(result, "ownerGeneration"), NumberStyles.None, CultureInfo.InvariantCulture, out var ownerGeneration) || ownerGeneration <= 0 ||
+            !long.TryParse(Required(result, "leaseExpiresAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var leaseExpires) ||
             !long.TryParse(Required(result, "fencingToken"), NumberStyles.None, CultureInfo.InvariantCulture, out var fencing) || fencing <= 0 ||
             !long.TryParse(Required(result, "createdAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var created) ||
             !long.TryParse(Required(result, "expiresAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var expires) ||
@@ -141,6 +159,8 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
         try { requiredCapabilities = JsonSerializer.Deserialize<string[]>(Required(result, "requiredCapabilities"), JsonOptions) ?? []; }
         catch (JsonException error) { throw new InvalidDataException("TASK_CLAIM_CAPABILITIES_INVALID", error); }
         if (taskId.Length is < 1 or > 64 || projectId.Length is < 1 or > 128 ||
+            ownerCoreId.Length is < 8 or > 128 ||
+            !System.Text.RegularExpressions.Regex.IsMatch(ownerCoreId, "^[A-Za-z0-9._-]+$") ||
             taskType.Length is < 1 or > 96 || idempotencyKey.Length is < 1 or > 128 ||
             payloadRef.Length is < 1 or > 512 || !System.Text.RegularExpressions.Regex.IsMatch(payloadSha256, "^[a-fA-F0-9]{64}$") ||
             effectRisk is not ("ReadOnly" or "LocalWrite" or "ExternalSideEffect") ||
@@ -154,7 +174,8 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
             requiredCapabilities.Any(capability => !ownerApprovedCapabilities.Contains(capability, StringComparer.Ordinal)))
             throw new InvalidDataException("TASK_CLAIM_RESPONSE_INVALID");
 
-        return new AgentTaskLease(taskId, projectId, taskType, idempotencyKey, payloadRef,
+        return new AgentTaskLease(taskId, projectId, ownerCoreId, ownerGeneration,
+            taskType, idempotencyKey, payloadRef,
             payloadSha256.ToLowerInvariant(), effectRisk, approvalRef, leaseExpires,
             parentTaskId, subtaskId, title, instruction, executor,
             new HashSet<string>(requiredCapabilities, StringComparer.Ordinal),
@@ -190,6 +211,8 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
         var payload = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["taskId"] = lease.TaskId,
+            ["ownerCoreId"] = lease.OwnerCoreId,
+            ["ownerGeneration"] = lease.OwnerGeneration.ToString(CultureInfo.InvariantCulture),
             ["leaseId"] = lease.LeaseId,
             ["fencingToken"] = lease.FencingToken.ToString(CultureInfo.InvariantCulture),
             ["state"] = state,
@@ -199,7 +222,7 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
             ["errorCode"] = errorCode,
             ["resultEncoding"] = "json"
         };
-        var response = await SendAsync(credential, "DESKTOP_TASK_RESULT", payload, cancellationToken).ConfigureAwait(false);
+        var response = await SendAsync(credential, lease.ProjectId, "DESKTOP_TASK_RESULT", payload, cancellationToken).ConfigureAwait(false);
         if (response.Status != "SUCCEEDED" || response.Result is null ||
             response.Result.GetValueOrDefault("accepted") != "true")
             throw new InvalidDataException(response.ErrorCode ?? "TASK_RESULT_REJECTED");
@@ -224,8 +247,73 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
             lease.TaskId, lease.LeaseId, lease.FencingToken, state, expectedDigest, renewedExpiry);
     }
 
+    public async Task<AgentTaskArtifactAck> UploadTaskArtifactAsync(
+        AgentEnrollmentCredential credential,
+        AgentResultArtifact artifact,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(artifact);
+        AgentResultArtifactPolicy.Validate(artifact.Metadata, artifact.Payload);
+        if (!credential.Scopes.Contains("desktop.task.result"))
+            throw new InvalidDataException("Agent enrollment does not grant the task-result scope.");
+
+        var metadata = artifact.Metadata;
+        var payload = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["contractVersion"] = metadata.ContractVersion.ToString(CultureInfo.InvariantCulture),
+            ["artifactId"] = metadata.ArtifactId,
+            ["taskId"] = metadata.TaskId,
+            ["ownerCoreId"] = metadata.OwnerCoreId,
+            ["ownerGeneration"] = metadata.OwnerGeneration.ToString(CultureInfo.InvariantCulture),
+            ["leaseId"] = metadata.LeaseId,
+            ["fencingToken"] = metadata.FencingToken.ToString(CultureInfo.InvariantCulture),
+            ["schemaId"] = metadata.SchemaId,
+            ["schemaVersion"] = metadata.SchemaVersion.ToString(CultureInfo.InvariantCulture),
+            ["contentType"] = metadata.ContentType,
+            ["byteLength"] = metadata.ByteLength.ToString(CultureInfo.InvariantCulture),
+            ["sha256"] = metadata.Sha256,
+            ["redactionStatus"] = metadata.RedactionStatus,
+            ["createdAtEpochMs"] = metadata.CreatedAtEpochMs.ToString(CultureInfo.InvariantCulture),
+            ["payloadBase64"] = Convert.ToBase64String(artifact.Payload)
+        };
+        var response = await SendAsync(
+            credential, metadata.ProjectId, "DESKTOP_TASK_ARTIFACT", payload, cancellationToken).ConfigureAwait(false);
+        if (response.Status != "SUCCEEDED" || response.Result is null ||
+            response.Result.GetValueOrDefault("accepted") != "true")
+            throw new InvalidDataException(response.ErrorCode ?? "TASK_ARTIFACT_REJECTED");
+
+        var acknowledgement = response.Result;
+        if (!long.TryParse(acknowledgement.GetValueOrDefault("ownerGeneration"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var ownerGeneration) ||
+            !long.TryParse(acknowledgement.GetValueOrDefault("fencingToken"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var fencingToken) ||
+            !int.TryParse(acknowledgement.GetValueOrDefault("schemaVersion"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var schemaVersion) ||
+            !int.TryParse(acknowledgement.GetValueOrDefault("byteLength"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var byteLength) ||
+            acknowledgement.GetValueOrDefault("duplicate") is not ("true" or "false") ||
+            acknowledgement.GetValueOrDefault("artifactId") != metadata.ArtifactId ||
+            acknowledgement.GetValueOrDefault("taskId") != metadata.TaskId ||
+            acknowledgement.GetValueOrDefault("ownerCoreId") != metadata.OwnerCoreId ||
+            ownerGeneration != metadata.OwnerGeneration ||
+            acknowledgement.GetValueOrDefault("leaseId") != metadata.LeaseId ||
+            fencingToken != metadata.FencingToken ||
+            acknowledgement.GetValueOrDefault("schemaId") != metadata.SchemaId ||
+            schemaVersion != metadata.SchemaVersion ||
+            byteLength != metadata.ByteLength ||
+            acknowledgement.GetValueOrDefault("sha256") != metadata.Sha256)
+            throw new InvalidDataException("TASK_ARTIFACT_ACK_MISMATCH");
+        var duplicate = acknowledgement["duplicate"] == "true";
+
+        return new AgentTaskArtifactAck(
+            metadata.ArtifactId, metadata.TaskId, metadata.OwnerCoreId, metadata.OwnerGeneration,
+            metadata.LeaseId, metadata.FencingToken, metadata.SchemaId, metadata.SchemaVersion,
+            metadata.ByteLength, metadata.Sha256, duplicate);
+    }
+
     private async Task<Response> SendAsync(
         AgentEnrollmentCredential credential,
+        string projectId,
         string operation,
         IReadOnlyDictionary<string, string> payload,
         CancellationToken cancellationToken)
@@ -236,7 +324,9 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport
         var expires = now.Add(RequestLifetime).ToUnixTimeMilliseconds();
         var requestId = Guid.NewGuid().ToString("N");
         var idempotency = Guid.NewGuid().ToString("N");
-        var unsigned = new SignedRequest(1, requestId, idempotency, credential.AgentId, "default",
+        if (string.IsNullOrWhiteSpace(projectId) || projectId.Length > 128)
+            throw new InvalidDataException("Agent project identity is invalid.");
+        var unsigned = new SignedRequest(1, requestId, idempotency, credential.AgentId, projectId,
             operation, issued, expires, payload, string.Empty);
         var canonical = Encoding.UTF8.GetBytes(BuildCanonical(unsigned));
         var secret = Convert.FromBase64String(credential.SharedSecretBase64);

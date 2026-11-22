@@ -60,4 +60,10 @@ The default uninstall retains the machine-protected enrollment file. To also rem
 - Desktop enrollment creates a pending Agent with no capabilities. The owner explicitly assigns capabilities and approves it; revocation disables the credential and enrollment.
 - The service sends a TLS-pinned, HMAC-signed Bridge heartbeat every 30 seconds. Pending Agents cannot refresh liveness or receive a capability profile.
 
-**Current runtime boundary:** pairing, owner approval and heartbeat are implemented. Task polling, lease renewal, typed task execution and result ACK are not enabled yet. Do not describe this build as a functioning remote task executor.
+**Current runtime boundary:** pairing, owner approval and heartbeat are implemented. Task polling,
+lease renewal and result ACK infrastructure exists, but no typed task handler is registered, so
+task claims and remote execution remain disabled. The independent bounded artifact outbox may
+deliver a previously validated, redacted diagnostics artifact while the Agent is connected. Its
+app-owned file survives restarts and is deleted only after an exact Hub ACK (including an exact
+duplicate ACK); transport, project/owner, lease/fence or digest failures retain the local file.
+Do not describe this build as a functioning remote task executor.
