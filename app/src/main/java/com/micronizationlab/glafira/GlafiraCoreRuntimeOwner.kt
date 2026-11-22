@@ -31,6 +31,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     private val liveRunStore = GlafiraCoreLiveRunStore(taskStore)
 
     private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
+    private val githubTaskHandlers = GitHubCoreTaskHandlers(appContext)
     // Core evaluates LIVE per task. Only a fresh, durable, owner-approved read grant can pass;
     // every other task falls back to a new Dry Run preview without invoking its handler.
     private val executionMode = GlafiraExecutionMode.LIVE
@@ -46,11 +47,11 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             // Draft-only content never executes or publishes, even if LIVE mode is enabled later.
             "content.draft" to GlafiraTaskHandler { GlafiraTaskExecutionOutcome.WaitingForOwner },
-            "github.repository.tree" to GitHubCoreTaskHandlers(appContext).handler("github.repository.tree"),
-            "github.file.read" to GitHubCoreTaskHandlers(appContext).handler("github.file.read"),
-            "github.branch.create" to GitHubCoreTaskHandlers(appContext).handler("github.branch.create"),
-            "github.file.write" to GitHubCoreTaskHandlers(appContext).handler("github.file.write"),
-            "github.pull_request.draft" to GitHubCoreTaskHandlers(appContext).handler("github.pull_request.draft")
+            "github.repository.tree" to githubTaskHandlers.handler("github.repository.tree"),
+            "github.file.read" to githubTaskHandlers.handler("github.file.read"),
+            "github.branch.create" to githubTaskHandlers.handler("github.branch.create"),
+            "github.file.write" to githubTaskHandlers.handler("github.file.write"),
+            "github.pull_request.draft" to githubTaskHandlers.handler("github.pull_request.draft")
         ),
         runtimeBudget = { loadRuntimeBudget() },
         executionMode = { executionMode },
