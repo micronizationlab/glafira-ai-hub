@@ -79,6 +79,10 @@ class AndroidGlafiraWindowsHubOwnershipWorkTest {
         assertFalse(name.contains("private-project"))
         assertFalse(name.contains("private-transfer"))
         assertEquals(94, name.length)
+        assertEquals(
+            "glafira-windows-hub-ownership",
+            AndroidGlafiraWindowsHubOwnershipScheduler.OWNERSHIP_WORK_TAG
+        )
     }
 
     private fun state(status: GlafiraWindowsHubPairingStatus) =

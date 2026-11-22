@@ -80,6 +80,7 @@ object AndroidGlafiraWindowsHubOwnershipScheduler {
                 )
                 .setInputData(workDataOf(PROJECT_ID to project, TRANSFER_ID to transfer))
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .addTag(OWNERSHIP_WORK_TAG)
                 .build()
             WorkManager.getInstance(application).enqueueUniqueWork(
                 uniqueWorkName(project, transfer),
@@ -87,6 +88,11 @@ object AndroidGlafiraWindowsHubOwnershipScheduler {
                 request
             )
         }.schedule(projectId, transferId, nowEpochMs)
+    }
+
+    /** Cancels only Windows Hub ownership reads; the ordinary AI provider outbox is independent. */
+    fun cancelAll(context: Context) {
+        WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag(OWNERSHIP_WORK_TAG)
     }
 
     internal fun uniqueWorkName(projectId: String, transferId: String): String {
@@ -106,6 +112,7 @@ object AndroidGlafiraWindowsHubOwnershipScheduler {
 
     internal const val PROJECT_ID = "project_id"
     internal const val TRANSFER_ID = "transfer_id"
+    internal const val OWNERSHIP_WORK_TAG = "glafira-windows-hub-ownership"
 }
 
 /** Re-checks pairing immediately before network so queued work cannot outlive a credential. */

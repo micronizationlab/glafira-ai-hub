@@ -119,6 +119,74 @@ class AndroidGlafiraWindowsHubPairingClientTest {
         assertEquals(0, connection.requestBytes.size())
     }
 
+    @Test
+    fun ownerLifecycleErasesInvitationAfterSuccessAndFailure() {
+        val lifecycle = RecordingLifecycle()
+        val successBuffer = invitation().toCharArray()
+        val success = AndroidGlafiraWindowsHubLifecycleController(
+            redeemer = GlafiraWindowsHubInvitationRedeemer {
+                assertTrue(it.contains("pairingCode"))
+                GlafiraWindowsHubCredentialInstallResult.INSTALLED
+            },
+            localLifecycle = lifecycle,
+            cancelOwnershipWork = { throw AssertionError("pair must not cancel work") }
+        )
+        assertEquals(GlafiraWindowsHubCredentialInstallResult.INSTALLED, success.pair(successBuffer))
+        assertTrue(successBuffer.all { it == '\u0000' })
+
+        val failureBuffer = invitation().toCharArray()
+        val failure = AndroidGlafiraWindowsHubLifecycleController(
+            redeemer = GlafiraWindowsHubInvitationRedeemer {
+                throw IllegalStateException("exchange failed")
+            },
+            localLifecycle = lifecycle,
+            cancelOwnershipWork = { throw AssertionError("pair must not cancel work") }
+        )
+        assertThrows(IllegalStateException::class.java) { failure.pair(failureBuffer) }
+        assertTrue(failureBuffer.all { it == '\u0000' })
+        assertEquals(0, lifecycle.unpairCalls)
+        assertEquals(0, lifecycle.revokeCalls)
+    }
+
+    @Test
+    fun ownerDisconnectAndLocalRevokeCancelOnlyScopedOwnershipWork() {
+        val lifecycle = RecordingLifecycle()
+        var cancellations = 0
+        val controller = AndroidGlafiraWindowsHubLifecycleController(
+            redeemer = GlafiraWindowsHubInvitationRedeemer {
+                throw AssertionError("disconnect must not redeem")
+            },
+            localLifecycle = lifecycle,
+            cancelOwnershipWork = { cancellations += 1 }
+        )
+
+        controller.unpair()
+        controller.revokeLocalTrust()
+
+        assertEquals(1, lifecycle.unpairCalls)
+        assertEquals(1, lifecycle.revokeCalls)
+        assertEquals(2, cancellations)
+    }
+
+    @Test
+    fun ownershipWorkIsCancelledEvenWhenLocalCleanupFailsClosed() {
+        var cancellations = 0
+        val controller = AndroidGlafiraWindowsHubLifecycleController(
+            redeemer = GlafiraWindowsHubInvitationRedeemer {
+                GlafiraWindowsHubCredentialInstallResult.UNCHANGED
+            },
+            localLifecycle = object : GlafiraWindowsHubLocalPairingLifecycle {
+                override fun unpair() = throw IllegalStateException("cleanup failed")
+                override fun revokeAll() = throw IllegalStateException("cleanup failed")
+            },
+            cancelOwnershipWork = { cancellations += 1 }
+        )
+
+        assertThrows(IllegalStateException::class.java) { controller.unpair() }
+        assertThrows(IllegalStateException::class.java) { controller.revokeLocalTrust() }
+        assertEquals(2, cancellations)
+    }
+
     private inner class RecordingSink : GlafiraPinnedPairingEnrollmentSink {
         var installCalls = 0
         var deviceId: String? = null
@@ -133,6 +201,19 @@ class AndroidGlafiraWindowsHubPairingClientTest {
             secretAtInstall = enrollment.secretCopy()
             this.enrollment = enrollment
             return GlafiraWindowsHubCredentialInstallResult.INSTALLED
+        }
+    }
+
+    private class RecordingLifecycle : GlafiraWindowsHubLocalPairingLifecycle {
+        var unpairCalls = 0
+        var revokeCalls = 0
+
+        override fun unpair() {
+            unpairCalls += 1
+        }
+
+        override fun revokeAll() {
+            revokeCalls += 1
         }
     }
 

@@ -27,8 +27,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
 
@@ -62,12 +66,36 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         runCatching { AndroidGlafiraWindowsHubCredentialStore(context.applicationContext) }
             .getOrNull()
     }
+    val windowsHubController = remember(windowsHubStore) {
+        windowsHubStore?.let { store ->
+            AndroidGlafiraWindowsHubLifecycleController(
+                redeemer = AndroidGlafiraWindowsHubPairingClient(
+                    AndroidGlafiraPinnedHttpsPairingExchange(),
+                    store
+                ),
+                localLifecycle = store,
+                cancelOwnershipWork = {
+                    AndroidGlafiraWindowsHubOwnershipScheduler.cancelAll(context)
+                }
+            )
+        }
+    }
     var windowsHubState by remember {
         mutableStateOf(
             windowsHubStore?.state(System.currentTimeMillis())
                 ?: GlafiraWindowsHubPairingState(GlafiraWindowsHubPairingStatus.INVALID)
         )
     }
+    var windowsHubInvitation by remember { mutableStateOf("") }
+    var windowsHubPairingBusy by remember { mutableStateOf(false) }
+    var windowsHubMessage by remember { mutableStateOf<String?>(null) }
+    var showWindowsHubInvitation by remember {
+        mutableStateOf(windowsHubState.status != GlafiraWindowsHubPairingStatus.PAIRED)
+    }
+    var showWindowsHubReconnectConfirm by remember { mutableStateOf(false) }
+    var showWindowsHubUnpairConfirm by remember { mutableStateOf(false) }
+    var showWindowsHubRevokeConfirm by remember { mutableStateOf(false) }
+    val windowsHubScope = rememberCoroutineScope()
     val audioPreferences = remember {
         context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
     }
@@ -170,15 +198,92 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         fontSize = 11.sp
                     )
                 }
-                if (windowsHubState.status != GlafiraWindowsHubPairingStatus.UNPAIRED &&
-                    windowsHubStore != null
+                windowsHubMessage?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, color = Tx, fontSize = 11.sp)
+                }
+                if (showWindowsHubInvitation && windowsHubController != null) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = windowsHubInvitation,
+                        onValueChange = {
+                            if (it.length <= WINDOWS_HUB_INVITATION_MAX_CHARS) {
+                                windowsHubInvitation = it
+                            }
+                        },
+                        label = { Text("Приглашение из Windows Hub") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        enabled = !windowsHubPairingBusy,
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth().semantics {
+                            contentDescription = "Windows Hub invitation"
+                        }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            enabled = windowsHubInvitation.isNotBlank() &&
+                                !windowsHubPairingBusy,
+                            onClick = {
+                                val invitationBuffer = windowsHubInvitation.toCharArray()
+                                // Clear Compose state before any network call. The controller erases
+                                // the mutable copy in finally and never exposes exception text.
+                                windowsHubInvitation = ""
+                                windowsHubMessage = null
+                                windowsHubPairingBusy = true
+                                windowsHubScope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        runCatching { windowsHubController.pair(invitationBuffer) }
+                                    }
+                                    windowsHubState = windowsHubStore?.state(
+                                        System.currentTimeMillis()
+                                    ) ?: GlafiraWindowsHubPairingState(
+                                        GlafiraWindowsHubPairingStatus.INVALID
+                                    )
+                                    windowsHubMessage = if (result.isSuccess) {
+                                        "Windows Hub подключён через проверенный TLS-канал."
+                                    } else {
+                                        "Подключение не выполнено. Состояние и credential не изменены."
+                                    }
+                                    showWindowsHubInvitation = result.isFailure
+                                    windowsHubPairingBusy = false
+                                }
+                            }
+                        ) {
+                            Text(if (windowsHubPairingBusy) "ПРОВЕРКА…" else "ПОДКЛЮЧИТЬ")
+                        }
+                        if (windowsHubState.status == GlafiraWindowsHubPairingStatus.PAIRED) {
+                            OutlinedButton(
+                                enabled = !windowsHubPairingBusy,
+                                onClick = {
+                                    windowsHubInvitation = ""
+                                    showWindowsHubInvitation = false
+                                }
+                            ) {
+                                Text("ОТМЕНА")
+                            }
+                        }
+                    }
+                } else if (windowsHubState.status == GlafiraWindowsHubPairingStatus.PAIRED &&
+                    windowsHubController != null
                 ) {
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = {
-                        runCatching { windowsHubStore.unpair() }
-                        windowsHubState = windowsHubStore.state(System.currentTimeMillis())
-                    }) {
-                        Text("ЛОКАЛЬНО ОТКЛЮЧИТЬ HUB")
+                    OutlinedButton(onClick = { showWindowsHubReconnectConfirm = true }) {
+                        Text("ПЕРЕПОДКЛЮЧИТЬ ПО НОВОМУ ПРИГЛАШЕНИЮ")
+                    }
+                }
+                if (windowsHubState.status != GlafiraWindowsHubPairingStatus.UNPAIRED &&
+                    windowsHubController != null
+                ) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { showWindowsHubUnpairConfirm = true }) {
+                            Text("ОТКЛЮЧИТЬ")
+                        }
+                        OutlinedButton(onClick = { showWindowsHubRevokeConfirm = true }) {
+                            Text("ОТОЗВАТЬ ЛОКАЛЬНОЕ ДОВЕРИЕ")
+                        }
                     }
                 }
             }
@@ -648,6 +753,119 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         )
     }
 
+    if (showWindowsHubReconnectConfirm) {
+        AlertDialog(
+            onDismissRequest = { showWindowsHubReconnectConfirm = false },
+            title = { Text("Переподключить Windows Hub?") },
+            text = {
+                Text(
+                    "Текущее подключение останется активным, пока новое приглашение не будет " +
+                        "полностью проверено и атомарно установлено."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showWindowsHubReconnectConfirm = false
+                    windowsHubInvitation = ""
+                    windowsHubMessage = null
+                    showWindowsHubInvitation = true
+                }) { Text("ВВЕСТИ ПРИГЛАШЕНИЕ") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWindowsHubReconnectConfirm = false }) {
+                    Text("ОТМЕНА")
+                }
+            }
+        )
+    }
+
+    if (showWindowsHubUnpairConfirm) {
+        AlertDialog(
+            onDismissRequest = { showWindowsHubUnpairConfirm = false },
+            title = { Text("Отключить Windows Hub?") },
+            text = {
+                Text(
+                    "Локальный credential и ключ доверия будут удалены. Все поставленные " +
+                        "ownership-sync задачи будут отменены; обычная AI-очередь не изменится."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showWindowsHubUnpairConfirm = false
+                    windowsHubInvitation = ""
+                    windowsHubPairingBusy = true
+                    windowsHubController?.let { controller ->
+                        windowsHubScope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching { controller.unpair() }
+                            }
+                            windowsHubState = windowsHubStore?.state(System.currentTimeMillis())
+                                ?: GlafiraWindowsHubPairingState(
+                                    GlafiraWindowsHubPairingStatus.INVALID
+                                )
+                            windowsHubMessage = if (result.isSuccess) {
+                                "Windows Hub локально отключён."
+                            } else {
+                                "Отключение завершилось с ошибкой; ownership-sync отменён."
+                            }
+                            showWindowsHubInvitation = true
+                            windowsHubPairingBusy = false
+                        }
+                    }
+                }) { Text("ОТКЛЮЧИТЬ") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWindowsHubUnpairConfirm = false }) {
+                    Text("ОТМЕНА")
+                }
+            }
+        )
+    }
+
+    if (showWindowsHubRevokeConfirm) {
+        AlertDialog(
+            onDismissRequest = { showWindowsHubRevokeConfirm = false },
+            title = { Text("Отозвать локальное доверие?") },
+            text = {
+                Text(
+                    "Будет записан fail-closed marker отзыва, удалены локальные credential/keys " +
+                        "и отменены ownership-sync задачи. Для восстановления потребуется новое " +
+                        "одноразовое приглашение владельца. Это не удаляет запись на Windows Hub."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showWindowsHubRevokeConfirm = false
+                    windowsHubInvitation = ""
+                    windowsHubPairingBusy = true
+                    windowsHubController?.let { controller ->
+                        windowsHubScope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching { controller.revokeLocalTrust() }
+                            }
+                            windowsHubState = windowsHubStore?.state(System.currentTimeMillis())
+                                ?: GlafiraWindowsHubPairingState(
+                                    GlafiraWindowsHubPairingStatus.INVALID
+                                )
+                            windowsHubMessage = if (result.isSuccess) {
+                                "Локальное доверие отозвано."
+                            } else {
+                                "Отзыв завершился с ошибкой; ownership-sync отменён."
+                            }
+                            showWindowsHubInvitation = true
+                            windowsHubPairingBusy = false
+                        }
+                    }
+                }) { Text("ОТОЗВАТЬ") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWindowsHubRevokeConfirm = false }) {
+                    Text("ОТМЕНА")
+                }
+            }
+        )
+    }
+
     if (showMicrophonePermissionHelp) {
         AlertDialog(
             onDismissRequest = { showMicrophonePermissionHelp = false },
@@ -694,6 +912,8 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         )
     }
 }
+
+private const val WINDOWS_HUB_INVITATION_MAX_CHARS = 16 * 1024
 
 private fun windowsHubStatusLabel(status: GlafiraWindowsHubPairingStatus): String = when (status) {
     GlafiraWindowsHubPairingStatus.UNPAIRED -> "Не подключён"

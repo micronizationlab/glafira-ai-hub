@@ -222,6 +222,15 @@ internal interface GlafiraPinnedPairingEnrollmentSink {
     fun install(enrollment: GlafiraPinnedPairingEnrollment): GlafiraWindowsHubCredentialInstallResult
 }
 
+internal fun interface GlafiraWindowsHubInvitationRedeemer {
+    fun enroll(invitationJson: String): GlafiraWindowsHubCredentialInstallResult
+}
+
+internal interface GlafiraWindowsHubLocalPairingLifecycle {
+    fun unpair()
+    fun revokeAll()
+}
+
 enum class GlafiraWindowsHubCredentialInstallResult {
     INSTALLED,
     REFRESHED,
@@ -234,8 +243,8 @@ internal class AndroidGlafiraWindowsHubPairingClient(
     private val exchange: GlafiraWindowsHubPairingExchange,
     private val store: GlafiraPinnedPairingEnrollmentSink,
     private val clock: () -> Long = System::currentTimeMillis
-) {
-    fun enroll(invitationJson: String): GlafiraWindowsHubCredentialInstallResult {
+) : GlafiraWindowsHubInvitationRedeemer {
+    override fun enroll(invitationJson: String): GlafiraWindowsHubCredentialInstallResult {
         val invitation = GlafiraWindowsHubPairingTrustBinding.parseInvitation(
             invitationJson,
             clock()
@@ -255,6 +264,42 @@ internal class AndroidGlafiraWindowsHubPairingClient(
 }
 
 /**
+ * Owner-facing lifecycle boundary. The invitation is accepted as a mutable buffer so the UI can
+ * erase its copy immediately after redeem. Failures are deliberately returned only to the caller;
+ * this class never logs the invitation or exception text.
+ */
+internal class AndroidGlafiraWindowsHubLifecycleController(
+    private val redeemer: GlafiraWindowsHubInvitationRedeemer,
+    private val localLifecycle: GlafiraWindowsHubLocalPairingLifecycle,
+    private val cancelOwnershipWork: () -> Unit
+) {
+    fun pair(invitationJson: CharArray): GlafiraWindowsHubCredentialInstallResult {
+        require(invitationJson.isNotEmpty()) { "PAIRING_INVITATION_EMPTY" }
+        return try {
+            redeemer.enroll(String(invitationJson))
+        } finally {
+            invitationJson.fill('\u0000')
+        }
+    }
+
+    fun unpair() {
+        try {
+            localLifecycle.unpair()
+        } finally {
+            cancelOwnershipWork()
+        }
+    }
+
+    fun revokeLocalTrust() {
+        try {
+            localLifecycle.revokeAll()
+        } finally {
+            cancelOwnershipWork()
+        }
+    }
+}
+
+/**
  * One encrypted, atomic client-side pairing state. The HMAC credential and the
  * ownership trust anchor are never committed independently.
  */
@@ -267,7 +312,8 @@ internal class AndroidGlafiraWindowsHubCredentialStore(
 ) : GlafiraPinnedPairingEnrollmentSink,
     GlafiraWindowsHubClientCredentialProvider,
     GlafiraOwnershipTrustedKeyResolver,
-    GlafiraWindowsHubPairingStateProvider {
+    GlafiraWindowsHubPairingStateProvider,
+    GlafiraWindowsHubLocalPairingLifecycle {
     private val file = AtomicFile(stateFile)
     private val revocationMarker = AtomicFile(revocationFile)
     private val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
@@ -399,14 +445,14 @@ internal class AndroidGlafiraWindowsHubCredentialStore(
     }
 
     @Synchronized
-    fun revokeAll() {
+    override fun revokeAll() {
         writeRevocationMarker(clock())
         destroyState()
     }
 
     /** Owner-requested local disconnect; unlike revoke, it leaves an UNPAIRED state. */
     @Synchronized
-    fun unpair() {
+    override fun unpair() {
         destroyState()
         revocationMarker.delete()
     }
