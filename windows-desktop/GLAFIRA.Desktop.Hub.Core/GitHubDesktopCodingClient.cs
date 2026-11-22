@@ -216,7 +216,7 @@ public sealed class GitHubDesktopCodingClient
             throw new InvalidOperationException("Repository is not approved for GLAFIRA GitHub operations.");
     }
 
-    internal static void RequireWritableBranch(string branch)
+    public static void RequireWritableBranch(string branch)
     {
         if (string.IsNullOrWhiteSpace(branch) || branch.Length > 100 ||
             !System.Text.RegularExpressions.Regex.IsMatch(branch, "^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$") ||
@@ -228,7 +228,7 @@ public sealed class GitHubDesktopCodingClient
             throw new ArgumentException("Invalid or protected GitHub branch name.", nameof(branch));
     }
 
-    internal static void RequireSafePath(string path)
+    public static void RequireSafePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || path.Length > 400 || path.StartsWith('/') ||
             path.EndsWith('/') || path.Contains('\\') ||
