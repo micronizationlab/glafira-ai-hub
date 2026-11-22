@@ -360,12 +360,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         try {
             if (token != null && (token.taskId != taskId || token.ownerCoreId != ownerCoreId)) return false
             if (ownerCoreId != null) {
-                val currentOwner = db.query(TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation"),
+                val currentOwner = db.query(TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation", "state_version"),
                     "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
-                    if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getLong(1)
+                    if (!cursor.moveToFirst()) null else Triple(cursor.getString(0), cursor.getLong(1), cursor.getLong(2))
                 } ?: return false
                 if (currentOwner.first != ownerCoreId ||
-                    (token != null && currentOwner.second != token.ownerGeneration)
+                    (token != null && (currentOwner.second != token.ownerGeneration ||
+                        currentOwner.third != token.stateVersion))
                 ) return false
             }
             val existingHash = db.query(
@@ -387,11 +388,11 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                         put("last_error", "DRY_RUN_PREVIEW_STORED")
                     },
                     "task_id = ? AND state IN ($placeholders)" +
-                        if (token != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ?)"
+                        if (token != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ? AND own.state_version = ?)"
                         else if (ownerCoreId != null) " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
                         else "",
                     arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray() +
-                        if (token != null) arrayOf(token.ownerCoreId, token.ownerGeneration.toString())
+                        if (token != null) arrayOf(token.ownerCoreId, token.ownerGeneration.toString(), token.stateVersion.toString())
                         else if (ownerCoreId != null) arrayOf(ownerCoreId) else emptyArray()
                 )
                 if (changed != 1) return false
@@ -1101,12 +1102,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             check(changed == 1) { "Task claim lost its transactional state check." }
 
             val owner = db.query(
-                TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation"),
+                TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation", "state_version"),
                 "task_id = ?", arrayOf(taskId), null, null, null, "1"
             ).use { cursor ->
-                if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getLong(1)
+                if (!cursor.moveToFirst()) null else Triple(cursor.getString(0), cursor.getLong(1), cursor.getLong(2))
             }
-            if (requireOwnershipToken && (owner == null || owner.first != ownerCoreId || owner.second <= 0L)) {
+            if (requireOwnershipToken && (owner == null || owner.first != ownerCoreId ||
+                owner.second <= 0L || owner.third <= 0L)) {
                 return null
             }
             db.setTransactionSuccessful()
@@ -1114,7 +1116,8 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             val token = GlafiraTaskOwnershipExecutionToken(
                 taskId = taskId,
                 ownerCoreId = owner?.first ?: ownerCoreId ?: "legacy-core-queue",
-                ownerGeneration = owner?.second ?: 1L
+                ownerGeneration = owner?.second ?: 1L,
+                stateVersion = owner?.third ?: 1L
             )
             return GlafiraOwnedTaskClaim(task, token)
         } finally {
@@ -1148,7 +1151,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 val ownership = taskOwnership(task.taskId, task.projectId)
                 if (ownerCoreId != null && ownership != null) {
                     transitionOwned(
-                        GlafiraTaskOwnershipExecutionToken(task.taskId, ownership.ownerCoreId, ownership.ownerGeneration),
+                        GlafiraTaskOwnershipExecutionToken(task.taskId, ownership.ownerCoreId, ownership.ownerGeneration, ownership.stateVersion),
                         setOf(GlafiraTaskState.RUNNING), decision.state, nowMillis,
                         retryAtMillis = if (decision.state == GlafiraTaskState.RETRY_SCHEDULED) nowMillis else null,
                         lastError = decision.reason
@@ -1217,13 +1220,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         }
         val placeholders = expectedStates.joinToString(",") { "?" }
         val ownerGuard = when {
-            token != null -> " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ?)"
+            token != null -> " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ? AND own.state_version = ?)"
             ownerCoreId != null -> " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
             else -> ""
         }
         val args = arrayOf(taskId) + expectedStates.map { it.databaseValue }.toTypedArray() +
             when {
-                token != null -> arrayOf(token.ownerCoreId, token.ownerGeneration.toString())
+                token != null -> arrayOf(token.ownerCoreId, token.ownerGeneration.toString(), token.stateVersion.toString())
                 ownerCoreId != null -> arrayOf(ownerCoreId)
                 else -> emptyArray()
             }
@@ -1273,7 +1276,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getLong(1)
                 } ?: return false
                 if (currentOwner.first != ownerCoreId ||
-                    (token != null && currentOwner.second != token.ownerGeneration)
+                    (token != null && (currentOwner.second != token.ownerGeneration || currentOwner.third != token.stateVersion))
                 ) return false
             }
             val existingResult = db.query(
