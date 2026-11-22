@@ -75,6 +75,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void QueueDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await _viewModel.QueueDiagnosticsSnapshotAsync();
+        }
+        catch (ArgumentException)
+        {
+            MessageBox.Show("Укажите Project ID длиной от 1 до 128 символов.", "GLAFIRA Core",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception)
+        {
+            MessageBox.Show("Не удалось поставить безопасную диагностику в очередь. Проверьте локальное хранилище Hub.",
+                "GLAFIRA Core", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void RefreshBridgeAddresses_Click(object sender, RoutedEventArgs e) =>
         _bridgeHost.RefreshAvailableAddresses();
 

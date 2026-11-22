@@ -847,6 +847,134 @@ public sealed class DesktopHubStore
     }
 
     /// <summary>
+    /// Returns a bounded owner-facing projection of terminal state and verified artifact
+    /// identity. Raw result text and decrypted artifact bytes never leave this boundary.
+    /// </summary>
+    public HubTaskOwnerResultSnapshot? GetTaskOwnerResult(string taskId)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        string taskType;
+        string ownerCoreId;
+        long ownerGeneration;
+        HubTaskState state;
+        using (var connection = Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                SELECT task_type, state, owner_core_id, owner_generation
+                FROM Tasks WHERE task_id = $task;
+                """;
+            command.Parameters.AddWithValue("$task", taskId);
+            using var reader = command.ExecuteReader();
+            if (!reader.Read()) return null;
+            taskType = reader.GetString(0);
+            if (!Enum.TryParse(reader.GetString(1), out state))
+                throw new InvalidDataException("Stored task state is invalid.");
+            ownerCoreId = reader.GetString(2);
+            ownerGeneration = reader.GetInt64(3);
+        }
+
+        var result = GetTaskResult(taskId);
+        if (result is null)
+            return new HubTaskOwnerResultSnapshot(
+                taskId, taskType, state, false, null, null,
+                null, null, false, null, null, null);
+
+        string? resultReference = null;
+        string? resultSha256 = null;
+        HubTaskArtifactMetadata? artifactMetadata = null;
+        if (result.Result is not null)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(result.Result, new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = false,
+                    CommentHandling = JsonCommentHandling.Disallow,
+                    MaxDepth = 4
+                });
+                var root = document.RootElement;
+                if (root.ValueKind == JsonValueKind.Object &&
+                    root.TryGetProperty("TaskId", out var resultTask) &&
+                    resultTask.ValueKind == JsonValueKind.String &&
+                    StringComparer.Ordinal.Equals(resultTask.GetString(), taskId) &&
+                    root.TryGetProperty("Outcome", out var outcome) &&
+                    outcome.ValueKind == JsonValueKind.String &&
+                    StringComparer.Ordinal.Equals(outcome.GetString(), "SUCCEEDED") &&
+                    root.TryGetProperty("ResultRef", out var reference) &&
+                    reference.ValueKind == JsonValueKind.String &&
+                    root.TryGetProperty("ResultSha256", out var digest) &&
+                    digest.ValueKind == JsonValueKind.String)
+                {
+                    var candidateReference = reference.GetString();
+                    var candidateDigest = digest.GetString();
+                    const string prefix = "agent-artifact:";
+                    if (candidateReference is { Length: > 15 and <= 143 } &&
+                        candidateReference.StartsWith(prefix, StringComparison.Ordinal) &&
+                        candidateDigest is { Length: 64 } &&
+                        candidateDigest.All(character =>
+                            character is >= '0' and <= '9' or >= 'a' and <= 'f'))
+                    {
+                        var artifactId = candidateReference[prefix.Length..];
+                        if (artifactId.Length is >= 1 and <= 128 &&
+                            char.IsAsciiLetterOrDigit(artifactId[0]) &&
+                            artifactId.All(character => char.IsAsciiLetterOrDigit(character) ||
+                                character is '-' or '_' or '.' or ':'))
+                        {
+                            resultReference = candidateReference;
+                            resultSha256 = candidateDigest;
+                            artifactMetadata = GetTaskArtifactMetadata(artifactId);
+                        }
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Legacy/plain terminal results remain visible as completed state only.
+            }
+        }
+
+        var artifactAvailable = artifactMetadata is not null &&
+            StringComparer.Ordinal.Equals(artifactMetadata.TaskId, taskId) &&
+            StringComparer.Ordinal.Equals(artifactMetadata.OwnerCoreId, ownerCoreId) &&
+            artifactMetadata.OwnerGeneration == ownerGeneration &&
+            StringComparer.Ordinal.Equals(artifactMetadata.Sha256, resultSha256);
+        return new HubTaskOwnerResultSnapshot(
+            taskId,
+            taskType,
+            state,
+            true,
+            result.CompletedAt,
+            result.ErrorCode,
+            resultReference,
+            resultSha256,
+            artifactAvailable,
+            artifactAvailable ? artifactMetadata!.SchemaId : null,
+            artifactAvailable ? artifactMetadata!.SchemaVersion : null,
+            artifactAvailable ? artifactMetadata!.RedactionStatus : null);
+    }
+
+    private HubTaskArtifactMetadata? GetTaskArtifactMetadata(string artifactId)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT artifact_id, task_id, owner_core_id, owner_generation,
+                   lease_id, fencing_token, contract_version, schema_id, schema_version,
+                   content_type, byte_length, sha256, redaction_status, created_at_ms
+            FROM TaskArtifacts WHERE artifact_id = $artifact;
+            """;
+        command.Parameters.AddWithValue("$artifact", artifactId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new HubTaskArtifactMetadata(
+            reader.GetInt32(6), reader.GetString(0), reader.GetString(1), reader.GetString(2),
+            reader.GetInt64(3), reader.GetString(4), reader.GetInt64(5), reader.GetString(7),
+            reader.GetInt32(8), reader.GetString(9), reader.GetInt32(10), reader.GetString(11),
+            reader.GetString(12), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(13)));
+    }
+
+    /// <summary>
     /// Commits a bounded, redacted task artifact while the exact owner generation,
     /// lease and fencing token are still active. An identical retry is accepted even
     /// after the lease is gone so an Agent can recover from a lost acknowledgement.

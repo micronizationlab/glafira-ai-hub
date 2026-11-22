@@ -78,6 +78,31 @@ public sealed record HubTaskEventSnapshot(
 
 public sealed record HubTaskResult(string? Result, string? ErrorCode, DateTimeOffset CompletedAt);
 
+/// <summary>
+/// Owner-visible terminal projection. It deliberately contains no result text or artifact
+/// payload bytes; only exact, non-secret contract identity and availability are exposed.
+/// </summary>
+public sealed record HubTaskOwnerResultSnapshot(
+    string TaskId,
+    string TaskType,
+    HubTaskState State,
+    bool TerminalResultAvailable,
+    DateTimeOffset? CompletedAt,
+    string? ErrorCode,
+    string? ResultReference,
+    string? ResultSha256,
+    bool ArtifactAvailable,
+    string? ArtifactSchemaId,
+    int? ArtifactSchemaVersion,
+    string? ArtifactRedactionStatus);
+
+public sealed record HubDiagnosticsTaskSubmission(
+    string TaskId,
+    string ProjectId,
+    string PayloadRef,
+    string PayloadSha256,
+    DateTimeOffset QueuedAt);
+
 public sealed record HubTaskArtifactMetadata(
     int ContractVersion,
     string ArtifactId,

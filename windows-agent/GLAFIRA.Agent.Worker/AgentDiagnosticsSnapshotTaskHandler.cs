@@ -54,8 +54,12 @@ internal sealed class AgentDiagnosticsSnapshotTaskHandler : IAgentTaskHandler
 {
     public const string SupportedTaskType = "diagnostics.snapshot";
     public const string RequiredCapability = "agent.diagnostics.read";
+    // The Hub payload store is content-addressed. Keeping the exact canonical digest as
+    // both reference and digest lets the production resolver verify the request bytes
+    // before a lease is issued, while the Agent independently pins the same contract.
     public const string RequestPayloadReference =
-        "agent://diagnostics/snapshot/v1/local-safe-runtime";
+        "b8bed4167621e0151c9ad655844d0574be18d9a7cae05f998b035c7634efbae4";
+    public const string RequestPayloadSha256 = RequestPayloadReference;
     public const string ArtifactResultReferencePrefix = "agent-artifact:";
     public const string CanonicalRequestJson =
         "{\"schemaVersion\":1,\"source\":\"local-safe-runtime\"}";
@@ -99,9 +103,6 @@ internal sealed class AgentDiagnosticsSnapshotTaskHandler : IAgentTaskHandler
     }
 
     public string TaskType => SupportedTaskType;
-
-    public static string RequestPayloadSha256 { get; } =
-        AgentResultArtifactPolicy.ComputeSha256(Encoding.UTF8.GetBytes(CanonicalRequestJson));
 
     public async Task<AgentTaskResult> ExecuteAsync(
         AgentTaskEnvelope task,

@@ -72,7 +72,7 @@
                 <Button Content="Одобрить выбранного" Height="30" Padding="10,0" Margin="0,0,8,0" Click="ApproveSelectedAgent_Click"/>
                 <Button Content="Отозвать доступ" Height="30" Padding="10,0" Click="RevokeSelectedAgent_Click"/>
               </WrapPanel>
-              <TextBlock Text="Допустимые возможности: document.analysis, code.build, web.research, core.orchestration. Сопряжение создаёт агента без прав; права появляются только после вашего одобрения." FontSize="10" Foreground="#52645D" TextWrapping="Wrap" Margin="0,7,0,0"/>
+              <TextBlock Text="Допустимые возможности: document.analysis, code.build, web.research, core.orchestration, agent.diagnostics.read. Сопряжение создаёт агента без прав; права появляются только после вашего одобрения." FontSize="10" Foreground="#52645D" TextWrapping="Wrap" Margin="0,7,0,0"/>
             </StackPanel>
           </Border>
           <DataGrid x:Name="AgentsGrid" ItemsSource="{Binding Agents}" IsReadOnly="True" AutoGenerateColumns="False" SelectionMode="Single" SelectionChanged="Agents_SelectionChanged">
@@ -90,11 +90,28 @@
       </TabItem>
       <TabItem Header="ОЧЕРЕДЬ ЗАДАЧ">
         <DockPanel>
-          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="8" VerticalAlignment="Center">
-            <Button Content="Отменить выбранную задачу" Height="32" Padding="12,0"
-                    Click="CancelSelectedTask_Click" IsEnabled="{Binding CanCancelSelectedTask}"/>
-            <TextBlock Text="Для активной задачи с записью/внешним эффектом отмена переводит результат в OutcomeUnknown."
-                       Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="12,0,0,0" VerticalAlignment="Center"/>
+          <StackPanel DockPanel.Dock="Bottom" Margin="8">
+            <WrapPanel VerticalAlignment="Center">
+              <TextBlock Text="Проект:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+              <TextBox Width="220" MaxLength="128" Margin="0,0,10,0"
+                       Text="{Binding DiagnosticsProjectId, UpdateSourceTrigger=PropertyChanged}"/>
+              <Button Content="Запустить безопасную диагностику" Height="32" Padding="12,0"
+                      Click="QueueDiagnostics_Click" IsEnabled="{Binding CanQueueDiagnostics}"/>
+            </WrapPanel>
+            <TextBlock Text="Фиксированный локальный снимок runtime: без пользовательских команд, путей к файлам и сетевых обращений. Требует явно одобренной capability agent.diagnostics.read."
+                       Foreground="#52645D" FontSize="10" TextWrapping="Wrap" Margin="0,5,0,8"/>
+            <WrapPanel VerticalAlignment="Center">
+              <Button Content="Отменить выбранную задачу" Height="32" Padding="12,0"
+                      Click="CancelSelectedTask_Click" IsEnabled="{Binding CanCancelSelectedTask}"/>
+              <TextBlock Text="Для активной задачи с записью/внешним эффектом отмена переводит результат в OutcomeUnknown."
+                         Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="12,0,0,0" VerticalAlignment="Center"/>
+            </WrapPanel>
+            <Separator Margin="0,8,0,6"/>
+            <TextBlock Text="БЕЗОПАСНЫЙ РЕЗУЛЬТАТ ВЫБРАННОЙ ЗАДАЧИ" FontWeight="Bold" FontSize="10" Foreground="#176B55"/>
+            <TextBlock Text="{Binding SelectedTaskResultSummary}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+            <TextBlock TextWrapping="Wrap" FontSize="10" Margin="0,3,0,0"><Run Text="Ссылка: "/><Run Text="{Binding SelectedTaskArtifactReference}"/></TextBlock>
+            <TextBlock TextWrapping="Wrap" FontSize="10"><Run Text="SHA-256: "/><Run Text="{Binding SelectedTaskArtifactDigest}"/></TextBlock>
+            <TextBlock TextWrapping="Wrap" FontSize="10"><Run Text="Контракт: "/><Run Text="{Binding SelectedTaskArtifactContract}"/></TextBlock>
           </StackPanel>
           <DataGrid x:Name="TasksGrid" ItemsSource="{Binding Tasks}" SelectionChanged="Tasks_SelectionChanged">
             <DataGrid.Columns>
@@ -124,6 +141,6 @@
         </DataGrid>
       </TabItem>
     </TabControl>
-    <TextBlock DockPanel.Dock="Bottom" Text="Сопряжение, одобрение и отзыв выполняются только явным действием владельца. Pairing, heartbeat и защищённый Agent lease/result transport доступны; production handlers и Desktop Core task handoff ещё подключаются, LIVE-действия выключены." Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0"/>
+    <TextBlock DockPanel.Dock="Bottom" Text="Сопряжение, одобрение и отзыв выполняются только явным действием владельца. Разрешён только ограниченный read-only обработчик безопасной диагностики; остальные LIVE-действия выключены." Foreground="#7B6551" FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0"/>
   </DockPanel>
 </Window>

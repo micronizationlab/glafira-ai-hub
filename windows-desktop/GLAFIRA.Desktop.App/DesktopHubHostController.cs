@@ -20,6 +20,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     private readonly BridgeV1HubIdentityStore _hubIdentityStore;
     private readonly BridgeV1TlsCertificateStore _tlsCertificateStore;
     private readonly HubTaskPayloadStore _payloadStore;
+    private readonly HubDiagnosticsTaskService _diagnosticsTasks;
     private readonly BridgeV1PairingTicketStore _pairingTickets;
     private readonly DpapiSqliteHubCredentialResolver _credentialResolver;
     private BridgeV1HttpsHost? _host;
@@ -67,6 +68,10 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         _tlsCertificateStore = new BridgeV1TlsCertificateStore();
         _payloadStore = new HubTaskPayloadStore(
             Path.Combine(root, "payloads"), new WindowsDpapiHubDataProtector());
+        _diagnosticsTasks = new HubDiagnosticsTaskService(
+            _store,
+            _payloadStore,
+            _ownershipTrustAnchor.OwnerCoreId);
         _pairingTickets = new BridgeV1PairingTicketStore(_databasePath);
         _credentialResolver = new DpapiSqliteHubCredentialResolver(_databasePath);
         RefreshAvailableAddresses();
@@ -120,6 +125,14 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     public bool CanCopyPairingTicket => IsRunning && _visiblePairingTicketId is not null;
     public bool CanRevokeAgent => IsValidAgentId(PairingAgentId);
     public bool CanRePairAgent => CanCreatePairingTicket;
+
+    public Task<HubDiagnosticsTaskSubmission> QueueDiagnosticsSnapshotAsync(
+        string projectId,
+        CancellationToken cancellationToken = default) =>
+        _diagnosticsTasks.QueueAsync(
+            projectId.Trim(),
+            DateTimeOffset.UtcNow,
+            cancellationToken);
 
     public void RefreshAvailableAddresses()
     {

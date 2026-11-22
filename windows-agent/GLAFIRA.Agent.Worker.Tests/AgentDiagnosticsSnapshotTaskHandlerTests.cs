@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using GLAFIRA.Agent.Worker;
@@ -13,6 +14,17 @@ public sealed class AgentDiagnosticsSnapshotTaskHandlerTests
         Architecture.X64,
         Architecture.Arm64,
         new Version(8, 0, 12));
+
+    [Fact]
+    public void RequestContractUsesThePinnedCanonicalContentAddress()
+    {
+        var payload = Encoding.UTF8.GetBytes(
+            "{\"schemaVersion\":1,\"source\":\"local-safe-runtime\"}");
+        var digest = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
+
+        Assert.Equal(digest, AgentDiagnosticsSnapshotTaskHandler.RequestPayloadSha256);
+        Assert.Equal(digest, AgentDiagnosticsSnapshotTaskHandler.RequestPayloadReference);
+    }
 
     [Fact]
     public async Task ExactReadOnlyRequestWritesOnlyDeterministicRedactedSchema()
