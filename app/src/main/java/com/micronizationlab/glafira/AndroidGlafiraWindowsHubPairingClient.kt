@@ -198,6 +198,26 @@ fun interface GlafiraWindowsHubClientCredentialProvider {
     fun load(nowEpochMs: Long): GlafiraWindowsHubClientCredential?
 }
 
+enum class GlafiraWindowsHubPairingStatus {
+    UNPAIRED,
+    PAIRED,
+    EXPIRED,
+    REVOKED,
+    INVALID
+}
+
+data class GlafiraWindowsHubPairingState(
+    val status: GlafiraWindowsHubPairingStatus,
+    val deviceId: String? = null,
+    val desktopHubId: String? = null,
+    val endpoint: String? = null,
+    val expiresAtEpochMs: Long? = null
+)
+
+fun interface GlafiraWindowsHubPairingStateProvider {
+    fun state(nowEpochMs: Long): GlafiraWindowsHubPairingState
+}
+
 internal interface GlafiraPinnedPairingEnrollmentSink {
     fun install(enrollment: GlafiraPinnedPairingEnrollment): GlafiraWindowsHubCredentialInstallResult
 }
@@ -241,11 +261,15 @@ internal class AndroidGlafiraWindowsHubPairingClient(
 internal class AndroidGlafiraWindowsHubCredentialStore(
     context: Context,
     stateFile: File = File(context.noBackupFilesDir, DEFAULT_FILE_NAME),
-    private val keyAlias: String = DEFAULT_KEY_ALIAS
+    private val keyAlias: String = DEFAULT_KEY_ALIAS,
+    revocationFile: File = File(stateFile.path + REVOCATION_SUFFIX),
+    private val clock: () -> Long = System::currentTimeMillis
 ) : GlafiraPinnedPairingEnrollmentSink,
     GlafiraWindowsHubClientCredentialProvider,
-    GlafiraOwnershipTrustedKeyResolver {
+    GlafiraOwnershipTrustedKeyResolver,
+    GlafiraWindowsHubPairingStateProvider {
     private val file = AtomicFile(stateFile)
+    private val revocationMarker = AtomicFile(revocationFile)
     private val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
 
     @Synchronized
@@ -291,6 +315,7 @@ internal class AndroidGlafiraWindowsHubCredentialStore(
             if (!sameCredential || existingAnchor != enrollment.anchor) {
                 writeState(StoredState(replacement, anchors))
             }
+            revocationMarker.delete()
         } catch (failure: Throwable) {
             if (!keyAlreadyExisted && !file.baseFile.exists() && keyStore.containsAlias(keyAlias)) {
                 keyStore.deleteEntry(keyAlias)
@@ -312,6 +337,7 @@ internal class AndroidGlafiraWindowsHubCredentialStore(
 
     @Synchronized
     override fun load(nowEpochMs: Long): GlafiraWindowsHubClientCredential? {
+        if (revocationMarkerStatus() != null) return null
         val state = readState()
         try {
             val credential = state.credential ?: return null
@@ -339,6 +365,7 @@ internal class AndroidGlafiraWindowsHubCredentialStore(
         signingKeyEpoch: Long,
         fingerprintSha256: String
     ): PublicKey? {
+        if (revocationMarkerStatus() != null) return null
         val state = readState()
         try {
             val anchor = state.anchors[oldOwnerCoreId] ?: return null
@@ -356,7 +383,9 @@ internal class AndroidGlafiraWindowsHubCredentialStore(
         try {
             if (ownerCoreId !in state.anchors) return false
             val anchors = state.anchors.toMutableMap().apply { remove(ownerCoreId) }
-            val credential = if (state.credential?.ownerCoreId == ownerCoreId) null
+            val revokesCredential = state.credential?.ownerCoreId == ownerCoreId
+            if (revokesCredential) writeRevocationMarker(clock())
+            val credential = if (revokesCredential) null
                 else state.credential
             if (credential == null && anchors.isEmpty()) {
                 destroyState()
@@ -370,7 +399,94 @@ internal class AndroidGlafiraWindowsHubCredentialStore(
     }
 
     @Synchronized
-    fun revokeAll() = destroyState()
+    fun revokeAll() {
+        writeRevocationMarker(clock())
+        destroyState()
+    }
+
+    /** Owner-requested local disconnect; unlike revoke, it leaves an UNPAIRED state. */
+    @Synchronized
+    fun unpair() {
+        destroyState()
+        revocationMarker.delete()
+    }
+
+    @Synchronized
+    override fun state(nowEpochMs: Long): GlafiraWindowsHubPairingState {
+        val marker = runCatching { revocationMarkerStatus() }
+            .getOrElse { return GlafiraWindowsHubPairingState(GlafiraWindowsHubPairingStatus.INVALID) }
+        if (marker != null) {
+            return GlafiraWindowsHubPairingState(GlafiraWindowsHubPairingStatus.REVOKED)
+        }
+        if (!file.baseFile.exists()) {
+            return GlafiraWindowsHubPairingState(GlafiraWindowsHubPairingStatus.UNPAIRED)
+        }
+        val stored = runCatching { readState() }
+            .getOrElse { return GlafiraWindowsHubPairingState(GlafiraWindowsHubPairingStatus.INVALID) }
+        try {
+            val credential = stored.credential
+                ?: return GlafiraWindowsHubPairingState(GlafiraWindowsHubPairingStatus.UNPAIRED)
+            val status = if (credential.expiresAtEpochMs <= nowEpochMs) {
+                GlafiraWindowsHubPairingStatus.EXPIRED
+            } else {
+                GlafiraWindowsHubPairingStatus.PAIRED
+            }
+            return GlafiraWindowsHubPairingState(
+                status = status,
+                deviceId = credential.deviceId,
+                desktopHubId = credential.desktopHubId,
+                endpoint = credential.endpoint,
+                expiresAtEpochMs = credential.expiresAtEpochMs
+            )
+        } finally {
+            stored.clearSecret()
+        }
+    }
+
+    private fun revocationMarkerStatus(): Long? {
+        val bytes = try {
+            revocationMarker.openRead().use { it.readBytes() }
+        } catch (_: FileNotFoundException) {
+            return null
+        }
+        require(bytes.size in 1..MAX_REVOCATION_MARKER_BYTES) {
+            "PAIRING_REVOCATION_MARKER_SIZE_INVALID"
+        }
+        return try {
+            val value = JSONObject(bytes.toString(Charsets.UTF_8))
+            require(value.keys().asSequence().toSet() == REVOCATION_FIELDS &&
+                value.get("version") == 1 && value.get("state") == "REVOKED") {
+                "PAIRING_REVOCATION_MARKER_INVALID"
+            }
+            exactLong(value, "revokedAtEpochMs").also {
+                require(it > 0) { "PAIRING_REVOCATION_MARKER_INVALID" }
+            }
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
+    private fun writeRevocationMarker(revokedAtEpochMs: Long) {
+        require(revokedAtEpochMs > 0) { "PAIRING_REVOCATION_TIME_INVALID" }
+        val output = JSONObject().apply {
+            put("version", 1)
+            put("state", "REVOKED")
+            put("revokedAtEpochMs", revokedAtEpochMs)
+        }.toString().toByteArray(Charsets.UTF_8)
+        var stream: FileOutputStream? = null
+        try {
+            val opened = revocationMarker.startWrite()
+            stream = opened
+            opened.write(output)
+            opened.fd.sync()
+            revocationMarker.finishWrite(opened)
+        } catch (failure: Throwable) {
+            stream?.let(revocationMarker::failWrite)
+            throw failure
+        } finally {
+            output.fill(0)
+        }
+    }
 
     private fun readState(): StoredState {
         val encoded = try {
@@ -678,11 +794,13 @@ internal class AndroidGlafiraWindowsHubCredentialStore(
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
         private const val DEFAULT_FILE_NAME = "windows-hub-pairing-v1.enc"
         private const val DEFAULT_KEY_ALIAS = "glafira.windows.hub.pairing.v1"
+        private const val REVOCATION_SUFFIX = ".revoked"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_IV_BYTES = 12
         private const val GCM_TAG_BITS = 128
         private const val MAX_ANCHORS = 32
         private const val MAX_ENCRYPTED_BYTES = 256 * 1_024
+        private const val MAX_REVOCATION_MARKER_BYTES = 1_024
         private val LOWER_SHA256 = Regex("^[a-f0-9]{64}$")
         private val AAD = "GLAFIRA.Android.WindowsHubPairing.v1".toByteArray(Charsets.UTF_8)
         private val ANCHOR_FIELDS = setOf(
@@ -694,5 +812,6 @@ internal class AndroidGlafiraWindowsHubCredentialStore(
             "sharedSecretBase64", "scopes", "enrolledAtEpochMs", "expiresAtEpochMs",
             "ownerCoreId"
         )
+        private val REVOCATION_FIELDS = setOf("version", "state", "revokedAtEpochMs")
     }
 }

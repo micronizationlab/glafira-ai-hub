@@ -43,6 +43,9 @@ class AndroidGlafiraWindowsHubCredentialStoreInstrumentedTest {
         stateFile.delete()
         File(stateFile.path + ".bak").delete()
         File(stateFile.path + ".new").delete()
+        File(stateFile.path + ".revoked").delete()
+        File(stateFile.path + ".revoked.bak").delete()
+        File(stateFile.path + ".revoked.new").delete()
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         if (keyStore.containsAlias(keyAlias)) keyStore.deleteEntry(keyAlias)
     }
@@ -128,6 +131,7 @@ class AndroidGlafiraWindowsHubCredentialStoreInstrumentedTest {
         installAndClear(store, enrollment(pair, 7))
 
         assertTrue(store.revoke("desktop-core-01"))
+        assertEquals(GlafiraWindowsHubPairingStatus.REVOKED, store.state(now).status)
         assertNull(store.load(now))
         assertNull(store.resolve("desktop-core-01", 7, fingerprint(pair.public.encoded)))
         assertFalse(stateFile.exists())
@@ -135,9 +139,31 @@ class AndroidGlafiraWindowsHubCredentialStoreInstrumentedTest {
         assertFalse(keyStore.containsAlias(keyAlias))
 
         installAndClear(store, enrollment(pair, 7))
+        assertEquals(GlafiraWindowsHubPairingStatus.PAIRED, store.state(now).status)
         store.revokeAll()
+        assertEquals(GlafiraWindowsHubPairingStatus.REVOKED, store.state(now).status)
         assertFalse(stateFile.exists())
         assertFalse(keyStore.containsAlias(keyAlias))
+    }
+
+    @Test
+    fun ownerVisibleStateDistinguishesUnpairedExpiredAndLocalUnpair() {
+        val pair = keyPair()
+        val store = store()
+        assertEquals(GlafiraWindowsHubPairingStatus.UNPAIRED, store.state(now).status)
+
+        installAndClear(store, enrollment(pair, 7, expiresAtEpochMs = now + 500))
+        val paired = store.state(now)
+        assertEquals(GlafiraWindowsHubPairingStatus.PAIRED, paired.status)
+        assertEquals("android-device-01", paired.deviceId)
+        assertEquals("desktop-hub-01", paired.desktopHubId)
+        assertEquals(now + 500, paired.expiresAtEpochMs)
+        assertEquals(GlafiraWindowsHubPairingStatus.EXPIRED, store.state(now + 500).status)
+        assertNull(store.load(now + 500))
+
+        store.unpair()
+        assertEquals(GlafiraWindowsHubPairingStatus.UNPAIRED, store.state(now).status)
+        assertFalse(File(stateFile.path + ".revoked").exists())
     }
 
     private fun store() = AndroidGlafiraWindowsHubCredentialStore(context, stateFile, keyAlias)
@@ -154,7 +180,8 @@ class AndroidGlafiraWindowsHubCredentialStoreInstrumentedTest {
     private fun enrollment(
         pair: KeyPair,
         epoch: Long,
-        secretByte: Int = 0x5c
+        secretByte: Int = 0x5c,
+        expiresAtEpochMs: Long = now + 30 * 24 * 60 * 60 * 1_000L
     ): GlafiraPinnedPairingEnrollment {
         val invitation = GlafiraWindowsHubPairingTrustBinding.parseInvitation(
             invitation(pair, epoch).toString(),
@@ -162,7 +189,7 @@ class AndroidGlafiraWindowsHubCredentialStoreInstrumentedTest {
         )
         return GlafiraWindowsHubPairingTrustBinding.correlate(
             invitation,
-            response(pair, epoch, secretByte).toString(),
+            response(pair, epoch, secretByte, expiresAtEpochMs).toString(),
             now
         )
     }
@@ -182,7 +209,12 @@ class AndroidGlafiraWindowsHubCredentialStoreInstrumentedTest {
         put("expiresAtEpochMs", now + 120_000)
     }
 
-    private fun response(pair: KeyPair, epoch: Long, secretByte: Int) = JSONObject().apply {
+    private fun response(
+        pair: KeyPair,
+        epoch: Long,
+        secretByte: Int,
+        expiresAtEpochMs: Long
+    ) = JSONObject().apply {
         put("version", 1)
         put("status", "ENROLLED")
         put("errorCode", JSONObject.NULL)
@@ -198,7 +230,7 @@ class AndroidGlafiraWindowsHubCredentialStoreInstrumentedTest {
         put("sharedSecretBase64", Base64.getEncoder().encodeToString(ByteArray(32) { secretByte.toByte() }))
         put("scopes", JSONArray(listOf("ownership.read", "project.read")))
         put("enrolledAtEpochMs", now - 1_000)
-        put("expiresAtEpochMs", now + 30 * 24 * 60 * 60 * 1_000L)
+        put("expiresAtEpochMs", expiresAtEpochMs)
     }
 
     private fun keyPair(): KeyPair = KeyPairGenerator.getInstance("EC").run {

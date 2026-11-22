@@ -23,10 +23,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.DateFormat
+import java.util.Date
 
 fun saveApiKey(context: Context, key: String): Boolean =
     EncryptedApiKeyStore.save(context, "gigachat_api_key", key)
@@ -54,6 +58,16 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var exportResult by remember { mutableStateOf<String?>(null) }
     var biometricEnabled by remember { mutableStateOf(isBiometricEnabled(context)) }
     var showPasswordVault by remember { mutableStateOf(false) }
+    val windowsHubStore = remember {
+        runCatching { AndroidGlafiraWindowsHubCredentialStore(context.applicationContext) }
+            .getOrNull()
+    }
+    var windowsHubState by remember {
+        mutableStateOf(
+            windowsHubStore?.state(System.currentTimeMillis())
+                ?: GlafiraWindowsHubPairingState(GlafiraWindowsHubPairingStatus.INVALID)
+        )
+    }
     val audioPreferences = remember {
         context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
     }
@@ -126,6 +140,51 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         }
 
         Spacer(Modifier.height(24.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = GrD),
+            modifier = Modifier.fillMaxWidth().semantics {
+                contentDescription = "Windows Hub: ${windowsHubState.status.name}"
+            }
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text(
+                    "WINDOWS HUB",
+                    color = Gr,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(windowsHubStatusLabel(windowsHubState.status), color = Tx, fontSize = 14.sp)
+                windowsHubState.desktopHubId?.let {
+                    Text("Hub: $it", color = Tx, fontSize = 11.sp)
+                }
+                windowsHubState.endpoint?.let {
+                    Text("Endpoint: $it", color = Tx, fontSize = 11.sp)
+                }
+                windowsHubState.expiresAtEpochMs?.let {
+                    Text(
+                        "Действует до: ${DateFormat.getDateTimeInstance().format(Date(it))}",
+                        color = Tx,
+                        fontSize = 11.sp
+                    )
+                }
+                if (windowsHubState.status != GlafiraWindowsHubPairingStatus.UNPAIRED &&
+                    windowsHubStore != null
+                ) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = {
+                        runCatching { windowsHubStore.unpair() }
+                        windowsHubState = windowsHubStore.state(System.currentTimeMillis())
+                    }) {
+                        Text("ЛОКАЛЬНО ОТКЛЮЧИТЬ HUB")
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
 
         Row(
             Modifier.fillMaxWidth().clickable { workingExpanded = !workingExpanded }.padding(vertical = 6.dp),
@@ -634,6 +693,14 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             }
         )
     }
+}
+
+private fun windowsHubStatusLabel(status: GlafiraWindowsHubPairingStatus): String = when (status) {
+    GlafiraWindowsHubPairingStatus.UNPAIRED -> "Не подключён"
+    GlafiraWindowsHubPairingStatus.PAIRED -> "Подключён — read-only синхронизация разрешена"
+    GlafiraWindowsHubPairingStatus.EXPIRED -> "Срок подключения истёк — синхронизация остановлена"
+    GlafiraWindowsHubPairingStatus.REVOKED -> "Доверие отозвано — синхронизация остановлена"
+    GlafiraWindowsHubPairingStatus.INVALID -> "Состояние подключения повреждено — синхронизация остановлена"
 }
 
 @Composable
