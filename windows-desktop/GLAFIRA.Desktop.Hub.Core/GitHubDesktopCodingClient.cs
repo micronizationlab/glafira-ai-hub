@@ -105,6 +105,7 @@ public sealed class GitHubDesktopCodingClient
     {
         RequireRepository(repository);
         RequireSafePath(path);
+        RequireWritablePath(path);
         RequireWritableBranch(branch);
         if (string.IsNullOrWhiteSpace(commitMessage) || commitMessage.Length > 200)
             throw new ArgumentException("Invalid GitHub commit message.", nameof(commitMessage));
@@ -234,6 +235,41 @@ public sealed class GitHubDesktopCodingClient
             path.EndsWith('/') || path.Contains('\\') ||
             path.Split('/').Any(part => string.IsNullOrWhiteSpace(part) || part is "." or ".."))
             throw new ArgumentException("Invalid repository-relative file path.", nameof(path));
+    }
+
+    /// <summary>
+    /// Prevent autonomous writes from changing CI, build bootstrap, dependency resolution,
+    /// or executable project configuration. These require a separate owner-reviewed path.
+    /// </summary>
+    public static void RequireWritablePath(string path)
+    {
+        RequireSafePath(path);
+        var normalized = path.Replace('\\\\', '/').ToLowerInvariant();
+        var segments = normalized.Split('/');
+        var fileName = segments[^1];
+        var blocked =
+            normalized == ".gitmodules" ||
+            normalized == "global.json" ||
+            normalized == "nuget.config" ||
+            normalized == "nuget.lock" ||
+            segments[0] is ".github" or ".gitlab" or ".circleci" ||
+            fileName == "jenkinsfile" ||
+            fileName == "azure-pipelines.yml" ||
+            fileName == "dockerfile" ||
+            fileName.StartsWith("docker-compose", StringComparison.Ordinal) ||
+            fileName.EndsWith(".csproj", StringComparison.Ordinal) ||
+            fileName.EndsWith(".sln", StringComparison.Ordinal) ||
+            fileName.EndsWith(".slnx", StringComparison.Ordinal) ||
+            fileName.EndsWith(".props", StringComparison.Ordinal) ||
+            fileName.EndsWith(".targets", StringComparison.Ordinal) ||
+            fileName.EndsWith(".wapproj", StringComparison.Ordinal) ||
+            fileName.EndsWith(".nuspec", StringComparison.Ordinal) ||
+            fileName == "packages.lock.json" ||
+            fileName == "directory.build.props" ||
+            fileName == "directory.build.targets";
+        if (blocked)
+            throw new InvalidOperationException(
+                "GLAFIRA GitHub coding API cannot modify CI, build bootstrap, dependency or executable project files without a separate owner-reviewed workflow.");
     }
 
     private static void RequireReference(string reference)
