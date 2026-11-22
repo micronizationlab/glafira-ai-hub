@@ -35,7 +35,9 @@ public sealed class AgentDiagnosticsSnapshotTaskHandlerTests
         Assert.Null(result.ErrorCode);
         Assert.Single(store.Writes);
         var artifact = store.Writes[0];
-        Assert.Equal(result.ResultRef, artifact.Metadata.ArtifactId);
+        Assert.Equal(
+            AgentDiagnosticsSnapshotTaskHandler.ArtifactResultReferencePrefix + artifact.Metadata.ArtifactId,
+            result.ResultRef);
         Assert.Equal(result.ResultSha256, artifact.Metadata.Sha256);
         Assert.Equal(task.TaskId, artifact.Metadata.TaskId);
         Assert.Equal(task.ProjectId, artifact.Metadata.ProjectId);
@@ -82,7 +84,10 @@ public sealed class AgentDiagnosticsSnapshotTaskHandlerTests
             Assert.Equal("SUCCEEDED", first.Outcome);
             Assert.Equal(first, second);
             var artifactIds = await store.ListPendingArtifactIdsAsync(CancellationToken.None);
-            Assert.Equal(new[] { first.ResultRef! }, artifactIds);
+            Assert.Equal(new[]
+            {
+                first.ResultRef![AgentDiagnosticsSnapshotTaskHandler.ArtifactResultReferencePrefix.Length..]
+            }, artifactIds);
             Assert.Single(Directory.GetFiles(directory, "*.artifact"));
         }
         finally

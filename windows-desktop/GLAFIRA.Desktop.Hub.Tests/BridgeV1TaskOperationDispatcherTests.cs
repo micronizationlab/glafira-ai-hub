@@ -383,6 +383,65 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task ArtifactBackedResultRequiresExactArtifactBeforeTerminalCompletion()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+        var artifactBytes = Encoding.UTF8.GetBytes("{\"status\":\"healthy\",\"secrets\":\"redacted\"}");
+        var digest = Convert.ToHexString(SHA256.HashData(artifactBytes)).ToLowerInvariant();
+        var resultRequest = AgentArtifactResultRequest(
+            claim.Result["leaseId"], long.Parse(claim.Result["fencingToken"]), digest);
+
+        var missing = await dispatcher.DispatchAsync(resultRequest, now.AddSeconds(2));
+
+        Assert.Equal("FAILED", missing.Status);
+        Assert.Equal("TASK_ARTIFACT_REQUIRED", missing.ErrorCode);
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState("task-0001"));
+        Assert.Null(_store.GetTaskResult("task-0001"));
+
+        var artifact = await dispatcher.DispatchAsync(
+            ArtifactRequest(artifactBytes, claim, now.AddSeconds(2)), now.AddSeconds(3));
+        var completed = await dispatcher.DispatchAsync(resultRequest, now.AddSeconds(4));
+        var duplicate = await dispatcher.DispatchAsync(
+            resultRequest with { RequestId = "request-result-retry-0001" }, now.AddSeconds(5));
+
+        Assert.Equal("SUCCEEDED", artifact.Status);
+        Assert.Equal("SUCCEEDED", completed.Status);
+        Assert.Equal("SUCCEEDED", duplicate.Status);
+        Assert.Equal(HubTaskState.Succeeded, _store.GetTaskState("task-0001"));
+        Assert.NotNull(_store.GetTaskResult("task-0001"));
+        CryptographicOperations.ZeroMemory(artifactBytes);
+    }
+
+    [Fact]
+    public async Task ArtifactBackedResultRejectsMismatchedDigestWithoutCompletingTask()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+        var artifactBytes = Encoding.UTF8.GetBytes("{\"status\":\"healthy\"}");
+
+        var artifact = await dispatcher.DispatchAsync(
+            ArtifactRequest(artifactBytes, claim, now.AddSeconds(1)), now.AddSeconds(2));
+        var response = await dispatcher.DispatchAsync(
+            AgentArtifactResultRequest(
+                claim.Result["leaseId"], long.Parse(claim.Result["fencingToken"]), new string('0', 64)),
+            now.AddSeconds(3));
+
+        Assert.Equal("SUCCEEDED", artifact.Status);
+        Assert.Equal("FAILED", response.Status);
+        Assert.Equal("TASK_ARTIFACT_REQUIRED", response.ErrorCode);
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState("task-0001"));
+        Assert.Null(_store.GetTaskResult("task-0001"));
+        CryptographicOperations.ZeroMemory(artifactBytes);
+    }
+
+    [Fact]
     public async Task ArtifactIdConflictCannotOverwriteCommittedPayload()
     {
         var now = DateTimeOffset.UtcNow;
@@ -505,6 +564,26 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
             ["result"] = result,
             ["errorCode"] = "none"
         });
+
+    private static BridgeV1SignedRequest AgentArtifactResultRequest(
+        string leaseId, long fencingToken, string artifactDigest)
+    {
+        var result = JsonSerializer.Serialize(new
+        {
+            TaskId = "task-0001",
+            Outcome = "SUCCEEDED",
+            ResultRef = "agent-artifact:artifact:diagnostics:0001",
+            ResultSha256 = artifactDigest,
+            ErrorCode = (string?)null
+        });
+        var encoded = JsonSerializer.Serialize(result);
+        var request = ResultRequest("SUCCEEDED", leaseId, fencingToken, encoded);
+        var fields = new Dictionary<string, string>(request.Payload)
+        {
+            ["resultEncoding"] = "json"
+        };
+        return request with { Payload = fields };
+    }
 
     private static BridgeV1SignedRequest ArtifactRequest(
         byte[] artifactBytes,

@@ -56,6 +56,7 @@ internal sealed class AgentDiagnosticsSnapshotTaskHandler : IAgentTaskHandler
     public const string RequiredCapability = "agent.diagnostics.read";
     public const string RequestPayloadReference =
         "agent://diagnostics/snapshot/v1/local-safe-runtime";
+    public const string ArtifactResultReferencePrefix = "agent-artifact:";
     public const string CanonicalRequestJson =
         "{\"schemaVersion\":1,\"source\":\"local-safe-runtime\"}";
 
@@ -166,7 +167,8 @@ internal sealed class AgentDiagnosticsSnapshotTaskHandler : IAgentTaskHandler
             task.CreatedAtEpochMs);
 
         await _artifactStore.WriteAsync(metadata, payload, cancellationToken).ConfigureAwait(false);
-        return new AgentTaskResult(task.TaskId, "SUCCEEDED", artifactId, payloadSha256);
+        return new AgentTaskResult(
+            task.TaskId, "SUCCEEDED", ArtifactResultReferencePrefix + artifactId, payloadSha256);
     }
 
     private static bool IsSupported(AgentSafeRuntimeDiagnostics diagnostics) =>

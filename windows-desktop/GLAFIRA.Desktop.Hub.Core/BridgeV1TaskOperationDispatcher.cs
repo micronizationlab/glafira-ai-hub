@@ -261,6 +261,10 @@ public sealed class BridgeV1TaskOperationDispatcher(
             else result = NormalizeNone(payload.GetValueOrDefault("result"));
             var errorCode = NormalizeNone(payload.GetValueOrDefault("errorCode"));
             if (!succeeded && errorCode is null) errorCode = "TASK_FAILED";
+            if (succeeded && result is not null &&
+                !HasRequiredTaskArtifact(
+                    taskId, ownerCoreId, ownerGeneration, leaseId, fencingToken, result))
+                return Failure("TASK_ARTIFACT_REQUIRED");
             accepted = store.Complete(agent.AgentId, taskId, leaseId, fencingToken,
                 succeeded, now, result, errorCode);
         }
@@ -281,6 +285,76 @@ public sealed class BridgeV1TaskOperationDispatcher(
             acknowledgement["leaseExpiresAtEpochMs"] =
                 now.Add(_leaseDuration).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
         return new BridgeV1DispatchResponse("SUCCEEDED", acknowledgement);
+    }
+
+    private bool HasRequiredTaskArtifact(
+        string taskId,
+        string ownerCoreId,
+        long ownerGeneration,
+        string leaseId,
+        long fencingToken,
+        string result)
+    {
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(result, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = false,
+                CommentHandling = JsonCommentHandling.Disallow,
+                MaxDepth = 4
+            });
+        }
+        catch (JsonException)
+        {
+            return true; // Ordinary non-artifact result text remains supported.
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("ResultRef", out var referenceElement) ||
+                referenceElement.ValueKind is JsonValueKind.Null)
+                return true;
+            if (referenceElement.ValueKind != JsonValueKind.String)
+                return false;
+            var reference = referenceElement.GetString();
+            const string prefix = "agent-artifact:";
+            if (reference is null || !reference.StartsWith(prefix, StringComparison.Ordinal))
+                return true;
+
+            var artifactId = reference[prefix.Length..];
+            if (!IsArtifactIdentifier(artifactId) ||
+                !root.TryGetProperty("TaskId", out var taskElement) ||
+                taskElement.ValueKind != JsonValueKind.String ||
+                !StringComparer.Ordinal.Equals(taskElement.GetString(), taskId) ||
+                !root.TryGetProperty("Outcome", out var outcomeElement) ||
+                outcomeElement.ValueKind != JsonValueKind.String ||
+                !StringComparer.Ordinal.Equals(outcomeElement.GetString(), "SUCCEEDED") ||
+                !root.TryGetProperty("ResultSha256", out var digestElement) ||
+                digestElement.ValueKind != JsonValueKind.String)
+                return false;
+            var digest = digestElement.GetString();
+            if (digest is null || !IsLowerHexSha256(digest)) return false;
+
+            var artifact = store.GetTaskArtifact(artifactId);
+            if (artifact is null) return false;
+            try
+            {
+                var metadata = artifact.Metadata;
+                return StringComparer.Ordinal.Equals(metadata.TaskId, taskId) &&
+                    StringComparer.Ordinal.Equals(metadata.OwnerCoreId, ownerCoreId) &&
+                    metadata.OwnerGeneration == ownerGeneration &&
+                    StringComparer.Ordinal.Equals(metadata.LeaseId, leaseId) &&
+                    metadata.FencingToken == fencingToken &&
+                    StringComparer.Ordinal.Equals(metadata.Sha256, digest);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(artifact.Payload);
+            }
+        }
     }
 
     private BridgeV1DispatchResponse AcceptArtifact(
