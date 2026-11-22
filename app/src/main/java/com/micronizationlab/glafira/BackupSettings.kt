@@ -316,7 +316,8 @@ fun BackupSettingsSection() {
                             // Put the stable label on the outer merged semantics node so
                             // UiAutomator/TalkBack sees the same node as the click action.
                             .semantics(mergeDescendants = true) {
-                                contentDescription = "Создать резервную копию сейчас"
+                                contentDescription = manualBackupGuidance?.let { "Создать резервную копию сейчас. $it" }
+                                    ?: "Создать резервную копию сейчас"
                             }
                             .clickable(
                                 enabled = !busy,
