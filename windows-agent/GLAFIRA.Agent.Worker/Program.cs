@@ -28,6 +28,8 @@ builder.Services.Configure<HostOptions>(options =>
 });
 
 builder.Services.AddSingleton<AgentRuntimeState>();
+builder.Services.AddSingleton<IAgentSafeDiagnosticsSource, AgentSafeRuntimeDiagnosticsSource>();
+builder.Services.AddSingleton<IAgentTaskHandler, AgentDiagnosticsSnapshotTaskHandler>();
 builder.Services.AddSingleton<AgentTaskHandlerRegistry>();
 builder.Services.AddSingleton<AgentTaskExecutor>(services =>
     new AgentTaskExecutor(
