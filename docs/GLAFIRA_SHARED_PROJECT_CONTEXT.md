@@ -30,25 +30,32 @@ Required protocol concepts:
 
 The document `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md` is the accepted architecture contract. It is not proof that all these mechanisms have been implemented.
 
-## 3. Two distinct Bridge directions — do not conflate them
+## 3. Bridge architecture — current implementation versus legacy prototype
 
-### Android Core ↔ Windows Desktop CLI
-- The existing Android LAN Bridge is an owner-controlled TLS host. It creates its server identity in Android Keystore and exposes a LAN endpoint only while the owner enables it.
-- The Desktop Bridge CLI is its client. It submits a one-time invitation, waits for owner approval, imports the one-time credential bundle and stores credentials in an encrypted local vault.
-- The owner chooses the actual scopes on Android. Requested scopes are hints only and never grant authority.
-- Desktop task polling against Android Core requires explicit owner-granted `desktop.task.claim` and `desktop.task.result` scopes.
-- Keep TLS, certificate validation, replay protection, owner approval, revocation and Core authorization intact. Never export Android Keystore private keys or downgrade to insecure transport.
-- The current Desktop CLI is a terminal validation utility, not the final Desktop GUI.
+### Android Core ↔ Windows Desktop Hub (target peer-device path)
+- Android Core remains an independent owner Core. It does **not** currently expose the historical Android-hosted HTTPS listener described by older Bridge documents.
+- Current Android code contains Bridge authorization/admission primitives and Keystore credential storage, but these do not constitute a network server or a complete pinned HTTPS client.
+- The missing Android owner-facing client, Settings pairing surface, certificate pin validation and peer credential import are tracked by #393.
+- Pairing is transport enrollment only. It does not transfer task ownership, copy all project memory, or grant every tool scope. Cross-Core ownership transfer requires a separately signed handoff and monotonic generation per `DUAL_CORE_OWNERSHIP_AND_FAILOVER.md`.
 
-### Windows Desktop Hub ↔ Windows Agent fleet
-- Windows Desktop Core is the primary high-capability owner node. Windows Desktop Hub is its authenticated Agent-fleet transport and scheduling subsystem; Windows Agents pair with this Hub, heartbeat, advertise capabilities and receive fenced task leases.
-- Desktop Core owns canonical task/project policy, owner approvals, task lifecycle, accepted results and audit history for tasks assigned to its ownership domain. The Hub owns the Agent registry, heartbeat/capability inventory, bounded fleet scheduling, worker lease/fencing journal and delivery receipts for tasks explicitly delegated by Desktop Core. Hub results must reconcile to Desktop Core; Hub cannot independently grant permissions, approve actions or create cross-Core ownership.
-- Android Core remains an independent peer with its own durable queue and authority for tasks it owns. Cross-Core work requires exactly one task owner, monotonic ownership generation and an explicit signed handoff; pairing or heartbeat alone does not transfer ownership. See `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md`.
-- This is a separate transport and authority direction from the Android-hosted Bridge above. Do not describe the Android device as the Windows Agent fleet's central server, or the Windows Hub as a global replacement for either Core.
-- The Windows Desktop HTTPS Hub and multi-agent scheduler are tracked by issue #123. The local Agent pairing/heartbeat/lease/result path is implemented in the current main, but the full Desktop Core→Hub task assignment and canonical result reconciliation, production Agent handlers and two-PC acceptance are not yet end-to-end.
-- Enrollment must be owner-approved; TLS certificate pinning, per-device HMAC, scope checks, replay/idempotency protection, lease fencing and explicit approval for external side effects remain mandatory.
+### Windows Desktop Hub ↔ Windows Agent fleet (implemented transport foundation)
+- Windows Desktop Hub owns the current HTTPS/TLS listener and Agent fleet transport. It includes certificate identity/lifecycle, short-lived Agent pairing-ticket redemption, pending enrollment, owner approval/revocation paths and task/lease dispatch primitives.
+- Windows Desktop Core owns canonical task/project policy, approvals, task lifecycle, accepted results and audit history. Hub owns Agent registry, heartbeat/capability inventory, bounded scheduling, worker lease/fencing journal and delivery receipts only for tasks explicitly delegated by Desktop Core.
+- The Agent has DPAPI-backed lease/progress/result journaling and a polling coordinator, but it must remain Not Ready while no bounded production handler/result-artifact contract is registered (#384). Two-PC acceptance and canonical Core result reconciliation remain open under #123.
+- Do not treat the Hub as a second policy Core or global ownership authority.
 
-See `docs/GLAFIRA_DESKTOP_BRIDGE_TEST_CLIENT.md` for the Android-hosted pairing procedure and issue #123 for the separate Windows Desktop Hub work.
+### iOS peer pairing
+- iOS has a pinned HTTPS client and peer-pairing UI, but its current `/bridge/v1/pairing` route and pending-owner-approval semantics do not match the Windows Hub Agent `/bridge/v1/pair` enrollment endpoint.
+- The protocol and enrollment-role mismatch is tracked by #392. Do not reuse an Agent credential as a Core peer credential.
+
+### Legacy Desktop Bridge CLI
+- `desktop-bridge/` is a historical JVM 17 validation CLI built for the former Android-hosted Bridge flow. It is not the production Android↔Desktop pairing architecture and its pairing flow must not be used for new installations until explicitly reconciled with #392/#393.
+- The old test-client documentation path referenced by previous revisions is not present in the current repository; do not link users or agents to it.
+
+### Shared safety rules
+- Owner approval, least-privilege scopes, TLS pinning, HMAC identity, replay/idempotency protection, revocation and lease fencing remain mandatory.
+- Pairing, heartbeat or device unavailability never changes task ownership by itself.
+- LIVE external side effects remain individually gated; unknown outcomes are never blindly replayed.
 
 ## 4. ChatGPT / OpenAI integration boundary
 
@@ -84,6 +91,6 @@ The current Desktop Bridge task worker can poll owner-authorized tasks and run r
 - `docs/GLAFIRA_DESKTOP_SHUTDOWN_HANDOFF.md` — Desktop worker shutdown and OS lock safety.
 - `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md` — accepted two-Core ownership/failover contract.
 - `docs/GLAFIRA_PROJECT_DISPATCHER.md` — dispatcher v1 operation and limitations.
-- `docs/GLAFIRA_DESKTOP_BRIDGE_TEST_CLIENT.md` — Android-host / Desktop-client pairing procedure.
+- Issues #392/#393 — current iOS and Android peer-device pairing work.
 
 Before changing architecture or resuming work, read the relevant handoff and inspect the current PR/branch head. Do not assume the status table in a historical document is live; query current GitHub state.

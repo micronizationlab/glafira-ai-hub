@@ -80,7 +80,7 @@ Unified operational memory is a Priority 1 GLAFIRA Core responsibility and is sp
 
 ## Windows Desktop Bridge implementation baseline
 
-A first JVM 17 Desktop Bridge module is being integrated as a command-line validation client, not as the final Windows Desktop GUI. It includes owner-approved pairing, an encrypted local credential vault, bounded HTTPS transport, a durable task queue, interrupted-task recovery, bounded worker execution, a local Ollama handler and DRY_RUN previews. Its remaining limitations and build commands are documented in [desktop-bridge/README.md](../desktop-bridge/README.md).
+A JVM 17 Desktop Bridge CLI exists as a historical validation prototype, not as the final Windows Desktop GUI or the current production Android↔Desktop peer transport. It was built for the former Android-hosted Bridge contract; current `main` does not expose that Android HTTPS listener. The production fleet transport is the Windows Desktop Hub ↔ Windows Agent path. Android and iOS peer clients and their shared pairing protocol remain open under issues #392 and #393. The CLI's remaining prototype limitations and build commands are documented in [desktop-bridge/README.md](../desktop-bridge/README.md).
 
 The module is not yet the authoritative Core queue and must not be treated as the completed Windows Desktop host. The next stages are shared Core queue integration, Desktop UI/host, enrollment/heartbeats/result acknowledgements, Windows packaging and fleet management. LIVE external actions remain disabled.
 

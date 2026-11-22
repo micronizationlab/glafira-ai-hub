@@ -1,7 +1,7 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `0649b3a24592e2ccd73b6997db04e2664f055be4` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
-**Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
+**Baseline main for this ledger revision:** `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193` (verified 2026-11-22 during the ten-workstream source/test inventory; refresh after the next mainline integration).  
+**Owner priority:** P1 Core → P2 Backup & Recovery → P3 Runtime / Bridge / Windows Desktop → P4 Android UI & Voice, Windows Agent handler expansion, iOS and specialist agents. CI/release gates remain cross-cutting acceptance requirements at every priority.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
 ## Reframed delivery strategy
@@ -33,7 +33,7 @@
 14. [x] Проверить stale worker fencing после lease expiry и повторной выдачи.
 15. [x] Добавить crash recovery для каждого non-terminal state.
 16. [ ] Сделать failure injection между claim, handler, progress, result и ACK.
-17. [ ] Разделить provider outcomes: rejected, unsent, unknown; не replay-ить unknown blindly.
+17. [x] Разделить provider outcomes: rejected, unsent, unknown; не replay-ить unknown blindly. Подтверждено в `AiProviderResult.kt`, `AiProviderClient.kt`, `GlafiraCoordinator.kt`; тесты `AiProviderOutcomeTest` и `AiProviderTransportPolicyTest` покрывают HTTP 4xx/408/5xx, dispatch boundary, Retry-After и partial composite UNKNOWN. Долговременные checkpoints/reconciliation после process death остаются отдельным пробелом #262 / step 18.
 18. [ ] Завершить durable result outbox с retry/backoff и explicit ACK.
 19. [ ] Проверить end-to-end idempotency для task, provider request, result и ACK.
 20. [ ] Закрепить persistent owner grants, deny-by-default и approval binding к task hash/scope/expiry.
@@ -421,3 +421,57 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - **Parallel P0 continuation.** Keep #260 failure-injection matrix, #266 durable result outbox/exact ACK, and #258 owner identity/credential autonomy/ownership handoff active. Do not count issue creation, documentation, skipped CI jobs or partial platform checks as implementation completion.
 
 **Acceptance discipline:** PR #347 remains open and blocked by the emulator failure. The communications work is scoped but not implemented. Skipped platform jobs are not passes; no automatic cross-Core failover or unrestricted personal-account access is implied.
+
+
+## Live source-audit refresh — 2026-11-22
+
+- Current main baseline: `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193`.
+- #380 approval-generation slice and #382 durable Runtime-config slice each have passing exact-head Android JVM, managed-emulator, shared-contract and APK checks; both are unmerged draft candidates and require code review. They do not close #366/#381 or complete Backup/Restore acceptance.
+- #372 has a new exact head `30dd5ab5d11630c5509d612c0aedba124ce1bfa0`; Android JVM/contracts/APK passed in run `44964979933`, emulator was still running at this snapshot. It remains stacked on #369 → #352 → #347 and is 33 commits ahead / 4 behind main. Do not merge any middle branch independently.
+- Windows Agent has polling/lease/result coordinator and authenticated Hub claim/result operations, but no concrete `IAgentTaskHandler` is registered in `Program.cs`; worker polling remains intentionally gated off until a bounded read-only handler is registered. See #384.
+- Branch protection requires an approving review and all required checks; skipped jobs do not satisfy checks. No bypass or force merge.
+
+
+## Execution ledger — 2026-11-22 (live refresh)
+
+**Source baseline:** PR #390 is based on `main` at `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193`. Recheck the main SHA before any integration. This ledger records work-in-progress evidence, not feature completion.
+
+### Current exact-head work
+
+- **Core approval fencing — PR #380:** latest head `dcb8e1e3cd48becd30fced431793f8bb93a2051c`. Owner-generation binding, stale approval expiry protection and SQL ownership predicates for request/approve/reject are implemented; regression tests include stale expired approvals and stale approve/reject attempts. Android JVM + shared contracts passed; APK packaging passed; managed emulator passed 119/119 tests (0 failures/errors/skips). PR marked Ready for review; repository branch protection still requires an approving review and all required status checks before merge.
+- **Core execution fencing — PR #347:** latest head `ea7b7878efe074ae2cb9a542efada25dd388c820`. The immutable claim token now includes `ownerCoreId + ownerGeneration + stateVersion`; owned transition, Dry Run and result commit paths compare the full tuple. Added same-generation late-result-after-retry/reclaim regression. Exact-head Android JVM, shared contract and APK jobs passed; managed emulator passed 118/118 tests (0 failures/errors/skips). PR marked Ready for review; iOS/Windows and workflow-lint jobs were skipped by change-aware selection.
+- **Android manual backup/settings accessibility — PR #372:** latest head `8643085c787a1f86e4f3dd01486b3674a912c231`. The latest emulator failure identified the *home screen Settings icon* as the remaining inaccessible action, not the backup action. Added an explicit accessibility onClick action at that exact control after the modifier-only correction failed. Android JVM + shared contracts passed; APK packaging passed; emulator acceptance is still running. Keep Draft.
+- **Runtime configuration — PR #382:** exact head `ee8dce1a5a603d0fc96befad6c16e06416f5ff67`; Android JVM, shared contract, managed emulator and debug APK all passed (run `44941044671`). The PR was marked ready for review. Merge was correctly blocked by repository rules: at least one approving review is required and 7 of 9 required checks were still expected. Do not bypass branch protection.
+- **Ten-workstream inventory — PR #390:** this document and the inventory are documentation only; skipped platform jobs are not platform acceptance.
+
+### Architecture findings and follow-up
+
+- **Bridge protocol:** issue #392 tracks the mismatch between iOS `POST /bridge/v1/pairing` and Windows Hub `POST /bridge/v1/pair`, plus the difference between peer-device approval and Agent enrollment. Issue #393 now tracks the missing Android owner-facing pinned-HTTPS client and Settings pairing surface. Android Bridge is a client/authorization surface, not an existing HTTPS listener. Do not implement an Android server by assumption.
+- **Windows Desktop Hub:** HTTPS/TLS, short-lived Agent pairing tickets, Agent registration/revocation and Hub lifecycle controls already exist. Remaining work is to prove the Hub-to-owning-Desktop-Core boundary, multi-Agent scheduling and restart/reconciliation; source presence is not end-to-end acceptance.
+- **Windows Agent:** keep Agent Not Ready while the bounded typed result-artifact contract in #384 is missing. The current envelope carries result metadata/reference but no bounded structured payload writer. No generic shell/command handler.
+- **Voice:** issue #99 was refreshed against current source: one-shot runtime mic permission request and basic TTS/audio settings already exist; full voice-session runtime, barge-in, speech-rate/voice selection and robust permanent-denial handling remain open.
+- **AI provider routing / memory:** issue #394 tracks missing project/provider-specific data-classification grants and durable routing audit. A configured API key or free model is not permission to forward all project context; context assembly must remain default-deny and project-scoped.
+- **Backup:** issue #387 remains open for real Google Drive/Yandex SAF provider read-back and clean-profile restore. A clickable button or emulator smoke test is not proof of provider acceptance.
+- **Dual-Core transfer:** issue #366 remains open for a transactional signed ownership-transfer operation. Owner-generation fencing alone does not implement handoff or autonomous failover.
+
+### Dispatch focus
+
+Continue from the lowest-numbered unblocked steps: 16 (full failure-injection matrix), 18–22 (durable ACK/outbox, idempotency, approval/Trace atomicity), 29–45 (canonical Bridge contracts and pairing), 48–64 (Desktop Hub/Core integration), 76–90 (bounded Agent handler and physical acceptance), then Android release gates. Parallelize only independent files/branches; do not merge stacked PRs out of order. Physical-device and two-PC acceptance remain owner-dependent.
+
+
+## Execution ledger correction — 2026-11-22 01:40 UTC
+
+- **PR #390 documentation/inventory validation:** exact head `bd0485234398616d77add9aba16172ba10ceb831`; CI run `44971311747` completed successfully, including iOS Swift package tests, Android JVM, shared contracts and exact-head summary. This validates the documentation change and selected lanes, not the physical or cross-platform acceptance of all ten workstreams.
+- **PR #372 accessibility follow-up:** exact head `d6e7997483ea5503376f117788bb542709f47447`. The prior run `44970774294` failed 1 of 117 emulator tests at the Settings icon (`Settings action is not exposed as clickable`), before reaching the manual-backup guidance assertion. Source inspection found the Settings label semantics were attached before `.clickable`; the latest commit reverses that modifier order so the stable label is merged onto the clickable node. On the new exact head, Android JVM and shared-contract checks passed; debug APK and emulator acceptance are still in progress (run `44972294308`). Keep PR #372 Draft until the emulator test proves the Settings action and backup guidance path. iOS/Windows/workflow-lint jobs are skipped, not passed.
+- **Dual-Core transfer source-audit correction:** the Kotlin and C# ECDSA P-256 / P1363 canonical signing helpers, shared JSON schema, valid fixture, fixture verifier and Android/Windows identity-signing tests already exist. Do not recreate these primitives. The production gap is their integration: trusted non-revoked old-owner key/epoch resolution, explicit authorization, freshness and durable replay/nonce handling, and one SQLite transaction that CASes owner/generation/stateVersion, invalidates old-generation approvals/grants, writes Trace and an idempotent transfer receipt. Issue #366 now records this corrected scope. The task store currently exposes a read-only ownership accessor and inserts generation-1 rows; no production handoff call site was found in the repository-wide call-site search.
+- **Ten-workstream discipline:** Windows Hub TLS/ticket/Agent enrollment implementation is present in the Windows project and test tree; this is not proof of Desktop-Core canonical task reconciliation or two-PC operation. Agent remains gated without a bounded production handler/result artifact contract. Android↔Windows Core peer pairing remains distinct from Agent enrollment. Provider data sharing stays default-deny pending #394. Physical Android cloud-backup read-back/restore and two-PC tests remain unverified.
+
+
+## Ten-workstream source audit — 2026-11-22 01:55 UTC
+
+- **PR #372 exact head:** `e34a3335e80d98d0570c8cacb2829055d34f1fd5` (latest file content hash checked on branch after commit). The prior exact-head run `44972294308` failed because the home Settings accessibility node was still non-clickable. Commit `63180b9` moved the Settings content description to the gear Text child so the clickable parent can merge it. A separate run on PR #390's docs branch (`44972459485`) passed the Settings and manual-backup clicks but failed to discover the missing-folder guidance. Commit `e34a333` adds the active guidance to the manual backup action's own contentDescription while retaining visible text. Exact-head CI `44973570586` is pending/running; JVM and shared contracts are in progress/passed respectively at this snapshot; no emulator result yet. PR #372 remains Draft.
+- **Windows Agent / #384:** `Program.cs` registers `AgentTaskHandlerRegistry` and `AgentTaskExecutor` but no `IAgentTaskHandler` implementation. Unknown types correctly fail closed; runtime registered task-type allowlist is empty until a bounded handler is added. `TaskResultEnvelope` schema already includes content-addressed resultRef/resultSha256, but `BridgeV1TaskOperationDispatcher.CompleteOrReport` currently accepts bounded inline scalar/string result data and does not wire a structured artifact store/read-back + ownerCoreId/generation + durable exact ACK. Issue #384 now records the verified source facts.
+- **Windows Desktop Hub / #123:** verified host, TLS, pairing, credential resolver, durable Hub store, authenticated Agent claim/result/heartbeat dispatcher and focused tests. The dispatcher is Hub lease/fleet authority, not canonical Desktop Core task ownership or approval authority. Issue #123 now records the missing transactional Core↔Hub outbox/inbox and canonical result reconciliation plus two-PC acceptance.
+- **Provider policy / #394:** `ProviderRegistry.kt` stores configured keys and primary-provider choice only. `GlafiraAiLocalTaskPort` and `CouncilScreen` are distinct provider-call paths requiring one shared project-scoped, purpose-aware, data-classification policy gate and minimal context projection. Issue #394 now records exact integration points and default-deny test requirements.
+- **PR #390 exact-head CI:** run `44972459485` completed Android JVM, shared contracts, Swift package tests and APK successfully, but managed emulator failed at the backup smoke's missing-folder guidance discovery. This is not a documentation regression; it exposed the UI issue now being addressed in #372. Windows Hub/Agent and workflow lint were skipped by change-aware selection, not passed.
+- **Merge discipline:** PR #347, #380, #382 remain open and unmerged pending review/protected checks. No physical Android backup read-back/restore or two-PC Windows acceptance has been performed.

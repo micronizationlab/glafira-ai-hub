@@ -1,6 +1,8 @@
 # GLAFIRA Desktop Bridge — first Windows Desktop runtime slice
 
-This is a JVM 17 command-line validation client and task-worker foundation. It is **not** the final Windows Desktop graphical application.
+This is a **legacy** JVM 17 command-line validation client and task-worker foundation. It is **not** the current production Android↔Windows pairing path and is **not** the final Windows Desktop graphical application.
+
+> **Architecture warning (2026-11-22):** this module was built for the former Android-hosted HTTPS Bridge assumption. Current `main` does not provide that Android HTTPS listener. The production transport direction is Windows Desktop Hub ↔ Windows Agent; Android and iOS need owner-facing peer clients against a separately defined, versioned peer-pairing contract. See issues #392 and #393. Do not use this CLI to enroll a new production Android/Desktop peer or imply that its pairing flow works against the current Windows Hub.
 
 ## Included
 

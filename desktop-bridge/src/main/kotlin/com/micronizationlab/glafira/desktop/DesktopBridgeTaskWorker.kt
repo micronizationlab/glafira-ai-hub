@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Legacy Desktop-side pull worker for the current Android-hosted Bridge v1 endpoint.
+ * Legacy Desktop-side pull worker for the historical Android-hosted Bridge v1 endpoint.
  * The production architecture makes Windows Desktop Hub the authoritative TLS host.
  * This compatibility worker keeps task execution registry-bound and fences every result
  * update with the server-issued lease ID and fencing token.

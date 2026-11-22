@@ -14,7 +14,7 @@ public enum BridgeTransportError: Error, Equatable, Sendable {
     case unsupportedResponseVersion
 }
 
-/// HTTPS transport for the Android LAN Bridge. It requires an owner-supplied
+/// Pinned HTTPS transport for the historical Android-hosted Bridge contract; it is not the current Windows Hub peer API. It requires an owner-supplied
 /// SHA-256 leaf-certificate pin and independently validates the TLS server
 /// certificate for the requested hostname. Redirects are never followed.
 public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate, @unchecked Sendable {
