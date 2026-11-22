@@ -313,14 +313,16 @@ fun BackupSettingsSection() {
                                 if (busy) MaterialTheme.colorScheme.surfaceVariant
                                 else MaterialTheme.colorScheme.primary
                             )
+                            // Put the stable label on the outer merged semantics node so
+                            // UiAutomator/TalkBack sees the same node as the click action.
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "Создать резервную копию сейчас"
+                            }
                             .clickable(
                                 enabled = !busy,
                                 role = Role.Button,
                                 onClick = onManualBackupClick
                             )
-                            .semantics {
-                                contentDescription = "Создать резервную копию сейчас"
-                            }
                             .padding(horizontal = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
