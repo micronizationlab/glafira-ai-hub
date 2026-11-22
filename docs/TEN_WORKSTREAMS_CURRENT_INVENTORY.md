@@ -61,7 +61,7 @@ The 150-step ledger currently names baseline `0649b3a24592e2ccd73b6997db04e2664f
 
 **Current evidence / blockers:**
 - Issue [#137](https://github.com/micronizationlab/glafira-ai-hub/issues/137) tracks Bridge entry-point visibility, backup controls, Council action and user-facing task queue.
-- Issue [#99](https://github.com/micronizationlab/glafira-ai-hub/issues/99) tracks runtime microphone permission, voice-session UX and sound settings. Existing voice policy/contracts do not constitute a complete voice chat.
+- Issue [#99](https://github.com/micronizationlab/glafira-ai-hub/issues/99) is partly stale: current `MainActivity.kt` already has an explicit `RequestPermission()` launcher for `RECORD_AUDIO`, called after the microphone tap. Denial currently shows only a Toast; rationale/permanent-denial recovery and app-settings route are not present in the inspected flow. Input remains one-shot `RecognizerIntent`, not a full controllable voice session; sound/voice settings and physical-device audio acceptance remain open. Do not recreate the permission launcher.
 - Main branch backup action still needs the end-to-end accessibility fix described above.
 
 **Next:** repair the high-priority visible controls first; then runtime permission/rationale/permanent-denial flow and independent STT/TTS lifecycle tests. Physical-device acceptance remains required.
@@ -168,3 +168,5 @@ This update supersedes only the moving CI/source observations above; historical 
 - **Windows Agent** source verification: Program.cs registers no concrete `IAgentTaskHandler`; AgentWorker polls only when status is Ready and the registry contains at least one handler. Coordinator and Hub task claim/result operations exist, including durable journal and exact ACK checks. Issue #384 remains the activation gate for bounded result artifacts and the first read-only handler.
 - **Protected branch policy** was tested by attempting to merge a documentation-only PR after its exact-head summary passed: GitHub rejected it because at least one approving review is required and 7 of 9 required status checks were still expected (platform jobs were skipped). Do not bypass this rule. Documentation changes remain open for owner review.
 - **No source/runtime fixes are represented as merged by this inventory.** A docs PR or green partial workflow is not a product acceptance result.
+
+- **Voice source recheck (2026-11-22):** confirmed the runtime microphone permission request exists on main; issue #99 has been annotated with the remaining denial/permanent-denial and voice-session gaps. This is a scope correction, not completion of voice acceptance.
