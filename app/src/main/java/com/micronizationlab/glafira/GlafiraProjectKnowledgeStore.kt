@@ -91,9 +91,26 @@ data class KnowledgeRetrieval(
     init { require(usedContextChars == citations.sumOf { it.excerpt.length }) }
 }
 
+data class KnowledgeDocumentSnapshot(
+    val projectId: ProjectIdentifier,
+    val source: KnowledgeSourceRef,
+    val title: String,
+    val sourceUri: String,
+    val mediaType: String,
+    val text: String,
+    val classification: CoreDataClassification,
+    val importedAt: Instant
+) {
+    init {
+        require(title.isNotBlank() && sourceUri.isNotBlank() && mediaType.isNotBlank())
+        require(text.isNotBlank())
+    }
+}
+
 interface ProjectKnowledgeRepository {
     fun importDocument(input: KnowledgeDocumentInput, access: KnowledgeAccessContext): KnowledgeImportResult
     fun retrieve(query: KnowledgeQuery, access: KnowledgeAccessContext): KnowledgeRetrieval
+    fun readDocument(source: KnowledgeSourceRef, access: KnowledgeAccessContext): KnowledgeDocumentSnapshot?
 }
 
 data class KnowledgeContextPreview(
@@ -266,6 +283,27 @@ class GlafiraProjectKnowledgeStore(
         }
         return KnowledgeRetrieval(citations, citations.sumOf { it.excerpt.length })
     }
+
+    override fun readDocument(
+        source: KnowledgeSourceRef,
+        access: KnowledgeAccessContext
+    ): KnowledgeDocumentSnapshot? = store.read { emptyList() }
+        .firstOrNull { document ->
+            document.projectId == access.projectId && document.source == source &&
+                document.classification.ordinal <= access.maximumClassification.ordinal
+        }
+        ?.let { document ->
+            KnowledgeDocumentSnapshot(
+                projectId = document.projectId,
+                source = document.source,
+                title = document.title,
+                sourceUri = document.sourceUri,
+                mediaType = document.mediaType,
+                text = document.text,
+                classification = document.classification,
+                importedAt = document.importedAt
+            )
+        }
 
     private fun citation(ranked: RankedDocument, budget: Int): KnowledgeCitation? {
         val document = ranked.document

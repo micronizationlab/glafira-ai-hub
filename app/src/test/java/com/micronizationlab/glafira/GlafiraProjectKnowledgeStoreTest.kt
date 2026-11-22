@@ -54,6 +54,42 @@ class GlafiraProjectKnowledgeStoreTest {
         )
     }
 
+    @Test fun exactStoredVersionOpensOnlyInsideAuthorizedProjectAndClassification() {
+        val store = repository()
+        val source = KnowledgeSourceRef(KnowledgeSourceIdentifier("versioned-policy"), 7)
+        val body = "Approved source fact from immutable imported version seven."
+        assertEquals(
+            KnowledgeImportResult.Stored(source),
+            store.importDocument(
+                document(
+                    source = source,
+                    title = "Versioned policy",
+                    sourceUri = "content://mutable/provider/path",
+                    text = body,
+                    classification = CoreDataClassification.CONFIDENTIAL
+                ),
+                projectOne
+            )
+        )
+
+        val snapshot = store.readDocument(source, projectOne)!!
+        assertEquals(source, snapshot.source)
+        assertEquals("Versioned policy", snapshot.title)
+        assertEquals(body, snapshot.text)
+        assertEquals(CoreDataClassification.CONFIDENTIAL, snapshot.classification)
+        assertEquals(
+            null,
+            store.readDocument(source, projectOne.copy(projectId = ProjectIdentifier("project-2")))
+        )
+        assertEquals(
+            null,
+            store.readDocument(
+                source,
+                projectOne.copy(maximumClassification = CoreDataClassification.INTERNAL)
+            )
+        )
+    }
+
     @Test fun ownerCanExcludeAContextSourceAndClassificationIsFailClosed() {
         val store = repository()
         val publicSource = KnowledgeSourceRef(KnowledgeSourceIdentifier("public"), 1)

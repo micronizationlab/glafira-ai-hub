@@ -26,6 +26,8 @@ class AnswerCitationUiSmokeTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val operationId = "ui-citation-${UUID.randomUUID()}"
+        val sourceId = "ui-document-${UUID.randomUUID()}"
+        val sourceBody = "EXACT_STORED_SOURCE_VERSION_${UUID.randomUUID()}"
         val historyKey = "default_ГЛАФИРА"
         val historyFile = File(context.filesDir, "chat_$historyKey.json")
         val historyExisted = historyFile.exists() || File(historyFile.path + ".bak").exists()
@@ -34,6 +36,13 @@ class AnswerCitationUiSmokeTest {
         val previousProviderKey = loadProviderKey(context, ProviderId.GIGACHAT)
         val manifestStore = GlafiraContextCitationManifestRuntime.store(context)
         val manifestAccess = ContextCitationAccess(ProjectIdentifier("default"), "local-owner")
+        val knowledgeAccess = KnowledgeAccessContext(
+            actorId = "local-owner",
+            projectId = ProjectIdentifier("default"),
+            maximumClassification = CoreDataClassification.RESTRICTED
+        )
+        val knowledgeSource = KnowledgeSourceRef(KnowledgeSourceIdentifier(sourceId), 7)
+        val knowledgeRepository = GlafiraProjectKnowledgeRuntime.repository(context)
         var scenario: ActivityScenario<MainActivity>? = null
         try {
             assertTrue(
@@ -41,6 +50,21 @@ class AnswerCitationUiSmokeTest {
                     .edit().putBoolean("biometric_enabled", false).commit()
             )
             assertTrue(saveProviderKey(context, ProviderId.GIGACHAT, "instrumentation-ui-placeholder"))
+            assertTrue(
+                knowledgeRepository.importDocument(
+                    KnowledgeDocumentInput(
+                        projectId = knowledgeAccess.projectId,
+                        source = knowledgeSource,
+                        title = "UI citation document",
+                        sourceUri = "content://test/ui-document",
+                        mediaType = "text/plain",
+                        content = sourceBody.toByteArray(),
+                        classification = CoreDataClassification.CONFIDENTIAL,
+                        importedAt = Instant.parse("2026-11-21T04:59:00Z")
+                    ),
+                    knowledgeAccess
+                ) is KnowledgeImportResult.Stored
+            )
             saveHistory(context, historyKey, listOf(
                 Msg("Покажи источники", true, "08:00", "2026-11-21", operationId),
                 Msg("Ответ с проверяемыми источниками", false, "08:01", "2026-11-21", operationId)
@@ -53,7 +77,7 @@ class AnswerCitationUiSmokeTest {
                         recipient = "GigaChat",
                         createdAt = Instant.parse("2026-11-21T05:00:00Z"),
                         documents = listOf(DocumentCitationReference(
-                            sourceId = "ui-document",
+                            sourceId = sourceId,
                             version = 7,
                             title = "UI citation document",
                             sourceUri = "content://test/ui-document",
@@ -91,6 +115,14 @@ class AnswerCitationUiSmokeTest {
                 .assertExists("Exact chat citation is not visible")
             compose.onNodeWithText(operationId, substring = true)
                 .assertExists("Operation identity is not visible")
+            compose.onNodeWithText("Документы ниже подтверждают использованные факты", substring = true)
+                .assertExists("Fact versus model-inference boundary is not visible")
+            compose.onNodeWithContentDescription("Открыть источник UI citation document")
+                .performClick()
+            compose.onNodeWithText(sourceBody)
+                .assertExists("Exact encrypted source version was not opened in-app")
+            compose.onNodeWithText(sourceId, substring = true)
+                .assertExists("Source version identity is absent from the opened snapshot")
         } finally {
             scenario?.close()
             manifestStore.delete(operationId, manifestAccess)

@@ -618,6 +618,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     var approvedKnowledgeSources by remember(project.id) { mutableStateOf(emptySet<KnowledgeSourceRef>()) }
     var approvedChatSources by remember(project.id) { mutableStateOf(emptySet<ChatContextSourceRef>()) }
     var visibleCitationManifest by remember { mutableStateOf<ContextCitationManifest?>(null) }
+    var visibleKnowledgeDocument by remember(project.id) { mutableStateOf<KnowledgeDocumentSnapshot?>(null) }
 
     val recipientName = if (agent.n == "ГЛАФИРА") {
         loadGlafiraPrimaryProvider(context).displayName
@@ -631,14 +632,19 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
     )
     val citationAccess = ContextCitationAccess(ProjectIdentifier(project.id), "local-owner")
 
-    fun openCitationSource(sourceUri: String) {
-        val opened = runCatching {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, android.net.Uri.parse(sourceUri))
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            )
-        }.isSuccess
-        if (!opened) ToastHelper.short(context, "Источник больше недоступен на устройстве")
+    fun openCitationSource(citation: DocumentCitationReference) {
+        val source = runCatching {
+            KnowledgeSourceRef(KnowledgeSourceIdentifier(citation.sourceId), citation.version)
+        }.getOrNull()
+        val snapshot = source?.let { knowledgeRepository.readDocument(it, knowledgeAccess) }
+        if (snapshot == null || snapshot.title != citation.title ||
+            snapshot.sourceUri != citation.sourceUri ||
+            snapshot.classification != citation.classification
+        ) {
+            ToastHelper.short(context, "Зафиксированная версия источника недоступна в этом проекте")
+            return
+        }
+        visibleKnowledgeDocument = snapshot
     }
 
     fun loadKnowledgePreview() {
@@ -1045,6 +1051,11 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                 Column(Modifier.heightIn(max = 520.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                     Text("Получатель: ${manifest.recipient}", fontSize = 11.sp, color = Tx)
                     Text("Операция: ${manifest.operationId}", fontSize = 9.sp, color = Tx)
+                    Text(
+                        "Документы ниже подтверждают использованные факты. Остальной текст ответа может быть выводом модели.",
+                        fontSize = 10.sp,
+                        color = Tx
+                    )
                     if (manifest.documents.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
                         Text("Документы", fontWeight = FontWeight.Bold)
@@ -1055,7 +1066,7 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 color = Gr,
                                 modifier = Modifier
                                     .semantics { contentDescription = "Открыть источник ${citation.title}" }
-                                    .clickable { openCitationSource(citation.sourceUri) }
+                                    .clickable { openCitationSource(citation) }
                                     .padding(vertical = 5.dp)
                             )
                         }
@@ -1077,6 +1088,42 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
             },
             confirmButton = {
                 TextButton(onClick = { visibleCitationManifest = null }) { Text("ЗАКРЫТЬ") }
+            }
+        )
+    }
+
+    visibleKnowledgeDocument?.let { document ->
+        AlertDialog(
+            onDismissRequest = { visibleKnowledgeDocument = null },
+            title = { Text(document.title) },
+            text = {
+                Column(
+                    Modifier.heightIn(max = 520.dp)
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                ) {
+                    Text(
+                        "ИСТОЧНИК · ${document.source.sourceId.value} · v${document.source.version}",
+                        fontSize = 10.sp,
+                        color = Gr,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "${document.classification} · импорт ${document.importedAt}",
+                        fontSize = 9.sp,
+                        color = Tx
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(document.text, fontSize = 12.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Показана сохранённая зашифрованная версия, использованная в ответе; внешний файл мог измениться.",
+                        fontSize = 10.sp,
+                        color = Tx
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { visibleKnowledgeDocument = null }) { Text("ЗАКРЫТЬ") }
             }
         )
     }
