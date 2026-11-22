@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -25,6 +26,9 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     val context = LocalContext.current
     val owner = remember(context) { GlafiraCoreRuntimeOwner.get(context) }
     var tasks by remember { mutableStateOf(owner.taskStore.listTasks(limit = 200)) }
+    var approvals by remember {
+        mutableStateOf(owner.pendingOwnerApprovals().filter { it.task.projectId == currentProject.id })
+    }
     val projectTasks = tasks.filter { it.projectId == currentProject.id }
     var showAddDialog by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
@@ -34,6 +38,46 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
 
     fun refresh() {
         tasks = owner.taskStore.listTasks(limit = 200)
+        approvals = owner.pendingOwnerApprovals().filter { it.task.projectId == currentProject.id }
+    }
+
+    fun authenticateApproval(approval: GlafiraPendingActionApproval, approve: Boolean) {
+        val activity = context as? FragmentActivity
+        if (activity == null) {
+            message = "Не удалось открыть подтверждение владельца из текущего окна."
+            return
+        }
+        showBiometricPromptWithResult(
+            activity = activity,
+            onSuccess = { authenticationResult ->
+                val session = GlafiraCoreOwnerSession.fromAuthentication(authenticationResult)
+                val result = if (approve) {
+                    owner.approveOwnerAction(approval.task.taskId, approval.requestedScopes, session)
+                } else {
+                    owner.rejectOwnerAction(approval.task.taskId, session)
+                }
+                message = when (result) {
+                    GlafiraCoreOwnerApprovalMutation.APPROVED ->
+                        "Подтверждено. Core разрешил только показанные действие и scopes."
+                    GlafiraCoreOwnerApprovalMutation.REJECTED ->
+                        "Действие отклонено. Core не будет его выполнять."
+                    GlafiraCoreOwnerApprovalMutation.OWNER_AUTHENTICATION_REQUIRED ->
+                        "Подтверждение владельца не принято. Повтори биометрическую проверку."
+                    GlafiraCoreOwnerApprovalMutation.INVALID_SCOPE_SELECTION ->
+                        "Набор разрешений не совпал с зарегистрированными scopes. Действие оставлено без разрешения."
+                    GlafiraCoreOwnerApprovalMutation.NOT_FOUND ->
+                        "Запрос подтверждения истёк или больше не существует."
+                    GlafiraCoreOwnerApprovalMutation.ALREADY_DECIDED ->
+                        "Этот запрос уже обработан или истёк."
+                    GlafiraCoreOwnerApprovalMutation.STORAGE_ERROR ->
+                        "Не удалось безопасно сохранить решение владельца."
+                }
+                refresh()
+            },
+            onError = { error ->
+                message = "Биометрическое подтверждение отменено: $error"
+            }
+        )
     }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
@@ -53,8 +97,57 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
             Button(onClick = { showAddDialog = true }) { Text("＋ ЗАДАЧА") }
         }
         message?.let {
-            Text(it, color = Tx, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
+            Text(it, color = Tx, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
         }
+
+        if (approvals.isNotEmpty()) {
+            Text(
+                "ТРЕБУЮТ ПОДТВЕРЖДЕНИЯ ВЛАДЕЛЬЦА",
+                color = Red,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            LazyColumn(
+                Modifier.fillMaxWidth().heightIn(max = 300.dp).padding(horizontal = 10.dp)
+            ) {
+                items(approvals, key = { it.task.taskId }) { approval ->
+                    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(approval.actionSummary.ifBlank { approval.task.taskType }, color = Gr, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Инструмент: ${approval.task.taskType}", color = Tx, fontSize = 10.sp)
+                            Text("Детали действия:", color = Tx, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                            Text(
+                                approval.reviewDetails.ifBlank { "Дополнительные безопасно отображаемые детали отсутствуют." },
+                                color = Color(0xFF202020),
+                                fontSize = 10.sp
+                            )
+                            Text("Запрашиваемые права:", color = Tx, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                            approval.requestedScopes.sorted().forEach { scope ->
+                                Text("• $scope", color = Color(0xFF202020), fontSize = 10.sp)
+                            }
+                            Text(
+                                "Решение относится только к этому task ID и точному хешу действия. Для подтверждения потребуется новая биометрическая проверка.",
+                                color = Tx,
+                                fontSize = 10.sp
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { authenticateApproval(approval, true) },
+                                    enabled = approval.requestedScopes.isNotEmpty(),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("ПОДТВЕРДИТЬ") }
+                                OutlinedButton(
+                                    onClick = { authenticateApproval(approval, false) },
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("ОТКЛОНИТЬ") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (projectTasks.isEmpty()) {
             Column(Modifier.fillMaxWidth().padding(24.dp)) {
                 Text("Очередь пока пуста.", color = Tx)
