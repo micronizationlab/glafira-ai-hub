@@ -6,13 +6,16 @@ import android.media.SoundPool
 
 /**
  * ICQ-style event sounds bundled in res/raw.
- * The sound API includes hooks for events that will be enabled when
- * chat requests and file transfers are implemented in the app.
+ *
+ * SoundPool loading is asynchronous. Events requested before their sample is
+ * ready are queued briefly instead of being silently discarded.
  */
 object SoundHelper {
     private var soundPool: SoundPool? = null
     private val soundIds = mutableMapOf<String, Int>()
     private val loadedIds = mutableSetOf<Int>()
+    private val failedIds = mutableSetOf<Int>()
+    private val pendingEvents = mutableListOf<String>()
     private var enabled = true
     private var volume = 1f
 
@@ -24,7 +27,9 @@ object SoundHelper {
         if (soundPool != null) return
 
         val attributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            // Use the media stream so the user's normal playback volume controls
+            // these in-app effects consistently across OEM audio policies.
+            .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
@@ -35,7 +40,21 @@ object SoundHelper {
 
         pool.setOnLoadCompleteListener { _, sampleId, status ->
             synchronized(this) {
-                if (status == 0) loadedIds.add(sampleId)
+                if (status == 0) {
+                    loadedIds.add(sampleId)
+                    val event = soundIds.entries.firstOrNull { it.value == sampleId }?.key
+                    if (event != null) {
+                        val queued = pendingEvents.count { it == event }
+                        repeat(queued) {
+                            pendingEvents.remove(event)
+                            playLoaded(event)
+                        }
+                    }
+                } else {
+                    failedIds.add(sampleId)
+                    val event = soundIds.entries.firstOrNull { it.value == sampleId }?.key
+                    if (event != null) pendingEvents.removeAll { it == event }
+                }
             }
         }
 
@@ -50,6 +69,7 @@ object SoundHelper {
     @Synchronized
     fun setEnabled(context: Context, value: Boolean) {
         enabled = value
+        if (!value) pendingEvents.clear()
         context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
             .edit().putBoolean("sound_effects_enabled", value).apply()
     }
@@ -61,19 +81,32 @@ object SoundHelper {
             .edit().putFloat("sound_effects_volume", volume).apply()
     }
 
-    fun playIncoming() = play("incoming")
-    fun playOnline() = play("online")
-    fun playSent() = play("sent")
-    fun playChatRequest() = play("chat")
-    fun playIncomingFile() = play("file")
+    fun playIncoming() { play("incoming") }
+    fun playOnline() { play("online") }
+    fun playSent() { play("sent") }
+    fun playChatRequest() { play("chat") }
+    fun playIncomingFile() { play("file") }
+
+    /** Plays the bundled online chime from the Settings sound-test action. */
+    fun playTest(): Boolean = play("online")
 
     @Synchronized
-    private fun play(event: String) {
-        if (!enabled) return
-        val pool = soundPool ?: return
-        val sampleId = soundIds[event] ?: return
-        if (sampleId !in loadedIds) return
-        pool.play(sampleId, volume, volume, 1, 0, 1f)
+    private fun play(event: String): Boolean {
+        if (!enabled || soundPool == null) return false
+        val sampleId = soundIds[event] ?: return false
+        if (sampleId in failedIds) return false
+        if (sampleId !in loadedIds) {
+            if (pendingEvents.size < 8) pendingEvents.add(event)
+            return true
+        }
+        return playLoaded(event)
+    }
+
+    private fun playLoaded(event: String): Boolean {
+        val pool = soundPool ?: return false
+        val sampleId = soundIds[event] ?: return false
+        if (sampleId !in loadedIds || !enabled) return false
+        return pool.play(sampleId, volume, volume, 1, 0, 1f) != 0
     }
 
     @Synchronized
@@ -82,5 +115,7 @@ object SoundHelper {
         soundPool = null
         soundIds.clear()
         loadedIds.clear()
+        failedIds.clear()
+        pendingEvents.clear()
     }
 }
