@@ -134,6 +134,7 @@ internal class GitHubRepositoryOperations(
     ): GitHubFileWriteResult = withContext(Dispatchers.IO) {
         requireRepository(repository)
         requireSafePath(path)
+        requireWritablePath(path)
         requireWritableBranch(branch)
         require(message.isNotBlank() && message.length <= 200) { "Invalid GitHub commit message." }
         val bytes = content.toByteArray(Charsets.UTF_8)
@@ -290,6 +291,33 @@ internal class GitHubRepositoryOperations(
             }
             require(path.split('/').none { it.isBlank() || it == "." || it == ".." }) {
                 "Invalid GitHub file path."
+            }
+        }
+
+        /**
+         * Prevent the autonomous coding API from changing the repository's own execution,
+         * CI, dependency-resolution or build-bootstrap controls. Those changes require a
+         * separately reviewed, owner-authored change until a dedicated approval workflow exists.
+         */
+        internal fun requireWritablePath(path: String) {
+            requireSafePath(path)
+            val normalized = path.lowercase(java.util.Locale.ROOT)
+            val segments = normalized.split('/')
+            val fileName = segments.last()
+            val blocked = normalized == ".gitmodules" ||
+                normalized == "gradle.properties" ||
+                normalized == "gradle/wrapper/gradle-wrapper.properties" ||
+                normalized == "gradle/libs.versions.toml" ||
+                normalized == "build.gradle" || normalized == "build.gradle.kts" ||
+                normalized == "settings.gradle" || normalized == "settings.gradle.kts" ||
+                normalized == "gradlew" || normalized == "gradlew.bat" ||
+                segments.firstOrNull() in setOf(".github", ".gitlab", ".circleci") ||
+                segments.any { it == "gradle" && segments.indexOf(it) < segments.lastIndex && fileName.startsWith("gradle-wrapper") } ||
+                fileName.endsWith(".gradle") || fileName.endsWith(".gradle.kts") ||
+                fileName == "jenkinsfile" || fileName == "azure-pipelines.yml" ||
+                fileName == "dockerfile" || fileName.startsWith("docker-compose")
+            require(!blocked) {
+                "GLAFIRA GitHub coding API cannot modify CI, build bootstrap, dependency or execution-control files without a separate owner-reviewed workflow."
             }
         }
 
