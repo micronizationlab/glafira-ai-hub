@@ -13,6 +13,23 @@ The command **“работаем над программой 150”** must resu
 
 Defect fixes reported by the owner remain parallel P0 work, especially Android microphone/TTS, key masking, voice-input crash, image picker and backup folder picker. Other workstreams continue only where they do not delay GitHub connectivity or defect resolution. No workstream may claim completion without code plus relevant tests/evidence; skipped CI is not a pass.
 
+### Ten active workstreams — current execution board
+
+| # | Workstream | Current evidence / status | Next gate |
+|---|---|---|---|
+| 1 | Android ↔ GitHub | P0. PR #404 adds Device Flow, Keystore token storage, authenticated profile/installations/repository read checks, and refresh support. JVM/contracts passed on head `20d2fe778ee666dbc89142187f9a07a4d7765f56`; emulator and APK jobs still running at refresh. | Complete exact-head CI; owner installs app on only `glafira-ai-hub`; test on Realme 8i; then branch-scoped file/issue/PR/check operations and Core task dispatch. |
+| 2 | Android defects | PR #399 (mask provider keys) and #400 (event sound) have successful JVM, APK and emulator gates. PR #402 (auto-speech operation-ID fix) passed JVM/APK but emulator failed only at backup test #371. Issues #398/#401 remain open. | Resolve #371 gate; obtain Realme 8i Logcat for microphone/voice/image crashes; owner smoke-test each APK. |
+| 3 | Core / owner authority | Owner fencing #347 and approval generation fencing #380 are implemented but review-gated; remaining durable failure/ACK/trace tasks remain open. | Preserve exact owner-generation fencing; continue failure injection, durable result outbox, idempotency and recovery. |
+| 4 | Backup & Recovery | Provider readback/restore work remains open under #387; manual-backup accessibility failure repeatedly reproduced under #371. | Fix real Button accessibility semantics; rerun full 115+ emulator suite; then validate backup readback/restore. |
+| 5 | Android ↔ Windows Bridge | Protocol work tracked by #392/#393; physical pairing UI was absent in owner's device report #398. | Finish TLS pinning, ticket/replay/revocation, durable ingress/outbox/ACK and real-device pairing before exposing controls. |
+| 6 | Windows Desktop Hub | HTTPS host, TLS certificate, pairing tickets and Agent registry exist; Core↔Hub task outbox/inbox and lifecycle/acceptance remain incomplete. | Complete Core-owned task handoff, restart reconciliation, diagnostics and Windows CI. |
+| 7 | Windows Agent | Typed lease journal, polling and registry lifecycle are present; first allowlisted read-only handlers (step 76) remain open. | Implement only bounded read-only handlers first; unknown task types fail closed; add Windows tests. |
+| 8 | iOS | Selected Swift package/simulator lanes passed in PR #390; full cross-platform acceptance remains open. | Keep non-conflicting conformance work; do not displace Android GitHub P0. |
+| 9 | Provider / policy | Default-deny provider/project/purpose/data-classification policy is tracked by #394; provider adapters remain individually permissioned. | Enforce policy at execution boundary and add redaction/permission regression tests. |
+| 10 | UX / roles / release | Shared ICQ-2003 + modern macOS design work remains in #373; release gates and device smoke tests remain incomplete. | Defer non-blocking polish and agent expansion until GitHub, defects, Core, Backup and Bridge gates are stable. |
+
+**Coordination rule:** Workstreams may proceed in parallel only with file/path reservations and no conflicting writes. The GitHub integration coordinator owns cross-workstream scheduling; every task must end with commit SHA, test evidence, and Core ACK. This table is a status snapshot, not a claim that deferred items are complete.
+
 ## Reframed delivery strategy
 
 - Two independently useful Core installations (Android and Windows Desktop), each authoritative only for tasks it owns. Every cross-Core task has exactly one owner Core and monotonic ownership generation; no global shared SQLite queue or dual-writable replica. Bridge is authenticated transport, not authority. See `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md`.
