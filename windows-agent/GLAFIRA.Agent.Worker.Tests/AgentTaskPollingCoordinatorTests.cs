@@ -273,6 +273,7 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
         var executor = new AgentTaskExecutor(registry, state, maxParallelTasks: 1);
         return new AgentTaskPollingCoordinator(
             state, registry, executor, transport, journal,
+            new AgentResultArtifactOutbox(new EmptyArtifactStore(), new RejectingArtifactTransport()),
             renewInterval: TimeSpan.FromSeconds(5));
     }
 
@@ -298,7 +299,8 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
     {
         var now = DateTimeOffset.UtcNow;
         return new AgentTaskLease(
-            "task-001", "project-001", "web.research", "idem-task-001",
+            "task-001", "project-001", "windows-core-0001", 3,
+            "web.research", "idem-task-001",
             "payload://task-001", new string('a', 64), "ReadOnly", null,
             now.AddMinutes(2).ToUnixTimeMilliseconds(),
             "parent-001", "subtask-001", "Research", "Read the supplied material",
@@ -420,4 +422,24 @@ public sealed class AgentTaskPollingCoordinatorTests : IDisposable
     }
 
     private sealed record RecordedUpdate(string State, string ResultJson, string ErrorCode);
+
+    private sealed class EmptyArtifactStore : IAgentResultArtifactStore
+    {
+        public Task WriteAsync(AgentResultArtifactMetadata metadata, ReadOnlyMemory<byte> payload,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<AgentResultArtifact?> ReadAsync(string artifactId, CancellationToken cancellationToken) =>
+            Task.FromResult<AgentResultArtifact?>(null);
+        public Task<IReadOnlyList<string>> ListPendingArtifactIdsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+        public Task<bool> DeleteAsync(string artifactId, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+    }
+
+    private sealed class RejectingArtifactTransport : IAgentResultArtifactTransport
+    {
+        public Task<AgentTaskArtifactAck> UploadTaskArtifactAsync(
+            AgentEnrollmentCredential credential, AgentResultArtifact artifact,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Generic coordinator tests must not upload artifacts.");
+    }
 }

@@ -17,6 +17,7 @@ public sealed class AgentTaskPollingCoordinator
     private readonly AgentTaskExecutor _executor;
     private readonly IAgentTaskTransport _transport;
     private readonly IAgentExecutionJournal _journal;
+    private readonly AgentResultArtifactOutbox _artifactOutbox;
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _renewInterval;
 
@@ -26,6 +27,7 @@ public sealed class AgentTaskPollingCoordinator
         AgentTaskExecutor executor,
         IAgentTaskTransport transport,
         IAgentExecutionJournal journal,
+        AgentResultArtifactOutbox artifactOutbox,
         TimeProvider? timeProvider = null,
         TimeSpan? renewInterval = null)
     {
@@ -34,6 +36,7 @@ public sealed class AgentTaskPollingCoordinator
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
+        _artifactOutbox = artifactOutbox ?? throw new ArgumentNullException(nameof(artifactOutbox));
         _timeProvider = timeProvider ?? TimeProvider.System;
         _renewInterval = renewInterval ?? TimeSpan.FromSeconds(30);
         if (_renewInterval < TimeSpan.FromSeconds(5) || _renewInterval > TimeSpan.FromMinutes(1))
@@ -254,6 +257,14 @@ public sealed class AgentTaskPollingCoordinator
         var snapshot = await _journal.LoadAsync(cancellationToken).ConfigureAwait(false);
         foreach (var pending in snapshot.PendingResults.OrderBy(item => item.Lease.LeaseExpiresAtEpochMs))
         {
+            var requiredArtifact = RequiredArtifact(pending);
+            if (requiredArtifact is not null)
+            {
+                await _artifactOutbox.FlushRequiredAsync(
+                    credential, requiredArtifact.Value.ArtifactId,
+                    requiredArtifact.Value.Sha256, cancellationToken).ConfigureAwait(false);
+            }
+
             AgentTaskUpdateAck ack;
             try
             {
@@ -279,5 +290,38 @@ public sealed class AgentTaskPollingCoordinator
                 pending.Lease.TaskId, pending.Lease.LeaseId, pending.Lease.FencingToken,
                 cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private static (string ArtifactId, string Sha256)? RequiredArtifact(AgentPendingResult pending)
+    {
+        if (pending.State != "SUCCEEDED") return null;
+        string? resultText;
+        AgentTaskResult? result;
+        try
+        {
+            resultText = JsonSerializer.Deserialize<string>(pending.ResultJson);
+            result = resultText is null ? null : JsonSerializer.Deserialize<AgentTaskResult>(resultText);
+        }
+        catch (JsonException error)
+        {
+            throw new InvalidDataException("AGENT_PENDING_RESULT_JSON_INVALID", error);
+        }
+
+        if (result is null || !StringComparer.Ordinal.Equals(result.TaskId, pending.Lease.TaskId) ||
+            !StringComparer.Ordinal.Equals(result.Outcome, "SUCCEEDED"))
+            throw new InvalidDataException("AGENT_PENDING_RESULT_IDENTITY_INVALID");
+        if (result.ResultRef is null ||
+            !result.ResultRef.StartsWith(
+                AgentDiagnosticsSnapshotTaskHandler.ArtifactResultReferencePrefix,
+                StringComparison.Ordinal))
+            return null;
+
+        var artifactId = result.ResultRef[
+            AgentDiagnosticsSnapshotTaskHandler.ArtifactResultReferencePrefix.Length..];
+        AgentResultArtifactPolicy.ValidateArtifactId(artifactId);
+        if (result.ResultSha256 is null || result.ResultSha256.Length != 64 ||
+            result.ResultSha256.Any(character => character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+            throw new InvalidDataException("AGENT_PENDING_ARTIFACT_DIGEST_INVALID");
+        return (artifactId, result.ResultSha256);
     }
 }

@@ -87,6 +87,27 @@
   },
   {
     "schemaVersion": 1,
+    "revocationId": "revoke-001",
+    "enrollmentId": "enroll-001",
+    "agentId": "agent-00001",
+    "requestedByDeviceId": "device-0001",
+    "requestedAt": "2026-11-19T20:02:00Z",
+    "reasonCode": "OWNER_REQUEST"
+  },
+  {
+    "schemaVersion": 1,
+    "revocationId": "revoke-001",
+    "enrollmentId": "enroll-001",
+    "agentId": "agent-00001",
+    "status": "REVOKED",
+    "decidedAt": "2026-11-19T20:02:01Z",
+    "revokedAt": "2026-11-19T20:02:01Z",
+    "lastAcceptedFencingToken": 7,
+    "activeLeaseDisposition": "OUTCOME_UNKNOWN",
+    "requiresOwnerReconciliation": true
+  },
+  {
+    "schemaVersion": 1,
     "leaseId": "lease-00001",
     "taskId": "task-000001",
     "agentId": "agent-00001",

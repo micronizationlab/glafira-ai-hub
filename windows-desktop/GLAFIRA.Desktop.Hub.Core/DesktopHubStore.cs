@@ -1,5 +1,7 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using GLAFIRA.Desktop.Core.Ownership;
 using Microsoft.Data.Sqlite;
 
 namespace GLAFIRA.Desktop.Hub.Core;
@@ -263,6 +265,9 @@ public sealed class DesktopHubStore
         ArgumentNullException.ThrowIfNull(task);
         ValidateIdentifier(task.TaskId, nameof(task.TaskId));
         ValidateIdentifier(task.ProjectId, nameof(task.ProjectId));
+        ValidateOwnerCoreId(task.OwnerCoreId, nameof(task.OwnerCoreId));
+        if (task.OwnerGeneration <= 0)
+            throw new ArgumentOutOfRangeException(nameof(task.OwnerGeneration));
         ValidateIdentifier(task.IdempotencyKey, nameof(task.IdempotencyKey));
         ValidateIdentifier(task.TaskType, nameof(task.TaskType));
         ArgumentException.ThrowIfNullOrWhiteSpace(task.PayloadRef);
@@ -284,16 +289,20 @@ public sealed class DesktopHubStore
             command.Transaction = transaction;
             command.CommandText = """
                 INSERT INTO Tasks(
-                    task_id, project_id, idempotency_key, task_type, payload_ref, payload_sha256,
+                    task_id, project_id, owner_core_id, owner_generation,
+                    idempotency_key, task_type, payload_ref, payload_sha256,
                     required_capabilities_json, effect_risk, approval_ref, priority, state,
                     created_at_ms, attempts, fencing_token)
                 VALUES(
-                    $task, $project, $idempotency, $type, $payload, $sha,
+                    $task, $project, $owner, $generation,
+                    $idempotency, $type, $payload, $sha,
                     $capabilities, $risk, $approval, $priority, 'Queued',
                     $created, 0, 0);
                 """;
             command.Parameters.AddWithValue("$task", task.TaskId);
             command.Parameters.AddWithValue("$project", task.ProjectId);
+            command.Parameters.AddWithValue("$owner", task.OwnerCoreId);
+            command.Parameters.AddWithValue("$generation", task.OwnerGeneration);
             command.Parameters.AddWithValue("$idempotency", task.IdempotencyKey);
             command.Parameters.AddWithValue("$type", task.TaskType);
             command.Parameters.AddWithValue("$payload", task.PayloadRef);
@@ -318,6 +327,211 @@ public sealed class DesktopHubStore
         AppendTaskEvent(connection, transaction, task.TaskId, HubTaskState.Queued, now, null, null, null, "TASK_ENQUEUED");
         transaction.Commit();
     }
+
+    /// <summary>Returns the exact immutable task fields that must be covered by an ownership signature.</summary>
+    public HubOwnershipTransferSource? GetQueuedOwnershipTransferSource(string taskId)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT task_id, project_id, owner_core_id, owner_generation, fencing_token,
+                   payload_sha256, idempotency_key, effect_risk, approval_ref
+            FROM Tasks WHERE task_id = $task AND state = 'Queued';
+            """;
+        command.Parameters.AddWithValue("$task", taskId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new HubOwnershipTransferSource(
+            reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3),
+            reader.GetInt64(4), reader.GetString(5), reader.GetString(6),
+            (HubTaskEffectRisk)reader.GetInt32(7), reader.IsDBNull(8) ? null : reader.GetString(8));
+    }
+
+    /// <summary>
+    /// Verifies and atomically applies a Desktop Core signed ownership transition.
+    /// The trusted public key is supplied by the local installation identity, never by the envelope.
+    /// </summary>
+    public bool ApplySignedQueuedTaskOwnershipTransfer(
+        SignedOwnershipTransferEnvelope envelope,
+        ReadOnlySpan<byte> trustedOldOwnerPublicKey,
+        DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        var payload = envelope.Payload;
+        byte[] signature;
+        try
+        {
+            signature = Convert.FromBase64String(envelope.SignatureBase64);
+        }
+        catch (FormatException error)
+        {
+            throw new ArgumentException("OWNERSHIP_TRANSFER_SIGNATURE_ENCODING_INVALID", nameof(envelope), error);
+        }
+        if (signature.Length != 64 ||
+            !StringComparer.Ordinal.Equals(Convert.ToBase64String(signature), envelope.SignatureBase64) ||
+            !CoreOwnershipTransferCryptography.Verify(payload, trustedOldOwnerPublicKey, signature))
+            throw new InvalidOperationException("OWNERSHIP_TRANSFER_SIGNATURE_INVALID");
+
+        var issuedAt = DateTimeOffset.Parse(payload.IssuedAt, System.Globalization.CultureInfo.InvariantCulture);
+        var expiresAt = DateTimeOffset.Parse(payload.ExpiresAt, System.Globalization.CultureInfo.InvariantCulture);
+        if (now < issuedAt || now >= expiresAt)
+            throw new InvalidOperationException("OWNERSHIP_TRANSFER_OUTSIDE_VALIDITY_WINDOW");
+
+        var envelopeJson = envelope.ToWireJson();
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+
+        using (var replay = connection.CreateCommand())
+        {
+            replay.Transaction = transaction;
+            replay.CommandText = "SELECT envelope_json FROM OwnershipTransfers WHERE transfer_id = $transfer;";
+            replay.Parameters.AddWithValue("$transfer", payload.TransferId);
+            if (replay.ExecuteScalar() is string existing)
+            {
+                if (!StringComparer.Ordinal.Equals(existing, envelopeJson))
+                    throw new InvalidOperationException("OWNERSHIP_TRANSFER_IDEMPOTENCY_CONFLICT");
+                transaction.Commit();
+                return true;
+            }
+        }
+
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText = """
+                UPDATE Tasks
+                SET owner_core_id = $newOwner, owner_generation = $newGeneration
+                WHERE task_id = $task AND project_id = $project AND state = 'Queued'
+                  AND owner_core_id = $oldOwner AND owner_generation = $oldGeneration
+                  AND fencing_token = $stateVersion AND payload_sha256 = $payloadSha
+                  AND idempotency_key = $idempotency AND effect_risk = $risk
+                  AND (($approval IS NULL AND approval_ref IS NULL) OR approval_ref = $approval);
+                """;
+            update.Parameters.AddWithValue("$newOwner", payload.NewOwnerCoreId);
+            update.Parameters.AddWithValue("$newGeneration", payload.NewOwnerGeneration);
+            update.Parameters.AddWithValue("$task", payload.TaskId);
+            update.Parameters.AddWithValue("$project", payload.ProjectId);
+            update.Parameters.AddWithValue("$oldOwner", payload.OldOwnerCoreId);
+            update.Parameters.AddWithValue("$oldGeneration", payload.OldOwnerGeneration);
+            update.Parameters.AddWithValue("$stateVersion", payload.StateVersion);
+            update.Parameters.AddWithValue("$payloadSha", payload.PayloadSha256);
+            update.Parameters.AddWithValue("$idempotency", payload.IdempotencyKey);
+            update.Parameters.AddWithValue("$risk", (int)ParseOwnershipRisk(payload.EffectRisk));
+            update.Parameters.AddWithValue("$approval", (object?)payload.ApprovalRef ?? DBNull.Value);
+            if (update.ExecuteNonQuery() != 1)
+            {
+                transaction.Rollback();
+                return false;
+            }
+        }
+
+        using (var insert = connection.CreateCommand())
+        {
+            insert.Transaction = transaction;
+            insert.CommandText = """
+                INSERT INTO OwnershipTransfers(
+                    transfer_id, nonce, task_id, project_id,
+                    old_owner_core_id, new_owner_core_id,
+                    old_owner_generation, new_owner_generation,
+                    state_version, issued_at_ms, expires_at_ms, envelope_json)
+                VALUES(
+                    $transfer, $nonce, $task, $project,
+                    $oldOwner, $newOwner, $oldGeneration, $newGeneration,
+                    $stateVersion, $issued, $expires, $envelope);
+                """;
+            insert.Parameters.AddWithValue("$transfer", payload.TransferId);
+            insert.Parameters.AddWithValue("$nonce", payload.Nonce);
+            insert.Parameters.AddWithValue("$task", payload.TaskId);
+            insert.Parameters.AddWithValue("$project", payload.ProjectId);
+            insert.Parameters.AddWithValue("$oldOwner", payload.OldOwnerCoreId);
+            insert.Parameters.AddWithValue("$newOwner", payload.NewOwnerCoreId);
+            insert.Parameters.AddWithValue("$oldGeneration", payload.OldOwnerGeneration);
+            insert.Parameters.AddWithValue("$newGeneration", payload.NewOwnerGeneration);
+            insert.Parameters.AddWithValue("$stateVersion", payload.StateVersion);
+            insert.Parameters.AddWithValue("$issued", issuedAt.ToUnixTimeMilliseconds());
+            insert.Parameters.AddWithValue("$expires", expiresAt.ToUnixTimeMilliseconds());
+            insert.Parameters.AddWithValue("$envelope", envelopeJson);
+            insert.ExecuteNonQuery();
+        }
+
+        AppendTaskEvent(connection, transaction, payload.TaskId, HubTaskState.Queued, now,
+            null, null, null, "TASK_OWNER_TRANSFERRED_SIGNED");
+        transaction.Commit();
+        return true;
+    }
+
+    public HubOwnershipTransferSnapshot? GetOwnershipTransfer(string transferId)
+    {
+        ValidateIdentifier(transferId, nameof(transferId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT transfer_id, task_id, project_id, old_owner_core_id, new_owner_core_id,
+                   old_owner_generation, new_owner_generation, issued_at_ms, expires_at_ms, envelope_json
+            FROM OwnershipTransfers WHERE transfer_id = $transfer;
+            """;
+        command.Parameters.AddWithValue("$transfer", transferId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new HubOwnershipTransferSnapshot(
+            reader.GetString(0), reader.GetString(1), reader.GetString(2),
+            reader.GetString(3), reader.GetString(4), reader.GetInt64(5), reader.GetInt64(6),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(8)), reader.GetString(9));
+    }
+
+    /// <summary>
+    /// Returns a bounded, stable list of the newest still-valid transfer for each task in the
+    /// exact project. The caller must already have authenticated and authorized the signed
+    /// Bridge request; this method never widens project scope.
+    /// </summary>
+    public IReadOnlyList<string> GetDiscoverableOwnershipTransferIds(
+        string projectId,
+        DateTimeOffset now,
+        int limit = 100)
+    {
+        if (projectId != "default") ValidateIdentifier(projectId, nameof(projectId));
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT current.transfer_id
+            FROM OwnershipTransfers current
+            WHERE current.project_id = $project
+              AND current.expires_at_ms > $now
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM OwnershipTransfers newer
+                  WHERE newer.task_id = current.task_id
+                    AND (
+                        newer.new_owner_generation > current.new_owner_generation OR
+                        (newer.new_owner_generation = current.new_owner_generation AND
+                         newer.issued_at_ms > current.issued_at_ms) OR
+                        (newer.new_owner_generation = current.new_owner_generation AND
+                         newer.issued_at_ms = current.issued_at_ms AND
+                         newer.transfer_id > current.transfer_id)
+                    )
+              )
+            ORDER BY current.issued_at_ms ASC, current.transfer_id ASC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$project", projectId);
+        command.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$limit", limit);
+        using var reader = command.ExecuteReader();
+        var transferIds = new List<string>();
+        while (reader.Read()) transferIds.Add(reader.GetString(0));
+        return transferIds;
+    }
+
+    private static HubTaskEffectRisk ParseOwnershipRisk(string value) => value switch
+    {
+        "READ_ONLY" => HubTaskEffectRisk.ReadOnly,
+        "DRAFT" => HubTaskEffectRisk.LocalWrite,
+        "EXTERNAL_SIDE_EFFECT" => HubTaskEffectRisk.ExternalSideEffect,
+        _ => throw new InvalidOperationException("OWNERSHIP_TRANSFER_EFFECT_RISK_UNSUPPORTED_BY_HUB")
+    };
 
     public HubTaskLease? ClaimNext(
         string agentId,
@@ -391,7 +605,8 @@ public sealed class DesktopHubStore
         {
             command.Transaction = transaction;
             command.CommandText = """
-                SELECT t.task_id, t.project_id, t.task_type, t.payload_ref, t.payload_sha256,
+                SELECT t.task_id, t.project_id, t.owner_core_id, t.owner_generation,
+                       t.task_type, t.payload_ref, t.payload_sha256,
                        t.required_capabilities_json, t.effect_risk, t.approval_ref, t.fencing_token,
                        t.idempotency_key
                 FROM Tasks t
@@ -411,15 +626,15 @@ public sealed class DesktopHubStore
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                var taskType = reader.GetString(2);
+                var taskType = reader.GetString(4);
                 if (supportedTypes is not null && !supportedTypes.Contains(taskType)) continue;
-                var required = JsonSerializer.Deserialize<string[]>(reader.GetString(5)) ?? [];
+                var required = JsonSerializer.Deserialize<string[]>(reader.GetString(7)) ?? [];
                 if (required.All(agentCapabilities.Contains))
                 {
                     candidates.Add(new Candidate(
-                        reader.GetString(0), reader.GetString(1), taskType,
-                        reader.GetString(3), reader.GetString(4), (HubTaskEffectRisk)reader.GetInt32(6),
-                        reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt64(8), reader.GetString(9)));
+                        reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), taskType,
+                        reader.GetString(5), reader.GetString(6), (HubTaskEffectRisk)reader.GetInt32(8),
+                        reader.IsDBNull(9) ? null : reader.GetString(9), reader.GetInt64(10), reader.GetString(11)));
                     break;
                 }
             }
@@ -468,7 +683,8 @@ public sealed class DesktopHubStore
         transaction.Commit();
 
         return new HubTaskLease(
-            selected.TaskId, selected.ProjectId, agentId, leaseId, nextFence, expires,
+            selected.TaskId, selected.ProjectId, selected.OwnerCoreId, selected.OwnerGeneration,
+            agentId, leaseId, nextFence, expires,
             selected.TaskType, selected.IdempotencyKey, selected.PayloadRef, selected.PayloadSha256,
             selected.EffectRisk, selected.ApprovalRef);
     }
@@ -672,6 +888,346 @@ public sealed class DesktopHubStore
         var value = command.ExecuteScalar();
         if (value is not byte[] ciphertext) return null;
         return UnprotectTaskResult(taskId, ciphertext);
+    }
+
+    /// <summary>
+    /// Returns a bounded owner-facing projection of terminal state and verified artifact
+    /// identity. Raw result text and decrypted artifact bytes never leave this boundary.
+    /// </summary>
+    public HubTaskOwnerResultSnapshot? GetTaskOwnerResult(string taskId)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        string taskType;
+        string ownerCoreId;
+        long ownerGeneration;
+        HubTaskState state;
+        using (var connection = Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                SELECT task_type, state, owner_core_id, owner_generation
+                FROM Tasks WHERE task_id = $task;
+                """;
+            command.Parameters.AddWithValue("$task", taskId);
+            using var reader = command.ExecuteReader();
+            if (!reader.Read()) return null;
+            taskType = reader.GetString(0);
+            if (!Enum.TryParse(reader.GetString(1), out state))
+                throw new InvalidDataException("Stored task state is invalid.");
+            ownerCoreId = reader.GetString(2);
+            ownerGeneration = reader.GetInt64(3);
+        }
+
+        var result = GetTaskResult(taskId);
+        if (result is null)
+            return new HubTaskOwnerResultSnapshot(
+                taskId, taskType, state, false, null, null,
+                null, null, false, null, null, null);
+
+        string? resultReference = null;
+        string? resultSha256 = null;
+        HubTaskArtifactMetadata? artifactMetadata = null;
+        if (result.Result is not null)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(result.Result, new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = false,
+                    CommentHandling = JsonCommentHandling.Disallow,
+                    MaxDepth = 4
+                });
+                var root = document.RootElement;
+                if (root.ValueKind == JsonValueKind.Object &&
+                    root.TryGetProperty("TaskId", out var resultTask) &&
+                    resultTask.ValueKind == JsonValueKind.String &&
+                    StringComparer.Ordinal.Equals(resultTask.GetString(), taskId) &&
+                    root.TryGetProperty("Outcome", out var outcome) &&
+                    outcome.ValueKind == JsonValueKind.String &&
+                    StringComparer.Ordinal.Equals(outcome.GetString(), "SUCCEEDED") &&
+                    root.TryGetProperty("ResultRef", out var reference) &&
+                    reference.ValueKind == JsonValueKind.String &&
+                    root.TryGetProperty("ResultSha256", out var digest) &&
+                    digest.ValueKind == JsonValueKind.String)
+                {
+                    var candidateReference = reference.GetString();
+                    var candidateDigest = digest.GetString();
+                    const string prefix = "agent-artifact:";
+                    if (candidateReference is { Length: > 15 and <= 143 } &&
+                        candidateReference.StartsWith(prefix, StringComparison.Ordinal) &&
+                        candidateDigest is { Length: 64 } &&
+                        candidateDigest.All(character =>
+                            character is >= '0' and <= '9' or >= 'a' and <= 'f'))
+                    {
+                        var artifactId = candidateReference[prefix.Length..];
+                        if (artifactId.Length is >= 1 and <= 128 &&
+                            char.IsAsciiLetterOrDigit(artifactId[0]) &&
+                            artifactId.All(character => char.IsAsciiLetterOrDigit(character) ||
+                                character is '-' or '_' or '.' or ':'))
+                        {
+                            resultReference = candidateReference;
+                            resultSha256 = candidateDigest;
+                            artifactMetadata = GetTaskArtifactMetadata(artifactId);
+                        }
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Legacy/plain terminal results remain visible as completed state only.
+            }
+        }
+
+        var artifactAvailable = artifactMetadata is not null &&
+            StringComparer.Ordinal.Equals(artifactMetadata.TaskId, taskId) &&
+            StringComparer.Ordinal.Equals(artifactMetadata.OwnerCoreId, ownerCoreId) &&
+            artifactMetadata.OwnerGeneration == ownerGeneration &&
+            StringComparer.Ordinal.Equals(artifactMetadata.Sha256, resultSha256);
+        return new HubTaskOwnerResultSnapshot(
+            taskId,
+            taskType,
+            state,
+            true,
+            result.CompletedAt,
+            result.ErrorCode,
+            resultReference,
+            resultSha256,
+            artifactAvailable,
+            artifactAvailable ? artifactMetadata!.SchemaId : null,
+            artifactAvailable ? artifactMetadata!.SchemaVersion : null,
+            artifactAvailable ? artifactMetadata!.RedactionStatus : null);
+    }
+
+    private HubTaskArtifactMetadata? GetTaskArtifactMetadata(string artifactId)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT artifact_id, task_id, owner_core_id, owner_generation,
+                   lease_id, fencing_token, contract_version, schema_id, schema_version,
+                   content_type, byte_length, sha256, redaction_status, created_at_ms
+            FROM TaskArtifacts WHERE artifact_id = $artifact;
+            """;
+        command.Parameters.AddWithValue("$artifact", artifactId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new HubTaskArtifactMetadata(
+            reader.GetInt32(6), reader.GetString(0), reader.GetString(1), reader.GetString(2),
+            reader.GetInt64(3), reader.GetString(4), reader.GetInt64(5), reader.GetString(7),
+            reader.GetInt32(8), reader.GetString(9), reader.GetInt32(10), reader.GetString(11),
+            reader.GetString(12), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(13)));
+    }
+
+    /// <summary>
+    /// Commits a bounded, redacted task artifact while the exact owner generation,
+    /// lease and fencing token are still active. An identical retry is accepted even
+    /// after the lease is gone so an Agent can recover from a lost acknowledgement.
+    /// </summary>
+    public HubTaskArtifactAcceptance AcceptTaskArtifact(
+        string agentId,
+        string projectId,
+        HubTaskArtifactMetadata metadata,
+        ReadOnlySpan<byte> payload,
+        DateTimeOffset now)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        ValidateIdentifier(projectId, nameof(projectId));
+        ArgumentNullException.ThrowIfNull(metadata);
+        ValidateTaskArtifact(metadata, payload);
+
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+        var existing = ReadTaskArtifact(connection, transaction, metadata.ArtifactId);
+        if (existing is not null)
+        {
+            var duplicate = StringComparer.Ordinal.Equals(existing.AgentId, agentId) &&
+                StringComparer.Ordinal.Equals(existing.ProjectId, projectId) &&
+                existing.Metadata == metadata &&
+                CryptographicOperations.FixedTimeEquals(existing.Artifact.Payload, payload);
+            CryptographicOperations.ZeroMemory(existing.Artifact.Payload);
+            transaction.Commit();
+            return duplicate ? HubTaskArtifactAcceptance.Duplicate : HubTaskArtifactAcceptance.Conflict;
+        }
+
+        using (var bounded = connection.CreateCommand())
+        {
+            bounded.Transaction = transaction;
+            bounded.CommandText = """
+                SELECT COUNT(*) FROM TaskArtifacts
+                WHERE task_id = $task AND schema_id = $schema AND schema_version = $version;
+                """;
+            bounded.Parameters.AddWithValue("$task", metadata.TaskId);
+            bounded.Parameters.AddWithValue("$schema", metadata.SchemaId);
+            bounded.Parameters.AddWithValue("$version", metadata.SchemaVersion);
+            if (Convert.ToInt32(bounded.ExecuteScalar()) != 0)
+            {
+                transaction.Commit();
+                return HubTaskArtifactAcceptance.Conflict;
+            }
+        }
+
+        using (var validate = connection.CreateCommand())
+        {
+            validate.Transaction = transaction;
+            validate.CommandText = """
+                SELECT COUNT(*)
+                FROM Leases l
+                JOIN Tasks t ON t.task_id = l.task_id
+                JOIN Agents a ON a.agent_id = l.agent_id
+                WHERE l.agent_id = $agent AND l.task_id = $task AND l.lease_id = $lease
+                  AND l.fencing_token = $fence AND l.expires_at_ms > $now
+                  AND t.state = 'Leased' AND t.fencing_token = $fence
+                  AND t.project_id = $project
+                  AND t.owner_core_id = $owner AND t.owner_generation = $generation
+                  AND a.owner_approved = 1;
+                """;
+            validate.Parameters.AddWithValue("$agent", agentId);
+            validate.Parameters.AddWithValue("$task", metadata.TaskId);
+            validate.Parameters.AddWithValue("$lease", metadata.LeaseId);
+            validate.Parameters.AddWithValue("$fence", metadata.FencingToken);
+            validate.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            validate.Parameters.AddWithValue("$project", projectId);
+            validate.Parameters.AddWithValue("$owner", metadata.OwnerCoreId);
+            validate.Parameters.AddWithValue("$generation", metadata.OwnerGeneration);
+            if (Convert.ToInt32(validate.ExecuteScalar()) != 1)
+            {
+                transaction.Commit();
+                return HubTaskArtifactAcceptance.LeaseRejected;
+            }
+        }
+
+        var entropy = Encoding.UTF8.GetBytes("glafira.desktop-hub.task-artifact.v1:" + metadata.ArtifactId);
+        byte[] ciphertext;
+        try
+        {
+            ciphertext = _dataProtector.Protect(payload, entropy);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(entropy);
+        }
+
+        try
+        {
+            using var save = connection.CreateCommand();
+            save.Transaction = transaction;
+            save.CommandText = """
+                INSERT INTO TaskArtifacts(
+                    artifact_id, task_id, project_id, agent_id, owner_core_id, owner_generation,
+                    lease_id, fencing_token, contract_version, schema_id, schema_version,
+                    content_type, byte_length, sha256, redaction_status, created_at_ms,
+                    payload_ciphertext, accepted_at_ms)
+                VALUES(
+                    $artifact, $task, $project, $agent, $owner, $generation,
+                    $lease, $fence, $contract, $schema, $schemaVersion,
+                    $contentType, $byteLength, $sha256, $redaction, $created,
+                    $ciphertext, $accepted);
+                """;
+            save.Parameters.AddWithValue("$artifact", metadata.ArtifactId);
+            save.Parameters.AddWithValue("$task", metadata.TaskId);
+            save.Parameters.AddWithValue("$project", projectId);
+            save.Parameters.AddWithValue("$agent", agentId);
+            save.Parameters.AddWithValue("$owner", metadata.OwnerCoreId);
+            save.Parameters.AddWithValue("$generation", metadata.OwnerGeneration);
+            save.Parameters.AddWithValue("$lease", metadata.LeaseId);
+            save.Parameters.AddWithValue("$fence", metadata.FencingToken);
+            save.Parameters.AddWithValue("$contract", metadata.ContractVersion);
+            save.Parameters.AddWithValue("$schema", metadata.SchemaId);
+            save.Parameters.AddWithValue("$schemaVersion", metadata.SchemaVersion);
+            save.Parameters.AddWithValue("$contentType", metadata.ContentType);
+            save.Parameters.AddWithValue("$byteLength", metadata.ByteLength);
+            save.Parameters.AddWithValue("$sha256", metadata.Sha256);
+            save.Parameters.AddWithValue("$redaction", metadata.RedactionStatus);
+            save.Parameters.AddWithValue("$created", metadata.CreatedAt.ToUnixTimeMilliseconds());
+            save.Parameters.AddWithValue("$ciphertext", ciphertext);
+            save.Parameters.AddWithValue("$accepted", now.ToUnixTimeMilliseconds());
+            save.ExecuteNonQuery();
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(ciphertext);
+        }
+
+        transaction.Commit();
+        return HubTaskArtifactAcceptance.Accepted;
+    }
+
+    public HubTaskArtifact? GetTaskArtifact(string artifactId)
+    {
+        ValidateIdentifier(artifactId, nameof(artifactId));
+        using var connection = Open();
+        var stored = ReadTaskArtifact(connection, transaction: null, artifactId);
+        return stored?.Artifact;
+    }
+
+    private StoredTaskArtifact? ReadTaskArtifact(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string artifactId)
+    {
+        using var read = connection.CreateCommand();
+        read.Transaction = transaction;
+        read.CommandText = """
+            SELECT artifact_id, task_id, project_id, agent_id, owner_core_id, owner_generation,
+                   lease_id, fencing_token, contract_version, schema_id, schema_version,
+                   content_type, byte_length, sha256, redaction_status, created_at_ms,
+                   payload_ciphertext
+            FROM TaskArtifacts WHERE artifact_id = $artifact;
+            """;
+        read.Parameters.AddWithValue("$artifact", artifactId);
+        using var reader = read.ExecuteReader();
+        if (!reader.Read()) return null;
+        var metadata = new HubTaskArtifactMetadata(
+            reader.GetInt32(8), reader.GetString(0), reader.GetString(1), reader.GetString(4),
+            reader.GetInt64(5), reader.GetString(6), reader.GetInt64(7), reader.GetString(9),
+            reader.GetInt32(10), reader.GetString(11), reader.GetInt32(12), reader.GetString(13),
+            reader.GetString(14), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(15)));
+        var ciphertext = (byte[])reader[16];
+        var entropy = Encoding.UTF8.GetBytes("glafira.desktop-hub.task-artifact.v1:" + artifactId);
+        byte[] plaintext;
+        try
+        {
+            plaintext = _dataProtector.Unprotect(ciphertext, entropy);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(entropy);
+        }
+        return new StoredTaskArtifact(reader.GetString(3), reader.GetString(2), metadata, new HubTaskArtifact(metadata, plaintext));
+    }
+
+    private static void ValidateTaskArtifact(HubTaskArtifactMetadata metadata, ReadOnlySpan<byte> payload)
+    {
+        ValidateIdentifier(metadata.TaskId, nameof(metadata.TaskId));
+        ValidateOwnerCoreId(metadata.OwnerCoreId, nameof(metadata.OwnerCoreId));
+        ValidateIdentifier(metadata.LeaseId, nameof(metadata.LeaseId));
+        if (metadata.ContractVersion != 1 || metadata.OwnerGeneration <= 0 || metadata.FencingToken <= 0 ||
+            metadata.SchemaVersion != 1 || metadata.ByteLength is < 1 or > 32_768 ||
+            metadata.ByteLength != payload.Length || metadata.CreatedAt.ToUnixTimeMilliseconds() <= 0 ||
+            metadata.ArtifactId is not { Length: >= 1 and <= 128 } ||
+            !char.IsAsciiLetterOrDigit(metadata.ArtifactId[0]) ||
+            metadata.ArtifactId.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('-' or '_' or '.' or ':')) ||
+            !StringComparer.Ordinal.Equals(metadata.SchemaId, "glafira.agent.diagnostics.snapshot") ||
+            !StringComparer.Ordinal.Equals(metadata.ContentType, "application/json") ||
+            !StringComparer.Ordinal.Equals(metadata.RedactionStatus, "REDACTED") ||
+            metadata.Sha256 is not { Length: 64 } ||
+            metadata.Sha256.Any(character => character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+            throw new ArgumentException("Invalid task artifact metadata.", nameof(metadata));
+
+        byte[] expected;
+        try { expected = Convert.FromHexString(metadata.Sha256); }
+        catch (FormatException error) { throw new ArgumentException("Invalid artifact SHA-256.", nameof(metadata), error); }
+        var actual = SHA256.HashData(payload);
+        try
+        {
+            if (!CryptographicOperations.FixedTimeEquals(expected, actual))
+                throw new ArgumentException("Artifact SHA-256 mismatch.", nameof(payload));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(expected);
+            CryptographicOperations.ZeroMemory(actual);
+        }
     }
 
     private bool IsExactDuplicateCompletion(
@@ -915,7 +1471,7 @@ public sealed class DesktopHubStore
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT task_id, project_id, task_type, state, priority,
+            SELECT task_id, project_id, owner_core_id, owner_generation, task_type, state, priority,
                    effect_risk, attempts, created_at_ms, approval_ref
             FROM Tasks
             ORDER BY created_at_ms DESC, task_id COLLATE BINARY
@@ -926,13 +1482,13 @@ public sealed class DesktopHubStore
         var tasks = new List<HubTaskSnapshot>();
         while (reader.Read())
         {
-            if (!Enum.TryParse<HubTaskState>(reader.GetString(3), out var state))
+            if (!Enum.TryParse<HubTaskState>(reader.GetString(5), out var state))
                 continue;
             tasks.Add(new HubTaskSnapshot(
-                reader.GetString(0), reader.GetString(1), reader.GetString(2), state,
-                reader.GetInt32(4), (HubTaskEffectRisk)reader.GetInt32(5),
-                reader.GetInt32(6), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
-                reader.IsDBNull(8) ? null : reader.GetString(8)));
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3),
+                reader.GetString(4), state, reader.GetInt32(6), (HubTaskEffectRisk)reader.GetInt32(7),
+                reader.GetInt32(8), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(9)),
+                reader.IsDBNull(10) ? null : reader.GetString(10)));
         }
         return tasks;
     }
@@ -947,6 +1503,28 @@ public sealed class DesktopHubStore
         return Enum.TryParse<HubTaskState>(value, out var state) ? state : null;
     }
 
+    /// <summary>
+    /// Matches the canonical ownership identity attached to a durable task. Ownership can
+    /// advance only while queued, so this check remains stable for leased and terminal updates.
+    /// </summary>
+    public bool MatchesTaskOwnership(string taskId, string ownerCoreId, long ownerGeneration)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        ValidateOwnerCoreId(ownerCoreId, nameof(ownerCoreId));
+        if (ownerGeneration <= 0)
+            throw new ArgumentOutOfRangeException(nameof(ownerGeneration));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*) FROM Tasks
+            WHERE task_id = $task AND owner_core_id = $owner AND owner_generation = $generation;
+            """;
+        command.Parameters.AddWithValue("$task", taskId);
+        command.Parameters.AddWithValue("$owner", ownerCoreId);
+        command.Parameters.AddWithValue("$generation", ownerGeneration);
+        return Convert.ToInt32(command.ExecuteScalar()) == 1;
+    }
+
     /// <summary>Returns the durable, append-only state history for one task without payloads or credentials.</summary>
     public IReadOnlyList<HubTaskEventSnapshot> GetTaskHistory(string taskId, int limit = 500)
     {
@@ -956,7 +1534,8 @@ public sealed class DesktopHubStore
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT event_id, task_id, state, occurred_at_ms, agent_id, lease_id, fencing_token,
+            SELECT event_id, task_id, owner_core_id, owner_generation,
+                   state, occurred_at_ms, agent_id, lease_id, fencing_token,
                    event_code, progress_percent, progress_message
             FROM TaskEvents
             WHERE task_id = $task
@@ -969,17 +1548,17 @@ public sealed class DesktopHubStore
         var events = new List<HubTaskEventSnapshot>();
         while (reader.Read())
         {
-            if (!Enum.TryParse<HubTaskState>(reader.GetString(2), out var state))
+            if (!Enum.TryParse<HubTaskState>(reader.GetString(4), out var state))
                 continue;
             events.Add(new HubTaskEventSnapshot(
-                reader.GetInt64(0), reader.GetString(1), state,
-                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3)),
-                reader.IsDBNull(4) ? null : reader.GetString(4),
-                reader.IsDBNull(5) ? null : reader.GetString(5),
-                reader.IsDBNull(6) ? null : reader.GetInt64(6),
-                reader.GetString(7),
-                reader.IsDBNull(8) ? null : reader.GetInt32(8),
-                reader.IsDBNull(9) ? null : reader.GetString(9)));
+                reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), state,
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(5)),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetInt64(8),
+                reader.GetString(9),
+                reader.IsDBNull(10) ? null : reader.GetInt32(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11)));
         }
         return events;
     }
@@ -1001,9 +1580,12 @@ public sealed class DesktopHubStore
         command.Transaction = transaction;
         command.CommandText = """
             INSERT INTO TaskEvents(
-                task_id, state, occurred_at_ms, agent_id, lease_id, fencing_token, event_code,
+                task_id, owner_core_id, owner_generation,
+                state, occurred_at_ms, agent_id, lease_id, fencing_token, event_code,
                 progress_percent, progress_message)
-            VALUES($task, $state, $occurred, $agent, $lease, $fence, $code, $progress, $message);
+            SELECT $task, owner_core_id, owner_generation,
+                   $state, $occurred, $agent, $lease, $fence, $code, $progress, $message
+            FROM Tasks WHERE task_id = $task;
             """;
         command.Parameters.AddWithValue("$task", taskId);
         command.Parameters.AddWithValue("$state", state.ToString());
@@ -1038,6 +1620,8 @@ public sealed class DesktopHubStore
             CREATE TABLE IF NOT EXISTS Tasks(
                 task_id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
+                owner_core_id TEXT NOT NULL,
+                owner_generation INTEGER NOT NULL CHECK(owner_generation > 0),
                 idempotency_key TEXT NOT NULL,
                 task_type TEXT NOT NULL,
                 payload_ref TEXT NOT NULL,
@@ -1059,6 +1643,25 @@ public sealed class DesktopHubStore
                 PRIMARY KEY(task_id, depends_on_task_id)
             );
 
+            CREATE TABLE IF NOT EXISTS OwnershipTransfers(
+                transfer_id TEXT PRIMARY KEY,
+                nonce TEXT NOT NULL UNIQUE,
+                task_id TEXT NOT NULL REFERENCES Tasks(task_id) ON DELETE CASCADE,
+                project_id TEXT NOT NULL,
+                old_owner_core_id TEXT NOT NULL,
+                new_owner_core_id TEXT NOT NULL,
+                old_owner_generation INTEGER NOT NULL,
+                new_owner_generation INTEGER NOT NULL,
+                state_version INTEGER NOT NULL,
+                issued_at_ms INTEGER NOT NULL,
+                expires_at_ms INTEGER NOT NULL,
+                envelope_json TEXT NOT NULL,
+                UNIQUE(task_id, new_owner_generation)
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_OwnershipTransfers_Task
+                ON OwnershipTransfers(task_id, new_owner_generation);
+
             CREATE TABLE IF NOT EXISTS Leases(
                 lease_id TEXT PRIMARY KEY,
                 task_id TEXT NOT NULL UNIQUE REFERENCES Tasks(task_id) ON DELETE CASCADE,
@@ -1073,9 +1676,36 @@ public sealed class DesktopHubStore
                 completed_at_ms INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS TaskArtifacts(
+                artifact_id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL REFERENCES Tasks(task_id) ON DELETE CASCADE,
+                project_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL REFERENCES Agents(agent_id),
+                owner_core_id TEXT NOT NULL,
+                owner_generation INTEGER NOT NULL CHECK(owner_generation > 0),
+                lease_id TEXT NOT NULL,
+                fencing_token INTEGER NOT NULL CHECK(fencing_token > 0),
+                contract_version INTEGER NOT NULL CHECK(contract_version = 1),
+                schema_id TEXT NOT NULL,
+                schema_version INTEGER NOT NULL CHECK(schema_version = 1),
+                content_type TEXT NOT NULL,
+                byte_length INTEGER NOT NULL CHECK(byte_length BETWEEN 1 AND 32768),
+                sha256 TEXT NOT NULL,
+                redaction_status TEXT NOT NULL,
+                created_at_ms INTEGER NOT NULL,
+                payload_ciphertext BLOB NOT NULL,
+                accepted_at_ms INTEGER NOT NULL,
+                UNIQUE(task_id, schema_id, schema_version)
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_TaskArtifacts_Task
+                ON TaskArtifacts(task_id, accepted_at_ms);
+
             CREATE TABLE IF NOT EXISTS TaskEvents(
                 event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT NOT NULL REFERENCES Tasks(task_id) ON DELETE CASCADE,
+                owner_core_id TEXT NOT NULL,
+                owner_generation INTEGER NOT NULL CHECK(owner_generation > 0),
                 state TEXT NOT NULL,
                 occurred_at_ms INTEGER NOT NULL,
                 agent_id TEXT NULL,
@@ -1095,6 +1725,10 @@ public sealed class DesktopHubStore
                 ON Leases(agent_id, expires_at_ms);
             """;
         command.ExecuteNonQuery();
+        EnsureTaskColumn(connection, "owner_core_id", "TEXT NOT NULL DEFAULT 'legacy-owner'");
+        EnsureTaskColumn(connection, "owner_generation", "INTEGER NOT NULL DEFAULT 1");
+        EnsureTaskEventColumn(connection, "owner_core_id", "TEXT NOT NULL DEFAULT 'legacy-owner'");
+        EnsureTaskEventColumn(connection, "owner_generation", "INTEGER NOT NULL DEFAULT 1");
         EnsureTaskEventColumn(connection, "progress_percent", "INTEGER NULL");
         EnsureTaskEventColumn(connection, "progress_message", "TEXT NULL");
     }
@@ -1117,6 +1751,21 @@ public sealed class DesktopHubStore
         if (exists) return;
         using var alter = connection.CreateCommand();
         alter.CommandText = $"ALTER TABLE TaskEvents ADD COLUMN {columnName} {columnDefinition};";
+        alter.ExecuteNonQuery();
+    }
+
+    private static void EnsureTaskColumn(SqliteConnection connection, string columnName, string columnDefinition)
+    {
+        using var query = connection.CreateCommand();
+        query.CommandText = "PRAGMA table_info(Tasks);";
+        using var reader = query.ExecuteReader();
+        var exists = false;
+        while (reader.Read())
+            exists |= StringComparer.Ordinal.Equals(reader.GetString(1), columnName);
+        reader.Close();
+        if (exists) return;
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE Tasks ADD COLUMN {columnName} {columnDefinition};";
         alter.ExecuteNonQuery();
     }
 
@@ -1144,9 +1793,21 @@ public sealed class DesktopHubStore
             throw new ArgumentException("Identifier exceeds 128 characters.", name);
     }
 
+    private static void ValidateOwnerCoreId(string value, string name)
+    {
+        ValidateIdentifier(value, name);
+        if (value.Length < 8 ||
+            !System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$"))
+            throw new ArgumentException(
+                "Owner Core ID must be 8–128 characters using letters, digits, dot, underscore, or hyphen.",
+                name);
+    }
+
     private sealed record Candidate(
         string TaskId,
         string ProjectId,
+        string OwnerCoreId,
+        long OwnerGeneration,
         string TaskType,
         string PayloadRef,
         string PayloadSha256,
@@ -1154,4 +1815,10 @@ public sealed class DesktopHubStore
         string? ApprovalRef,
         long FencingToken,
         string IdempotencyKey);
+
+    private sealed record StoredTaskArtifact(
+        string AgentId,
+        string ProjectId,
+        HubTaskArtifactMetadata Metadata,
+        HubTaskArtifact Artifact);
 }

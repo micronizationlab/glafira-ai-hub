@@ -28,6 +28,8 @@ builder.Services.Configure<HostOptions>(options =>
 });
 
 builder.Services.AddSingleton<AgentRuntimeState>();
+builder.Services.AddSingleton<IAgentSafeDiagnosticsSource, AgentSafeRuntimeDiagnosticsSource>();
+builder.Services.AddSingleton<IAgentTaskHandler, AgentDiagnosticsSnapshotTaskHandler>();
 builder.Services.AddSingleton<AgentTaskHandlerRegistry>();
 builder.Services.AddSingleton<AgentTaskExecutor>(services =>
     new AgentTaskExecutor(
@@ -36,7 +38,13 @@ builder.Services.AddSingleton<AgentTaskExecutor>(services =>
         maxParallelTasks: 1));
 builder.Services.AddSingleton<IAgentLocalDataProtector, WindowsDpapiAgentDataProtector>();
 builder.Services.AddSingleton<IAgentExecutionJournal, DpapiAgentExecutionJournal>();
-builder.Services.AddSingleton<IAgentTaskTransport, BridgeV1AgentTaskClient>();
+builder.Services.AddSingleton<IAgentResultArtifactStore, FileAgentResultArtifactStore>();
+builder.Services.AddSingleton<BridgeV1AgentTaskClient>();
+builder.Services.AddSingleton<IAgentTaskTransport>(services =>
+    services.GetRequiredService<BridgeV1AgentTaskClient>());
+builder.Services.AddSingleton<IAgentResultArtifactTransport>(services =>
+    services.GetRequiredService<BridgeV1AgentTaskClient>());
+builder.Services.AddSingleton<AgentResultArtifactOutbox>();
 builder.Services.AddSingleton<AgentTaskPollingCoordinator>();
 builder.Services.AddSingleton<IAgentCredentialStore, DpapiAgentCredentialStore>();
 builder.Services.AddSingleton<AgentPairingClient>();

@@ -59,6 +59,18 @@
       "id": "agent-revocation-001",
       "title": "Revoked Agent cannot claim after reconnect",
       "agentId": "agent-revoked-001",
+      "request": {
+        "revocationId": "revoke-agent-001",
+        "enrollmentId": "enroll-revoked-001",
+        "requestedByDeviceId": "owner-device-001",
+        "reasonCode": "OWNER_REQUEST"
+      },
+      "decision": {
+        "status": "REVOKED",
+        "lastAcceptedFencingToken": 7,
+        "activeLeaseDisposition": "OUTCOME_UNKNOWN",
+        "requiresOwnerReconciliation": true
+      },
       "actions": [
         { "type": "ENROLL", "decision": "APPROVED" },
         { "type": "REVOKE" },
