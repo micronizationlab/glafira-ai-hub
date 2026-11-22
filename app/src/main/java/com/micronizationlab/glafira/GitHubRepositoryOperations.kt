@@ -305,6 +305,7 @@ internal class GitHubRepositoryOperations(
             val segments = normalized.split('/')
             val fileName = segments.last()
             val blocked = normalized == ".gitmodules" ||
+                normalized == ".gitlab-ci.yml" || normalized == ".travis.yml" ||
                 normalized == "gradle.properties" ||
                 normalized == "gradle/wrapper/gradle-wrapper.properties" ||
                 normalized == "gradle/libs.versions.toml" ||
