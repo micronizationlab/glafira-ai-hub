@@ -105,7 +105,7 @@ The 150-step ledger currently names baseline `0649b3a24592e2ccd73b6997db04e2664f
 
 **Existing implementation:** `AiProviderClient.kt`, `AiProviderResult.kt`, `ProviderRegistry.kt`, task-plan decomposer/orchestrator, planner policy, voice plugin contracts and provider outcome/transport tests.
 
-**Current evidence / blockers:** provider outcome classification and task planning have tests. Need to verify actual provider adapters, quota/fallback behavior, model availability, persistence/provenance of memory and prevention of blind retries for unknown provider outcomes. This audit has not yet established a complete multi-provider live integration.
+**Current evidence / blockers:** typed provider outcome handling is already present on main: `NOT_SENT` / `REJECTED` / `UNKNOWN`, bounded Retry-After, pre/post-dispatch classification and composite-consultation UNKNOWN with partial-result preservation. Issue #262 is stale as a port task and has been annotated; remaining work is durable per-stage checkpoint/reconciliation across process death and Core retry scheduling. Provider IDs include GigaChat, OpenAI, DeepSeek, Grok, Gemini and OpenRouter; Yandex is explicitly disabled in `ProviderRegistry.kt`, and `openrouter/free` is not a guarantee of quota or perpetual free access. This audit has not established a complete multi-provider live acceptance matrix.
 
 **Next:** audit each configured provider adapter and classify outcomes as not-sent/rejected/unknown; preserve free-tier constraints and do not introduce paid dependencies without explicit approval.
 
@@ -176,3 +176,5 @@ This update supersedes only the moving CI/source observations above; historical 
 - **Android UI recheck (2026-11-22):** confirmed Council and Add Task controls exist in source; Bridge entry point is still absent from SettingsScreen. Issue #137 now distinguishes source-present controls from installed-APK/physical acceptance and focuses remaining work on the Bridge entry point plus reproduced regressions.
 
 - **Voice/settings recheck (2026-11-22):** confirmed the existing «ЗВУК И ГОЛОС» card, TTS/auto-speak toggles, mic permission status/request and sound-volume slider. Issue #99 was annotated to narrow remaining work to missing controls/session behavior.
+
+- **Provider source recheck (2026-11-22):** confirmed typed outcome classification and composite UNKNOWN behavior on main; annotated #262 to focus on durable checkpoint/reconciliation rather than re-porting existing code. Confirmed Yandex remains unsupported and OpenRouter free availability is not guaranteed.
