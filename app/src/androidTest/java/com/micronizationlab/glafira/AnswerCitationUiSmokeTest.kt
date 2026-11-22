@@ -89,8 +89,13 @@ class AnswerCitationUiSmokeTest {
                 "Citation action is absent from the response",
                 citationAction
             )
-            assertTrue("Citation action is not accessible as a button", citationAction.isClickable)
-            citationAction.click()
+            val citationButton = generateSequence(citationAction) { it.parent }
+                .firstOrNull { it.isClickable }
+            assertNotNull(
+                "Citation action is not contained in an accessible clickable control",
+                citationButton
+            )
+            citationButton!!.click()
             device.waitForIdle()
 
             assertNotNull(
