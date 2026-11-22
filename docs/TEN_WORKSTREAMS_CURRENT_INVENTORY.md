@@ -78,7 +78,7 @@ The 150-step ledger currently names baseline `0649b3a24592e2ccd73b6997db04e2664f
 
 **Existing implementation:** `BridgeV1HttpsHost.cs`, TLS certificate store, pairing ticket store, pairing endpoint, request authenticator, task operation dispatcher, durable Hub store and 16 test paths.
 
-**Current evidence / blockers:** source already implements an explicitly started HTTPS host, private-LAN-only binding, certificate fingerprint validation, bounded request sizes, pairing and authenticated task dispatch. Issue [#123](https://github.com/micronizationlab/glafira-ai-hub/issues/123) must be reconciled against existing source rather than used to create a duplicate Hub. Desktop source presence does not prove installer/UI/two-PC acceptance.
+**Current evidence / blockers:** source already implements an explicitly started HTTPS host, private-LAN-only binding, certificate fingerprint validation, bounded request sizes, pairing and authenticated task dispatch. `DesktopHubHostController` is wired into WPF `MainWindow`, with visible start/stop, pairing-ticket, Agent approval and revocation flows. `DesktopHubStore` persists Agents, capabilities, leases/fencing, progress and results. Issue [#123](https://github.com/micronizationlab/glafira-ai-hub/issues/123) is stale as a missing-host task and has been annotated; the remaining gap is Desktop Core plan/DAG and local-worker integration with multi-Agent queue dispatch, restart recovery and physical two-Agent acceptance. Desktop source presence does not prove installer/two-PC acceptance.
 
 **Next:** trace DI and UI wiring from Desktop Hub controls to host lifecycle; validate generated install package and two-PC pairing/approval/revocation. Then test claim → lease → result → ACK end-to-end.
 
@@ -170,3 +170,5 @@ This update supersedes only the moving CI/source observations above; historical 
 - **No source/runtime fixes are represented as merged by this inventory.** A docs PR or green partial workflow is not a product acceptance result.
 
 - **Voice source recheck (2026-11-22):** confirmed the runtime microphone permission request exists on main; issue #99 has been annotated with the remaining denial/permanent-denial and voice-session gaps. This is a scope correction, not completion of voice acceptance.
+
+- **Windows Desktop recheck (2026-11-22):** confirmed the HTTPS host is lifecycle-wired into WPF, and task claim/result dispatch is present. Issue #123 now distinguishes implemented Hub transport/store from the still-unproven Desktop Core plan/DAG/multi-Agent integration and physical acceptance.
