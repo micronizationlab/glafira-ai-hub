@@ -51,7 +51,7 @@ internal class GitHubRepositoryOperations(
         requireRef(ref)
         val json = requestJson(
             method = "GET",
-            path = "/repos/${repository}/git/trees/${encodePath(ref)}?recursive=1",
+            path = "/repos/${repository}/git/trees/${encodeQuery(ref)}?recursive=1",
             accessToken = accessToken
         )
         val tree = json.optJSONArray("tree") ?: JSONArray()
@@ -104,7 +104,7 @@ internal class GitHubRepositoryOperations(
         requireRef(baseBranch)
         val base = requestJson(
             method = "GET",
-            path = "/repos/${repository}/git/ref/heads/${encodePath(baseBranch)}",
+            path = "/repos/${repository}/git/ref/heads/${encodeQuery(baseBranch)}",
             accessToken = accessToken
         )
         val baseSha = base.optJSONObject("object")?.optString("sha").orEmpty()
@@ -185,7 +185,7 @@ internal class GitHubRepositoryOperations(
         )
         val number = response.optLong("number")
         val url = response.optString("html_url")
-        val headSha = response.optJSONObject("head")?.optJSONObject("sha")?.toString().orEmpty()
+        val headSha = response.optJSONObject("head")?.optString("sha").orEmpty()
         require(number > 0L && url.startsWith("https://github.com/") && headSha.matches(SHA_PATTERN)) {
             "GitHub returned an incomplete pull request response."
         }
