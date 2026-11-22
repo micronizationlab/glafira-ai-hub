@@ -19,6 +19,7 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
 
     private sealed record StoredCredential(
         string AgentId,
+        string? EnrollmentId,
         string DesktopHubId,
         Uri Endpoint,
         string TlsCertificateSha256,
@@ -47,6 +48,7 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
         AgentEnrollmentCredentialPolicy.Validate(credential, _timeProvider.GetUtcNow());
         var stored = new StoredCredential(
             credential.AgentId,
+            credential.EnrollmentId,
             credential.DesktopHubId,
             credential.Endpoint,
             credential.TlsCertificateSha256,
@@ -118,7 +120,11 @@ public sealed class DpapiAgentCredentialStore : IAgentCredentialStore
                 stored.SharedSecretBase64,
                 new HashSet<string>(stored.Scopes, StringComparer.Ordinal),
                 stored.EnrolledAt,
-                stored.ExpiresAt);
+                stored.ExpiresAt)
+            {
+                EnrollmentId = string.IsNullOrWhiteSpace(stored.EnrollmentId)
+                    ? stored.AgentId : stored.EnrollmentId
+            };
             AgentEnrollmentCredentialPolicy.Validate(credential, _timeProvider.GetUtcNow());
             return credential;
         }

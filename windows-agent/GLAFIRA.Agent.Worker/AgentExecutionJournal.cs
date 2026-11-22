@@ -148,6 +148,8 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             if (existing is not null)
             {
                 if (existing.LeaseId != lease.LeaseId || existing.FencingToken != lease.FencingToken ||
+                    existing.OwnerCoreId != lease.OwnerCoreId ||
+                    existing.OwnerGeneration != lease.OwnerGeneration ||
                     existing.IdempotencyKey != lease.IdempotencyKey ||
                     existing.PayloadSha256 != lease.PayloadSha256 ||
                     existing.TaskType != lease.TaskType)
@@ -185,14 +187,16 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             var snapshot = await ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
             var active = snapshot.ActiveLeases.SingleOrDefault(item => item.TaskId == progress.Lease.TaskId);
             if (active is null || active.LeaseId != progress.Lease.LeaseId ||
-                active.FencingToken != progress.Lease.FencingToken)
+                active.FencingToken != progress.Lease.FencingToken ||
+                !SameOwner(active, progress.Lease))
                 throw new InvalidDataException("AGENT_PROGRESS_WITHOUT_CURRENT_LEASE");
             if (snapshot.PendingResults.Any(item => item.Lease.TaskId == progress.Lease.TaskId))
                 throw new InvalidDataException("AGENT_PROGRESS_AFTER_TERMINAL_RESULT");
             var existing = snapshot.PendingProgresses.SingleOrDefault(item => item.Lease.TaskId == progress.Lease.TaskId);
             if (existing is not null &&
                 (existing.Lease.LeaseId != progress.Lease.LeaseId ||
-                 existing.Lease.FencingToken != progress.Lease.FencingToken))
+                 existing.Lease.FencingToken != progress.Lease.FencingToken ||
+                 !SameOwner(existing.Lease, progress.Lease)))
                 throw new InvalidDataException("AGENT_PENDING_PROGRESS_CONFLICT");
             var nextProgresses = snapshot.PendingProgresses
                 .Where(item => item.Lease.TaskId != progress.Lease.TaskId)
@@ -270,6 +274,7 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             {
                 if (existing.Lease.LeaseId == result.Lease.LeaseId &&
                     existing.Lease.FencingToken == result.Lease.FencingToken &&
+                    SameOwner(existing.Lease, result.Lease) &&
                     existing.ResultSha256 == result.ResultSha256)
                     return;
                 throw new InvalidDataException("AGENT_PENDING_RESULT_CONFLICT");
@@ -277,7 +282,8 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
 
             var active = snapshot.ActiveLeases.SingleOrDefault(item => item.TaskId == result.Lease.TaskId);
             if (active is null || active.LeaseId != result.Lease.LeaseId ||
-                active.FencingToken != result.Lease.FencingToken)
+                active.FencingToken != result.Lease.FencingToken ||
+                !SameOwner(active, result.Lease))
                 throw new InvalidDataException("AGENT_RESULT_WITHOUT_CURRENT_LEASE");
             if (snapshot.PendingResults.Count >= MaximumPendingResults)
                 throw new InvalidDataException("AGENT_PENDING_RESULT_LIMIT");
@@ -497,7 +503,9 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
         if (snapshot.ActiveLeases.Any(active => snapshot.PendingResults.Any(pending => pending.Lease.TaskId == active.TaskId)) ||
             snapshot.PendingProgresses.Any(progress =>
                 !snapshot.ActiveLeases.Any(active => active.TaskId == progress.Lease.TaskId &&
-                    active.LeaseId == progress.Lease.LeaseId && active.FencingToken == progress.Lease.FencingToken)) ||
+                    active.LeaseId == progress.Lease.LeaseId &&
+                    active.FencingToken == progress.Lease.FencingToken &&
+                    SameOwner(active, progress.Lease))) ||
             snapshot.PendingProgresses.Any(progress =>
                 snapshot.PendingResults.Any(result => result.Lease.TaskId == progress.Lease.TaskId)))
             throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_DUPLICATE_TASK");
@@ -509,10 +517,17 @@ public sealed class DpapiAgentExecutionJournal : IAgentExecutionJournal
             string.IsNullOrWhiteSpace(lease.LeaseId) || lease.LeaseId.Length > 128 ||
             lease.FencingToken <= 0 || lease.LeaseExpiresAtEpochMs <= 0 ||
             string.IsNullOrWhiteSpace(lease.ProjectId) || lease.ProjectId.Length > 128 ||
+            string.IsNullOrWhiteSpace(lease.OwnerCoreId) || lease.OwnerCoreId.Length is < 8 or > 128 ||
+            !System.Text.RegularExpressions.Regex.IsMatch(lease.OwnerCoreId, "^[A-Za-z0-9._-]+$") ||
+            lease.OwnerGeneration <= 0 ||
             !System.Text.RegularExpressions.Regex.IsMatch(lease.PayloadSha256, "^[a-fA-F0-9]{64}$") ||
             lease.RequiredCapabilities is null || lease.RequiredCapabilities.Count > 16)
             throw new InvalidDataException("AGENT_EXECUTION_JOURNAL_LEASE_INVALID");
     }
+
+    private static bool SameOwner(AgentTaskLease left, AgentTaskLease right) =>
+        StringComparer.Ordinal.Equals(left.OwnerCoreId, right.OwnerCoreId) &&
+        left.OwnerGeneration == right.OwnerGeneration;
 
     private static void ValidatePendingProgress(AgentPendingProgress progress)
     {

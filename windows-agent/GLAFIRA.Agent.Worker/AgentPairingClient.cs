@@ -41,9 +41,14 @@ public sealed class AgentPairingClient
         string Status,
         string? ErrorCode,
         string? AgentId,
+        string? EnrollmentId,
         string? DesktopHubId,
         string? Endpoint,
         string? TlsCertificateSha256,
+        string? OwnerCoreId,
+        long? OwnershipSigningKeyEpoch,
+        string? OwnershipSigningPublicKeySpkiBase64,
+        string? OwnershipSigningPublicKeySha256,
         string? SharedSecretBase64,
         string[]? Scopes,
         long? EnrolledAtEpochMs,
@@ -138,8 +143,10 @@ public sealed class AgentPairingClient
         PairingResponse response)
     {
         if (response.Version != 1 || response.Status != "ENROLLED" || response.ErrorCode is not null ||
-            response.AgentId != attempt.AgentId || response.DesktopHubId is null ||
+            response.AgentId != attempt.AgentId || response.EnrollmentId != attempt.TicketId ||
+            response.DesktopHubId is null ||
             response.Endpoint is null || response.TlsCertificateSha256 != attempt.ExpectedTlsCertificateSha256 ||
+            !ValidOwnershipTrustAnchor(response) ||
             response.SharedSecretBase64 is null || response.Scopes is null ||
             response.EnrolledAtEpochMs is null || response.ExpiresAtEpochMs is null)
             throw new InvalidDataException("Desktop Hub pairing response does not match this enrollment attempt.");
@@ -172,7 +179,10 @@ public sealed class AgentPairingClient
             response.SharedSecretBase64,
             new HashSet<string>(response.Scopes, StringComparer.Ordinal),
             enrolledAt,
-            expiresAt);
+            expiresAt)
+        {
+            EnrollmentId = response.EnrollmentId
+        };
         try
         {
             AgentEnrollmentCredentialPolicy.Validate(credential, _timeProvider.GetUtcNow());
@@ -182,6 +192,40 @@ public sealed class AgentPairingClient
             throw new InvalidDataException("Desktop Hub returned an invalid enrollment credential.", error);
         }
         return credential;
+    }
+
+    private static bool ValidOwnershipTrustAnchor(PairingResponse response)
+    {
+        if (response.OwnerCoreId is not { Length: >= 8 and <= 128 } ||
+            response.OwnerCoreId.Any(character =>
+                !char.IsAsciiLetterOrDigit(character) && character is not '-' and not '_' and not '.') ||
+            response.OwnershipSigningKeyEpoch is null or <= 0 ||
+            response.OwnershipSigningPublicKeySpkiBase64 is null ||
+            response.OwnershipSigningPublicKeySha256 is not { Length: 64 } ||
+            response.OwnershipSigningPublicKeySha256.Any(character =>
+                character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+            return false;
+
+        byte[] publicKey;
+        try { publicKey = Convert.FromBase64String(response.OwnershipSigningPublicKeySpkiBase64); }
+        catch (FormatException) { return false; }
+        if (publicKey.Length is < 80 or > 256 ||
+            !StringComparer.Ordinal.Equals(
+                Convert.ToBase64String(publicKey), response.OwnershipSigningPublicKeySpkiBase64) ||
+            !StringComparer.Ordinal.Equals(
+                Convert.ToHexString(SHA256.HashData(publicKey)).ToLowerInvariant(),
+                response.OwnershipSigningPublicKeySha256))
+            return false;
+        try
+        {
+            using var verifier = ECDsa.Create();
+            verifier.ImportSubjectPublicKeyInfo(publicKey, out var bytesRead);
+            return bytesRead == publicKey.Length && verifier.KeySize == 256;
+        }
+        catch (Exception error) when (error is CryptographicException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     private static void ValidateAttempt(AgentPairingAttempt attempt)

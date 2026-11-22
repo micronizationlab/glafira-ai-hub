@@ -93,6 +93,10 @@ public sealed class AgentTaskExecutor : IAsyncDisposable
         task.TaskId.Length <= 128 &&
         !string.IsNullOrWhiteSpace(task.ProjectId) &&
         task.ProjectId.Length <= 128 &&
+        !string.IsNullOrWhiteSpace(task.OwnerCoreId) &&
+        task.OwnerCoreId.Length is >= 8 and <= 128 &&
+        System.Text.RegularExpressions.Regex.IsMatch(task.OwnerCoreId, "^[A-Za-z0-9._-]+$") &&
+        task.OwnerGeneration > 0 &&
         !string.IsNullOrWhiteSpace(task.IdempotencyKey) &&
         task.IdempotencyKey.Length <= 128 &&
         !string.IsNullOrWhiteSpace(task.TaskType) &&

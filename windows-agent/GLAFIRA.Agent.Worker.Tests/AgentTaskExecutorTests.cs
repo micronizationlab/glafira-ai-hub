@@ -6,7 +6,8 @@ namespace GLAFIRA.Agent.Worker.Tests;
 public sealed class AgentTaskExecutorTests
 {
     private static AgentTaskEnvelope Envelope(string id, string type = "research.search") =>
-        new(id, "project-a", $"idempotency-{id}", type, $"payload://{id}",
+        new(id, "project-a", "windows-core-0001", 1,
+            $"idempotency-{id}", type, $"payload://{id}",
             new string('a', 64), new HashSet<string> { "research" }, null);
 
     private static AgentRuntimeState ReadyState()
