@@ -7,7 +7,11 @@ namespace GLAFIRA.Desktop.Hub.Core;
 public sealed record BridgeV1DispatchResponse(
     string Status,
     IReadOnlyDictionary<string, string> Result,
-    string? ErrorCode = null);
+    string? ErrorCode = null)
+{
+    public int ProtocolVersion { get; init; } = 1;
+    public string RequestId { get; init; } = string.Empty;
+}
 
 /// <summary>
 /// Resolves a task payload from the Hub's internal content store. Implementations
@@ -37,34 +41,76 @@ public sealed class BridgeV1TaskOperationDispatcher(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.Operation is not (BridgeV1Operation.DESKTOP_TASK_CLAIM or BridgeV1Operation.DESKTOP_TASK_RESULT or BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT))
-            return Failure("OPERATION_NOT_IMPLEMENTED");
+        BridgeV1DispatchResponse Correlate(BridgeV1DispatchResponse response) => response with
+        {
+            ProtocolVersion = request.ProtocolVersion,
+            RequestId = request.RequestId
+        };
+
+        if (request.Operation == BridgeV1Operation.OWNERSHIP_TRANSFER_DISCOVER)
+            return Correlate(DiscoverOwnershipTransfers(request, now));
+        if (request.Operation == BridgeV1Operation.OWNERSHIP_TRANSFER_READ)
+            return Correlate(ReadOwnershipTransfer(request));
+        if (request.Operation is not (BridgeV1Operation.DESKTOP_TASK_CLAIM or BridgeV1Operation.DESKTOP_TASK_RESULT or BridgeV1Operation.DESKTOP_TASK_ARTIFACT or BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT))
+            return Correlate(Failure("OPERATION_NOT_IMPLEMENTED"));
 
         var agents = store.GetAgents(now).Where(agent =>
             StringComparer.Ordinal.Equals(agent.DeviceId, request.DeviceId)).ToArray();
-        if (agents.Length != 1) return Failure("AGENT_NOT_REGISTERED");
+        if (agents.Length != 1) return Correlate(Failure("AGENT_NOT_REGISTERED"));
         var agent = agents[0];
-        if (!agent.OwnerApproved) return Failure("AGENT_NOT_OWNER_APPROVED");
+        if (!agent.OwnerApproved) return Correlate(Failure("AGENT_NOT_OWNER_APPROVED"));
 
         // The authenticated device may refresh liveness, but cannot alter its approved
         // capabilities or concurrency ceiling through an ordinary task request.
         if (!store.Heartbeat(agent.AgentId, agent.Capabilities, agent.MaxParallelTasks, now))
-            return Failure("AGENT_NOT_REGISTERED");
+            return Correlate(Failure("AGENT_NOT_REGISTERED"));
 
         if (request.Operation == BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT)
         {
-            return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+            return Correlate(Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["agentId"] = agent.AgentId,
                 ["ownerApproved"] = "true",
                 ["capabilities"] = JsonSerializer.Serialize(agent.Capabilities),
                 ["maxParallelTasks"] = agent.MaxParallelTasks.ToString(CultureInfo.InvariantCulture)
-            });
+            }));
         }
 
-        return request.Operation == BridgeV1Operation.DESKTOP_TASK_CLAIM
-            ? await ClaimAsync(request, agent, now, cancellationToken)
-            : CompleteOrReport(request, agent, now);
+        var dispatched = request.Operation switch
+        {
+            BridgeV1Operation.DESKTOP_TASK_CLAIM => await ClaimAsync(request, agent, now, cancellationToken),
+            BridgeV1Operation.DESKTOP_TASK_ARTIFACT => AcceptArtifact(request, agent, now),
+            _ => CompleteOrReport(request, agent, now)
+        };
+        return Correlate(dispatched);
+    }
+
+    private BridgeV1DispatchResponse ReadOwnershipTransfer(BridgeV1SignedRequest request)
+    {
+        if (!request.Payload.TryGetValue("transferId", out var transferId))
+            return Failure("OWNERSHIP_TRANSFER_ID_REQUIRED");
+        var transfer = store.GetOwnershipTransfer(transferId);
+        if (transfer is null || !StringComparer.Ordinal.Equals(transfer.ProjectId, request.ProjectId))
+            return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["available"] = "false"
+            });
+        return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["available"] = "true",
+            ["envelope"] = transfer.EnvelopeJson
+        });
+    }
+
+    private BridgeV1DispatchResponse DiscoverOwnershipTransfers(
+        BridgeV1SignedRequest request,
+        DateTimeOffset now)
+    {
+        var transferIds = store.GetDiscoverableOwnershipTransferIds(request.ProjectId, now);
+        return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["transferIds"] = JsonSerializer.Serialize(transferIds)
+        });
     }
 
     private async ValueTask<BridgeV1DispatchResponse> ClaimAsync(
@@ -145,6 +191,8 @@ public sealed class BridgeV1TaskOperationDispatcher(
                 ["available"] = "true",
                 ["taskId"] = lease.TaskId,
                 ["projectId"] = lease.ProjectId,
+                ["ownerCoreId"] = lease.OwnerCoreId,
+                ["ownerGeneration"] = lease.OwnerGeneration.ToString(CultureInfo.InvariantCulture),
                 ["taskType"] = lease.TaskType,
                 ["idempotencyKey"] = lease.IdempotencyKey,
                 ["payloadRef"] = lease.PayloadRef,
@@ -179,6 +227,9 @@ public sealed class BridgeV1TaskOperationDispatcher(
     {
         var payload = request.Payload;
         if (!payload.TryGetValue("taskId", out var taskId) ||
+            !payload.TryGetValue("ownerCoreId", out var ownerCoreId) ||
+            !long.TryParse(payload.GetValueOrDefault("ownerGeneration"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var ownerGeneration) || ownerGeneration <= 0 ||
             !payload.TryGetValue("leaseId", out var leaseId) ||
             !long.TryParse(payload.GetValueOrDefault("fencingToken"), NumberStyles.None,
                 CultureInfo.InvariantCulture, out var fencingToken) ||
@@ -186,6 +237,16 @@ public sealed class BridgeV1TaskOperationDispatcher(
             !int.TryParse(payload.GetValueOrDefault("progressPercent"), NumberStyles.None,
                 CultureInfo.InvariantCulture, out var progress))
             return Failure("INVALID_TASK_RESULT");
+
+        try
+        {
+            if (!store.MatchesTaskOwnership(taskId, ownerCoreId, ownerGeneration))
+                return Failure("OWNER_GENERATION_REJECTED");
+        }
+        catch (ArgumentException)
+        {
+            return Failure("INVALID_TASK_RESULT");
+        }
 
         bool accepted;
         if (state is "ACCEPTED" or "RUNNING")
@@ -213,6 +274,10 @@ public sealed class BridgeV1TaskOperationDispatcher(
             else result = NormalizeNone(payload.GetValueOrDefault("result"));
             var errorCode = NormalizeNone(payload.GetValueOrDefault("errorCode"));
             if (!succeeded && errorCode is null) errorCode = "TASK_FAILED";
+            if (succeeded && result is not null &&
+                !HasRequiredTaskArtifact(
+                    taskId, ownerCoreId, ownerGeneration, leaseId, fencingToken, result))
+                return Failure("TASK_ARTIFACT_REQUIRED");
             accepted = store.Complete(agent.AgentId, taskId, leaseId, fencingToken,
                 succeeded, now, result, errorCode);
         }
@@ -234,6 +299,196 @@ public sealed class BridgeV1TaskOperationDispatcher(
                 now.Add(_leaseDuration).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
         return new BridgeV1DispatchResponse("SUCCEEDED", acknowledgement);
     }
+
+    private bool HasRequiredTaskArtifact(
+        string taskId,
+        string ownerCoreId,
+        long ownerGeneration,
+        string leaseId,
+        long fencingToken,
+        string result)
+    {
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(result, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = false,
+                CommentHandling = JsonCommentHandling.Disallow,
+                MaxDepth = 4
+            });
+        }
+        catch (JsonException)
+        {
+            return true; // Ordinary non-artifact result text remains supported.
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("ResultRef", out var referenceElement) ||
+                referenceElement.ValueKind is JsonValueKind.Null)
+                return true;
+            if (referenceElement.ValueKind != JsonValueKind.String)
+                return false;
+            var reference = referenceElement.GetString();
+            const string prefix = "agent-artifact:";
+            if (reference is null || !reference.StartsWith(prefix, StringComparison.Ordinal))
+                return true;
+
+            var artifactId = reference[prefix.Length..];
+            if (!IsArtifactIdentifier(artifactId) ||
+                !root.TryGetProperty("TaskId", out var taskElement) ||
+                taskElement.ValueKind != JsonValueKind.String ||
+                !StringComparer.Ordinal.Equals(taskElement.GetString(), taskId) ||
+                !root.TryGetProperty("Outcome", out var outcomeElement) ||
+                outcomeElement.ValueKind != JsonValueKind.String ||
+                !StringComparer.Ordinal.Equals(outcomeElement.GetString(), "SUCCEEDED") ||
+                !root.TryGetProperty("ResultSha256", out var digestElement) ||
+                digestElement.ValueKind != JsonValueKind.String)
+                return false;
+            var digest = digestElement.GetString();
+            if (digest is null || !IsLowerHexSha256(digest)) return false;
+
+            var artifact = store.GetTaskArtifact(artifactId);
+            if (artifact is null) return false;
+            try
+            {
+                var metadata = artifact.Metadata;
+                return StringComparer.Ordinal.Equals(metadata.TaskId, taskId) &&
+                    StringComparer.Ordinal.Equals(metadata.OwnerCoreId, ownerCoreId) &&
+                    metadata.OwnerGeneration == ownerGeneration &&
+                    StringComparer.Ordinal.Equals(metadata.LeaseId, leaseId) &&
+                    metadata.FencingToken == fencingToken &&
+                    StringComparer.Ordinal.Equals(metadata.Sha256, digest);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(artifact.Payload);
+            }
+        }
+    }
+
+    private BridgeV1DispatchResponse AcceptArtifact(
+        BridgeV1SignedRequest request,
+        HubAgentSnapshot agent,
+        DateTimeOffset now)
+    {
+        var payload = request.Payload;
+        if (!int.TryParse(payload.GetValueOrDefault("contractVersion"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var contractVersion) || contractVersion != 1 ||
+            !payload.TryGetValue("artifactId", out var artifactId) || !IsArtifactIdentifier(artifactId) ||
+            !payload.TryGetValue("taskId", out var taskId) ||
+            !payload.TryGetValue("ownerCoreId", out var ownerCoreId) ||
+            !long.TryParse(payload.GetValueOrDefault("ownerGeneration"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var ownerGeneration) || ownerGeneration <= 0 ||
+            !payload.TryGetValue("leaseId", out var leaseId) ||
+            !long.TryParse(payload.GetValueOrDefault("fencingToken"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var fencingToken) || fencingToken <= 0 ||
+            !payload.TryGetValue("schemaId", out var schemaId) ||
+            !int.TryParse(payload.GetValueOrDefault("schemaVersion"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var schemaVersion) || schemaVersion != 1 ||
+            !payload.TryGetValue("contentType", out var contentType) ||
+            !int.TryParse(payload.GetValueOrDefault("byteLength"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var byteLength) || byteLength is < 1 or > 32_768 ||
+            !payload.TryGetValue("sha256", out var sha256) || !IsLowerHexSha256(sha256) ||
+            !payload.TryGetValue("redactionStatus", out var redactionStatus) ||
+            !long.TryParse(payload.GetValueOrDefault("createdAtEpochMs"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var createdAtEpochMs) || createdAtEpochMs <= 0 ||
+            !payload.TryGetValue("payloadBase64", out var payloadBase64) ||
+            !StringComparer.Ordinal.Equals(schemaId, "glafira.agent.diagnostics.snapshot") ||
+            !StringComparer.Ordinal.Equals(contentType, "application/json") ||
+            !StringComparer.Ordinal.Equals(redactionStatus, "REDACTED"))
+            return Failure("INVALID_TASK_ARTIFACT");
+
+        DateTimeOffset createdAt;
+        try { createdAt = DateTimeOffset.FromUnixTimeMilliseconds(createdAtEpochMs); }
+        catch (ArgumentOutOfRangeException) { return Failure("INVALID_TASK_ARTIFACT"); }
+        if (createdAt > now.AddSeconds(30)) return Failure("INVALID_TASK_ARTIFACT");
+
+        byte[] artifactBytes;
+        try { artifactBytes = Convert.FromBase64String(payloadBase64); }
+        catch (FormatException) { return Failure("INVALID_TASK_ARTIFACT"); }
+        try
+        {
+            if (artifactBytes.Length != byteLength ||
+                !StringComparer.Ordinal.Equals(Convert.ToBase64String(artifactBytes), payloadBase64) ||
+                !IsJsonObject(artifactBytes))
+                return Failure("INVALID_TASK_ARTIFACT");
+
+            byte[] expectedHash;
+            try { expectedHash = Convert.FromHexString(sha256); }
+            catch (FormatException) { return Failure("INVALID_TASK_ARTIFACT"); }
+            var actualHash = SHA256.HashData(artifactBytes);
+            var hashMatches = CryptographicOperations.FixedTimeEquals(expectedHash, actualHash);
+            CryptographicOperations.ZeroMemory(expectedHash);
+            CryptographicOperations.ZeroMemory(actualHash);
+            if (!hashMatches) return Failure("INVALID_TASK_ARTIFACT");
+
+            var metadata = new HubTaskArtifactMetadata(
+                contractVersion, artifactId, taskId, ownerCoreId, ownerGeneration,
+                leaseId, fencingToken, schemaId, schemaVersion, contentType,
+                byteLength, sha256, redactionStatus, createdAt);
+            HubTaskArtifactAcceptance acceptance;
+            try
+            {
+                acceptance = store.AcceptTaskArtifact(
+                    agent.AgentId, request.ProjectId, metadata, artifactBytes, now);
+            }
+            catch (ArgumentException)
+            {
+                return Failure("INVALID_TASK_ARTIFACT");
+            }
+
+            if (acceptance == HubTaskArtifactAcceptance.Conflict)
+                return Failure("ARTIFACT_ID_CONFLICT");
+            if (acceptance == HubTaskArtifactAcceptance.LeaseRejected)
+                return Failure("LEASE_FENCING_REJECTED");
+
+            return new BridgeV1DispatchResponse("SUCCEEDED", new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["accepted"] = "true",
+                ["duplicate"] = (acceptance == HubTaskArtifactAcceptance.Duplicate).ToString().ToLowerInvariant(),
+                ["artifactId"] = artifactId,
+                ["taskId"] = taskId,
+                ["ownerCoreId"] = ownerCoreId,
+                ["ownerGeneration"] = ownerGeneration.ToString(CultureInfo.InvariantCulture),
+                ["leaseId"] = leaseId,
+                ["fencingToken"] = fencingToken.ToString(CultureInfo.InvariantCulture),
+                ["schemaId"] = schemaId,
+                ["schemaVersion"] = schemaVersion.ToString(CultureInfo.InvariantCulture),
+                ["byteLength"] = byteLength.ToString(CultureInfo.InvariantCulture),
+                ["sha256"] = sha256
+            });
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(artifactBytes);
+        }
+    }
+
+    private static bool IsJsonObject(byte[] bytes)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 8 });
+            return document.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsArtifactIdentifier(string value) =>
+        value is { Length: >= 1 and <= 128 } &&
+        char.IsAsciiLetterOrDigit(value[0]) &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or ':');
+
+    private static bool IsLowerHexSha256(string value) =>
+        value is { Length: 64 } &&
+        value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private static bool TryDecodePayload(
         byte[] bytes,

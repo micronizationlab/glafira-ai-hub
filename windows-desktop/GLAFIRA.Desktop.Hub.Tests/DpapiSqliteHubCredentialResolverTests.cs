@@ -20,14 +20,14 @@ public sealed class DpapiSqliteHubCredentialResolverTests : IDisposable
         var resolver = new DpapiSqliteHubCredentialResolver(_databasePath);
         var secret = Secret();
 
-        await resolver.StoreCredentialAsync("agent-01", secret, ["hub.read", "hub.task.claim"]);
+        await resolver.StoreCredentialAsync("agent-01", secret, ["project.read", "desktop.task.claim"]);
 
         var credential = await resolver.ResolveAsync("agent-01", default);
 
         Assert.NotNull(credential);
         Assert.Equal(secret, credential.HmacSecret);
-        Assert.Contains("hub.read", credential.AllowedScopes);
-        Assert.Contains("hub.task.claim", credential.AllowedScopes);
+        Assert.Contains("project.read", credential.AllowedScopes);
+        Assert.Contains("desktop.task.claim", credential.AllowedScopes);
 
         await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = _databasePath }.ToString());
         await connection.OpenAsync();
@@ -42,21 +42,21 @@ public sealed class DpapiSqliteHubCredentialResolverTests : IDisposable
     public async Task RotationReplacesSecretAndScopes()
     {
         var resolver = new DpapiSqliteHubCredentialResolver(_databasePath);
-        await resolver.StoreCredentialAsync("agent-01", Secret(0x11), ["hub.read"]);
-        await resolver.StoreCredentialAsync("agent-01", Secret(0x22), ["hub.task.claim"]);
+        await resolver.StoreCredentialAsync("agent-01", Secret(0x11), ["project.read"]);
+        await resolver.StoreCredentialAsync("agent-01", Secret(0x22), ["desktop.task.claim"]);
 
         var credential = await resolver.ResolveAsync("agent-01", default);
 
         Assert.NotNull(credential);
         Assert.Equal(Secret(0x22), credential.HmacSecret);
-        Assert.Equal(new[] { "hub.task.claim" }, credential.AllowedScopes.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "desktop.task.claim" }, credential.AllowedScopes.Order(StringComparer.Ordinal));
     }
 
     [Fact]
     public async Task RevokedCredentialCannotBeResolved()
     {
         var resolver = new DpapiSqliteHubCredentialResolver(_databasePath);
-        await resolver.StoreCredentialAsync("agent-01", Secret(), ["hub.read"]);
+        await resolver.StoreCredentialAsync("agent-01", Secret(), ["project.read"]);
 
         Assert.True(await resolver.RevokeAsync("agent-01"));
         Assert.Null(await resolver.ResolveAsync("agent-01", default));
@@ -77,7 +77,7 @@ public sealed class DpapiSqliteHubCredentialResolverTests : IDisposable
         var resolver = new DpapiSqliteHubCredentialResolver(_databasePath);
 
         await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await resolver.StoreCredentialAsync("agent-01", Secret(), ["hub.read", "hub.read"]));
+            await resolver.StoreCredentialAsync("agent-01", Secret(), ["project.read", "project.read"]));
 
         Assert.Null(await resolver.ResolveAsync("agent-01", default));
     }
@@ -88,7 +88,7 @@ public sealed class DpapiSqliteHubCredentialResolverTests : IDisposable
         var resolver = new DpapiSqliteHubCredentialResolver(_databasePath);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
-            await resolver.StoreCredentialAsync("agent-01", new byte[16], ["hub.read"]));
+            await resolver.StoreCredentialAsync("agent-01", new byte[16], ["project.read"]));
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class DpapiSqliteHubCredentialResolverTests : IDisposable
         var resolver = new DpapiSqliteHubCredentialResolver(_databasePath);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
-            await resolver.StoreCredentialAsync("agent-01", new byte[33], ["hub.read"]));
+            await resolver.StoreCredentialAsync("agent-01", new byte[33], ["project.read"]));
     }
 
     public void Dispose()

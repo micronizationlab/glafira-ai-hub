@@ -15,6 +15,7 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
         Path.GetTempPath(), "glafira-pair-endpoint-" + Guid.NewGuid().ToString("N") + ".db");
     private readonly MutableTimeProvider _clock = new(DateTimeOffset.FromUnixTimeSeconds(1_800_000_000));
     private readonly TestDataProtector _protector = new();
+    private readonly ECDsa _ownershipSigningKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
     [Fact]
     public async Task ReturnsCanonicalCredentialBundleAndRegistersItOnHub()
@@ -30,9 +31,16 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
         Assert.Equal("ENROLLED", response.Status);
         Assert.Null(response.ErrorCode);
         Assert.Equal("agent-01", response.AgentId);
+        Assert.Equal(ticket.TicketId, response.EnrollmentId);
         Assert.Equal(HubId, response.DesktopHubId);
         Assert.Equal(LocalEndpoint.AbsoluteUri, response.Endpoint);
         Assert.Equal(TlsPin, response.TlsCertificateSha256);
+        Assert.Equal("owner-core-01", response.OwnerCoreId);
+        Assert.Equal(7, response.OwnershipSigningKeyEpoch);
+        Assert.Equal(OwnershipTrustAnchor.SigningPublicKeySpkiBase64,
+            response.OwnershipSigningPublicKeySpkiBase64);
+        Assert.Equal(OwnershipTrustAnchor.SigningPublicKeySha256,
+            response.OwnershipSigningPublicKeySha256);
         Assert.Equal(["desktop.task.claim", "desktop.task.result"], response.Scopes);
         Assert.Equal(_clock.GetUtcNow().ToUnixTimeMilliseconds(), response.EnrolledAtEpochMs);
         Assert.Equal(_clock.GetUtcNow().AddDays(30).ToUnixTimeMilliseconds(), response.ExpiresAtEpochMs);
@@ -164,7 +172,25 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
         Assert.Single(responses, response => response.Status == "ENROLLED");
         var rejected = Assert.Single(responses, response => response.Status == "FAILED");
         Assert.Null(rejected.SharedSecretBase64);
+        Assert.Null(rejected.OwnerCoreId);
+        Assert.Null(rejected.OwnershipSigningPublicKeySpkiBase64);
         Assert.Empty(rejected.Scopes);
+    }
+
+    [Fact]
+    public void OwnershipTrustAnchorRejectsFingerprintMismatchAndNonP256Key()
+    {
+        var spki = Convert.ToBase64String(_ownershipSigningKey.ExportSubjectPublicKeyInfo());
+        Assert.Throws<ArgumentException>(() => new BridgeV1OwnershipTrustAnchor(
+            "owner-core-01", 7, spki, new string('0', 64)));
+
+        using var p384 = ECDsa.Create(ECCurve.NamedCurves.nistP384);
+        var p384Bytes = p384.ExportSubjectPublicKeyInfo();
+        Assert.Throws<ArgumentException>(() => new BridgeV1OwnershipTrustAnchor(
+            "owner-core-01",
+            7,
+            Convert.ToBase64String(p384Bytes),
+            Convert.ToHexString(SHA256.HashData(p384Bytes)).ToLowerInvariant()));
     }
 
     private BridgeV1PairingTicketStore CreateStore() =>
@@ -176,13 +202,27 @@ public sealed class BridgeV1PairingEndpointTests : IDisposable
     private BridgeV1PairingEndpoint CreateEndpoint(
         BridgeV1PairingTicketStore store,
         DesktopHubStore hubStore) =>
-        new(store, hubStore, HubId, TlsPin, TimeSpan.FromDays(30), _clock);
+        new(store, hubStore, HubId, TlsPin, OwnershipTrustAnchor, TimeSpan.FromDays(30), _clock);
+
+    private BridgeV1OwnershipTrustAnchor OwnershipTrustAnchor
+    {
+        get
+        {
+            var publicKey = _ownershipSigningKey.ExportSubjectPublicKeyInfo();
+            return new BridgeV1OwnershipTrustAnchor(
+                "owner-core-01",
+                7,
+                Convert.ToBase64String(publicKey),
+                Convert.ToHexString(SHA256.HashData(publicKey)).ToLowerInvariant());
+        }
+    }
 
     private static BridgeV1PairingRequest Request(BridgeV1PairingTicket ticket) =>
         new(1, ticket.TicketId, ticket.PairingCode, "agent-01");
 
     public void Dispose()
     {
+        _ownershipSigningKey.Dispose();
         SqliteConnection.ClearAllPools();
         foreach (var path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
         {
