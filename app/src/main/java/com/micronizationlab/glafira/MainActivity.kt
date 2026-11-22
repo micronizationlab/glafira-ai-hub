@@ -1266,24 +1266,25 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                 if (!msg.isUser) {
                                     Spacer(Modifier.width(6.dp))
                                     if (msg.operationId.isNotBlank() && !msg.operationId.endsWith(":partial")) {
-                                        Text(
-                                            "📚",
-                                            fontSize = 10.sp,
-                                            modifier = Modifier
-                                                .semantics { contentDescription = "Показать источники ответа" }
-                                                .clickable {
-                                                    scope.launch {
-                                                        val manifest = withContext(Dispatchers.IO) {
-                                                            citationManifestStore.get(msg.operationId, citationAccess)
-                                                        }
-                                                        if (manifest == null) {
-                                                            ToastHelper.short(context, "Для этого ответа источники проекта не использовались")
-                                                        } else {
-                                                            visibleCitationManifest = manifest
-                                                        }
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    val manifest = withContext(Dispatchers.IO) {
+                                                        citationManifestStore.get(msg.operationId, citationAccess)
+                                                    }
+                                                    if (manifest == null) {
+                                                        ToastHelper.short(context, "Для этого ответа источники проекта не использовались")
+                                                    } else {
+                                                        visibleCitationManifest = manifest
                                                     }
                                                 }
-                                        )
+                                            },
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .semantics { contentDescription = "Показать источники ответа" }
+                                        ) {
+                                            Text("📚", fontSize = 12.sp)
+                                        }
                                         Spacer(Modifier.width(6.dp))
                                     }
                                     Text(

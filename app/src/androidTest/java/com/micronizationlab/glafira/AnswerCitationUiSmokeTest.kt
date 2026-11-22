@@ -81,11 +81,17 @@ class AnswerCitationUiSmokeTest {
                 "Seeded durable response was not rendered",
                 device.wait(Until.findObject(By.text("Ответ с проверяемыми источниками")), 10_000)
             )
+            val citationAction = device.wait(
+                Until.findObject(By.desc("Показать источники ответа")),
+                5_000
+            )
             assertNotNull(
                 "Citation action is absent from the response",
-                device.wait(Until.findObject(By.desc("Показать источники ответа")), 5_000)
+                citationAction
             )
-            device.findObject(By.desc("Показать источники ответа")).click()
+            assertTrue("Citation action is not accessible as a button", citationAction.isClickable)
+            citationAction.click()
+            device.waitForIdle()
 
             assertNotNull(
                 "Citation dialog did not open",
