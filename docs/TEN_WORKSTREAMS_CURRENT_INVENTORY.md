@@ -184,3 +184,5 @@ This update supersedes only the moving CI/source observations above; historical 
 - **#372 diagnostics and fix candidate (2026-11-22):** downloaded the failed emulator artifact and inspected the JUnit/logcat output; the old candidate failed 1/117 tests. The new semantics fix is in exact-head run #44965845799; no resolution claim until APK, emulator and exact-head summary complete successfully.
 
 - **iOS/Bridge cross-check (2026-11-22):** verified the unsigned Xcode app target and Keychain/biometric modules exist, but the iOS pairing client currently targets an Android `/bridge/v1/pairing` endpoint that current Android source does not host. This is a protocol/authority integration mismatch, not an iOS UI-only task; align the endpoint to the approved Hub/Core architecture before claiming pairing acceptance.
+
+- **Microphone denial correction (2026-11-22):** full SettingsScreen inspection found an existing help dialog with retry and Android app-settings actions. Issue #99 was corrected: remaining work is to unify ChatScreen denial with that existing dialog and test the route, not create a new settings flow.
