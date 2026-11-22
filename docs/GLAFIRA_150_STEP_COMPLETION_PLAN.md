@@ -421,3 +421,12 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - **Parallel P0 continuation.** Keep #260 failure-injection matrix, #266 durable result outbox/exact ACK, and #258 owner identity/credential autonomy/ownership handoff active. Do not count issue creation, documentation, skipped CI jobs or partial platform checks as implementation completion.
 
 **Acceptance discipline:** PR #347 remains open and blocked by the emulator failure. The communications work is scoped but not implemented. Skipped platform jobs are not passes; no automatic cross-Core failover or unrestricted personal-account access is implied.
+
+
+## Live source-audit refresh — 2026-11-22
+
+- Current main baseline: `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193`.
+- #380 approval-generation slice and #382 durable Runtime-config slice each have passing exact-head Android JVM, managed-emulator, shared-contract and APK checks; both are unmerged draft candidates and require code review. They do not close #366/#381 or complete Backup/Restore acceptance.
+- #372 has a new exact head `30dd5ab5d11630c5509d612c0aedba124ce1bfa0`; Android JVM/contracts/APK passed in run `44964979933`, emulator was still running at this snapshot. It remains stacked on #369 → #352 → #347 and is 33 commits ahead / 4 behind main. Do not merge any middle branch independently.
+- Windows Agent has polling/lease/result coordinator and authenticated Hub claim/result operations, but no concrete `IAgentTaskHandler` is registered in `Program.cs`; worker polling remains intentionally gated off until a bounded read-only handler is registered. See #384.
+- Branch protection requires an approving review and all required checks; skipped jobs do not satisfy checks. No bypass or force merge.
