@@ -41,3 +41,12 @@ No PR was merged in this refresh. Keep stacked PR dependencies intact. Do not me
 - PR #372 run `44973570586` finished with one emulator failure out of 117. The exact failure is still `Settings action is not exposed as clickable`; the test did not reach the manual-backup/guidance assertions. This confirms the child-Text content-description approach was insufficient.
 - Corrective commit `3283a98a8649677fcce118ecae91392d31830637` was pushed as a fast-forward to the existing PR #372 head. It puts an explicit Compose accessibility `onClick` action and stable content description on the merged Settings Box semantics node, both routed to `onSettingsClick()`. New exact-head CI run `44974395504` is queued; no result is claimed yet.
 - PR #372 remains Draft. No tests were weakened and no PR was merged.
+
+
+## Follow-up actions — 2026-11-22 02:10 UTC
+
+- PR #372 new exact head `3283a98a8649677fcce118ecae91392d31830637`, CI run `44974395504`: Android JVM passed; shared contract conformance passed; debug APK packaging passed; managed emulator job `137061355523` is still executing the instrumentation step. Windows Hub/Agent, iOS and workflow lint are skipped. The accessibility `onClick` semantics fix is not yet accepted until the emulator completes.
+- PR #390 audit follow-up head `8fad948e41debd345f6bfbf22e9438b6a20c450a`, CI run `44974438427`: Android JVM, shared contracts, iOS Swift package tests and APK packaging passed; managed emulator job `137061520497` is still executing. Separate iOS workflow run `44974438431` passed. Windows Hub/Agent and workflow lint are skipped.
+- Added source-audit implementation guardrails to #123 (Core↔Hub transactional outbox/inbox), #392 (Core-peer pairing contract distinct from Agent enrollment), #393 (Android as owner-facing pinned HTTPS client), #387 (provider read-back/clean-profile restore remains unverified) and #394 (default-deny provider/project/classification policy).
+- Reconfirmed #366 production transfer requirements and #384 empty Agent handler registry/step-76 blocker in prior comments. No production handler is enabled.
+- No PR merged; #372 remains Draft. These CI runs are still in progress at this snapshot; no emulator result is inferred from a running step.
