@@ -65,7 +65,7 @@ data class DesktopBridgeResponse(
 )
 
 /**
- * Legacy JVM Desktop client for the current Android-hosted Bridge v1 endpoint.
+ * Legacy JVM Desktop client for the historical Android-hosted Bridge v1 endpoint; not the current Windows Hub peer API.
  *
  * This remains a compatibility transport while the authoritative TLS listener moves
  * into the Windows Desktop Hub. TLS is HTTPS-only, hostname verification remains
