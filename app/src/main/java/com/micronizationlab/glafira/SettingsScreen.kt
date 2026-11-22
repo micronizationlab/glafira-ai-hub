@@ -809,17 +809,17 @@ private fun GitHubIntegrationSection() {
                 }
             } else {
                 OutlinedButton(onClick = {
-                    val token = store.loadAccessToken()
-                    if (token.isNullOrBlank()) {
-                        connected = false
-                        accountLogin = null
-                        status = "Авторизация истекла или недоступна. Подключи GitHub заново."
-                    } else {
-                        authorizationJob?.cancel()
-                        authorizationJob = scope.launch {
-                            connecting = true
-                            status = "Проверяю профиль и разрешённые репозитории…"
-                            try {
+                    authorizationJob?.cancel()
+                    authorizationJob = scope.launch {
+                        connecting = true
+                        status = "Проверяю авторизацию и доступ к репозиторию…"
+                        try {
+                            val token = GitHubSession(context).accessTokenOrRefresh()
+                            if (token.isNullOrBlank()) {
+                                connected = false
+                                accountLogin = null
+                                status = "Авторизация истекла или отозвана. Подключи GitHub заново."
+                            } else {
                                 val api = GitHubApiClient()
                                 val user = api.getAuthenticatedUser(token)
                                 accountLogin = user.login
@@ -837,15 +837,15 @@ private fun GitHubIntegrationSection() {
                                 } else {
                                     "Профиль @$accountLogin подтверждён, но репозиторий ещё не предоставлен приложению."
                                 }
-                            } catch (error: Exception) {
-                                status = error.message ?: "Не удалось проверить доступ GitHub."
-                                if (status.contains("401") || status.contains("expired", ignoreCase = true) || status.contains("revoked", ignoreCase = true)) {
-                                    connected = false
-                                    accountLogin = null
-                                }
-                            } finally {
-                                connecting = false
                             }
+                        } catch (error: Exception) {
+                            status = error.message ?: "Не удалось проверить доступ GitHub."
+                            if (status.contains("401") || status.contains("expired", ignoreCase = true) || status.contains("revoked", ignoreCase = true)) {
+                                connected = false
+                                accountLogin = null
+                            }
+                        } finally {
+                            connecting = false
                         }
                     }
                 }, enabled = !connecting) { Text("ПРОВЕРИТЬ ДОСТУП К РЕПОЗИТОРИЮ") }
