@@ -148,6 +148,81 @@ public sealed class BridgeV1AgentTaskClientTests
     }
 
     [Fact]
+    public async Task TaskUpdateUsesLeaseProjectInSignedEnvelope()
+    {
+        string? projectId = null;
+        var resultJson = "\"done\"";
+        var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson))).ToLowerInvariant();
+        var handler = new StubHandler(async request =>
+        {
+            using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            projectId = document.RootElement.GetProperty("projectId").GetString();
+            return Json(new
+            {
+                status = "SUCCEEDED",
+                result = new Dictionary<string, string>
+                {
+                    ["accepted"] = "true", ["taskId"] = "task-001", ["leaseId"] = "lease-0001",
+                    ["fencingToken"] = "42", ["state"] = "SUCCEEDED", ["resultSha256"] = digest
+                }
+            });
+        });
+
+        await Client(handler).SendTaskUpdateAsync(
+            Credential(), Lease() with { ProjectId = "project-001" }, "SUCCEEDED", 100, "done", resultJson);
+
+        Assert.Equal("project-001", projectId);
+    }
+
+    [Fact]
+    public async Task ArtifactUploadSignsExactBindingAndAcceptsDuplicateAcknowledgement()
+    {
+        Dictionary<string, string>? captured = null;
+        string? operation = null;
+        string? projectId = null;
+        var artifact = Artifact();
+        var handler = new StubHandler(async request =>
+        {
+            using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            operation = document.RootElement.GetProperty("operation").GetString();
+            projectId = document.RootElement.GetProperty("projectId").GetString();
+            captured = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                document.RootElement.GetProperty("payload").GetRawText());
+            return Json(new
+            {
+                status = "SUCCEEDED",
+                result = ArtifactAcknowledgement(artifact.Metadata, duplicate: true)
+            });
+        });
+
+        var acknowledgement = await Client(handler).UploadTaskArtifactAsync(Credential(), artifact);
+
+        Assert.True(acknowledgement.Duplicate);
+        Assert.Equal("DESKTOP_TASK_ARTIFACT", operation);
+        Assert.Equal("project-001", projectId);
+        Assert.NotNull(captured);
+        Assert.Equal(Convert.ToBase64String(artifact.Payload), captured["payloadBase64"]);
+        Assert.Equal(artifact.Metadata.Sha256, captured["sha256"]);
+        Assert.Equal("REDACTED", captured["redactionStatus"]);
+    }
+
+    [Fact]
+    public async Task ArtifactUploadRejectsMismatchedAcknowledgement()
+    {
+        var artifact = Artifact();
+        var acknowledgement = ArtifactAcknowledgement(artifact.Metadata, duplicate: false);
+        acknowledgement["fencingToken"] = "43";
+        var handler = new StubHandler(_ => Task.FromResult(Json(new
+        {
+            status = "SUCCEEDED",
+            result = acknowledgement
+        })));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            Client(handler).UploadTaskArtifactAsync(Credential(), artifact));
+    }
+
+    [Fact]
     public async Task RunningProgressRequiresAndReturnsServerLeaseExpiry()
     {
         var renewedExpiry = _now.AddMinutes(2).ToUnixTimeMilliseconds();
@@ -203,6 +278,36 @@ public sealed class BridgeV1AgentTaskClientTests
         "Research", "Analyze", "RESEARCHER", new HashSet<string> { "web.research" },
         _now.ToUnixTimeMilliseconds(), _now.AddMinutes(5).ToUnixTimeMilliseconds(),
         10, "lease-0001", 42);
+
+    private AgentResultArtifact Artifact()
+    {
+        var payload = Encoding.UTF8.GetBytes("{\"status\":\"healthy\"}");
+        var metadata = new AgentResultArtifactMetadata(
+            1, "artifact-0001", "task-001", "project-001", "windows-core-0001", 3,
+            "lease-0001", 42, AgentResultArtifactPolicy.DiagnosticsSchemaId,
+            AgentResultArtifactPolicy.DiagnosticsSchemaVersion, AgentResultArtifactPolicy.JsonContentType,
+            payload.Length, AgentResultArtifactPolicy.ComputeSha256(payload),
+            AgentResultArtifactPolicy.Redacted, _now.ToUnixTimeMilliseconds());
+        return new AgentResultArtifact(metadata, payload);
+    }
+
+    private static Dictionary<string, string> ArtifactAcknowledgement(
+        AgentResultArtifactMetadata metadata,
+        bool duplicate) => new(StringComparer.Ordinal)
+        {
+            ["accepted"] = "true",
+            ["duplicate"] = duplicate.ToString().ToLowerInvariant(),
+            ["artifactId"] = metadata.ArtifactId,
+            ["taskId"] = metadata.TaskId,
+            ["ownerCoreId"] = metadata.OwnerCoreId,
+            ["ownerGeneration"] = metadata.OwnerGeneration.ToString(CultureInfo.InvariantCulture),
+            ["leaseId"] = metadata.LeaseId,
+            ["fencingToken"] = metadata.FencingToken.ToString(CultureInfo.InvariantCulture),
+            ["schemaId"] = metadata.SchemaId,
+            ["schemaVersion"] = metadata.SchemaVersion.ToString(CultureInfo.InvariantCulture),
+            ["byteLength"] = metadata.ByteLength.ToString(CultureInfo.InvariantCulture),
+            ["sha256"] = metadata.Sha256
+        };
 
     private Dictionary<string, string> ValidClaimResult() => new()
     {

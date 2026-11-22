@@ -24,6 +24,9 @@ public sealed class AgentResultArtifactStoreTests : IDisposable
                 .ReadAsync(metadata.ArtifactId, CancellationToken.None));
         Assert.Equal(metadata, restored.Metadata);
         Assert.Equal(payload, restored.Payload);
+        Assert.Equal(new[] { metadata.ArtifactId },
+            await new FileAgentResultArtifactStore(_directory)
+                .ListPendingArtifactIdsAsync(CancellationToken.None));
         Assert.Single(Directory.GetFiles(_directory, "*.artifact"));
         Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
     }
@@ -120,6 +123,7 @@ public sealed class AgentResultArtifactStoreTests : IDisposable
         AgentResultArtifactPolicy.CurrentContractVersion,
         "artifact-0001",
         "task-0001",
+        "project-0001",
         "windows-core-0001",
         3,
         "lease-0001",

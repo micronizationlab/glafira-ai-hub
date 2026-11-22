@@ -37,7 +37,12 @@ builder.Services.AddSingleton<AgentTaskExecutor>(services =>
 builder.Services.AddSingleton<IAgentLocalDataProtector, WindowsDpapiAgentDataProtector>();
 builder.Services.AddSingleton<IAgentExecutionJournal, DpapiAgentExecutionJournal>();
 builder.Services.AddSingleton<IAgentResultArtifactStore, FileAgentResultArtifactStore>();
-builder.Services.AddSingleton<IAgentTaskTransport, BridgeV1AgentTaskClient>();
+builder.Services.AddSingleton<BridgeV1AgentTaskClient>();
+builder.Services.AddSingleton<IAgentTaskTransport>(services =>
+    services.GetRequiredService<BridgeV1AgentTaskClient>());
+builder.Services.AddSingleton<IAgentResultArtifactTransport>(services =>
+    services.GetRequiredService<BridgeV1AgentTaskClient>());
+builder.Services.AddSingleton<AgentResultArtifactOutbox>();
 builder.Services.AddSingleton<AgentTaskPollingCoordinator>();
 builder.Services.AddSingleton<IAgentCredentialStore, DpapiAgentCredentialStore>();
 builder.Services.AddSingleton<AgentPairingClient>();

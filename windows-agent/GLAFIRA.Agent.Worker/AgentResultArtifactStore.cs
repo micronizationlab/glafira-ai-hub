@@ -13,6 +13,7 @@ public sealed record AgentResultArtifactMetadata(
     int ContractVersion,
     string ArtifactId,
     string TaskId,
+    string ProjectId,
     string OwnerCoreId,
     long OwnerGeneration,
     string LeaseId,
@@ -38,6 +39,9 @@ public interface IAgentResultArtifactStore
 
     Task<AgentResultArtifact?> ReadAsync(
         string artifactId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<string>> ListPendingArtifactIdsAsync(
         CancellationToken cancellationToken);
 
     Task<bool> DeleteAsync(
@@ -77,6 +81,7 @@ public static partial class AgentResultArtifactPolicy
             throw new InvalidDataException("AGENT_ARTIFACT_CONTRACT_UNSUPPORTED");
         ValidateIdentifier(metadata.ArtifactId, "AGENT_ARTIFACT_ID_INVALID");
         ValidateIdentifier(metadata.TaskId, "AGENT_ARTIFACT_TASK_ID_INVALID");
+        ValidateIdentifier(metadata.ProjectId, "AGENT_ARTIFACT_PROJECT_ID_INVALID");
         ValidateIdentifier(metadata.OwnerCoreId, "AGENT_ARTIFACT_OWNER_INVALID");
         ValidateIdentifier(metadata.LeaseId, "AGENT_ARTIFACT_LEASE_INVALID");
         if (metadata.OwnerGeneration <= 0 || metadata.FencingToken <= 0)
@@ -233,6 +238,28 @@ public sealed class FileAgentResultArtifactStore : IAgentResultArtifactStore
             return File.Exists(path)
                 ? await ReadFileAsync(path, cancellationToken).ConfigureAwait(false)
                 : null;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<IReadOnlyList<string>> ListPendingArtifactIdsAsync(
+        CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Directory.Exists(_directory)) return Array.Empty<string>();
+            var identifiers = new List<string>();
+            foreach (var path in Directory.EnumerateFiles(_directory, "*.artifact", SearchOption.TopDirectoryOnly))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var identifier = Path.GetFileNameWithoutExtension(path);
+                AgentResultArtifactPolicy.ValidateArtifactId(identifier);
+                identifiers.Add(identifier);
+            }
+            identifiers.Sort(StringComparer.Ordinal);
+            return identifiers;
         }
         finally { _gate.Release(); }
     }

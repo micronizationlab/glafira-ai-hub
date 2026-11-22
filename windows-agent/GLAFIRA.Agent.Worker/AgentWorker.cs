@@ -15,7 +15,8 @@ public sealed class AgentWorker(
     IAgentCredentialStore credentialStore,
     BridgeV1AgentClient bridgeClient,
     AgentTaskHandlerRegistry taskHandlers,
-    AgentTaskPollingCoordinator taskPollingCoordinator) : BackgroundService
+    AgentTaskPollingCoordinator taskPollingCoordinator,
+    AgentResultArtifactOutbox artifactOutbox) : BackgroundService
 {
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollTick = TimeSpan.FromSeconds(1);
@@ -59,6 +60,8 @@ public sealed class AgentWorker(
             var nextHeartbeat = DateTimeOffset.UtcNow.Add(HeartbeatInterval);
             var nextPoll = DateTimeOffset.UtcNow;
             var pollDelay = AgentPollingBackoff.MinimumDelay;
+            var nextArtifactUpload = DateTimeOffset.UtcNow;
+            var artifactUploadDelay = AgentPollingBackoff.MinimumDelay;
             var wasReady = false;
             using var timer = new PeriodicTimer(PollTick);
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
@@ -76,6 +79,31 @@ public sealed class AgentWorker(
                         credential = null;
                     nextHeartbeat = DateTimeOffset.UtcNow.Add(HeartbeatInterval);
                     if (credential is null) continue;
+                }
+
+                if (runtimeState.Status is AgentServiceStatus.Connected or AgentServiceStatus.Ready &&
+                    now >= nextArtifactUpload)
+                {
+                    try
+                    {
+                        var uploaded = await artifactOutbox.FlushOneAsync(credential, stoppingToken)
+                            .ConfigureAwait(false);
+                        artifactUploadDelay = AgentPollingBackoff.NextDelay(
+                            artifactUploadDelay, uploaded, failed: false);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or TaskCanceledException)
+                    {
+                        logger.LogWarning(error,
+                            "GLAFIRA Agent {AgentId} artifact delivery failed; the validated local artifact remains in the durable outbox.",
+                            credential.AgentId);
+                        artifactUploadDelay = AgentPollingBackoff.NextDelay(
+                            artifactUploadDelay, worked: false, failed: true);
+                    }
+                    nextArtifactUpload = DateTimeOffset.UtcNow.Add(artifactUploadDelay);
                 }
 
                 var ready = runtimeState.Status == AgentServiceStatus.Ready &&
