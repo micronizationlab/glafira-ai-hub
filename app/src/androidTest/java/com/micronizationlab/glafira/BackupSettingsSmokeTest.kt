@@ -25,6 +25,7 @@ class BackupSettingsSmokeTest {
     fun manualBackupActionRemainsEnabledAndExplainsMissingFolder() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
+        resetRecoveryJournalForUiSmokeTest(context)
         assertTrue(
             "Could not disable biometric lock for the home-screen smoke test",
             context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)

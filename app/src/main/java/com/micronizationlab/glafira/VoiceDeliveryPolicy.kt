@@ -1,5 +1,13 @@
 package com.micronizationlab.glafira
 
-/** Prevents automatic speech from replaying loaded history or duplicate poll snapshots. */
-internal fun shouldAutoSpeakAgentReply(previous: Msg?, current: Msg?, enabled: Boolean): Boolean =
-    enabled && current != null && !current.isUser && current.operationId.isNotBlank() && current.operationId != previous?.operationId
+/**
+ * Speaks only a newly delivered assistant message with a stable operation identity.
+ * Partial failure previews use the ":partial" suffix and must never be spoken.
+ */
+internal fun shouldAutoSpeakAgentReply(previous: Msg?, current: Msg?, enabled: Boolean): Boolean {
+    if (!enabled || current == null || current.isUser) return false
+    val operationId = current.operationId
+    if (operationId.isBlank() || operationId.endsWith(":partial")) return false
+    if (previous == null || previous.isUser) return true
+    return operationId != previous.operationId
+}

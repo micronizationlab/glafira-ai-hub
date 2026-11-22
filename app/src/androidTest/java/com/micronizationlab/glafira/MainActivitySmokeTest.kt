@@ -22,6 +22,7 @@ class MainActivitySmokeTest {
     val compose = createEmptyComposeRule()
 
     private fun prepareUnlockedHome(context: Context) {
+        resetRecoveryJournalForUiSmokeTest(context)
         assertTrue(
             "Could not disable biometric lock for the home-screen smoke test",
             context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
