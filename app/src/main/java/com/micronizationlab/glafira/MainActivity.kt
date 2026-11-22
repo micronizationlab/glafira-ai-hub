@@ -423,14 +423,11 @@ fun ContactList(
             Spacer(Modifier.width(6.dp))
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
+                    // Keep the click action on the same merged node as its stable label.
+                    .clickable { onSettingsClick() }
                     .semantics(mergeDescendants = true) {
                         contentDescription = "Открыть настройки"
-                        onClick(label = "Открыть настройки") {
-                            onSettingsClick()
-                            true
-                        }
-                    }
-                    .clickable { onSettingsClick() },
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text("⚙", fontSize = 12.sp)
