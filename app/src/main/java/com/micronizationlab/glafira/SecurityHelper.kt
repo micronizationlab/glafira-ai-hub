@@ -29,6 +29,16 @@ fun showBiometricPrompt(
     activity: FragmentActivity,
     onSuccess: () -> Unit,
     onError: (String) -> Unit
+) = showBiometricPromptWithResult(activity, { onSuccess() }, onError)
+
+/**
+ * Delivers the platform authentication result to a caller that must mint a one-use Core
+ * owner session. Callers must not persist or serialize the result/session.
+ */
+fun showBiometricPromptWithResult(
+    activity: FragmentActivity,
+    onSuccess: (BiometricPrompt.AuthenticationResult) -> Unit,
+    onError: (String) -> Unit
 ) {
     val executor = ContextCompat.getMainExecutor(activity)
     val prompt = BiometricPrompt(
@@ -37,7 +47,7 @@ fun showBiometricPrompt(
         object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
-                onSuccess()
+                onSuccess(result)
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -49,7 +59,7 @@ fun showBiometricPrompt(
 
     val info = BiometricPrompt.PromptInfo.Builder()
         .setTitle("GLAFIRA AI HUB")
-        .setSubtitle("Подтвердите вход")
+        .setSubtitle("Подтвердите действие владельца")
         .setAllowedAuthenticators(
             BiometricManager.Authenticators.BIOMETRIC_WEAK or
             BiometricManager.Authenticators.DEVICE_CREDENTIAL
