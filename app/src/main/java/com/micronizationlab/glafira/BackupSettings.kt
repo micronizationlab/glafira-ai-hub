@@ -263,6 +263,7 @@ fun BackupSettingsSection() {
                         modifier = Modifier.semantics { contentDescription = guidance }
                     )
                 }
+
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = {
@@ -298,7 +299,11 @@ fun BackupSettingsSection() {
                         enabled = !busy,
                         modifier = Modifier
                             .weight(1f)
-                            .semantics { contentDescription = "Создать резервную копию сейчас" }
+                            .semantics {
+                                contentDescription = manualBackupGuidance?.let {
+                                    "Создать резервную копию сейчас. $it"
+                                } ?: "Создать резервную копию сейчас"
+                            }
                     ) { Text("Сохранить сейчас") }
                     OutlinedButton(
                         onClick = {
