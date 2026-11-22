@@ -31,7 +31,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -422,7 +424,14 @@ fun ContactList(
             Spacer(Modifier.width(6.dp))
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
-                    .semantics(mergeDescendants = true) { contentDescription = "Открыть настройки" }
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Открыть настройки"
+                        role = Role.Button
+                        onClick(label = "Открыть настройки") {
+                            onSettingsClick()
+                            true
+                        }
+                    }
                     .clickable { onSettingsClick() },
                 contentAlignment = Alignment.Center
             ) {
