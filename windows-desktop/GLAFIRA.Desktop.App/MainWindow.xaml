@@ -45,6 +45,30 @@
     </StackPanel>
     <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" Foreground="#52645D" FontSize="11" Margin="0,8,0,0"/>
     <TabControl Background="White">
+      <TabItem Header="GITHUB">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="18" MaxWidth="820" HorizontalAlignment="Left">
+            <TextBlock Text="GITHUB · НЕЗАВИСИМЫЙ КАНАЛ DESKTOP" FontSize="13" FontWeight="Bold" Foreground="#176B55"/>
+            <TextBlock Text="Подключение выполняется отдельно от Android и Bridge. Доступ ограничен репозиторием micronizationlab/glafira-ai-hub; текущий этап — только чтение." TextWrapping="Wrap" Foreground="#52645D" Margin="0,6,0,14"/>
+            <Border Background="#F4F7F6" CornerRadius="8" Padding="16">
+              <StackPanel>
+                <TextBlock Text="СОСТОЯНИЕ АВТОРИЗАЦИИ" FontWeight="Bold" Foreground="#176B55"/>
+                <TextBlock x:Name="GitHubStatusText" Text="GitHub не подключён" FontSize="15" FontWeight="SemiBold" Foreground="#172B25" Margin="0,8,0,4"/>
+                <TextBlock x:Name="GitHubAccountText" Text="Подключение не выполнялось" Foreground="#52645D" TextWrapping="Wrap"/>
+                <TextBlock x:Name="GitHubDeviceCodeText" Text="" FontSize="24" FontWeight="Bold" Foreground="#176B55" Margin="0,14,0,4"/>
+                <TextBlock x:Name="GitHubDeviceInstructionsText" Text="" Foreground="#52645D" TextWrapping="Wrap"/>
+                <WrapPanel Margin="0,14,0,0">
+                  <Button x:Name="GitHubConnectButton" Content="Подключить GitHub" Height="34" Padding="14,0" Click="GitHubConnect_Click"/>
+                  <Button x:Name="GitHubCancelButton" Content="Отменить" Height="34" Padding="14,0" Margin="8,0,0,0" Click="GitHubCancel_Click" IsEnabled="False"/>
+                  <Button x:Name="GitHubDisconnectButton" Content="Отключить и удалить сессию" Height="34" Padding="14,0" Margin="8,0,0,0" Click="GitHubDisconnect_Click"/>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="Безопасность" FontWeight="Bold" Foreground="#176B55" Margin="0,16,0,5"/>
+            <TextBlock Text="Токены хранятся через Windows DPAPI CurrentUser. Client Secret и приватный ключ GitHub App не используются. Подключение и проверка запускаются только по вашему нажатию; произвольные команды оболочки, запись в репозиторий и слияние изменений этим экраном не выполняются. Отдельная блокировка владельца и разрешение на операции остаются обязательным следующим этапом." TextWrapping="Wrap" Foreground="#52645D"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
       <TabItem Header="АГЕНТЫ">
         <DockPanel LastChildFill="True">
           <Border DockPanel.Dock="Bottom" Background="#F4F7F6" CornerRadius="8" Padding="12" Margin="0,8,0,0">
