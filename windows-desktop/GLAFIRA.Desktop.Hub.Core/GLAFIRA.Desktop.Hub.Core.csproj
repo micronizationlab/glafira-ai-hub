@@ -13,5 +13,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../GLAFIRA.Desktop.Core/GLAFIRA.Desktop.Core.csproj" />
+    <ProjectReference Include="../../contracts/v1/runtime/dotnet/GLAFIRA.Contracts.V1.Runtime/GLAFIRA.Contracts.V1.Runtime.csproj" />
   </ItemGroup>
 </Project>

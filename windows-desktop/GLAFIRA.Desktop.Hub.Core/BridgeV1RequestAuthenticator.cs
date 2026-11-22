@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using GLAFIRA.Contracts.V1.Runtime;
 
 namespace GLAFIRA.Desktop.Hub.Core;
 
@@ -203,7 +204,8 @@ public sealed class BridgeV1RequestAuthenticator(
                 item.Key.Length > 64 ||
                 string.IsNullOrWhiteSpace(item.Value) ||
                 item.Value.Length > maxValueLength ||
-                (!allowed.Contains(item.Key) && !(request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT && item.Key == "resultEncoding"))) ||
+                (!allowed.Contains(item.Key) && !(request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT &&
+                    item.Key is "resultEncoding" or "canonicalResult"))) ||
             request.Payload.Sum(item => (long)item.Key.Length + item.Value.Length) > maxPayloadLength)
             return BridgeV1AdmissionFailure.InvalidEnvelope;
 
@@ -231,6 +233,14 @@ public sealed class BridgeV1RequestAuthenticator(
                 progress is < 0 or > 100 ||
                 request.Payload["state"] is not ("ACCEPTED" or "RUNNING" or "SUCCEEDED" or "FAILED"))
                 return BridgeV1AdmissionFailure.InvalidEnvelope;
+            var terminal = request.Payload["state"] is "SUCCEEDED" or "FAILED";
+            if (terminal != request.Payload.ContainsKey("canonicalResult"))
+                return BridgeV1AdmissionFailure.InvalidEnvelope;
+            if (terminal)
+            {
+                try { CanonicalTaskContractJson.ParseTaskResult(request.Payload["canonicalResult"]); }
+                catch (InvalidDataException) { return BridgeV1AdmissionFailure.InvalidEnvelope; }
+            }
         }
         else if (request.Operation == BridgeV1Operation.DESKTOP_TASK_ARTIFACT)
         {

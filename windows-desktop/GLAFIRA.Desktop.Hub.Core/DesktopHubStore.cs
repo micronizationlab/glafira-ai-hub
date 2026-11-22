@@ -1503,6 +1503,33 @@ public sealed class DesktopHubStore
         return Enum.TryParse<HubTaskState>(value, out var state) ? state : null;
     }
 
+    public int? GetTaskAttempt(string taskId)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT attempts FROM Tasks WHERE task_id = $task;";
+        command.Parameters.AddWithValue("$task", taskId);
+        var value = command.ExecuteScalar();
+        return value is long attempt ? checked((int)attempt) : null;
+    }
+
+    public IReadOnlyList<string> GetTaskDependencyIds(string taskId)
+    {
+        ValidateIdentifier(taskId, nameof(taskId));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT depends_on_task_id FROM TaskDependencies
+            WHERE task_id = $task ORDER BY depends_on_task_id COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$task", taskId);
+        using var reader = command.ExecuteReader();
+        var dependencies = new List<string>();
+        while (reader.Read()) dependencies.Add(reader.GetString(0));
+        return dependencies;
+    }
+
     /// <summary>
     /// Matches the canonical ownership identity attached to a durable task. Ownership can
     /// advance only while queued, so this check remains stable for leased and terminal updates.

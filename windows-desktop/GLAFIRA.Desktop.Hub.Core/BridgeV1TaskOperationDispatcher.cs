@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
+using GLAFIRA.Contracts.V1.Runtime;
 
 namespace GLAFIRA.Desktop.Hub.Core;
 
@@ -212,6 +213,50 @@ public sealed class BridgeV1TaskOperationDispatcher(
                 ["leaseId"] = lease.LeaseId,
                 ["fencingToken"] = lease.FencingToken.ToString(CultureInfo.InvariantCulture)
             };
+            try
+            {
+                var attempt = store.GetTaskAttempt(lease.TaskId) ??
+                    throw new InvalidDataException("TASK_CONTRACT_ATTEMPT_MISSING");
+                if (attempt is < 1 or > 100)
+                    throw new InvalidDataException("TASK_CONTRACT_ATTEMPT_INVALID");
+                var taskContract = new TaskEnvelopeV1(
+                CanonicalTaskContractJson.SchemaVersion,
+                lease.TaskId,
+                lease.ProjectId,
+                lease.IdempotencyKey,
+                lease.TaskType,
+                lease.PayloadRef,
+                lease.PayloadSha256,
+                lease.OwnerCoreId,
+                agent.AgentId,
+                fields.RequiredCapabilities,
+                store.GetTaskDependencyIds(lease.TaskId),
+                ToCanonicalRisk(lease.EffectRisk),
+                lease.ApprovalRef,
+                DateTimeOffset.FromUnixTimeMilliseconds(fields.CreatedAtEpochMs),
+                DateTimeOffset.FromUnixTimeMilliseconds(fields.ExpiresAtEpochMs));
+                var heartbeatSeconds = (int)Math.Clamp(_leaseDuration.TotalSeconds / 2, 5, 300);
+                var leaseContract = new TaskLeaseV1(
+                CanonicalTaskContractJson.SchemaVersion,
+                lease.LeaseId,
+                lease.TaskId,
+                agent.AgentId,
+                lease.FencingToken,
+                now,
+                lease.ExpiresAt,
+                heartbeatSeconds);
+                result["contractVersion"] = CanonicalTaskContractJson.SchemaVersion.ToString(CultureInfo.InvariantCulture);
+                result["taskEnvelope"] = CanonicalTaskContractJson.Serialize(taskContract);
+                result["taskLease"] = CanonicalTaskContractJson.Serialize(leaseContract);
+                result["attempt"] = attempt.ToString(CultureInfo.InvariantCulture);
+                result["dependencyTaskIds"] = JsonSerializer.Serialize(taskContract.DependencyTaskIds);
+            }
+            catch (Exception error) when (error is InvalidDataException or ArgumentException or OverflowException)
+            {
+                store.Complete(agent.AgentId, lease.TaskId, lease.LeaseId, lease.FencingToken,
+                    succeeded: false, now, errorCode: "TASK_CONTRACT_INVALID");
+                return Failure("TASK_CONTRACT_INVALID");
+            }
             return Accepted(result);
         }
         finally
@@ -237,6 +282,42 @@ public sealed class BridgeV1TaskOperationDispatcher(
             !int.TryParse(payload.GetValueOrDefault("progressPercent"), NumberStyles.None,
                 CultureInfo.InvariantCulture, out var progress))
             return Failure("INVALID_TASK_RESULT");
+
+        TaskResultEnvelopeV1? canonicalResult = null;
+        if (state is "SUCCEEDED" or "FAILED")
+        {
+            try
+            {
+                canonicalResult = CanonicalTaskContractJson.ParseTaskResult(
+                    payload.GetValueOrDefault("canonicalResult") ?? string.Empty);
+            }
+            catch (InvalidDataException)
+            {
+                return Failure("INVALID_TASK_RESULT_CONTRACT");
+            }
+            var expectedDigest = Convert.ToHexString(SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(payload.GetValueOrDefault("result") ?? "none"))).ToLowerInvariant();
+            var expectedError = state == "FAILED"
+                ? NormalizeNone(payload.GetValueOrDefault("errorCode")) ?? "TASK_FAILED"
+                : null;
+            var expectedAttempt = store.GetTaskAttempt(taskId);
+            DateTimeOffset requestIssuedAt;
+            try { requestIssuedAt = DateTimeOffset.FromUnixTimeMilliseconds(request.IssuedAtEpochMs); }
+            catch (ArgumentOutOfRangeException) { return Failure("INVALID_TASK_RESULT_CONTRACT"); }
+            if (!StringComparer.Ordinal.Equals(canonicalResult.TaskId, taskId) ||
+                !StringComparer.Ordinal.Equals(canonicalResult.AgentId, agent.AgentId) ||
+                !StringComparer.Ordinal.Equals(canonicalResult.LeaseId, leaseId) ||
+                canonicalResult.FencingToken != fencingToken ||
+                canonicalResult.Attempt != expectedAttempt ||
+                !StringComparer.Ordinal.Equals(canonicalResult.Outcome, state) ||
+                canonicalResult.CompletedAt != requestIssuedAt ||
+                !StringComparer.Ordinal.Equals(canonicalResult.ResultSha256, expectedDigest) ||
+                !StringComparer.Ordinal.Equals(canonicalResult.ErrorCode, expectedError) ||
+                canonicalResult.Retryable || canonicalResult.RequiresReconciliation ||
+                (state == "SUCCEEDED" && !StringComparer.Ordinal.Equals(
+                    canonicalResult.ResultRef, "hub-task-result:" + taskId)))
+                return Failure("TASK_RESULT_CONTRACT_MISMATCH");
+        }
 
         try
         {
@@ -562,6 +643,14 @@ public sealed class BridgeV1TaskOperationDispatcher(
 
     private static string? NormalizeNone(string? value) =>
         string.IsNullOrWhiteSpace(value) || StringComparer.Ordinal.Equals(value, "none") ? null : value;
+
+    private static string ToCanonicalRisk(HubTaskEffectRisk risk) => risk switch
+    {
+        HubTaskEffectRisk.ReadOnly => "READ_ONLY",
+        HubTaskEffectRisk.LocalWrite => "LOCAL_WRITE",
+        HubTaskEffectRisk.ExternalSideEffect => "EXTERNAL_SIDE_EFFECT",
+        _ => throw new InvalidDataException("TASK_CONTRACT_RISK_INVALID")
+    };
 
     private static BridgeV1DispatchResponse Accepted(IReadOnlyDictionary<string, string> result) =>
         new("ACCEPTED", result);

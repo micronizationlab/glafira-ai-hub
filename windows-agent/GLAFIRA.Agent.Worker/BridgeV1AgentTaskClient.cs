@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GLAFIRA.Contracts.V1.Runtime;
 
 namespace GLAFIRA.Agent.Worker;
 
@@ -32,6 +33,8 @@ public sealed record AgentTaskLease(
     string LeaseId,
     long FencingToken)
 {
+    public int Attempt { get; init; } = 1;
+
     public AgentTaskEnvelope ToEnvelope() => new(
         TaskId, ProjectId, OwnerCoreId, OwnerGeneration,
         IdempotencyKey, TaskType, PayloadRef, PayloadSha256,
@@ -152,11 +155,17 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport, IAgentResultA
             !long.TryParse(Required(result, "fencingToken"), NumberStyles.None, CultureInfo.InvariantCulture, out var fencing) || fencing <= 0 ||
             !long.TryParse(Required(result, "createdAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var created) ||
             !long.TryParse(Required(result, "expiresAtEpochMs"), NumberStyles.None, CultureInfo.InvariantCulture, out var expires) ||
-            !int.TryParse(Required(result, "priority"), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var priority))
+            !int.TryParse(Required(result, "priority"), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var priority) ||
+            !int.TryParse(Required(result, "attempt"), NumberStyles.None, CultureInfo.InvariantCulture, out var attempt))
             throw new InvalidDataException("TASK_CLAIM_RESPONSE_INVALID");
 
         string[] requiredCapabilities;
-        try { requiredCapabilities = JsonSerializer.Deserialize<string[]>(Required(result, "requiredCapabilities"), JsonOptions) ?? []; }
+        string[] dependencyTaskIds;
+        try
+        {
+            requiredCapabilities = JsonSerializer.Deserialize<string[]>(Required(result, "requiredCapabilities"), JsonOptions) ?? [];
+            dependencyTaskIds = JsonSerializer.Deserialize<string[]>(Required(result, "dependencyTaskIds"), JsonOptions) ?? [];
+        }
         catch (JsonException error) { throw new InvalidDataException("TASK_CLAIM_CAPABILITIES_INVALID", error); }
         if (taskId.Length is < 1 or > 64 || projectId.Length is < 1 or > 128 ||
             ownerCoreId.Length is < 8 or > 128 ||
@@ -169,17 +178,57 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport, IAgentResultA
             instruction.Length is < 1 or > 12_000 || leaseId.Length is < 8 or > 128 ||
             created <= 0 || expires <= _timeProvider.GetUtcNow().ToUnixTimeMilliseconds() ||
             priority is < -100 or > 100 || requiredCapabilities.Length > 16 ||
+            attempt is < 1 or > 100 ||
             requiredCapabilities.Any(string.IsNullOrWhiteSpace) ||
             requiredCapabilities.Distinct(StringComparer.Ordinal).Count() != requiredCapabilities.Length ||
-            requiredCapabilities.Any(capability => !ownerApprovedCapabilities.Contains(capability, StringComparer.Ordinal)))
+            requiredCapabilities.Any(capability => !ownerApprovedCapabilities.Contains(capability, StringComparer.Ordinal)) ||
+            dependencyTaskIds.Length > 256 || dependencyTaskIds.Any(string.IsNullOrWhiteSpace) ||
+            dependencyTaskIds.Distinct(StringComparer.Ordinal).Count() != dependencyTaskIds.Length)
             throw new InvalidDataException("TASK_CLAIM_RESPONSE_INVALID");
+
+        if (Required(result, "contractVersion") != CanonicalTaskContractJson.SchemaVersion.ToString(CultureInfo.InvariantCulture))
+            throw new InvalidDataException("TASK_CONTRACT_VERSION_UNSUPPORTED");
+        TaskEnvelopeV1 canonicalTask;
+        TaskLeaseV1 canonicalLease;
+        try
+        {
+            canonicalTask = CanonicalTaskContractJson.ParseTaskEnvelope(Required(result, "taskEnvelope"));
+            canonicalLease = CanonicalTaskContractJson.ParseTaskLease(Required(result, "taskLease"));
+        }
+        catch (InvalidDataException error)
+        {
+            throw new InvalidDataException("TASK_CLAIM_CONTRACT_INVALID", error);
+        }
+        var canonicalRisk = effectRisk switch
+        {
+            "ReadOnly" => "READ_ONLY",
+            "LocalWrite" => "LOCAL_WRITE",
+            "ExternalSideEffect" => "EXTERNAL_SIDE_EFFECT",
+            _ => string.Empty
+        };
+        if (canonicalTask.TaskId != taskId || canonicalTask.ProjectId != projectId ||
+            canonicalTask.IdempotencyKey != idempotencyKey || canonicalTask.TaskType != taskType ||
+            canonicalTask.PayloadRef != payloadRef ||
+            canonicalTask.PayloadSha256 != payloadSha256.ToLowerInvariant() ||
+            canonicalTask.IssuedByDeviceId != ownerCoreId || canonicalTask.TargetAgentId != credential.AgentId ||
+            !canonicalTask.RequiredCapabilities.ToHashSet(StringComparer.Ordinal).SetEquals(requiredCapabilities) ||
+            !canonicalTask.DependencyTaskIds.ToHashSet(StringComparer.Ordinal).SetEquals(dependencyTaskIds) ||
+            canonicalTask.RiskClass != canonicalRisk ||
+            canonicalTask.ApprovalRef != approvalRef ||
+            canonicalTask.CreatedAt.ToUnixTimeMilliseconds() != created ||
+            canonicalTask.DeadlineAt?.ToUnixTimeMilliseconds() != expires ||
+            canonicalLease.TaskId != taskId || canonicalLease.AgentId != credential.AgentId ||
+            canonicalLease.LeaseId != leaseId || canonicalLease.FencingToken != fencing ||
+            canonicalLease.ExpiresAt.ToUnixTimeMilliseconds() != leaseExpires ||
+            canonicalLease.IssuedAt > _timeProvider.GetUtcNow().AddSeconds(30))
+            throw new InvalidDataException("TASK_CLAIM_CONTRACT_MISMATCH");
 
         return new AgentTaskLease(taskId, projectId, ownerCoreId, ownerGeneration,
             taskType, idempotencyKey, payloadRef,
             payloadSha256.ToLowerInvariant(), effectRisk, approvalRef, leaseExpires,
             parentTaskId, subtaskId, title, instruction, executor,
             new HashSet<string>(requiredCapabilities, StringComparer.Ordinal),
-            created, expires, priority, leaseId, fencing);
+            created, expires, priority, leaseId, fencing) { Attempt = attempt };
     }
 
     public async Task<AgentTaskUpdateAck> SendTaskUpdateAsync(
@@ -222,7 +271,31 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport, IAgentResultA
             ["errorCode"] = errorCode,
             ["resultEncoding"] = "json"
         };
-        var response = await SendAsync(credential, lease.ProjectId, "DESKTOP_TASK_RESULT", payload, cancellationToken).ConfigureAwait(false);
+        DateTimeOffset? contractIssuedAt = null;
+        if (state is "SUCCEEDED" or "FAILED")
+        {
+            var completedAt = _timeProvider.GetUtcNow();
+            contractIssuedAt = completedAt;
+            var resultDigest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson))).ToLowerInvariant();
+            var canonicalResult = new TaskResultEnvelopeV1(
+                CanonicalTaskContractJson.SchemaVersion,
+                lease.TaskId,
+                credential.AgentId,
+                lease.LeaseId,
+                lease.FencingToken,
+                lease.Attempt,
+                state,
+                completedAt,
+                state == "SUCCEEDED" ? "hub-task-result:" + lease.TaskId : null,
+                resultDigest,
+                state == "FAILED" ? (errorCode == "none" ? "TASK_FAILED" : errorCode) : null,
+                false,
+                false);
+            payload["canonicalResult"] = CanonicalTaskContractJson.Serialize(canonicalResult);
+        }
+        var response = await SendAsync(
+            credential, lease.ProjectId, "DESKTOP_TASK_RESULT", payload, cancellationToken, contractIssuedAt)
+            .ConfigureAwait(false);
         if (response.Status != "SUCCEEDED" || response.Result is null ||
             response.Result.GetValueOrDefault("accepted") != "true")
             throw new InvalidDataException(response.ErrorCode ?? "TASK_RESULT_REJECTED");
@@ -316,9 +389,10 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport, IAgentResultA
         string projectId,
         string operation,
         IReadOnlyDictionary<string, string> payload,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? issuedAt = null)
     {
-        var now = _timeProvider.GetUtcNow();
+        var now = issuedAt ?? _timeProvider.GetUtcNow();
         AgentEnrollmentCredentialPolicy.Validate(credential, now);
         var issued = now.ToUnixTimeMilliseconds();
         var expires = now.Add(RequestLifetime).ToUnixTimeMilliseconds();

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using GLAFIRA.Contracts.V1.Runtime;
 using GLAFIRA.Desktop.Hub.Core;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -381,9 +382,12 @@ public sealed class BridgeV1RequestAuthenticatorTests
         new(new FakeCredentialResolver(new HubRequestCredential(
             "device-0001", Secret, new HashSet<string> { "desktop.task.result" })), replay);
 
-    private static Dictionary<string, string> ValidTaskResultPayload() => new()
+    private static Dictionary<string, string> ValidTaskResultPayload()
     {
-        ["taskId"] = "task_1",
+        var result = "done";
+        var payload = new Dictionary<string, string>
+        {
+        ["taskId"] = "task-0001",
         ["ownerCoreId"] = "windows-core-0001",
         ["ownerGeneration"] = "1",
         ["leaseId"] = "lease-0001",
@@ -391,9 +395,16 @@ public sealed class BridgeV1RequestAuthenticatorTests
         ["state"] = "SUCCEEDED",
         ["progressPercent"] = "100",
         ["progressMessage"] = "completed",
-        ["result"] = "done",
+        ["result"] = result,
         ["errorCode"] = "none"
-    };
+        };
+        payload["canonicalResult"] = CanonicalTaskContractJson.Serialize(new TaskResultEnvelopeV1(
+            1, "task-0001", "agent-0001", "lease-0001", 42, 1, "SUCCEEDED",
+            DateTimeOffset.UtcNow, "hub-task-result:task-0001",
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(result))).ToLowerInvariant(),
+            null, false, false));
+        return payload;
+    }
 
     private static Dictionary<string, string> ValidTaskArtifactPayload(DateTimeOffset now)
     {

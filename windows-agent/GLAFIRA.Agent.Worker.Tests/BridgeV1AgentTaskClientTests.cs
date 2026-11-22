@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using GLAFIRA.Agent.Worker;
+using GLAFIRA.Contracts.V1.Runtime;
 using Xunit;
 
 namespace GLAFIRA.Agent.Worker.Tests;
@@ -83,6 +84,19 @@ public sealed class BridgeV1AgentTaskClientTests
     }
 
     [Fact]
+    public async Task ClaimRejectsUnknownCanonicalContractVersion()
+    {
+        var result = ValidClaimResult();
+        result["taskEnvelope"] = result["taskEnvelope"].Replace("\"schemaVersion\":1", "\"schemaVersion\":2", StringComparison.Ordinal);
+        var handler = new StubHandler(_ => Task.FromResult(Json(new { status = "ACCEPTED", result })));
+
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            Client(handler).ClaimNextAsync(Credential(), ["web.research"], 1, ["web.research"]));
+
+        Assert.Equal("TASK_CLAIM_CONTRACT_INVALID", error.Message);
+    }
+
+    [Fact]
     public async Task ClaimSendsOnlyRegisteredSupportedTaskTypes()
     {
         Dictionary<string, string>? captured = null;
@@ -145,6 +159,13 @@ public sealed class BridgeV1AgentTaskClientTests
         Assert.NotNull(captured);
         Assert.Equal("windows-core-0001", captured["ownerCoreId"]);
         Assert.Equal("3", captured["ownerGeneration"]);
+        var canonical = CanonicalTaskContractJson.ParseTaskResult(captured["canonicalResult"]);
+        Assert.Equal("task-001", canonical.TaskId);
+        Assert.Equal("agent-01", canonical.AgentId);
+        Assert.Equal("lease-0001", canonical.LeaseId);
+        Assert.Equal(42, canonical.FencingToken);
+        Assert.Equal("hub-task-result:task-001", canonical.ResultRef);
+        Assert.Equal(digest, canonical.ResultSha256);
     }
 
     [Fact]
@@ -325,8 +346,10 @@ public sealed class BridgeV1AgentTaskClientTests
             ["sha256"] = metadata.Sha256
         };
 
-    private Dictionary<string, string> ValidClaimResult() => new()
+    private Dictionary<string, string> ValidClaimResult()
     {
+        var result = new Dictionary<string, string>
+        {
         ["available"] = "true", ["taskId"] = "task-001", ["projectId"] = "default",
         ["ownerCoreId"] = "windows-core-0001", ["ownerGeneration"] = "3",
         ["taskType"] = "web.research", ["idempotencyKey"] = "idem-task-001",
@@ -336,10 +359,20 @@ public sealed class BridgeV1AgentTaskClientTests
         ["parentTaskId"] = "parent-001", ["subtaskId"] = "sub-001",
         ["title"] = "Research", ["instruction"] = "Analyze supplied material",
         ["executor"] = "RESEARCHER", ["requiredCapabilities"] = "[\"web.research\"]",
+        ["dependencyTaskIds"] = "[]",
         ["createdAtEpochMs"] = _now.ToUnixTimeMilliseconds().ToString(),
         ["expiresAtEpochMs"] = _now.AddMinutes(5).ToUnixTimeMilliseconds().ToString(),
-        ["priority"] = "10", ["leaseId"] = "lease-0001", ["fencingToken"] = "42"
-    };
+        ["priority"] = "10", ["leaseId"] = "lease-0001", ["fencingToken"] = "42",
+        ["contractVersion"] = "1", ["attempt"] = "1"
+        };
+        result["taskEnvelope"] = CanonicalTaskContractJson.Serialize(new TaskEnvelopeV1(
+            1, "task-001", "default", "idem-task-001", "web.research",
+            "payload://task-001", new string('a', 64), "windows-core-0001", "agent-01",
+            ["web.research"], [], "READ_ONLY", null, _now, _now.AddMinutes(5)));
+        result["taskLease"] = CanonicalTaskContractJson.Serialize(new TaskLeaseV1(
+            1, "lease-0001", "task-001", "agent-01", 42, _now, _now.AddMinutes(2), 60));
+        return result;
+    }
 
     private AgentEnrollmentCredential Credential() => new("agent-01", "desktop-hub-01",
         Endpoint, Pin, Convert.ToBase64String(_secret),

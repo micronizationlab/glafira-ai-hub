@@ -14,4 +14,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="GLAFIRA.Agent.Worker.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../contracts/v1/runtime/dotnet/GLAFIRA.Contracts.V1.Runtime/GLAFIRA.Contracts.V1.Runtime.csproj" />
+  </ItemGroup>
 </Project>

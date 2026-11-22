@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using GLAFIRA.Contracts.V1.Runtime;
 using GLAFIRA.Desktop.Core.Ownership;
 using GLAFIRA.Desktop.Hub.Core;
 using Microsoft.Data.Sqlite;
@@ -175,7 +176,42 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
         Assert.Equal("web.research", Assert.Single(JsonSerializer.Deserialize<string[]>(response.Result["requiredCapabilities"])!));
         Assert.False(string.IsNullOrWhiteSpace(response.Result["leaseId"]));
         Assert.True(long.Parse(response.Result["fencingToken"]) > 0);
+        Assert.Equal("1", response.Result["contractVersion"]);
+        Assert.Equal("1", response.Result["attempt"]);
+        var canonicalTask = CanonicalTaskContractJson.ParseTaskEnvelope(response.Result["taskEnvelope"]);
+        var canonicalLease = CanonicalTaskContractJson.ParseTaskLease(response.Result["taskLease"]);
+        Assert.Equal(response.Result["taskId"], canonicalTask.TaskId);
+        Assert.Equal("project-0001", canonicalTask.ProjectId);
+        Assert.Equal("agent-0001", canonicalTask.TargetAgentId);
+        Assert.Empty(canonicalTask.DependencyTaskIds);
+        Assert.Equal("[]", response.Result["dependencyTaskIds"]);
+        Assert.Equal(response.Result["leaseId"], canonicalLease.LeaseId);
+        Assert.Equal(long.Parse(response.Result["fencingToken"]), canonicalLease.FencingToken);
         Assert.Equal(HubTaskState.Leased, _store.GetTaskState("task-0001"));
+    }
+
+    [Fact]
+    public async Task TerminalResultRejectsUnknownCanonicalContractVersionBeforeCommit()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+        var request = ResultRequest(
+            "SUCCEEDED", claim.Result["leaseId"], long.Parse(claim.Result["fencingToken"]), "done");
+        var payload = new Dictionary<string, string>(request.Payload)
+        {
+            ["canonicalResult"] = request.Payload["canonicalResult"].Replace(
+                "\"schemaVersion\":1", "\"schemaVersion\":2", StringComparison.Ordinal)
+        };
+
+        var response = await dispatcher.DispatchAsync(request with { Payload = payload }, now.AddSeconds(2));
+
+        Assert.Equal("FAILED", response.Status);
+        Assert.Equal("INVALID_TASK_RESULT_CONTRACT", response.ErrorCode);
+        Assert.Equal(HubTaskState.Leased, _store.GetTaskState("task-0001"));
+        Assert.Null(_store.GetTaskResult("task-0001"));
     }
 
     [Fact]
@@ -593,8 +629,9 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
 
     private static BridgeV1SignedRequest ResultRequest(
         string state, string leaseId, long fencingToken, string result,
-        string ownerCoreId = "windows-core-0001", long ownerGeneration = 1) =>
-        Request(BridgeV1Operation.DESKTOP_TASK_RESULT, new Dictionary<string, string>
+        string ownerCoreId = "windows-core-0001", long ownerGeneration = 1)
+    {
+        var payload = new Dictionary<string, string>
         {
             ["taskId"] = "task-0001",
             ["ownerCoreId"] = ownerCoreId,
@@ -606,7 +643,18 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
             ["progressMessage"] = "completed",
             ["result"] = result,
             ["errorCode"] = "none"
-        });
+        };
+        if (state is "SUCCEEDED" or "FAILED")
+        {
+            var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(result))).ToLowerInvariant();
+            payload["canonicalResult"] = CanonicalTaskContractJson.Serialize(new TaskResultEnvelopeV1(
+                1, "task-0001", "agent-0001", leaseId, fencingToken, 1, state,
+                DateTimeOffset.FromUnixTimeMilliseconds(1_730_000_000_000),
+                state == "SUCCEEDED" ? "hub-task-result:task-0001" : null,
+                digest, state == "FAILED" ? "TASK_FAILED" : null, false, false));
+        }
+        return Request(BridgeV1Operation.DESKTOP_TASK_RESULT, payload);
+    }
 
     private static BridgeV1SignedRequest AgentArtifactResultRequest(
         string leaseId, long fencingToken, string artifactDigest)
