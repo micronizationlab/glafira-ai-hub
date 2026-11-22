@@ -62,32 +62,33 @@ public struct BridgePairingView: View {
             status = "Приглашение Windows Hub проверено; можно выполнить одноразовое сопряжение."
         } catch {
             invitation = nil
-            status = "Приглашение отклонено: \(error.localizedDescription)"
+            status = "Приглашение отклонено. Создайте новое приглашение в Windows Hub и проверьте его целиком."
         }
     }
 
     @MainActor
     private func redeemPairing() async {
-        guard let invitation else { return }
+        guard let selectedInvitation = invitation else { return }
+        // Remove the one-time code from observable SwiftUI state before any network wait.
+        invitationText = ""
+        invitation = nil
         isBusy = true
         defer { isBusy = false }
         do {
             let client = try PinnedBridgeHTTPSClient(
-                origin: invitation.endpoint,
-                certificateSHA256: invitation.certificateSHA256
+                origin: selectedInvitation.endpoint,
+                certificateSHA256: selectedInvitation.certificateSHA256
             )
-            let response = try await client.redeemPairing(invitation)
-            let credential = try response.credential(matching: invitation)
-            try await KeychainBridgeCredentialStore().store(
+            let response = try await client.redeemPairing(selectedInvitation)
+            let credential = try response.credential(matching: selectedInvitation)
+            try await KeychainBridgeCredentialStore().upsert(
                 credential,
-                ownerConfirmationReason: "Подтвердите сопряжение GLAFIRA с Windows Hub"
+                ownerConfirmationReason: "Подтвердите сопряжение или повторное сопряжение GLAFIRA с Windows Hub"
             )
-            invitationText = ""
-            self.invitation = nil
             NotificationCenter.default.post(name: .glafiraBridgeCredentialDidChange, object: nil)
             status = "Сопряжение завершено: credential сохранён в защищённом Keychain."
         } catch {
-            status = "Сопряжение не завершено: \(error.localizedDescription)"
+            status = "Сопряжение не завершено. Не используйте это приглашение повторно; создайте новое в Windows Hub."
         }
     }
 }

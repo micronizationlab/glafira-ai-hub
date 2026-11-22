@@ -43,11 +43,15 @@ public struct MobileHubPairingState: Codable, Equatable, Sendable {
         )
     }
 
-    public static func disconnected(_ status: MobileHubPairingStatus) -> MobileHubPairingState {
+    public static func disconnected(
+        _ status: MobileHubPairingStatus,
+        deviceId: String? = nil
+    ) -> MobileHubPairingState {
         precondition(status != .paired && status != .expired)
+        precondition(deviceId == nil || MobileOwnershipReadQueueValidation.validIdentifier(deviceId!))
         return MobileHubPairingState(
             status: status,
-            deviceId: nil,
+            deviceId: deviceId,
             desktopHubId: nil,
             endpoint: nil,
             certificateSHA256: nil,
@@ -76,17 +80,16 @@ public extension BridgePairingEnrollmentResponse {
         matching invitation: BridgePairingInvitation,
         nowEpochMs: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
     ) throws -> MobileHubPairingState {
-        _ = try credential(matching: invitation, nowEpochMs: nowEpochMs)
-        guard let desktopHubId, let endpoint, let tlsCertificateSha256,
-              let expiresAtEpochMs else {
+        let credential = try credential(matching: invitation, nowEpochMs: nowEpochMs)
+        guard let binding = credential.hubBinding else {
             throw BridgeInvitationError.invalidEnrollmentResponse
         }
         return try .paired(
             deviceId: invitation.agentId,
-            desktopHubId: desktopHubId,
-            endpoint: endpoint,
-            certificateSHA256: tlsCertificateSha256,
-            expiresAtEpochMs: expiresAtEpochMs,
+            desktopHubId: binding.desktopHubId,
+            endpoint: binding.endpoint,
+            certificateSHA256: binding.certificateSHA256,
+            expiresAtEpochMs: binding.expiresAtEpochMs,
             nowEpochMs: nowEpochMs
         )
     }

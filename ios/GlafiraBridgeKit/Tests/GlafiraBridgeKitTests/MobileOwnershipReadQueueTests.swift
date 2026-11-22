@@ -36,8 +36,12 @@ final class MobileOwnershipReadQueueTests: XCTestCase {
         for status in [
             MobileHubPairingStatus.unpaired, .revoked, .invalid
         ] {
+            let disconnected = MobileHubPairingState.disconnected(
+                status, deviceId: "ios-device-0001"
+            )
+            XCTAssertEqual(disconnected.deviceId, "ios-device-0001")
             let blocked = try await queue.schedule(
-                pairingState: .disconnected(status),
+                pairingState: disconnected,
                 projectId: "project-0002",
                 transferId: "transfer-0002",
                 nowEpochMs: now

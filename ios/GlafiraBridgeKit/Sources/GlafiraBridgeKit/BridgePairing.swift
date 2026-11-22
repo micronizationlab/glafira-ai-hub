@@ -182,17 +182,17 @@ public struct BridgePairingEnrollmentResponse: Codable, Sendable {
         guard version == 1, status == "ENROLLED", errorCode == nil,
               agentId == invitation.agentId,
               enrollmentId == invitation.ticketId,
+              let desktopHubId, let endpoint, let tlsCertificateSha256,
               endpoint == invitation.endpoint,
-              tlsCertificateSha256?.caseInsensitiveCompare(invitation.certificateSHA256) == .orderedSame,
+              tlsCertificateSha256.caseInsensitiveCompare(invitation.certificateSHA256) == .orderedSame,
               ownerCoreId == invitationTrust.ownerCoreId,
               ownershipSigningKeyEpoch == invitationTrust.signingKeyEpoch,
               ownershipSigningPublicKeySha256 == invitationTrust.signingPublicKeySha256,
               ownershipSigningPublicKeySpkiBase64 == invitationTrust.derEncodedPublicKey.base64EncodedString(),
-              desktopHubId.map({ hubId in
-                (1...128).contains(hubId.utf8.count) && hubId.allSatisfy {
+              (1...128).contains(desktopHubId.utf8.count),
+              desktopHubId.allSatisfy({
                     $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_")
-                }
-              }) == true,
+              }),
               grantedScopes.count == scopes.count, !grantedScopes.isEmpty,
               grantedScopes.isSubset(of: invitation.scopes),
               let enrolledAtEpochMs, let expiresAtEpochMs,
@@ -201,10 +201,21 @@ public struct BridgePairingEnrollmentResponse: Codable, Sendable {
               let secret = Data(base64Encoded: secretText), secret.count == 32 else {
             throw BridgeInvitationError.invalidEnrollmentResponse
         }
+        guard let hubBinding = try? BridgeHubBinding(
+            desktopHubId: desktopHubId,
+            endpoint: endpoint,
+            certificateSHA256: tlsCertificateSha256,
+            scopes: scopes,
+            enrolledAtEpochMs: enrolledAtEpochMs,
+            expiresAtEpochMs: expiresAtEpochMs
+        ) else {
+            throw BridgeInvitationError.invalidEnrollmentResponse
+        }
         return try BridgeDeviceCredential(
             deviceId: invitation.agentId,
             hmacSecret: secret,
-            ownershipTrustedSigningKey: invitationTrust
+            ownershipTrustedSigningKey: invitationTrust,
+            hubBinding: hubBinding
         )
     }
 }

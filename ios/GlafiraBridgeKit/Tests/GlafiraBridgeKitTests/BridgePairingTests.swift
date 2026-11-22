@@ -97,6 +97,12 @@ final class BridgePairingTests: XCTestCase {
             credential.ownershipTrustedSigningKey,
             invitation.ownershipTrustedSigningKey
         )
+        XCTAssertEqual(credential.hubBinding?.desktopHubId, "desktop-hub-0001")
+        XCTAssertEqual(credential.hubBinding?.endpoint, invitation.endpoint)
+        XCTAssertEqual(credential.hubBinding?.certificateSHA256, invitation.certificateSHA256)
+        XCTAssertEqual(credential.hubBinding?.scopes, ["project.read"])
+        XCTAssertEqual(credential.hubBinding?.enrolledAtEpochMs, 1_940_000)
+        XCTAssertEqual(credential.hubBinding?.expiresAtEpochMs, 3_000_000)
 
         let escalated = BridgePairingEnrollmentResponse(
             version: 1, status: "ENROLLED", errorCode: nil,
@@ -181,6 +187,77 @@ final class BridgePairingTests: XCTestCase {
         )
         XCTAssertEqual(legacy.hmacSecret, legacySecret)
         XCTAssertNil(legacy.ownershipTrustedSigningKey)
+    }
+
+    func testCredentialPersistenceV3AtomicallyBindsHubLifecycleMetadata() throws {
+        let trust = MobileOwnershipTrustedSigningKey(
+            ownerCoreId: "owner-core-0001",
+            signingKeyEpoch: 7,
+            signingPublicKeySha256: signingFingerprint,
+            derEncodedPublicKey: signingPublicKey
+        )
+        let binding = try BridgeHubBinding(
+            desktopHubId: "desktop-hub-0001",
+            endpoint: endpoint,
+            certificateSHA256: pin.uppercased(),
+            scopes: ["project.read", "ownership.read"],
+            enrolledAtEpochMs: 1_940_000,
+            expiresAtEpochMs: 3_000_000
+        )
+        let credential = try BridgeDeviceCredential(
+            deviceId: "ios-device-0001",
+            hmacSecret: Data(repeating: 0x6D, count: 32),
+            ownershipTrustedSigningKey: trust,
+            hubBinding: binding
+        )
+
+        let stored = try BridgeCredentialPersistence.encode(credential)
+        let decoded = try BridgeCredentialPersistence.decode(
+            stored, expectedDeviceId: credential.deviceId
+        )
+        XCTAssertEqual(decoded, credential)
+        XCTAssertEqual(decoded.hubBinding?.certificateSHA256, pin)
+
+        let metadata = try BridgeHubBindingPersistence.encode(binding)
+        XCTAssertEqual(try BridgeHubBindingPersistence.decode(metadata), binding)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: metadata) as? [String: Any]
+        )
+        object["unexpected"] = true
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(
+            JSONSerialization.data(withJSONObject: object)
+        ))
+        object.removeValue(forKey: "unexpected")
+        var nested = try XCTUnwrap(object["binding"] as? [String: Any])
+        nested["unexpected"] = true
+        object["binding"] = nested
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(
+            JSONSerialization.data(withJSONObject: object)
+        ))
+    }
+
+    func testHubLifecycleMetadataRejectsMissingTrustAndInvalidBounds() throws {
+        let binding = try BridgeHubBinding(
+            desktopHubId: "desktop-hub-0001",
+            endpoint: endpoint,
+            certificateSHA256: pin,
+            scopes: ["project.read"],
+            enrolledAtEpochMs: 1_940_000,
+            expiresAtEpochMs: 3_000_000
+        )
+        XCTAssertThrowsError(try BridgeDeviceCredential(
+            deviceId: "ios-device-0001",
+            hmacSecret: Data(repeating: 0x6D, count: 32),
+            hubBinding: binding
+        ))
+        XCTAssertThrowsError(try BridgeHubBinding(
+            desktopHubId: "desktop-hub-0001",
+            endpoint: endpoint,
+            certificateSHA256: pin,
+            scopes: ["project.read", "project.read"],
+            enrolledAtEpochMs: 3_000_000,
+            expiresAtEpochMs: 3_000_000
+        ))
     }
 
     func testTransportRequiresExactWindowsHubEndpointAndPin() {
