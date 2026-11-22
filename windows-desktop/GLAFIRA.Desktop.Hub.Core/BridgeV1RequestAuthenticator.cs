@@ -60,21 +60,6 @@ public sealed class BridgeV1RequestAuthenticator(
     private static readonly TimeSpan MaxTtl = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan MaxFutureSkew = TimeSpan.FromSeconds(30);
 
-    private static readonly IReadOnlyDictionary<BridgeV1Operation, string> RequiredScopes =
-        new Dictionary<BridgeV1Operation, string>
-        {
-            [BridgeV1Operation.PROJECT_READ] = "project.read",
-            [BridgeV1Operation.CONVERSATION_READ] = "conversation.read",
-            [BridgeV1Operation.CONVERSATION_APPEND] = "conversation.append",
-            [BridgeV1Operation.APPROVAL_REQUEST] = "approval.request",
-            [BridgeV1Operation.OWNERSHIP_TRANSFER_DISCOVER] = "ownership.read",
-            [BridgeV1Operation.OWNERSHIP_TRANSFER_READ] = "ownership.read",
-            [BridgeV1Operation.DESKTOP_TASK_CLAIM] = "desktop.task.claim",
-            [BridgeV1Operation.DESKTOP_TASK_RESULT] = "desktop.task.result",
-            [BridgeV1Operation.DESKTOP_TASK_ARTIFACT] = "desktop.task.result",
-            [BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT] = "desktop.task.claim"
-        };
-
     private static readonly IReadOnlyDictionary<BridgeV1Operation, IReadOnlySet<string>> PayloadFields =
         new Dictionary<BridgeV1Operation, IReadOnlySet<string>>
         {
@@ -109,7 +94,7 @@ public sealed class BridgeV1RequestAuthenticator(
         if (!StringComparer.Ordinal.Equals(credential.DeviceId, request.DeviceId))
             return BridgeV1AdmissionResult.Deny(BridgeV1AdmissionFailure.DeviceMismatch);
 
-        var requiredScope = RequiredScopes[request.Operation];
+        var requiredScope = BridgeV1ScopePolicy.RequiredFor(request.Operation);
         if (!credential.AllowedScopes.Contains(requiredScope))
             return BridgeV1AdmissionResult.Deny(BridgeV1AdmissionFailure.ScopeDenied);
 

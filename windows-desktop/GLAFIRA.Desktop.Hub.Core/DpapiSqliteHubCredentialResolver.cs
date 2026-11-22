@@ -246,17 +246,7 @@ public sealed class DpapiSqliteHubCredentialResolver : IHubCredentialResolver
     }
 
     private static string[] NormalizeScopes(IEnumerable<string> allowedScopes)
-    {
-        ArgumentNullException.ThrowIfNull(allowedScopes);
-        var scopes = allowedScopes.ToArray();
-        if (scopes.Length is < 1 or > 32 ||
-            scopes.Any(scope => string.IsNullOrWhiteSpace(scope) || scope.Length > 128 ||
-                !scope.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '.' or '_' or ':' or '-')) ||
-            scopes.Distinct(StringComparer.Ordinal).Count() != scopes.Length)
-            throw new ArgumentException("Scopes must be 1 to 32 unique, bounded ASCII scope identifiers.", nameof(allowedScopes));
-
-        return scopes.Order(StringComparer.Ordinal).ToArray();
-    }
+        => BridgeV1ScopePolicy.NormalizeEnrollmentScopes(allowedScopes, nameof(allowedScopes));
 
     private static void ValidateDeviceId(string deviceId)
     {

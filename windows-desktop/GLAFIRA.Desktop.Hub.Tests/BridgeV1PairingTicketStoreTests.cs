@@ -14,7 +14,7 @@ public sealed class BridgeV1PairingTicketStoreTests : IDisposable
     public async Task StoresOnlyCodeDigestAndConsumesTicketExactlyOnce()
     {
         var store = new BridgeV1PairingTicketStore(_databasePath, _clock);
-        var ticket = store.Create(["task.result", "task.claim"], TimeSpan.FromMinutes(2));
+        var ticket = store.Create(["desktop.task.result", "desktop.task.claim"], TimeSpan.FromMinutes(2));
 
         await using var connection = OpenConnection();
         await connection.OpenAsync();
@@ -33,7 +33,7 @@ public sealed class BridgeV1PairingTicketStoreTests : IDisposable
         var replay = await store.ConsumeAsync(ticket.TicketId, ticket.PairingCode);
 
         Assert.True(accepted.Accepted);
-        Assert.Equal(["task.claim", "task.result"], accepted.Scopes.Order(StringComparer.Ordinal));
+        Assert.Equal(["desktop.task.claim", "desktop.task.result"], accepted.Scopes.Order(StringComparer.Ordinal));
         Assert.False(replay.Accepted);
         Assert.Equal(BridgeV1PairingTicketFailure.AlreadyConsumed, replay.Failure);
     }
@@ -42,7 +42,7 @@ public sealed class BridgeV1PairingTicketStoreTests : IDisposable
     public async Task WrongCodeDoesNotConsumeTheTicket()
     {
         var store = new BridgeV1PairingTicketStore(_databasePath, _clock);
-        var ticket = store.Create(["task.claim"], TimeSpan.FromMinutes(1));
+        var ticket = store.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
         var wrong = ticket.PairingCode[..42] + (ticket.PairingCode[42] == 'a' ? "b" : "a");
 
         var rejected = await store.ConsumeAsync(ticket.TicketId, wrong);
@@ -57,7 +57,7 @@ public sealed class BridgeV1PairingTicketStoreTests : IDisposable
     public async Task ExpiredTicketCannotBeConsumed()
     {
         var store = new BridgeV1PairingTicketStore(_databasePath, _clock);
-        var ticket = store.Create(["task.claim"], TimeSpan.FromSeconds(30));
+        var ticket = store.Create(["desktop.task.claim"], TimeSpan.FromSeconds(30));
         _clock.Advance(TimeSpan.FromSeconds(31));
 
         var result = await store.ConsumeAsync(ticket.TicketId, ticket.PairingCode);
@@ -71,7 +71,7 @@ public sealed class BridgeV1PairingTicketStoreTests : IDisposable
     {
         var first = new BridgeV1PairingTicketStore(_databasePath, _clock);
         var second = new BridgeV1PairingTicketStore(_databasePath, _clock);
-        var ticket = first.Create(["task.claim"], TimeSpan.FromMinutes(1));
+        var ticket = first.Create(["desktop.task.claim"], TimeSpan.FromMinutes(1));
 
         var results = await Task.WhenAll(
             first.ConsumeAsync(ticket.TicketId, ticket.PairingCode).AsTask(),
@@ -89,7 +89,7 @@ public sealed class BridgeV1PairingTicketStoreTests : IDisposable
         var store = new BridgeV1PairingTicketStore(_databasePath, _clock);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            store.Create(["task.claim"], TimeSpan.FromSeconds(seconds)));
+            store.Create(["desktop.task.claim"], TimeSpan.FromSeconds(seconds)));
     }
 
     [Fact]
@@ -98,9 +98,11 @@ public sealed class BridgeV1PairingTicketStoreTests : IDisposable
         var store = new BridgeV1PairingTicketStore(_databasePath, _clock);
 
         Assert.Throws<ArgumentException>(() =>
-            store.Create(["task.claim", "task.claim"], TimeSpan.FromMinutes(1)));
+            store.Create(["desktop.task.claim", "desktop.task.claim"], TimeSpan.FromMinutes(1)));
         Assert.Throws<ArgumentException>(() =>
             store.Create(["task claim"], TimeSpan.FromMinutes(1)));
+        Assert.Throws<ArgumentException>(() =>
+            store.Create(["desktop.task.delete"], TimeSpan.FromMinutes(1)));
     }
 
     [Fact]
@@ -125,7 +127,7 @@ public sealed class BridgeV1PairingTicketStoreTests : IDisposable
 
         var store = new BridgeV1PairingTicketStore(_databasePath, _clock);
         var ticket = store.CreateForAgent(
-            "agent-01", ["task.claim"], TimeSpan.FromMinutes(1));
+            "agent-01", ["desktop.task.claim"], TimeSpan.FromMinutes(1));
 
         await using var verify = OpenConnection();
         await verify.OpenAsync();

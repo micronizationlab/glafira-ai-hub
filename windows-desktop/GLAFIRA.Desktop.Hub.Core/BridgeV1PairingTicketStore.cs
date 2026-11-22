@@ -677,16 +677,7 @@ public sealed class BridgeV1PairingTicketStore
         Convert.FromBase64String(value.Replace('-', '+').Replace('_', '/') + "=");
 
     private static string[] NormalizeScopes(IEnumerable<string> requestedScopes)
-    {
-        ArgumentNullException.ThrowIfNull(requestedScopes);
-        var scopes = requestedScopes.ToArray();
-        if (scopes.Length is < 1 or > 32 ||
-            scopes.Any(scope => string.IsNullOrWhiteSpace(scope) || scope.Length > 128 ||
-                !scope.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or ':' or '-')) ||
-            scopes.Distinct(StringComparer.Ordinal).Count() != scopes.Length)
-            throw new ArgumentException("Pairing scopes must be 1 to 32 unique bounded ASCII identifiers.", nameof(requestedScopes));
-        return scopes.Order(StringComparer.Ordinal).ToArray();
-    }
+        => BridgeV1ScopePolicy.NormalizeEnrollmentScopes(requestedScopes, nameof(requestedScopes));
 
     private static void ValidateIdentity(string value, string parameterName)
     {
