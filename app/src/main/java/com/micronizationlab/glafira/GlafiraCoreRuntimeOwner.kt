@@ -45,7 +45,12 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             "conversation.read" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             "conversation.append" to GlafiraTaskHandler { task -> executeBridgeTask(task) },
             // Draft-only content never executes or publishes, even if LIVE mode is enabled later.
-            "content.draft" to GlafiraTaskHandler { GlafiraTaskExecutionOutcome.WaitingForOwner }
+            "content.draft" to GlafiraTaskHandler { GlafiraTaskExecutionOutcome.WaitingForOwner },
+            "github.repository.tree" to GitHubCoreTaskHandlers(appContext).handler("github.repository.tree"),
+            "github.file.read" to GitHubCoreTaskHandlers(appContext).handler("github.file.read"),
+            "github.branch.create" to GitHubCoreTaskHandlers(appContext).handler("github.branch.create"),
+            "github.file.write" to GitHubCoreTaskHandlers(appContext).handler("github.file.write"),
+            "github.pull_request.draft" to GitHubCoreTaskHandlers(appContext).handler("github.pull_request.draft")
         ),
         runtimeBudget = { loadRuntimeBudget() },
         executionMode = { executionMode },
