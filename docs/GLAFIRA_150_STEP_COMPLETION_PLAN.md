@@ -446,9 +446,10 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 
 ### Architecture findings and follow-up
 
-- **Bridge protocol:** issue #392 tracks the mismatch between iOS `POST /bridge/v1/pairing` and Windows Hub `POST /bridge/v1/pair`, plus the difference between peer-device approval and Agent enrollment. Android Bridge is a client/authorization surface, not an existing HTTPS listener. Do not implement an Android server by assumption.
+- **Bridge protocol:** issue #392 tracks the mismatch between iOS `POST /bridge/v1/pairing` and Windows Hub `POST /bridge/v1/pair`, plus the difference between peer-device approval and Agent enrollment. Issue #393 now tracks the missing Android owner-facing pinned-HTTPS client and Settings pairing surface. Android Bridge is a client/authorization surface, not an existing HTTPS listener. Do not implement an Android server by assumption.
 - **Windows Desktop Hub:** HTTPS/TLS, short-lived Agent pairing tickets, Agent registration/revocation and Hub lifecycle controls already exist. Remaining work is to prove the Hub-to-owning-Desktop-Core boundary, multi-Agent scheduling and restart/reconciliation; source presence is not end-to-end acceptance.
 - **Windows Agent:** keep Agent Not Ready while the bounded typed result-artifact contract in #384 is missing. The current envelope carries result metadata/reference but no bounded structured payload writer. No generic shell/command handler.
+- **Voice:** issue #99 was refreshed against current source: one-shot runtime mic permission request and basic TTS/audio settings already exist; full voice-session runtime, barge-in, speech-rate/voice selection and robust permanent-denial handling remain open.
 - **Backup:** issue #387 remains open for real Google Drive/Yandex SAF provider read-back and clean-profile restore. A clickable button or emulator smoke test is not proof of provider acceptance.
 - **Dual-Core transfer:** issue #366 remains open for a transactional signed ownership-transfer operation. Owner-generation fencing alone does not implement handoff or autonomous failover.
 
