@@ -291,7 +291,7 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport, IAgentResultA
                 CultureInfo.InvariantCulture, out var schemaVersion) ||
             !int.TryParse(acknowledgement.GetValueOrDefault("byteLength"), NumberStyles.None,
                 CultureInfo.InvariantCulture, out var byteLength) ||
-            !bool.TryParse(acknowledgement.GetValueOrDefault("duplicate"), out var duplicate) ||
+            acknowledgement.GetValueOrDefault("duplicate") is not ("true" or "false") ||
             acknowledgement.GetValueOrDefault("artifactId") != metadata.ArtifactId ||
             acknowledgement.GetValueOrDefault("taskId") != metadata.TaskId ||
             acknowledgement.GetValueOrDefault("ownerCoreId") != metadata.OwnerCoreId ||
@@ -303,6 +303,7 @@ public sealed class BridgeV1AgentTaskClient : IAgentTaskTransport, IAgentResultA
             byteLength != metadata.ByteLength ||
             acknowledgement.GetValueOrDefault("sha256") != metadata.Sha256)
             throw new InvalidDataException("TASK_ARTIFACT_ACK_MISMATCH");
+        var duplicate = acknowledgement["duplicate"] == "true";
 
         return new AgentTaskArtifactAck(
             metadata.ArtifactId, metadata.TaskId, metadata.OwnerCoreId, metadata.OwnerGeneration,

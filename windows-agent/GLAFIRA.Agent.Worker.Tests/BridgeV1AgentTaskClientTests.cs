@@ -223,6 +223,22 @@ public sealed class BridgeV1AgentTaskClientTests
     }
 
     [Fact]
+    public async Task ArtifactUploadRejectsNonCanonicalDuplicateFlag()
+    {
+        var artifact = Artifact();
+        var acknowledgement = ArtifactAcknowledgement(artifact.Metadata, duplicate: false);
+        acknowledgement["duplicate"] = "False";
+        var handler = new StubHandler(_ => Task.FromResult(Json(new
+        {
+            status = "SUCCEEDED",
+            result = acknowledgement
+        })));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            Client(handler).UploadTaskArtifactAsync(Credential(), artifact));
+    }
+
+    [Fact]
     public async Task RunningProgressRequiresAndReturnsServerLeaseExpiry()
     {
         var renewedExpiry = _now.AddMinutes(2).ToUnixTimeMilliseconds();
