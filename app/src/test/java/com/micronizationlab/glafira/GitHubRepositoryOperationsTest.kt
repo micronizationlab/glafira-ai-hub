@@ -34,6 +34,33 @@ class GitHubRepositoryOperationsTest {
     }
 
     @Test
+    fun acceptsOrdinarySourceAndDocumentationWrites() {
+        GitHubRepositoryOperations.requireWritablePath("app/src/main/Example.kt")
+        GitHubRepositoryOperations.requireWritablePath("docs/architecture.md")
+    }
+
+    @Test
+    fun rejectsCiAndBuildControlWrites() {
+        listOf(
+            ".github/workflows/ci.yml",
+            ".github/actions/build/action.yml",
+            "build.gradle.kts",
+            "app/build.gradle.kts",
+            "settings.gradle.kts",
+            "gradle/wrapper/gradle-wrapper.properties",
+            "gradle/libs.versions.toml",
+            "gradlew",
+            "gradlew.bat",
+            ".gitmodules",
+            "Dockerfile"
+        ).forEach { path ->
+            assertThrows(IllegalArgumentException::class.java) {
+                GitHubRepositoryOperations.requireWritablePath(path)
+            }
+        }
+    }
+
+    @Test
     fun rejectsUnsafeFilePaths() {
         listOf("", "/absolute/path", "../outside", "app/../secret", "folder/", "folder\\\\secret").forEach { path ->
             assertThrows(IllegalArgumentException::class.java) {
