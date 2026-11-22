@@ -206,7 +206,7 @@ public sealed class AgentDiagnosticsArtifactLifecycleTests : IDisposable
                 metadata.ArtifactId, metadata.TaskId, metadata.OwnerCoreId,
                 metadata.OwnerGeneration, metadata.LeaseId, metadata.FencingToken,
                 metadata.SchemaId, metadata.SchemaVersion, metadata.ByteLength,
-                metadata.Sha256, duplicate: Attempts > 1));
+                metadata.Sha256, Duplicate: Attempts > 1));
         }
     }
 
