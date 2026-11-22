@@ -1,5 +1,8 @@
 package com.micronizationlab.glafira
 
+import java.util.Collections
+import java.util.LinkedHashSet
+
 /**
  * Data classes used at the provider context boundary. These values are policy metadata,
  * not a substitute for owner authentication or durable grant storage.
@@ -13,17 +16,21 @@ enum class GlafiraProviderDataClassification {
     SECRET
 }
 
-data class GlafiraProviderDataGrant(
+class GlafiraProviderDataGrant(
     val projectId: String,
     val providerId: ProviderId,
-    val allowedClassifications: Set<GlafiraProviderDataClassification>,
+    allowedClassifications: Set<GlafiraProviderDataClassification>,
     val expiresAtMillis: Long,
     val revokedAtMillis: Long? = null
 ) {
+    // Snapshot caller input and prevent mutation through either the original Set or a cast.
+    val allowedClassifications: Set<GlafiraProviderDataClassification> =
+        Collections.unmodifiableSet(LinkedHashSet(allowedClassifications))
+
     init {
         require(isSafePolicyId(projectId)) { "PROVIDER_GRANT_PROJECT_INVALID" }
-        require(allowedClassifications.isNotEmpty()) { "PROVIDER_GRANT_EMPTY" }
-        require(GlafiraProviderDataClassification.SECRET !in allowedClassifications) {
+        require(this.allowedClassifications.isNotEmpty()) { "PROVIDER_GRANT_EMPTY" }
+        require(GlafiraProviderDataClassification.SECRET !in this.allowedClassifications) {
             "PROVIDER_SECRET_CLASSIFICATION_NEVER_GRANTABLE"
         }
         require(expiresAtMillis > 0L) { "PROVIDER_GRANT_EXPIRY_INVALID" }
