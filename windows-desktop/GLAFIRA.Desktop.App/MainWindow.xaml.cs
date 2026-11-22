@@ -195,7 +195,7 @@ public partial class MainWindow : Window
         try
         {
             GitHubStatusText.Text = "Запрашиваем одноразовый код GitHub…";
-            using var flowClient = new GitHubDesktopDeviceFlowClient(_githubHttpClient);
+            var flowClient = new GitHubDesktopDeviceFlowClient(_githubHttpClient);
             var device = await flowClient.RequestDeviceCodeAsync(cancellationToken);
             GitHubDeviceCodeText.Text = device.UserCode;
             GitHubDeviceInstructionsText.Text = "Откройте https://github.com/login/device и введите код. Окно можно оставить открытым.";
