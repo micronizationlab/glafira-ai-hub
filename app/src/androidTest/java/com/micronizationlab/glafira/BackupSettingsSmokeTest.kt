@@ -39,7 +39,10 @@ class BackupSettingsSmokeTest {
             val device = UiDevice.getInstance(instrumentation)
             assertTrue("GLAFIRA home screen did not open",
                 device.wait(Until.hasObject(By.desc("Открыть настройки")), 20_000))
-            device.findObject(By.desc("Открыть настройки")).click()
+            val settingsButton = device.findObject(By.desc("Открыть настройки"))
+            assertNotNull("Settings action was not exposed to accessibility", settingsButton)
+            assertTrue("Settings action is not exposed as clickable", settingsButton!!.isClickable)
+            settingsButton!!.click()
 
             var saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
             repeat(8) {
