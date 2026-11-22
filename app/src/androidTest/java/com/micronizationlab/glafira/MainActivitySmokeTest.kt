@@ -2,7 +2,6 @@ package com.micronizationlab.glafira
 
 import android.content.Context
 import android.content.Intent
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
