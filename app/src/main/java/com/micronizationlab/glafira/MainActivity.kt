@@ -422,7 +422,7 @@ fun ContactList(
             Spacer(Modifier.width(6.dp))
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
-                    .semantics { contentDescription = "Открыть настройки" }
+                    .semantics(mergeDescendants = true) { contentDescription = "Открыть настройки" }
                     .clickable { onSettingsClick() },
                 contentAlignment = Alignment.Center
             ) {
