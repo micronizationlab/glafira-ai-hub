@@ -175,6 +175,49 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
     }
 
     @Test
+    fun staleGenerationCannotApproveOrRejectPendingOwnerApproval() {
+        val original = task("approval-stale-decision-generation")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        val summary = "Send a test message to test@example.invalid"
+        assertTrue(approvals.requestApproval(running, summary, 3_000L))
+
+        val owner = requireNotNull(taskStore.taskOwnership(original.taskId, original.projectId))
+        taskStore.writableDatabase.update(
+            "core_task_ownership",
+            android.content.ContentValues().apply {
+                put("owner_generation", owner.ownerGeneration + 1L)
+                put("state_version", owner.stateVersion + 1L)
+            },
+            "task_id = ? AND project_id = ?",
+            arrayOf(original.taskId, original.projectId)
+        )
+
+        assertNotEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                original.taskId,
+                setOf("communications.send"),
+                authenticatedOwnerSession(),
+                3_100L
+            )
+        )
+        assertNotEquals(
+            GlafiraCoreOwnerApprovalMutation.REJECTED,
+            approvals.reject(original.taskId, authenticatedOwnerSession(), 3_101L)
+        )
+        assertEquals(
+            GlafiraTaskState.WAITING_FOR_OWNER,
+            requireNotNull(taskStore.getTask(original.taskId)).state
+        )
+        val status = taskStore.readableDatabase.rawQuery(
+            "SELECT status FROM core_action_approvals WHERE task_id = ?",
+            arrayOf(original.taskId)
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        assertEquals("PENDING", status)
+    }
+
+    @Test
     fun legacyApprovalWithoutOwnerMetadataFailsClosedWithoutCrashing() {
         val original = task("approval-legacy-null-owner")
         taskStore.enqueue(original)
