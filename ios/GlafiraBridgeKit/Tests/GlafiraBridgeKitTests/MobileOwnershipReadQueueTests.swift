@@ -105,6 +105,34 @@ final class MobileOwnershipReadQueueTests: XCTestCase {
         XCTAssertEqual(secondPending.count, 1)
     }
 
+    func testCompletionIsExactIdempotentAndCannotRemoveReenqueuedWork() async throws {
+        let paired = try state(expiresAt: now + 60_000)
+        let queue = try MobileOwnershipReadQueue(directory: directory)
+        let scheduled = try await queue.schedule(
+            pairingState: paired,
+            projectId: "project-0001",
+            transferId: "transfer-0001",
+            nowEpochMs: now
+        )
+        guard case .enqueued(let first) = scheduled else { return XCTFail("Expected enqueue") }
+        try await queue.complete(first)
+        try await queue.complete(first)
+
+        let rescheduled = try await queue.schedule(
+            pairingState: paired,
+            projectId: "project-0001",
+            transferId: "transfer-0001",
+            nowEpochMs: now + 1
+        )
+        guard case .enqueued(let second) = rescheduled else { return XCTFail("Expected re-enqueue") }
+        XCTAssertEqual(first.id, second.id)
+        XCTAssertNotEqual(first.enqueuedAtEpochMs, second.enqueuedAtEpochMs)
+
+        try await queue.complete(first)
+        let pending = try await queue.pending(pairingState: paired, nowEpochMs: now + 2)
+        XCTAssertEqual(pending, [second])
+    }
+
     private func state(
         deviceId: String = "ios-device-0001",
         expiresAt: Int64

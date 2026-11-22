@@ -101,7 +101,7 @@ public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
 /// as one device-only Keychain item, so local revocation cannot leave stale trust behind.
 /// The item is bound to the currently enrolled biometric set; adding/removing
 /// biometrics invalidates access rather than silently weakening protection.
-public final class KeychainBridgeCredentialStore {
+public final class KeychainBridgeCredentialStore: @unchecked Sendable {
     private let service: String
     private var revocationService: String { service + ".revoked" }
 

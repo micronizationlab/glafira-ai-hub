@@ -86,6 +86,19 @@ public final class PinnedBridgeHTTPSClient: NSObject, URLSessionDelegate, URLSes
             deviceId: unsignedRequest.deviceId,
             reason: "Подтвердите использование ключа GLAFIRA Bridge"
         )
+        return try await send(unsignedRequest, credential: credential)
+    }
+
+    /// Sends with a credential that the caller has already authenticated and checked against
+    /// the current Hub lifecycle binding. This prevents a second Keychain read from changing
+    /// the credential between admission checks and request signing.
+    public func send(
+        _ unsignedRequest: BridgeRequest,
+        credential: BridgeDeviceCredential
+    ) async throws -> BridgeResponse {
+        guard credential.deviceId == unsignedRequest.deviceId else {
+            throw BridgeCredentialStoreError.invalidStoredCredential
+        }
         let signed = try BridgeProtocol.sign(unsignedRequest, secret: credential.hmacSecret)
         var request = URLRequest(url: origin)
         request.httpMethod = "POST"

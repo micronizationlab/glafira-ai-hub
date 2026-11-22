@@ -251,6 +251,23 @@ public actor MobileOwnershipReadQueue {
         if envelope.entries.count != originalCount { try persist() }
     }
 
+    /// Acknowledges only the exact work snapshot that was processed. If an owner re-enqueues
+    /// the same transfer after it was removed, a delayed acknowledgement of the older snapshot
+    /// cannot delete the newer entry because its enqueue timestamp differs.
+    public func complete(_ work: MobileOwnershipReadWork) throws {
+        guard Self.valid(work) else {
+            throw MobileOwnershipReadQueueError.invalidIdentifier
+        }
+        guard let index = envelope.entries.firstIndex(of: work) else { return }
+        envelope.entries.remove(at: index)
+        do {
+            try persist()
+        } catch {
+            envelope.entries.insert(work, at: index)
+            throw error
+        }
+    }
+
     private func persist() throws {
         guard Self.valid(envelope) else {
             throw MobileOwnershipReadQueueError.invalidPersistedState
@@ -270,16 +287,18 @@ public actor MobileOwnershipReadQueue {
     private static func valid(_ value: Envelope) -> Bool {
         value.schemaVersion == 1 && value.entries.count <= 2_000 &&
             Set(value.entries.map(\.id)).count == value.entries.count &&
-            value.entries.allSatisfy { entry in
-                MobileOwnershipReadQueueValidation.validIdentifier(entry.deviceId) &&
-                    MobileOwnershipReadQueueValidation.validProjectId(entry.projectId) &&
-                    MobileOwnershipReadQueueValidation.validIdentifier(entry.transferId) &&
-                    entry.enqueuedAtEpochMs > 0 && entry.id == workIdentifier(
-                        deviceId: entry.deviceId,
-                        projectId: entry.projectId,
-                        transferId: entry.transferId
-                    )
-            }
+            value.entries.allSatisfy(valid)
+    }
+
+    private static func valid(_ entry: MobileOwnershipReadWork) -> Bool {
+        MobileOwnershipReadQueueValidation.validIdentifier(entry.deviceId) &&
+            MobileOwnershipReadQueueValidation.validProjectId(entry.projectId) &&
+            MobileOwnershipReadQueueValidation.validIdentifier(entry.transferId) &&
+            entry.enqueuedAtEpochMs > 0 && entry.id == workIdentifier(
+                deviceId: entry.deviceId,
+                projectId: entry.projectId,
+                transferId: entry.transferId
+            )
     }
 
     private static func validPersistedShape(_ data: Data) -> Bool {
