@@ -43,6 +43,8 @@ class GitHubRepositoryOperationsTest {
     fun rejectsCiAndBuildControlWrites() {
         listOf(
             ".github/workflows/ci.yml",
+            ".gitlab-ci.yml",
+            ".travis.yml",
             ".github/actions/build/action.yml",
             "build.gradle.kts",
             "app/build.gradle.kts",
