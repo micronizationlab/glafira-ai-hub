@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using GLAFIRA.Desktop.Core.Identity;
 
@@ -31,6 +32,58 @@ public sealed record OwnershipTransferSigningPayload(
     string SigningPublicKeySha256,
     string SignatureAlgorithm,
     string SignatureFormat);
+
+/// <summary>
+/// Complete flat-wire ownership transfer issued by the authoritative Desktop Core.
+/// Mobile clients consume this exact JSON shape; the public key remains out-of-band.
+/// </summary>
+public sealed record SignedOwnershipTransferEnvelope(
+    OwnershipTransferSigningPayload Payload,
+    string SignatureBase64)
+{
+    public string ToWireJson()
+    {
+        CoreOwnershipTransferCryptography.GetCanonicalBytes(Payload);
+        byte[] signature;
+        try
+        {
+            signature = Convert.FromBase64String(SignatureBase64);
+        }
+        catch (FormatException error)
+        {
+            throw new ArgumentException("OWNERSHIP_TRANSFER_SIGNATURE_ENCODING_INVALID", error);
+        }
+        if (signature.Length != 64 ||
+            !StringComparer.Ordinal.Equals(Convert.ToBase64String(signature), SignatureBase64))
+            throw new ArgumentException("OWNERSHIP_TRANSFER_SIGNATURE_ENCODING_INVALID");
+
+        var value = new Dictionary<string, object?>
+        {
+            ["schemaVersion"] = Payload.SchemaVersion,
+            ["transferId"] = Payload.TransferId,
+            ["nonce"] = Payload.Nonce,
+            ["taskId"] = Payload.TaskId,
+            ["projectId"] = Payload.ProjectId,
+            ["oldOwnerCoreId"] = Payload.OldOwnerCoreId,
+            ["newOwnerCoreId"] = Payload.NewOwnerCoreId,
+            ["oldOwnerGeneration"] = Payload.OldOwnerGeneration,
+            ["newOwnerGeneration"] = Payload.NewOwnerGeneration,
+            ["stateVersion"] = Payload.StateVersion,
+            ["payloadSha256"] = Payload.PayloadSha256,
+            ["idempotencyKey"] = Payload.IdempotencyKey,
+            ["effectRisk"] = Payload.EffectRisk,
+            ["approvalRef"] = Payload.ApprovalRef,
+            ["issuedAt"] = Payload.IssuedAt,
+            ["expiresAt"] = Payload.ExpiresAt,
+            ["signingKeyEpoch"] = Payload.SigningKeyEpoch,
+            ["signingPublicKeySha256"] = Payload.SigningPublicKeySha256,
+            ["signatureAlgorithm"] = Payload.SignatureAlgorithm,
+            ["signatureFormat"] = Payload.SignatureFormat,
+            ["signature"] = SignatureBase64
+        };
+        return JsonSerializer.Serialize(value);
+    }
+}
 
 /// <summary>
 /// Cross-platform canonicalization and ECDSA helpers for Dual-Core Ownership Transfer v1.
