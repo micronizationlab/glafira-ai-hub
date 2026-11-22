@@ -33,12 +33,14 @@ interface GlafiraOwnedDryRunPreviewPersistence : GlafiraDryRunPreviewPersistence
 data class GlafiraTaskOwnershipExecutionToken(
     val taskId: String,
     val ownerCoreId: String,
-    val ownerGeneration: Long
+    val ownerGeneration: Long,
+    val stateVersion: Long
 ) {
     init {
         require(taskId.isNotBlank())
         require(ownerCoreId.matches(Regex("^[A-Za-z0-9._-]{8,128}$")))
         require(ownerGeneration > 0L)
+        require(stateVersion > 0L)
     }
 }
 
