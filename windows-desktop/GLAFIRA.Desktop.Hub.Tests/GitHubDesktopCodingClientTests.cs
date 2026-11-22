@@ -35,6 +35,31 @@ public sealed class GitHubDesktopCodingClientTests
         GitHubDesktopCodingClient.RequireSafePath("windows-desktop/src/Example.cs");
     }
 
+    [Fact]
+    public void AllowsOrdinarySourceAndDocumentationWrites()
+    {
+        GitHubDesktopCodingClient.RequireWritablePath("windows-desktop/src/Example.cs");
+        GitHubDesktopCodingClient.RequireWritablePath("docs/architecture.md");
+    }
+
+    [Theory]
+    [InlineData(".github/workflows/ci.yml")]
+    [InlineData(".gitlab-ci.yml")]
+    [InlineData("GLAFIRA.Desktop.Hub.csproj")]
+    [InlineData("windows-desktop/GLAFIRA.Desktop.Hub.sln")]
+    [InlineData("Directory.Build.props")]
+    [InlineData("windows-desktop/Directory.Build.targets")]
+    [InlineData("global.json")]
+    [InlineData("NuGet.Config")]
+    [InlineData("packages.lock.json")]
+    [InlineData(".gitmodules")]
+    [InlineData("Dockerfile")]
+    public void RejectsCiAndBuildControlWrites(string path)
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            GitHubDesktopCodingClient.RequireWritablePath(path));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("/absolute/path")]
