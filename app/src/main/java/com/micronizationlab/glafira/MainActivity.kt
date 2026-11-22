@@ -400,8 +400,8 @@ fun ContactList(
             Spacer(Modifier.weight(1f))
             Box(
                 Modifier.size(28.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
-                    .clickable { onTaskQueueClick() }
-                    .semantics { contentDescription = "Открыть очередь задач" },
+                    .semantics(mergeDescendants = true) { contentDescription = "Открыть очередь задач" }
+                    .clickable { onTaskQueueClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Text("☷", color = Gr, fontSize = 16.sp)
@@ -409,8 +409,8 @@ fun ContactList(
             Spacer(Modifier.width(6.dp))
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
-                    .clickable { onCouncilClick() }
-                    .semantics { contentDescription = "Открыть совет директоров" },
+                    .semantics(mergeDescendants = true) { contentDescription = "Открыть совет директоров" }
+                    .clickable { onCouncilClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Text("🏛", fontSize = 12.sp)
