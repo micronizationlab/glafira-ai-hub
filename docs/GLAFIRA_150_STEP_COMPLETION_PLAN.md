@@ -450,6 +450,7 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - **Windows Desktop Hub:** HTTPS/TLS, short-lived Agent pairing tickets, Agent registration/revocation and Hub lifecycle controls already exist. Remaining work is to prove the Hub-to-owning-Desktop-Core boundary, multi-Agent scheduling and restart/reconciliation; source presence is not end-to-end acceptance.
 - **Windows Agent:** keep Agent Not Ready while the bounded typed result-artifact contract in #384 is missing. The current envelope carries result metadata/reference but no bounded structured payload writer. No generic shell/command handler.
 - **Voice:** issue #99 was refreshed against current source: one-shot runtime mic permission request and basic TTS/audio settings already exist; full voice-session runtime, barge-in, speech-rate/voice selection and robust permanent-denial handling remain open.
+- **AI provider routing / memory:** issue #394 tracks missing project/provider-specific data-classification grants and durable routing audit. A configured API key or free model is not permission to forward all project context; context assembly must remain default-deny and project-scoped.
 - **Backup:** issue #387 remains open for real Google Drive/Yandex SAF provider read-back and clean-profile restore. A clickable button or emulator smoke test is not proof of provider acceptance.
 - **Dual-Core transfer:** issue #366 remains open for a transactional signed ownership-transfer operation. Owner-generation fencing alone does not implement handoff or autonomous failover.
 
