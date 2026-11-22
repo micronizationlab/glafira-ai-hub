@@ -16,7 +16,7 @@ public partial class MainWindow : Window
     private readonly DesktopHubHostController _bridgeHost;
     private readonly DispatcherTimer _pairingTicketTimer = new() { Interval = TimeSpan.FromMinutes(2) };
     private bool _allowClose;
-    private readonly HttpClient _githubHttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _githubHttpClient = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(30) };
     private readonly GitHubDesktopTokenStore _githubTokenStore = new();
     private readonly GitHubDesktopCodingClient _githubCodingClient;
     private CancellationTokenSource? _githubAuthorizationCancellation;
