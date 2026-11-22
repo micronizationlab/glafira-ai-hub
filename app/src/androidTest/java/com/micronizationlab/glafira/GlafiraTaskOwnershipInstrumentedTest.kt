@@ -302,6 +302,43 @@ class GlafiraTaskOwnershipInstrumentedTest {
         assertEquals("current-result", core.coreTaskResult(item.taskId, item.projectId)?.result)
     }
 
+    @Test
+    fun staleClaimWithinSameOwnerGenerationCannotCommitAfterRetryAndReclaim() {
+        val core = store("android-core-same-generation")
+        val item = task("ownership-stale-claim-same-generation")
+        assertTrue(core.enqueue(item).inserted)
+
+        val firstClaim = requireNotNull(core.claimNextOwned(2_000L))
+        assertTrue(core.transitionOwned(
+            firstClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            GlafiraTaskState.RETRY_SCHEDULED,
+            2_500L,
+            retryAtMillis = 3_000L,
+            lastError = "TEST_RETRY"
+        ))
+
+        val secondClaim = requireNotNull(core.claimNextOwned(3_001L))
+        assertEquals(firstClaim.ownershipToken.ownerCoreId, secondClaim.ownershipToken.ownerCoreId)
+        assertEquals(firstClaim.ownershipToken.ownerGeneration, secondClaim.ownershipToken.ownerGeneration)
+        assertTrue(secondClaim.ownershipToken.stateVersion > firstClaim.ownershipToken.stateVersion)
+
+        assertFalse(core.persistCoreTaskResultOwned(
+            firstClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            "late-result-from-first-claim",
+            4_000L
+        ))
+        assertTrue(core.persistCoreTaskResultOwned(
+            secondClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            "result-from-current-claim",
+            4_001L
+        ))
+        assertEquals("result-from-current-claim",
+            core.coreTaskResult(item.taskId, item.projectId)?.result)
+    }
+
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
     }
