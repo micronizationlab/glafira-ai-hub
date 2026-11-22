@@ -1,8 +1,17 @@
 # GLAFIRA — ordered 150-step completion plan
 
 **Baseline main for this ledger revision:** `0649b3a24592e2ccd73b6997db04e2664f055be4` (verified 2026-11-21 after PR #308 integration; includes earlier merged provider test PR #309; refresh before the next integration).  
-**Owner priority:** P0 Core → P1 Android instrumentation + Bridge → P2 Windows Desktop → P2 Windows Agent → P4 Android UX → P4 iOS → release gates.  
+**Owner priority (owner override, 2026-11-22):** P0 Android GLAFIRA ↔ GitHub integration and automatic start on the owner's “работаем над программой 150” command → parallel P0 defect fixes → P1 Core/Backup/Bridge/Desktop/Agent workstreams → P2 iOS and remaining UX/release work. This override changes active execution priority, not historical step numbering or dependency truth.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
+
+
+## Active owner override — 2026-11-22
+
+The owner has explicitly changed the active execution order. The Android GLAFIRA must become an authorized GitHub coding client first. The registered GitHub App public Client ID is configured in Android; authorization uses owner-initiated Device Flow and Android Keystore-backed tokens. Client Secret and App private key must never be embedded in APK/source, prompts, logs, Trace or backups. A disclosed Client Secret must be revoked/rotated by the owner (issue #405).
+
+The command **“работаем над программой 150”** must resume the persisted program: validate the GitHub session (refresh if supported), confirm the owner identity and allowlisted repository installation, load the current 150-step ledger and active ten-workstream board, then dispatch bounded independent tasks. If authorization or repository access is unavailable, stop GitHub writes and request owner reconnection. Keep branch-only writes, Draft PRs, exact-head CI evidence and owner approval for merges.
+
+Defect fixes reported by the owner remain parallel P0 work, especially Android microphone/TTS, key masking, voice-input crash, image picker and backup folder picker. Other workstreams continue only where they do not delay GitHub connectivity or defect resolution. No workstream may claim completion without code plus relevant tests/evidence; skipped CI is not a pass.
 
 ## Reframed delivery strategy
 
