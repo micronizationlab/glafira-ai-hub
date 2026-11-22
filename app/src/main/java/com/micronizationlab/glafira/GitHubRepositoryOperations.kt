@@ -6,6 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 import java.util.Base64
 
@@ -221,7 +222,7 @@ internal class GitHubRepositoryOperations(
             }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val response = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            val response = readBounded(stream, MAX_RESPONSE_BYTES)
             require(code in 200..299) {
                 when (code) {
                     401 -> "GitHub authorization expired or was revoked. Reconnect GitHub."
@@ -238,6 +239,23 @@ internal class GitHubRepositoryOperations(
         }
     }
 
+    private fun readBounded(stream: java.io.InputStream?, limit: Int): String {
+        if (stream == null) return ""
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        var total = 0
+        stream.use {
+            while (true) {
+                val count = it.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= limit) { "GitHub API response exceeds the 4 MiB safety limit." }
+                output.write(buffer, 0, count)
+            }
+        }
+        return String(output.toByteArray(), Charsets.UTF_8)
+    }
+
     private fun requireRepository(repository: String) {
         require(repository in allowedRepositories) { "Repository is not approved for GLAFIRA GitHub operations." }
     }
@@ -246,16 +264,21 @@ internal class GitHubRepositoryOperations(
         private const val API_BASE = "https://api.github.com"
         private const val API_VERSION = "2022-11-28"
         private const val MAX_FILE_BYTES = 1024 * 1024
+        private const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
         private val SHA_PATTERN = Regex("^[0-9a-fA-F]{40}$")
         private val BRANCH_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$")
         private val DEFAULT_ALLOWED_REPOSITORIES = setOf("micronizationlab/glafira-ai-hub")
 
         internal fun requireWritableBranch(branch: String) {
             require(BRANCH_PATTERN.matches(branch)) { "Invalid GitHub branch name." }
-            require(branch != "main" && branch != "master" && !branch.startsWith("main/")) {
+            require(branch != "main" && branch != "master" &&
+                !branch.startsWith("main/") && !branch.startsWith("master/")) {
                 "GLAFIRA cannot write directly to a protected branch."
             }
-            require(!branch.endsWith("/") && !branch.contains("..") && !branch.contains("//")) {
+            require(!branch.endsWith("/") && !branch.contains("..") && !branch.contains("//") &&
+                branch.split('/').all { segment ->
+                    !segment.startsWith(".") && !segment.endsWith(".") && !segment.endsWith(".lock")
+                }) {
                 "Invalid GitHub branch name."
             }
         }
