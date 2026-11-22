@@ -89,7 +89,7 @@ object GlafiraToolRegistry {
         GlafiraToolDefinition(
             "record.delete", "Удаление данных", "Удаление записей или файлов.",
             ToolRiskLevel.DESTRUCTIVE, setOf("data.delete")
-        )
+        ),
         GlafiraToolDefinition(
             "github.repository.tree", "Просмотр дерева GitHub", "Чтение структуры разрешённого репозитория.",
             ToolRiskLevel.READ_ONLY, setOf("github.repo.read")
