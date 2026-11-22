@@ -1,6 +1,6 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `4f97c19afa8f997c4977014398aa33b9dfae67d9` (verified after Android GitHub chat command PR #428 was merged on 2026-11-22).
+**Baseline main for this ledger revision:** `c6959c73d0fb9225d84814e6652b4134937c27a0` (verified after Android GitHub chat command PR #428 was merged on 2026-11-22).
 **Owner priority (owner's latest instruction, 2026-11-22):** (1) GLAFIRA Android must be able to perform GitHub work; (2) Windows Desktop Agent must independently perform GitHub work; (3) resume the previously established Core, Backup & Recovery, Bridge and remaining priorities. Keep the ten workstreams active in parallel, but do not let lower-priority work displace these first two deliverables.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
@@ -584,7 +584,7 @@ Keep ten workstreams active in parallel; this is a merge/integration order, not 
 3. **Android chat GitHub command:** PR #428 merged as `4f97c19afa8f997c4977014398aa33b9dfae67d9`. Explicit connect commands navigate to Settings; this is not an authorization bypass or automatic login.
 4. **Backup & Recovery:** #426 and #438 are in main. Physical Realme 8i backup/restore acceptance remains outstanding.
 5. **Windows GitHub Workspace:** #436 is in main. Workspace remains first-stage; physical Windows validation, owner unlock and diff-preview/explicit approval before writes remain open.
-6. **Windows Agent:** #433 is in main. The older #418 artifact-store extraction was closed as superseded after source comparison confirmed main has a newer superset with ProjectId binding and pending-artifact enumeration. Production handler and end-to-end Core ACK remain open.
+6. **Windows Agent:** #433 is in main. The older #418 artifact-store extraction was closed as superseded after source comparison confirmed main has a newer superset with ProjectId binding and pending-artifact enumeration. One bounded read-only `diagnostics.snapshot` handler is now registered in Agent `Program.cs`, with the durable artifact store/outbox and Hub transport wired. Broader handler coverage, full crash/restart/ACK reconciliation evidence and two-PC acceptance remain open.
 7. **Windows Desktop Hub:** #434 is in main; tests/build/package passed. Runtime validation on the owner's Windows machine remains outstanding.
 8. **Shared contracts:** #431 is in main. Cross-platform end-to-end acceptance remains open.
 9. **Android voice/auto-speech:** #432 is in main; physical Realme 8i validation remains outstanding. #414 is a separate older draft candidate and is not counted as merged.
@@ -599,3 +599,8 @@ Keep ten workstreams active in parallel; this is a merge/integration order, not 
 - PR #418: closed as superseded by the more complete implementation already in main.
 - Skipped CI jobs and physical-device gates are not counted as passes.
 
+
+
+## Correction — Windows Agent first handler source audit (2026-11-22)
+
+Current `main` now registers `AgentDiagnosticsSnapshotTaskHandler` in `windows-agent/GLAFIRA.Agent.Worker/Program.cs`. `AgentWorker` polls only while the Agent is Ready and a typed handler is registered; `AgentTaskExecutor` rejects non-ReadOnly tasks. The first handler accepts only the pinned `diagnostics.snapshot` payload and reads a fixed set of local runtime metadata. `AgentResultArtifactStore`, `AgentResultArtifactOutbox` and the authenticated Hub artifact transport are registered. This resolves the earlier 'no handler registered' blocker for one narrow diagnostics task only. It does not establish general task execution, end-to-end Core acceptance/ACK recovery, or two-PC production readiness.
