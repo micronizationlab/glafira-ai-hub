@@ -15,12 +15,14 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1"\n        buildConfigField("String", "GITHUB_APP_CLIENT_ID", "\\"Iv23liZKylYOtML2Alm2\\"")
+        versionName = "0.1"
+        buildConfigField("String", "GITHUB_APP_CLIENT_ID", "\"Iv23liZKylYOtML2Alm2\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
