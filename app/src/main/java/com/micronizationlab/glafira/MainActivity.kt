@@ -212,7 +212,8 @@ private fun WorkspaceApp() {
             else -> ChatScreen(
                 agent = currentAgent!!,
                 project = currentProject,
-                onBack = { currentAgent = null }
+                onBack = { currentAgent = null },
+                onOpenSettings = { showSettings = true }
             )
         }
     }
@@ -537,7 +538,12 @@ fun ContactList(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
+fun ChatScreen(
+    agent: A,
+    project: Project,
+    onBack: () -> Unit,
+    onOpenSettings: () -> Unit = {}
+) {
     val context = LocalContext.current
     var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.n)) }
     val historyKey = "${project.id}_${agent.n}"
@@ -672,6 +678,13 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
 
     fun sendMessage(text: String) {
         if (text.isBlank() || isLoading) return
+        if (agent.n == "ГЛАФИРА" && isGitHubConnectCommand(text)) {
+            clearDraft(context, project.id, agent.n)
+            if (inputText == text) inputText = ""
+            onOpenSettings()
+            ToastHelper.short(context, "Открыл настройки подключения GitHub.")
+            return
+        }
         if (isPendingDispatchBlocked(context)) {
             ToastHelper.short(context, "Сначала завершите восстановление резервной копии в настройках.")
             return
