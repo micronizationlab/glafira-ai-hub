@@ -323,6 +323,13 @@ class GlafiraTaskOwnershipInstrumentedTest {
         assertEquals(firstClaim.ownershipToken.ownerGeneration, secondClaim.ownershipToken.ownerGeneration)
         assertTrue(secondClaim.ownershipToken.stateVersion > firstClaim.ownershipToken.stateVersion)
 
+        assertFalse(core.transitionOwned(
+            firstClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            GlafiraTaskState.FAILED,
+            3_500L,
+            lastError = "LATE_FAILURE_FROM_FIRST_CLAIM"
+        ))
         assertFalse(core.persistCoreTaskResultOwned(
             firstClaim.ownershipToken,
             setOf(GlafiraTaskState.RUNNING),
