@@ -424,13 +424,10 @@ fun ContactList(
             Box(
                 Modifier.size(24.dp)
                     .border(1.dp, Gr, RoundedCornerShape(2.dp))
-                    // Keep the accessible label on the merged node, then apply
-                    // clickable as the outer modifier so API 35 exposes ACTION_CLICK
-                    // on that exact node to UiAutomator and TalkBack.
-                    .semantics(mergeDescendants = true) {
-                        contentDescription = "Открыть настройки"
-                    }
-                    .clickable { onSettingsClick() },
+                    // Match the known-good Compose semantics order from the passing
+                    // baseline: clickable first, then the accessible label.
+                    .clickable { onSettingsClick() }
+                    .semantics { contentDescription = "Открыть настройки" },
                 contentAlignment = Alignment.Center
             ) {
                 Text("⚙", fontSize = 12.sp)
