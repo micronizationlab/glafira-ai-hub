@@ -263,6 +263,7 @@ fun BackupSettingsSection() {
                         modifier = Modifier.semantics { contentDescription = guidance }
                     )
                 }
+
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = {
