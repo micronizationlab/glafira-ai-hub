@@ -1279,11 +1279,15 @@ fun ChatScreen(agent: A, project: Project, onBack: () -> Unit) {
                                                     }
                                                 }
                                             },
-                                            modifier = Modifier
-                                                .size(32.dp)
-                                                .semantics { contentDescription = "Показать источники ответа" }
+                                            modifier = Modifier.size(32.dp)
                                         ) {
-                                            Text("📚", fontSize = 12.sp)
+                                            Text(
+                                                "📚",
+                                                fontSize = 12.sp,
+                                                modifier = Modifier.semantics {
+                                                    contentDescription = "Показать источники ответа"
+                                                }
+                                            )
                                         }
                                         Spacer(Modifier.width(6.dp))
                                     }
