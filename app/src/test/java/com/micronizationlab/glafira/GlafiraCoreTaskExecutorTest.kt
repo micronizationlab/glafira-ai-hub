@@ -104,6 +104,60 @@ class GlafiraCoreTaskExecutorTest {
     }
 
     @Test
+    fun acceptedIndependentResultReviewAllowsPersistence() = runBlocking {
+        val queue = FakeQueue(task())
+        var reviewed = ""
+        val worker = GlafiraCoreTaskExecutor(
+            queue = queue,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                GlafiraTaskExecutionOutcome.Succeeded("{\"ok\":true}")
+            }),
+            resultReviewer = GlafiraCoreTaskResultReviewer { _, result ->
+                reviewed = result
+                GlafiraCoreTaskResultReviewOutcome(
+                    GlafiraCoreResultReviewStatus.ACCEPTED,
+                    reviewerVersion = 1,
+                    independence = ReviewIndependence.INDEPENDENT_EVALUATOR
+                )
+            }
+        )
+
+        assertEquals(GlafiraTaskExecutionStatus.SUCCEEDED, worker.executeNext().status)
+        assertEquals("{\"ok\":true}", reviewed)
+        assertEquals(GlafiraTaskState.SUCCEEDED, queue.task?.state)
+    }
+
+    @Test
+    fun rejectedOrUnavailableResultReviewFailsClosedForOwner() = runBlocking {
+        for (status in listOf(
+            GlafiraCoreResultReviewStatus.REJECTED,
+            GlafiraCoreResultReviewStatus.UNAVAILABLE
+        )) {
+            val queue = FakeQueue(task())
+            val worker = GlafiraCoreTaskExecutor(
+                queue = queue,
+                authorizer = GlafiraTaskAuthorizer { _, _ ->
+                    GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+                },
+                handlers = listOf("project.read" to GlafiraTaskHandler {
+                    GlafiraTaskExecutionOutcome.Succeeded("invalid")
+                }),
+                resultReviewer = GlafiraCoreTaskResultReviewer { _, _ ->
+                    GlafiraCoreTaskResultReviewOutcome(status)
+                }
+            )
+
+            val result = worker.executeNext()
+            assertEquals(GlafiraTaskExecutionStatus.WAITING_FOR_OWNER, result.status)
+            assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, queue.task?.state)
+            assertEquals("CORE_RESULT_REVIEW_${status.name}", queue.task?.lastError)
+        }
+    }
+
+    @Test
     fun ownerApprovalIsRequiredBeforeHandlerRuns() = runBlocking {
         val queue = FakeQueue(task())
         var handlerCalled = false

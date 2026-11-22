@@ -51,6 +51,7 @@ class GlafiraCoreTaskExecutor(
     private val executionMode: () -> GlafiraExecutionMode = { GlafiraExecutionMode.LIVE },
     private val liveTaskAdmission: GlafiraLiveTaskAdmission = GlafiraLiveTaskAdmission.ALLOW_ALL,
     private val dryRunPreviewPersistence: GlafiraDryRunPreviewPersistence? = null,
+    private val resultReviewer: GlafiraCoreTaskResultReviewer? = null,
     private val executionLimiter: GlafiraCoreExecutionLimiter = GlafiraCoreExecutionLimiter()
 ) {
     private val recoveryMutex = Mutex()
@@ -225,6 +226,7 @@ class GlafiraCoreTaskExecutor(
                 val summary = if (rawSummary.length > GlafiraCoreTaskResultPersistence.MAX_RESULT_CHARS) {
                     rawSummary.take(GlafiraCoreTaskResultPersistence.MAX_RESULT_CHARS - 14) + "...[TRUNCATED]"
                 } else rawSummary
+                reviewResult(task, summary, effectiveBudget.maxRetries)?.let { return it }
                 val now = clock()
                 val resultPersistence = queue as? GlafiraCoreTaskResultPersistence
                 val changed = try {
@@ -274,6 +276,41 @@ class GlafiraCoreTaskExecutor(
                 )
             }
         }
+    }
+
+    private suspend fun reviewResult(
+        task: GlafiraTask,
+        summary: String,
+        maxRetries: Int
+    ): GlafiraTaskExecutionResult? {
+        val reviewer = resultReviewer ?: return null
+        val review = try {
+            reviewer.review(task, summary)
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) {
+                runCatching {
+                    scheduleRetry(task, "RESULT_REVIEW_CANCELLED", clock(), maxRetries)
+                }
+            }
+            throw cancelled
+        } catch (_: Exception) {
+            GlafiraCoreTaskResultReviewOutcome(GlafiraCoreResultReviewStatus.UNAVAILABLE)
+        }
+        if (review.status == GlafiraCoreResultReviewStatus.ACCEPTED) return null
+        val reason = "CORE_RESULT_REVIEW_${review.status.name}"
+        val changed = queue.transition(
+            task.taskId,
+            setOf(GlafiraTaskState.RUNNING),
+            GlafiraTaskState.WAITING_FOR_OWNER,
+            clock(),
+            lastError = reason
+        )
+        return GlafiraTaskExecutionResult(
+            task.taskId,
+            if (changed) GlafiraTaskExecutionStatus.WAITING_FOR_OWNER
+            else GlafiraTaskExecutionStatus.FAILED,
+            reason
+        )
     }
 
     /**

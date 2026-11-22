@@ -37,6 +37,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         bridgeCredentialStore
     )
     private val liveRunStore = GlafiraCoreLiveRunStore(taskStore)
+    private val resultReviewer = GlafiraCoreResultReviewFactory.create(taskStore, traceStore)
 
     private val bridgeDispatcher = GlafiraBridgeOperationDispatcher(appContext)
     // Core evaluates LIVE per task. Only a fresh, durable, owner-approved read grant can pass;
@@ -65,6 +66,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         executionMode = { executionMode },
         liveTaskAdmission = liveRunStore,
         dryRunPreviewPersistence = taskStore,
+        resultReviewer = resultReviewer,
         executionLimiter = executionLimiter
     )
 
@@ -352,6 +354,25 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     /** Project-scoped lookup for a successfully persisted Core handler result. */
     fun coreTaskResult(taskId: String, projectId: String): GlafiraCoreTaskResultRecord? =
         taskStore.coreTaskResult(taskId, projectId)
+
+    fun latestCoreResultReview(
+        taskId: String,
+        projectId: String
+    ): GlafiraCoreResultReviewStatus? = traceStore.query(
+        GlafiraCoreTraceQuery(
+            projectId = projectId,
+            taskId = taskId,
+            eventTypes = setOf(
+                GlafiraCoreTraceEventType.REVIEW_ACCEPTED,
+                GlafiraCoreTraceEventType.REVIEW_REVISION_REQUESTED,
+                GlafiraCoreTraceEventType.REVIEW_REJECTED,
+                GlafiraCoreTraceEventType.REVIEW_ESCALATED,
+                GlafiraCoreTraceEventType.REVIEW_UNAVAILABLE
+            ),
+            limit = 1
+        ),
+        GlafiraCoreTraceAccessContext(projectId, setOf(taskId))
+    ).events.firstOrNull()?.eventType?.toReviewStatus()
 
     /** Tasks with typed, durable Dry Run previews awaiting owner review. */
     fun dryRunPreviews(limit: Int = 100): List<GlafiraTask> =

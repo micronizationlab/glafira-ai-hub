@@ -32,7 +32,12 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     var previews by remember {
         mutableStateOf(owner.dryRunPreviewRecords(200).filter { it.projectId == currentProject.id })
     }
-    val planRows = remember(plans, previews) { GlafiraOwnerPlanPresentation.build(plans, previews) }
+    var resultReviews by remember {
+        mutableStateOf(loadResultReviews(owner, currentProject.id, tasks))
+    }
+    val planRows = remember(plans, previews, resultReviews) {
+        GlafiraOwnerPlanPresentation.build(plans, previews, resultReviews)
+    }
     val plannedTaskIds = remember(plans) { plans.flatMap { it.nodes }.map { it.taskId }.toSet() }
     val projectTasks = tasks.filter {
         it.projectId == currentProject.id && it.taskId !in plannedTaskIds
@@ -60,6 +65,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         tasks = owner.taskStore.listTasks(limit = 200)
         plans = owner.taskPlans(currentProject.id)
         previews = owner.dryRunPreviewRecords(200).filter { it.projectId == currentProject.id }
+        resultReviews = loadResultReviews(owner, currentProject.id, tasks)
     }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
@@ -142,6 +148,9 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                                 color = Tx, fontSize = 9.sp
                             )
                             task.lastError?.let { Text("Причина/результат: $it", color = Red, fontSize = 10.sp) }
+                            resultReviews[task.taskId]?.let {
+                                Text("Reviewer результата: ${it.name}", color = Gr, fontSize = 10.sp)
+                            }
                         }
                     }
                 }
@@ -240,6 +249,15 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
 
 private fun newPlanningIdempotencyKey(): String = "owner-plan-" + UUID.randomUUID().toString()
 
+private fun loadResultReviews(
+    owner: GlafiraCoreRuntimeOwner,
+    projectId: String,
+    tasks: List<GlafiraTask>
+): Map<String, GlafiraCoreResultReviewStatus> = tasks.asSequence()
+    .filter { it.projectId == projectId }
+    .mapNotNull { task -> owner.latestCoreResultReview(task.taskId, projectId)?.let { task.taskId to it } }
+    .toMap()
+
 @Composable
 private fun OwnerPlanCard(plan: GlafiraOwnerPlanRow) {
     Card(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
@@ -268,6 +286,9 @@ private fun OwnerPlanCard(plan: GlafiraOwnerPlanRow) {
                         "Dry Run: ${node.simulationStatus?.name} · риск ${node.previewRisk?.name} · review ${node.reviewStatus?.name}"
                 }
                 Text(preview, color = if (node.previewState == GlafiraOwnerPreviewState.INVALID) Red else Tx, fontSize = 9.sp)
+                node.resultReviewStatus?.let {
+                    Text("Reviewer результата: ${it.name}", color = Gr, fontSize = 9.sp)
+                }
             }
             Text(
                 "Показаны только безопасные поля плана; инструкции, provider-ответ и секреты здесь не отображаются.",

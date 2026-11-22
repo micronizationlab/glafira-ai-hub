@@ -34,7 +34,11 @@ class GlafiraOwnerPlanPresentationTest {
             planJson = previewJson
         )
 
-        val row = GlafiraOwnerPlanPresentation.build(listOf(plan), listOf(preview)).single()
+        val row = GlafiraOwnerPlanPresentation.build(
+            listOf(plan),
+            listOf(preview),
+            mapOf(summary.taskId to GlafiraCoreResultReviewStatus.ACCEPTED)
+        ).single()
 
         assertEquals(2, row.totalCount)
         assertEquals(GlafiraCoreTaskPlanStatus.WAITING_FOR_OWNER, row.status)
@@ -42,6 +46,10 @@ class GlafiraOwnerPlanPresentationTest {
         assertEquals(listOf(0, 1), row.nodes.map { it.dependencyCount })
         assertEquals(GlafiraOwnerPreviewState.READY, row.nodes.last().previewState)
         assertEquals(GlafiraDryRunSimulationStatus.PREVIEW_ONLY, row.nodes.last().simulationStatus)
+        assertEquals(
+            GlafiraCoreResultReviewStatus.ACCEPTED,
+            row.nodes.last().resultReviewStatus
+        )
     }
 
     @Test

@@ -14,7 +14,8 @@ data class GlafiraOwnerPlanNodeRow(
     val previewState: GlafiraOwnerPreviewState,
     val previewRisk: ToolRiskLevel?,
     val simulationStatus: GlafiraDryRunSimulationStatus?,
-    val reviewStatus: GlafiraDryRunReviewStatus?
+    val reviewStatus: GlafiraDryRunReviewStatus?,
+    val resultReviewStatus: GlafiraCoreResultReviewStatus?
 )
 
 /** Owner-safe projection of one project-scoped durable plan. */
@@ -29,7 +30,8 @@ data class GlafiraOwnerPlanRow(
 internal object GlafiraOwnerPlanPresentation {
     fun build(
         plans: List<GlafiraCoreTaskPlanRecord>,
-        previews: List<GlafiraDryRunPreviewRecord>
+        previews: List<GlafiraDryRunPreviewRecord>,
+        resultReviews: Map<String, GlafiraCoreResultReviewStatus> = emptyMap()
     ): List<GlafiraOwnerPlanRow> {
         val previewsByTask = previews.associateBy { it.taskId }
         return plans.sortedByDescending { it.createdAtMillis }.map { plan ->
@@ -71,7 +73,8 @@ internal object GlafiraOwnerPlanPresentation {
                     },
                     previewRisk = safePreview?.first,
                     simulationStatus = safePreview?.second,
-                    reviewStatus = safePreview?.third
+                    reviewStatus = safePreview?.third,
+                    resultReviewStatus = resultReviews[task.taskId]
                 )
             }.sortedWith(compareBy<GlafiraOwnerPlanNodeRow> { it.stage }.thenBy { it.title })
 
