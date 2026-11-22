@@ -219,6 +219,12 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
             arrayOf(original.taskId, original.projectId)
         )
 
+        // Make the stale generation-N approval expired as well as owner-mismatched.
+        // Cleanup may expire the approval row, but must not fail the generation-N+1 task.
+        taskStore.writableDatabase.execSQL(
+            "UPDATE core_action_approvals SET expires_at = ? WHERE task_id = ?",
+            arrayOf("3050", original.taskId)
+        )
         assertTrue("A stale-generation request must not appear in the owner queue",
             approvals.pendingApprovals(3_100L).isEmpty())
         val status = taskStore.readableDatabase.rawQuery(
