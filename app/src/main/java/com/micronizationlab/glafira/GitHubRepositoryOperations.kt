@@ -286,7 +286,7 @@ internal class GitHubRepositoryOperations(
 
         internal fun requireSafePath(path: String) {
             require(path.isNotBlank() && path.length <= 400) { "Invalid GitHub file path." }
-            require(!path.startsWith("/") && !path.endsWith("/") && !path.contains("\\\\")) {
+            require(!path.startsWith("/") && !path.endsWith("/") && !path.contains("\\")) {
                 "Invalid GitHub file path."
             }
             require(path.split('/').none { it.isBlank() || it == "." || it == ".." }) {
@@ -312,7 +312,7 @@ internal class GitHubRepositoryOperations(
                 normalized == "settings.gradle" || normalized == "settings.gradle.kts" ||
                 normalized == "gradlew" || normalized == "gradlew.bat" ||
                 segments.firstOrNull() in setOf(".github", ".gitlab", ".circleci") ||
-                segments.any { it == "gradle" && segments.indexOf(it) < segments.lastIndex && fileName.startsWith("gradle-wrapper") } ||
+                
                 fileName.endsWith(".gradle") || fileName.endsWith(".gradle.kts") ||
                 fileName == "jenkinsfile" || fileName == "azure-pipelines.yml" ||
                 fileName == "dockerfile" || fileName.startsWith("docker-compose")
