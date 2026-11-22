@@ -2,6 +2,14 @@ import CryptoKit
 import Foundation
 
 public struct MobileOwnershipTransferEnvelope: Codable, Equatable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, transferId, nonce, taskId, projectId
+        case oldOwnerCoreId, newOwnerCoreId, oldOwnerGeneration, newOwnerGeneration
+        case stateVersion, payloadSha256, idempotencyKey, effectRisk, approvalRef
+        case issuedAt, expiresAt, signingKeyEpoch, signingPublicKeySha256
+        case signatureAlgorithm, signatureFormat, signature
+    }
+
     public let schemaVersion: Int
     public let transferId: String
     public let nonce: String
@@ -23,6 +31,37 @@ public struct MobileOwnershipTransferEnvelope: Codable, Equatable, Sendable {
     public let signatureAlgorithm: String
     public let signatureFormat: String
     public var signature: String
+
+    /// The wire schema requires `approvalRef` to be present even when it is JSON null.
+    /// Synthesized optional encoding omits nil, which breaks strict shape validation.
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(schemaVersion, forKey: .schemaVersion)
+        try values.encode(transferId, forKey: .transferId)
+        try values.encode(nonce, forKey: .nonce)
+        try values.encode(taskId, forKey: .taskId)
+        try values.encode(projectId, forKey: .projectId)
+        try values.encode(oldOwnerCoreId, forKey: .oldOwnerCoreId)
+        try values.encode(newOwnerCoreId, forKey: .newOwnerCoreId)
+        try values.encode(oldOwnerGeneration, forKey: .oldOwnerGeneration)
+        try values.encode(newOwnerGeneration, forKey: .newOwnerGeneration)
+        try values.encode(stateVersion, forKey: .stateVersion)
+        try values.encode(payloadSha256, forKey: .payloadSha256)
+        try values.encode(idempotencyKey, forKey: .idempotencyKey)
+        try values.encode(effectRisk, forKey: .effectRisk)
+        if let approvalRef {
+            try values.encode(approvalRef, forKey: .approvalRef)
+        } else {
+            try values.encodeNil(forKey: .approvalRef)
+        }
+        try values.encode(issuedAt, forKey: .issuedAt)
+        try values.encode(expiresAt, forKey: .expiresAt)
+        try values.encode(signingKeyEpoch, forKey: .signingKeyEpoch)
+        try values.encode(signingPublicKeySha256, forKey: .signingPublicKeySha256)
+        try values.encode(signatureAlgorithm, forKey: .signatureAlgorithm)
+        try values.encode(signatureFormat, forKey: .signatureFormat)
+        try values.encode(signature, forKey: .signature)
+    }
 
     /// Decode the exact flat wire object and reject unreviewed fields before Codable mapping.
     public static func decodeStrict(_ data: Data) throws -> MobileOwnershipTransferEnvelope {
@@ -99,6 +138,12 @@ enum MobileOwnershipTrustValidation {
 }
 
 public struct MobileOwnershipProjection: Codable, Equatable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case taskId, projectId, ownerCoreId, ownerGeneration, stateVersion
+        case payloadSha256, idempotencyKey, effectRisk, approvalRef
+        case lastTransferId, lastNonce, updatedAtEpochMs
+    }
+
     public let taskId: String
     public let projectId: String
     public let ownerCoreId: String
@@ -111,6 +156,27 @@ public struct MobileOwnershipProjection: Codable, Equatable, Sendable {
     public let lastTransferId: String
     public let lastNonce: String
     public let updatedAtEpochMs: Int64
+
+    /// Persist an explicit null so the strict durable shape is stable across reopen.
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(taskId, forKey: .taskId)
+        try values.encode(projectId, forKey: .projectId)
+        try values.encode(ownerCoreId, forKey: .ownerCoreId)
+        try values.encode(ownerGeneration, forKey: .ownerGeneration)
+        try values.encode(stateVersion, forKey: .stateVersion)
+        try values.encode(payloadSha256, forKey: .payloadSha256)
+        try values.encode(idempotencyKey, forKey: .idempotencyKey)
+        try values.encode(effectRisk, forKey: .effectRisk)
+        if let approvalRef {
+            try values.encode(approvalRef, forKey: .approvalRef)
+        } else {
+            try values.encodeNil(forKey: .approvalRef)
+        }
+        try values.encode(lastTransferId, forKey: .lastTransferId)
+        try values.encode(lastNonce, forKey: .lastNonce)
+        try values.encode(updatedAtEpochMs, forKey: .updatedAtEpochMs)
+    }
 }
 
 public enum MobileOwnershipSyncDisposition: Equatable, Sendable {
