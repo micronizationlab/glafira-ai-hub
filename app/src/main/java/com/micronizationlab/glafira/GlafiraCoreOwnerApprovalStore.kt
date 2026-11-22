@@ -342,10 +342,18 @@ class GlafiraCoreOwnerApprovalStore(
                     "AND o.owner_generation = core_action_approvals.owner_generation)",
                 arrayOf(EXPIRED, PENDING, APPROVED)
             )
+            // Only expire the task when the expired approval still belongs to its
+            // current canonical owner generation. A stale generation-N approval must
+            // never fail a task that has since moved to generation N+1.
             database.execSQL(
                 "UPDATE core_tasks SET state = ?, updated_at = ?, last_error = ? " +
-                    "WHERE state = ? AND task_id IN " +
-                    "(SELECT task_id FROM core_action_approvals WHERE status = ? AND expires_at <= ?)",
+                    "WHERE state = ? AND task_id IN (" +
+                    "SELECT a.task_id FROM core_action_approvals a " +
+                    "INNER JOIN core_task_ownership o ON o.task_id = a.task_id " +
+                    "AND o.project_id = a.project_id " +
+                    "AND o.owner_core_id = a.owner_core_id " +
+                    "AND o.owner_generation = a.owner_generation " +
+                    "WHERE a.status = ? AND a.expires_at <= ?)",
                 arrayOf(
                     GlafiraTaskState.FAILED.databaseValue, nowMillis, "OWNER_APPROVAL_EXPIRED",
                     GlafiraTaskState.WAITING_FOR_OWNER.databaseValue, EXPIRED, nowMillis
