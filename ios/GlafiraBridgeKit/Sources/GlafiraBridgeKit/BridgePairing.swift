@@ -93,8 +93,8 @@ public extension BridgePairingInvitation {
     }
 }
 
-/// Implements the same one-time HMAC proof as Android. Proof acceptance only
-/// queues a pending owner decision; it never grants scopes or creates secrets.
+/// Implements the historical Android-hosted one-time HMAC pairing proof.
+/// Its route/status contract is not yet compatible with the current Windows Hub peer flow (#392).
 public enum BridgePairing {
     public static func makeSubmission(invitation: BridgePairingInvitation,
                                       deviceLabel: String,
