@@ -681,6 +681,7 @@ private fun GitHubIntegrationSection() {
     var connected by remember { mutableStateOf(store.hasAccessToken()) }
     var connecting by remember { mutableStateOf(false) }
     var userCode by remember { mutableStateOf<String?>(null) }
+    var accountLogin by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf(if (connected) "GitHub подключён на этом устройстве." else "Подключите GLAFIRA к своему GitHub App.") }
     var authorizationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
@@ -697,6 +698,7 @@ private fun GitHubIntegrationSection() {
             )
             Spacer(Modifier.height(10.dp))
             Text(status, color = if (connected) Gr else Tx, fontSize = 12.sp)
+            accountLogin?.let { Text("GitHub: @$it", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             if (userCode != null) {
                 Spacer(Modifier.height(10.dp))
                 Text("КОД ПОДТВЕРЖДЕНИЯ", color = Tx, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -739,7 +741,28 @@ private fun GitHubIntegrationSection() {
                                             )
                                             if (saved) {
                                                 connected = true
-                                                status = "GitHub подключён. Токен сохранён в защищённом хранилище."
+                                                status = "Токен сохранён. Проверяю GitHub-профиль и доступ к репозиторию…"
+                                                try {
+                                                    val api = GitHubApiClient()
+                                                    val user = api.getAuthenticatedUser(result.accessToken)
+                                                    accountLogin = user.login
+                                                    val installations = api.listInstallations(result.accessToken)
+                                                    var repositoryFound = false
+                                                    for (installation in installations) {
+                                                        val repositories = api.listInstallationRepositories(result.accessToken, installation.id)
+                                                        if (repositories.any { it.fullName.equals("micronizationlab/glafira-ai-hub", ignoreCase = true) }) {
+                                                            repositoryFound = true
+                                                            break
+                                                        }
+                                                    }
+                                                    status = if (repositoryFound) {
+                                                        "GitHub подключён. Профиль подтверждён, доступ к glafira-ai-hub проверен."
+                                                    } else {
+                                                        "Профиль @$accountLogin подтверждён. Установи GLAFIRA AI HUB на репозиторий glafira-ai-hub в настройках GitHub App."
+                                                    }
+                                                } catch (verificationError: Exception) {
+                                                    status = "Токен сохранён, но проверка GitHub API не завершилась: ${verificationError.message ?: "ошибка сети"}"
+                                                }
                                             } else {
                                                 status = "Не удалось сохранить токен в Android Keystore. Повторите подключение."
                                             }
@@ -785,6 +808,47 @@ private fun GitHubIntegrationSection() {
                     }) { Text("ОТМЕНИТЬ") }
                 }
             } else {
+                OutlinedButton(onClick = {
+                    val token = store.loadAccessToken()
+                    if (token.isNullOrBlank()) {
+                        connected = false
+                        accountLogin = null
+                        status = "Авторизация истекла или недоступна. Подключи GitHub заново."
+                    } else {
+                        authorizationJob?.cancel()
+                        authorizationJob = scope.launch {
+                            connecting = true
+                            status = "Проверяю профиль и разрешённые репозитории…"
+                            try {
+                                val api = GitHubApiClient()
+                                val user = api.getAuthenticatedUser(token)
+                                accountLogin = user.login
+                                val installations = api.listInstallations(token)
+                                var repositoryFound = false
+                                for (installation in installations) {
+                                    if (api.listInstallationRepositories(token, installation.id)
+                                            .any { it.fullName.equals("micronizationlab/glafira-ai-hub", ignoreCase = true) }) {
+                                        repositoryFound = true
+                                        break
+                                    }
+                                }
+                                status = if (repositoryFound) {
+                                    "Профиль @$accountLogin подтверждён; доступ к glafira-ai-hub активен."
+                                } else {
+                                    "Профиль @$accountLogin подтверждён, но репозиторий ещё не предоставлен приложению."
+                                }
+                            } catch (error: Exception) {
+                                status = error.message ?: "Не удалось проверить доступ GitHub."
+                                if (status.contains("401") || status.contains("expired", ignoreCase = true) || status.contains("revoked", ignoreCase = true)) {
+                                    connected = false
+                                    accountLogin = null
+                                }
+                            } finally {
+                                connecting = false
+                            }
+                        }
+                    }
+                }, enabled = !connecting) { Text("ПРОВЕРИТЬ ДОСТУП К РЕПОЗИТОРИЮ") }
                 OutlinedButton(onClick = {
                     authorizationJob?.cancel()
                     connected = false
