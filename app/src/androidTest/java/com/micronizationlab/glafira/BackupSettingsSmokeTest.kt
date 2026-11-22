@@ -32,7 +32,6 @@ class BackupSettingsSmokeTest {
                 android.content.Context.MODE_PRIVATE
             ).edit().remove(GlafiraBackupWorker.KEY_TREE_URI).commit()
         )
-        forceStopTargetApp(instrumentation)
         val scenario = ActivityScenario.launch<MainActivity>(
             Intent(context, MainActivity::class.java).addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
