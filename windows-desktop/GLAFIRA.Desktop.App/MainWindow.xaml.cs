@@ -11,7 +11,7 @@ public partial class MainWindow : Window
 {
     private readonly HubDashboardViewModel _viewModel;
     private readonly DesktopHubHostController _bridgeHost;
-    private readonly DispatcherTimer _pairingTicketTimer = new() { Interval = TimeSpan.FromMinutes(5) };
+    private readonly DispatcherTimer _pairingTicketTimer = new() { Interval = TimeSpan.FromMinutes(2) };
     private bool _allowClose;
     public MainWindow()
     {
@@ -19,7 +19,15 @@ public partial class MainWindow : Window
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GLAFIRA", "DesktopHub");
         var databasePath = Path.Combine(root, "hub.db");
         var store = new DesktopHubStore(databasePath);
-        _bridgeHost = new DesktopHubHostController(root, databasePath, store);
+        var ownerIdentity = ((App)Application.Current).CoreIdentity;
+        _bridgeHost = new DesktopHubHostController(
+            root,
+            databasePath,
+            store,
+            ownerIdentity.CoreId,
+            ownerIdentity.KeyEpoch,
+            ownerIdentity.PublicKeySpkiBase64,
+            ownerIdentity.PublicKeySha256);
         _pairingTicketTimer.Tick += (_, _) =>
         {
             _pairingTicketTimer.Stop();
@@ -34,6 +42,12 @@ public partial class MainWindow : Window
         if (sender is DataGrid grid && grid.SelectedItem is HubTaskSnapshot task)
             _viewModel.LoadTaskHistory(task);
     }
+    private void Agents_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is DataGrid grid && grid.SelectedItem is HubAgentSnapshot agent)
+            _bridgeHost.PairingAgentId = agent.AgentId;
+    }
+
     private void CancelSelectedTask_Click(object sender, RoutedEventArgs e)
     {
         if (TasksGrid.SelectedItem is not HubTaskSnapshot task)
@@ -58,6 +72,24 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(error.Message, "GLAFIRA Core",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private async void QueueDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await _viewModel.QueueDiagnosticsSnapshotAsync();
+        }
+        catch (ArgumentException)
+        {
+            MessageBox.Show("Укажите Project ID длиной от 1 до 128 символов.", "GLAFIRA Core",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception)
+        {
+            MessageBox.Show("Не удалось поставить безопасную диагностику в очередь. Проверьте локальное хранилище Hub.",
+                "GLAFIRA Core", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -93,12 +125,52 @@ public partial class MainWindow : Window
     {
         try
         {
-            Clipboard.SetText(_bridgeHost.PairingTicketDescriptor);
+            Clipboard.SetText(_bridgeHost.PairingInvitationText);
         }
         catch (Exception)
         {
             MessageBox.Show("Не удалось скопировать билет. Вы можете выделить и скопировать текст вручную.",
                 "GLAFIRA Bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ClearPairingTicket_Click(object sender, RoutedEventArgs e)
+    {
+        _pairingTicketTimer.Stop();
+        _bridgeHost.ClearPairingTicket();
+    }
+
+    private async void RevokeAgent_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _pairingTicketTimer.Stop();
+            _viewModel.RevokeAgent(_bridgeHost.PairingAgentId);
+        }
+        catch (Exception)
+        {
+            MessageBox.Show("Не удалось отозвать Agent. Проверьте идентификатор и хранилище Hub.",
+                "GLAFIRA Bridge", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async void RePairAgent_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await _bridgeHost.RevokeAndCreatePairingTicketAsync();
+            _viewModel.Refresh();
+            _pairingTicketTimer.Stop();
+            _pairingTicketTimer.Start();
+        }
+        catch (InvalidOperationException error)
+        {
+            MessageBox.Show(error.Message, "GLAFIRA Bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception)
+        {
+            MessageBox.Show("Повторное сопряжение не выполнено; операция отменена атомарно.",
+                "GLAFIRA Bridge", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -147,9 +219,10 @@ public partial class MainWindow : Window
             $"Отозвать сопряжение и отключить credential для {agent.AgentId}?",
             "Подтверждение отзыва", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (answer != MessageBoxResult.Yes) return;
+        _pairingTicketTimer.Stop();
+        _bridgeHost.PairingAgentId = agent.AgentId;
         _viewModel.RevokeAgent(agent.AgentId);
     }
-
     protected override async void OnClosing(CancelEventArgs e)
     {
         if (_allowClose)

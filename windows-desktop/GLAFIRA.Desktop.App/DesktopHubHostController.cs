@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using System.Text.Json;
 using GLAFIRA.Desktop.Hub.Core;
 
 namespace GLAFIRA.Desktop.App;
@@ -13,10 +14,15 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
 {
     private const int HttpsPort = 8443;
     private readonly string _databasePath;
+    private readonly string _ownerDeviceId;
+    private readonly BridgeV1OwnershipTrustAnchor _ownershipTrustAnchor;
     private readonly DesktopHubStore _store;
     private readonly BridgeV1HubIdentityStore _hubIdentityStore;
     private readonly BridgeV1TlsCertificateStore _tlsCertificateStore;
     private readonly HubTaskPayloadStore _payloadStore;
+    private readonly HubDiagnosticsTaskService _diagnosticsTasks;
+    private readonly BridgeV1PairingTicketStore _pairingTickets;
+    private readonly DpapiSqliteHubCredentialResolver _credentialResolver;
     private BridgeV1HttpsHost? _host;
     private BridgeV1TlsCertificateIdentity? _tlsIdentity;
     private string _status = "Остановлен";
@@ -24,23 +30,50 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
     private string _selectedAddress = string.Empty;
     private string _endpointsText = "—";
     private string _certificateFingerprint = "—";
-    private string _pairingTicketDescriptor = "Сначала запустите HTTPS, затем создайте одноразовый билет сопряжения.";
-    private bool _pairingTicketActive;
+    private string _pairingAgentId = string.Empty;
+    private string _pairingScopesText = "desktop.task.claim, desktop.task.result";
+    private string _pairingInvitationText = "—";
+    private string _pairingStatus = "Укажите Agent ID, затем создайте краткоживущий код.";
+    private string? _visiblePairingTicketId;
 
-    public DesktopHubHostController(string rootDirectory, string databasePath, DesktopHubStore store)
+    public DesktopHubHostController(
+        string rootDirectory,
+        string databasePath,
+        DesktopHubStore store,
+        string ownerDeviceId,
+        long ownershipSigningKeyEpoch,
+        string ownershipSigningPublicKeySpkiBase64,
+        string ownershipSigningPublicKeySha256)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerDeviceId);
+        if (ownerDeviceId.Length is < 8 or > 128 ||
+            !ownerDeviceId.All(character =>
+                char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.'))
+            throw new ArgumentException(
+                "Owner device ID must be an 8–128 character ASCII identifier.", nameof(ownerDeviceId));
 
         var root = Path.GetFullPath(rootDirectory);
         _databasePath = Path.GetFullPath(databasePath);
+        _ownerDeviceId = ownerDeviceId;
+        _ownershipTrustAnchor = new BridgeV1OwnershipTrustAnchor(
+            ownerDeviceId,
+            ownershipSigningKeyEpoch,
+            ownershipSigningPublicKeySpkiBase64,
+            ownershipSigningPublicKeySha256);
         _store = store;
-        _ = new BridgeV1PairingTicketStore(_databasePath);
         _hubIdentityStore = new BridgeV1HubIdentityStore(Path.Combine(root, "hub-id.txt"));
         _tlsCertificateStore = new BridgeV1TlsCertificateStore();
         _payloadStore = new HubTaskPayloadStore(
             Path.Combine(root, "payloads"), new WindowsDpapiHubDataProtector());
+        _diagnosticsTasks = new HubDiagnosticsTaskService(
+            _store,
+            _payloadStore,
+            _ownershipTrustAnchor.OwnerCoreId);
+        _pairingTickets = new BridgeV1PairingTicketStore(_databasePath);
+        _credentialResolver = new DpapiSqliteHubCredentialResolver(_databasePath);
         RefreshAvailableAddresses();
     }
 
@@ -62,18 +95,44 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
         get => _certificateFingerprint;
         private set => Set(ref _certificateFingerprint, value);
     }
-    public string PairingTicketDescriptor
+    public string PairingAgentId
     {
-        get => _pairingTicketDescriptor;
-        private set => Set(ref _pairingTicketDescriptor, value);
+        get => _pairingAgentId;
+        set
+        {
+            if (!Set(ref _pairingAgentId, value)) return;
+            Notify(nameof(CanCreatePairingTicket));
+            Notify(nameof(CanRevokeAgent));
+            Notify(nameof(CanRePairAgent));
+        }
     }
+    public string PairingScopesText
+    {
+        get => _pairingScopesText;
+        set => Set(ref _pairingScopesText, value);
+    }
+    public string PairingInvitationText
+    {
+        get => _pairingInvitationText;
+        private set => Set(ref _pairingInvitationText, value);
+    }
+    public string PairingStatus { get => _pairingStatus; private set => Set(ref _pairingStatus, value); }
     public bool IsRunning => _host?.IsRunning == true;
     public bool CanStart => !IsRunning;
     public bool CanStop => IsRunning;
     public bool CanCreatePairingTicket =>
-        IsRunning && _host is not null && _tlsIdentity is not null && !_pairingTicketActive;
-    public bool CanCopyPairingTicket =>
-        IsRunning && _host is not null && PairingTicketDescriptor.Contains("Код:", StringComparison.Ordinal);
+        IsRunning && IsValidAgentId(PairingAgentId) && _visiblePairingTicketId is null;
+    public bool CanCopyPairingTicket => IsRunning && _visiblePairingTicketId is not null;
+    public bool CanRevokeAgent => IsValidAgentId(PairingAgentId);
+    public bool CanRePairAgent => CanCreatePairingTicket;
+
+    public Task<HubDiagnosticsTaskSubmission> QueueDiagnosticsSnapshotAsync(
+        string projectId,
+        CancellationToken cancellationToken = default) =>
+        _diagnosticsTasks.QueueAsync(
+            projectId.Trim(),
+            DateTimeOffset.UtcNow,
+            cancellationToken);
 
     public void RefreshAvailableAddresses()
     {
@@ -88,37 +147,14 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             : "Выберите адрес, доступный только в вашей локальной сети.";
     }
 
-    public string CreatePairingTicket()
-    {
-        if (!CanCreatePairingTicket || _host is null || _tlsIdentity is null)
-            throw new InvalidOperationException("Сначала запустите HTTPS Bridge.");
-
-        // The code is returned once and only its digest is stored by the ticket store.
-        var ticket = new BridgeV1PairingTicketStore(_databasePath).Create(
-            ["desktop.task.claim", "desktop.task.result"],
-            TimeSpan.FromMinutes(5));
-        var endpoint = _host.Endpoints.Single().AbsoluteUri;
-        _pairingTicketActive = true;
-        PairingTicketDescriptor = string.Join(Environment.NewLine,
-            "Сопряжение GLAFIRA Agent — действительно 5 минут",
-            $"Endpoint: {endpoint}",
-            $"TLS SHA-256: {_tlsIdentity.FingerprintSha256}",
-            $"Ticket ID: {ticket.TicketId}",
-            $"Код: {ticket.PairingCode}",
-            $"Истекает: {ticket.ExpiresAt.ToLocalTime():dd.MM.yyyy HH:mm:ss}",
-            "Scopes: desktop.task.claim, desktop.task.result",
-            "Передавайте код только на подключаемый компьютер. После истечения создайте новый билет.");
-        Notify(nameof(CanCreatePairingTicket));
-        Notify(nameof(CanCopyPairingTicket));
-        return PairingTicketDescriptor;
-    }
-
     public void ClearPairingTicket()
     {
-        PairingTicketDescriptor = "Билет скрыт. Для нового сопряжения создайте новый одноразовый билет.";
-        _pairingTicketActive = false;
-        Notify(nameof(CanCreatePairingTicket));
-        Notify(nameof(CanCopyPairingTicket));
+        if (_visiblePairingTicketId is not null)
+            _pairingTickets.Cancel(_visiblePairingTicketId);
+        _visiblePairingTicketId = null;
+        PairingInvitationText = "—";
+        PairingStatus = "Код скрыт и аннулирован. Для сопряжения создайте новый одноразовый код.";
+        NotifyPairingAvailability();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -140,14 +176,16 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
 
             var hubId = _hubIdentityStore.LoadOrCreate();
             _tlsIdentity = _tlsCertificateStore.LoadOrCreate(hubId, addresses);
-            var credentials = new DpapiSqliteHubCredentialResolver(_databasePath);
             var replayGuard = new SqliteHubReplayGuard(_databasePath);
-            var authenticator = new BridgeV1RequestAuthenticator(credentials, replayGuard);
+            var authenticator = new BridgeV1RequestAuthenticator(_credentialResolver, replayGuard);
             var dispatcher = new BridgeV1TaskOperationDispatcher(_store, _payloadStore);
             var options = new BridgeV1HttpsHostOptions(hubId, addresses, HttpsPort);
-            var pairingTickets = new BridgeV1PairingTicketStore(_databasePath);
             var pairingEndpoint = new BridgeV1PairingEndpoint(
-                pairingTickets, _store, hubId, _tlsIdentity.FingerprintSha256);
+                _pairingTickets,
+                _store,
+                hubId,
+                _tlsIdentity.FingerprintSha256,
+                _ownershipTrustAnchor);
             _host = new BridgeV1HttpsHost(
                 options, _tlsIdentity, authenticator, dispatcher, pairingEndpoint);
             await _host.StartAsync(cancellationToken).ConfigureAwait(true);
@@ -158,7 +196,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             Notify(nameof(IsRunning));
             Notify(nameof(CanStart));
             Notify(nameof(CanStop));
-            Notify(nameof(CanCreatePairingTicket));
+            NotifyPairingAvailability();
         }
         catch (InvalidOperationException error) when (error.Message == "BRIDGE_TLS_ROTATION_REQUIRED")
         {
@@ -168,7 +206,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             Notify(nameof(IsRunning));
             Notify(nameof(CanStart));
             Notify(nameof(CanStop));
-            Notify(nameof(CanCreatePairingTicket));
+            NotifyPairingAvailability();
         }
         catch (Exception)
         {
@@ -183,7 +221,7 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             Notify(nameof(IsRunning));
             Notify(nameof(CanStart));
             Notify(nameof(CanStop));
-            Notify(nameof(CanCreatePairingTicket));
+            NotifyPairingAvailability();
         }
     }
 
@@ -205,18 +243,119 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
             DisposeTlsIdentity();
             EndpointsText = "—";
             Status = "Остановлен";
+            PairingStatus = "HTTPS остановлен; показанный ранее код аннулирован.";
             Notify(nameof(IsRunning));
             Notify(nameof(CanStart));
             Notify(nameof(CanStop));
-            Notify(nameof(CanCreatePairingTicket));
+            NotifyPairingAvailability();
         }
+    }
+
+    public string CreatePairingTicket()
+    {
+        if (!CanCreatePairingTicket)
+            throw new InvalidOperationException("Запустите HTTPS, укажите Agent ID и аннулируйте прежний код.");
+        var endpoint = GetRunningEndpoint();
+        var ticket = _pairingTickets.CreateForAgent(
+            PairingAgentId, ParseScopes(), TimeSpan.FromMinutes(2));
+        PublishInvitation(ticket, endpoint, "Создан новый одноразовый код.");
+        return PairingInvitationText;
     }
 
     public bool RevokeAgent(string agentId)
     {
-        // Ensure enrollment/credential tables exist before the atomic revoke transaction.
-        _ = new BridgeV1PairingTicketStore(_databasePath);
-        return _store.RevokeAgent(agentId, DateTimeOffset.UtcNow);
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
+        if (StringComparer.Ordinal.Equals(agentId, PairingAgentId))
+            ClearPairingTicket();
+        var now = DateTimeOffset.UtcNow;
+        var enrollmentId = _pairingTickets.GetActiveEnrollmentId(agentId);
+        AgentRevocationDecision? decision = null;
+        var revoked = false;
+        if (enrollmentId is not null)
+        {
+            decision = _pairingTickets.RevokeAgent(new AgentRevocationRequest(
+                1,
+                "revoke-" + Guid.NewGuid().ToString("N"),
+                enrollmentId,
+                agentId,
+                _ownerDeviceId,
+                now,
+                AgentRevocationReason.OWNER_REQUEST));
+            revoked = decision.Status is AgentRevocationStatus.REVOKED or AgentRevocationStatus.ALREADY_REVOKED;
+        }
+        else
+        {
+            // Clean up scheduler-only legacy rows that predate generation-bound enrollment.
+            revoked = _store.RevokeAgent(agentId, now);
+        }
+        PairingStatus = revoked
+            ? decision?.RequiresOwnerReconciliation == true
+                ? $"Доступ {agentId} отозван; незавершённая запись требует проверки результата владельцем."
+                : $"Доступ {agentId} отозван. Agent удалит старый credential после подтверждения Hub."
+            : $"Активный credential {agentId} не найден.";
+        return revoked;
+    }
+
+    public async Task<string> RevokeAndCreatePairingTicketAsync(CancellationToken cancellationToken = default)
+    {
+        if (!CanRePairAgent)
+            throw new InvalidOperationException("Запустите HTTPS, укажите Agent ID и аннулируйте прежний код.");
+        var endpoint = GetRunningEndpoint();
+        var result = await _pairingTickets.RevokeAndCreateForAgentAsync(
+            PairingAgentId, _ownerDeviceId, ParseScopes(), TimeSpan.FromMinutes(2), cancellationToken)
+            .ConfigureAwait(true);
+        PublishInvitation(
+            result.Ticket,
+            endpoint,
+            result.RevokedExistingEnrollment
+                ? result.RevocationDecision?.RequiresOwnerReconciliation == true
+                    ? "Старый credential отозван; активная запись требует проверки владельцем; создан новый одноразовый код."
+                    : "Старый credential отозван; создан новый одноразовый код."
+                : "Активный credential не найден; создан новый одноразовый код.");
+        return PairingInvitationText;
+    }
+
+    private Uri GetRunningEndpoint()
+    {
+        if (_host?.IsRunning != true || _host.Endpoints.Count != 1 || _tlsIdentity is null)
+            throw new InvalidOperationException("Bridge HTTPS is not running.");
+        return _host.Endpoints[0];
+    }
+
+    private string[] ParseScopes() => PairingScopesText
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private void PublishInvitation(BridgeV1PairingTicket ticket, Uri endpoint, string status)
+    {
+        _visiblePairingTicketId = ticket.TicketId;
+        PairingInvitationText = JsonSerializer.Serialize(new
+        {
+            version = 1,
+            agentId = ticket.AgentId,
+            endpoint = endpoint.AbsoluteUri,
+            tlsCertificateSha256 = CertificateFingerprintSha256,
+            ownerCoreId = _ownershipTrustAnchor.OwnerCoreId,
+            ownershipSigningKeyEpoch = _ownershipTrustAnchor.SigningKeyEpoch,
+            ownershipSigningPublicKeySpkiBase64 = _ownershipTrustAnchor.SigningPublicKeySpkiBase64,
+            ownershipSigningPublicKeySha256 = _ownershipTrustAnchor.SigningPublicKeySha256,
+            ticketId = ticket.TicketId,
+            pairingCode = ticket.PairingCode,
+            scopes = ticket.Scopes.Order(StringComparer.Ordinal),
+            expiresAtEpochMs = ticket.ExpiresAt.ToUnixTimeMilliseconds()
+        });
+        PairingStatus = $"{status} Действует до {ticket.ExpiresAt.ToLocalTime():HH:mm:ss}. Передайте bundle только выбранному Agent.";
+        NotifyPairingAvailability();
+    }
+
+    private static bool IsValidAgentId(string value) => value is { Length: >= 1 and <= 128 } &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+
+    private void NotifyPairingAvailability()
+    {
+        Notify(nameof(CanCreatePairingTicket));
+        Notify(nameof(CanCopyPairingTicket));
+        Notify(nameof(CanRevokeAgent));
+        Notify(nameof(CanRePairAgent));
     }
 
     private void DisposeTlsIdentity()
@@ -227,11 +366,12 @@ public sealed class DesktopHubHostController : INotifyPropertyChanged, IAsyncDis
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
-        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
         field = value;
         Notify(name);
+        return true;
     }
 
     private void Notify(string? name) =>
