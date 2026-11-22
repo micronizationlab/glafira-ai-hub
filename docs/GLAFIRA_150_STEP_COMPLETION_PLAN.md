@@ -430,3 +430,28 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - #372 has a new exact head `30dd5ab5d11630c5509d612c0aedba124ce1bfa0`; Android JVM/contracts/APK passed in run `44964979933`, emulator was still running at this snapshot. It remains stacked on #369 → #352 → #347 and is 33 commits ahead / 4 behind main. Do not merge any middle branch independently.
 - Windows Agent has polling/lease/result coordinator and authenticated Hub claim/result operations, but no concrete `IAgentTaskHandler` is registered in `Program.cs`; worker polling remains intentionally gated off until a bounded read-only handler is registered. See #384.
 - Branch protection requires an approving review and all required checks; skipped jobs do not satisfy checks. No bypass or force merge.
+
+
+## Execution ledger — 2026-11-22 (live refresh)
+
+**Source baseline:** PR #390 is based on `main` at `7dda2bc6f7ca7ba506c0b59ddf6d97ca2b927193`. Recheck the main SHA before any integration. This ledger records work-in-progress evidence, not feature completion.
+
+### Current exact-head work
+
+- **Core approval fencing — PR #380:** latest head `dcb8e1e3cd48becd30fced431793f8bb93a2051c`. Owner-generation binding, stale approval expiry protection and SQL ownership predicates for request/approve/reject are implemented; regression tests include stale expired approvals and stale approve/reject attempts. Android JVM + shared contracts passed; APK packaging passed; managed emulator is still running. Keep Draft and do not merge yet.
+- **Core execution fencing — PR #347:** latest head `9792e230b400cc3be60e3ad07820845d067003f3`. The immutable claim token now includes `ownerCoreId + ownerGeneration + stateVersion`; owned transition, Dry Run and result commit paths compare the full tuple. Added same-generation late-result-after-retry/reclaim regression. Exact-head CI is queued/pending; no acceptance claim yet.
+- **Android manual backup/settings accessibility — PR #372:** latest head `cb055255a7dd804f65cbb1e5220753af27718807`. The latest emulator failure identified the *home screen Settings icon* as the remaining inaccessible action, not the backup action. Modifier order was corrected at that exact control. Android JVM + shared contracts passed; APK packaging passed; emulator acceptance is still running. Keep Draft.
+- **Runtime configuration — PR #382:** exact head `ee8dce1a5a603d0fc96befad6c16e06416f5ff67`; Android JVM, shared contract, managed emulator and debug APK all passed (run `44941044671`). The PR was marked ready for review. Merge was correctly blocked by repository rules: at least one approving review is required and 7 of 9 required checks were still expected. Do not bypass branch protection.
+- **Ten-workstream inventory — PR #390:** this document and the inventory are documentation only; skipped platform jobs are not platform acceptance.
+
+### Architecture findings and follow-up
+
+- **Bridge protocol:** issue #392 tracks the mismatch between iOS `POST /bridge/v1/pairing` and Windows Hub `POST /bridge/v1/pair`, plus the difference between peer-device approval and Agent enrollment. Android Bridge is a client/authorization surface, not an existing HTTPS listener. Do not implement an Android server by assumption.
+- **Windows Desktop Hub:** HTTPS/TLS, short-lived Agent pairing tickets, Agent registration/revocation and Hub lifecycle controls already exist. Remaining work is to prove the Hub-to-owning-Desktop-Core boundary, multi-Agent scheduling and restart/reconciliation; source presence is not end-to-end acceptance.
+- **Windows Agent:** keep Agent Not Ready while the bounded typed result-artifact contract in #384 is missing. The current envelope carries result metadata/reference but no bounded structured payload writer. No generic shell/command handler.
+- **Backup:** issue #387 remains open for real Google Drive/Yandex SAF provider read-back and clean-profile restore. A clickable button or emulator smoke test is not proof of provider acceptance.
+- **Dual-Core transfer:** issue #366 remains open for a transactional signed ownership-transfer operation. Owner-generation fencing alone does not implement handoff or autonomous failover.
+
+### Dispatch focus
+
+Continue from the lowest-numbered unblocked steps: 16 (full failure-injection matrix), 18–22 (durable ACK/outbox, idempotency, approval/Trace atomicity), 29–45 (canonical Bridge contracts and pairing), 48–64 (Desktop Hub/Core integration), 76–90 (bounded Agent handler and physical acceptance), then Android release gates. Parallelize only independent files/branches; do not merge stacked PRs out of order. Physical-device and two-PC acceptance remain owner-dependent.
