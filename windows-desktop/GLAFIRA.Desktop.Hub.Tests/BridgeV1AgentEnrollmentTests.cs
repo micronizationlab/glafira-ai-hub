@@ -225,7 +225,7 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
         Assert.Equal("agent-01", replacement.Ticket.AgentId);
         Assert.Null(await resolver.ResolveAsync("agent-01", default));
         Assert.False(hubStore.IsAgentOwnerApproved("agent-01"));
-        Assert.Equal(OwnerCoreId, ReadLatestRevocationOwnerDeviceId());
+        Assert.Equal(OwnerCoreId, ReadLatestRevocationRequesterDeviceId());
         var second = await EnrollAsync(store, replacement.Ticket, "agent-01");
         Assert.True(second.Accepted);
         Assert.NotEqual(first.Credential!.SharedSecretBase64, second.Credential!.SharedSecretBase64);
@@ -263,7 +263,7 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
                 "agent-01", "bad owner", ["desktop.task.result"], TimeSpan.FromMinutes(2)));
 
         Assert.NotNull(await resolver.ResolveAsync("agent-01", default));
-        Assert.Null(ReadLatestRevocationOwnerDeviceId());
+        Assert.Null(ReadLatestRevocationRequesterDeviceId());
     }
 
     [Fact]
@@ -377,13 +377,13 @@ public sealed class BridgeV1AgentEnrollmentTests : IDisposable
     private SqliteConnection OpenConnection() => new(
         new SqliteConnectionStringBuilder { DataSource = _databasePath }.ToString());
 
-    private string? ReadLatestRevocationOwnerDeviceId()
+    private string? ReadLatestRevocationRequesterDeviceId()
     {
         using var connection = OpenConnection();
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT owner_device_id FROM HubAgentRevocations
+            SELECT requested_by_device_id FROM HubAgentRevocations
             ORDER BY decided_at_ms DESC, revocation_id DESC LIMIT 1;
             """;
         return command.ExecuteScalar() as string;

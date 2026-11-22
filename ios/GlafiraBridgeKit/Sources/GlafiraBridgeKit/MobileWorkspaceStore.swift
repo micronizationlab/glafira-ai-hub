@@ -434,7 +434,7 @@ public actor MobileWorkspaceStore {
             } && value.outbox.count <= 20_000 && Set(operationIds).count == operationIds.count &&
             value.outbox.allSatisfy { entry in
                 let key = conversationKey(projectId: entry.projectId, conversationId: entry.conversationId)
-                value.projects[entry.projectId] != nil && validIdentifier(entry.operationId) &&
+                return value.projects[entry.projectId] != nil && validIdentifier(entry.operationId) &&
                     validIdentifier(entry.conversationId) && validMessage(entry.text) && entry.createdAtEpochMs > 0 &&
                     value.conversations[key]?.messages.contains {
                         $0.id == entry.operationId && $0.text == entry.text &&

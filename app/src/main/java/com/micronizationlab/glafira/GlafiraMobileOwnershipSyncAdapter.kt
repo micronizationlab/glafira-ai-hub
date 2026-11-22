@@ -110,7 +110,7 @@ fun interface GlafiraOwnershipBridgeResponseConsumer {
     fun applyBridgeResponse(
         request: GlafiraBridgeRequest,
         response: GlafiraBridgeResponse,
-        now: Instant = Instant.now()
+        now: Instant
     ): GlafiraOwnershipSyncResult?
 }
 

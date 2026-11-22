@@ -28,6 +28,30 @@ const targets = [
   { language: "csharp", extension: "cs", extra: name => ["--namespace", `Glafira.Contracts.V1.Generated.${name}`] }
 ];
 
+function referencedDefinitions(rootDefinition) {
+  const pending = [rootDefinition];
+  const names = new Set();
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (Array.isArray(value)) {
+      pending.push(...value);
+      continue;
+    }
+    if (!value || typeof value !== "object") continue;
+    if (typeof value.$ref === "string") {
+      const match = /^#\/\$defs\/([^/]+)$/.exec(value.$ref);
+      if (match && !names.has(match[1])) {
+        const referenced = schema.$defs?.[match[1]];
+        if (!referenced) throw new Error(`Missing referenced schema definition: ${match[1]}`);
+        names.add(match[1]);
+        pending.push(referenced);
+      }
+    }
+    pending.push(...Object.values(value));
+  }
+  return Object.fromEntries([...names].sort().map(name => [name, schema.$defs[name]]));
+}
+
 try {
   for (const definitionName of definitions) {
     const definition = schema.$defs?.[definitionName];
@@ -38,7 +62,7 @@ try {
     const isolatedSchema = {
       $schema: schema.$schema,
       title: definitionName,
-      $defs: schema.$defs,
+      $defs: referencedDefinitions(definition),
       ...definition
     };
     const input = resolve(temporaryDirectory, `${definitionName}.schema.json`);
@@ -89,6 +113,32 @@ try {
       continue;
     }
     writeFileSync(output, generated.slice(0, markerIndex).trimEnd() + "\n");
+  }
+
+  // Standalone quicktype invocations can emit generic module-level names such as `Status`
+  // in more than one DTO file. Swift compiles all generated files as one module, so make
+  // only colliding auxiliary types deterministic and message-scoped.
+  const swiftTypeOwners = new Map();
+  for (const filename of swiftFiles) {
+    const generated = readFileSync(resolve(swiftDirectory, filename), "utf8");
+    for (const match of generated.matchAll(/^public (?:struct|class|enum) ([A-Za-z_][A-Za-z0-9_]*)/gm)) {
+      const owners = swiftTypeOwners.get(match[1]) ?? [];
+      owners.push(filename);
+      swiftTypeOwners.set(match[1], owners);
+    }
+  }
+  for (const [typeName, owners] of swiftTypeOwners) {
+    if (owners.length < 2) continue;
+    for (const filename of owners) {
+      const output = resolve(swiftDirectory, filename);
+      const messageName = filename.slice(0, -".swift".length);
+      const scopedName = `${messageName}${typeName}`;
+      const generated = readFileSync(output, "utf8");
+      writeFileSync(
+        output,
+        generated.replace(new RegExp(`\\b${typeName}\\b`, "g"), scopedName)
+      );
+    }
   }
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
