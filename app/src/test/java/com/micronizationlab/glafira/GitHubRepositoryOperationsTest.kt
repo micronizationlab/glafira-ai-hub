@@ -62,7 +62,7 @@ class GitHubRepositoryOperationsTest {
 
     @Test
     fun rejectsUnsafeFilePaths() {
-        listOf("", "/absolute/path", "../outside", "app/../secret", "folder/", "folder\\\\secret").forEach { path ->
+        listOf("", "/absolute/path", "../outside", "app/../secret", "folder/", "folder\\secret").forEach { path ->
             assertThrows(IllegalArgumentException::class.java) {
                 GitHubRepositoryOperations.requireSafePath(path)
             }
