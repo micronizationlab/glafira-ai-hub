@@ -244,7 +244,7 @@ public sealed class GitHubDesktopCodingClient
     public static void RequireWritablePath(string path)
     {
         RequireSafePath(path);
-        var normalized = path.Replace('\\\\', '/').ToLowerInvariant();
+        var normalized = path.ToLowerInvariant().ToLowerInvariant();
         var segments = normalized.Split('/');
         var fileName = segments[^1];
         var blocked =
