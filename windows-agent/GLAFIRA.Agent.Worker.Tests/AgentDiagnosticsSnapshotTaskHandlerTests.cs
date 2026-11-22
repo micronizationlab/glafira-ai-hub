@@ -22,8 +22,8 @@ public sealed class AgentDiagnosticsSnapshotTaskHandlerTests
             "{\"schemaVersion\":1,\"source\":\"local-safe-runtime\"}");
         var digest = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
 
-        Assert.Equal(digest, AgentDiagnosticsSnapshotTaskHandler.RequestPayloadSha256);
-        Assert.Equal(digest, AgentDiagnosticsSnapshotTaskHandler.RequestPayloadReference);
+        Assert.Equal(AgentDiagnosticsSnapshotTaskHandler.RequestPayloadSha256, digest);
+        Assert.Equal(AgentDiagnosticsSnapshotTaskHandler.RequestPayloadReference, digest);
     }
 
     [Fact]
