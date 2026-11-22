@@ -16,6 +16,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainActivitySmokeTest {
     private fun prepareUnlockedHome(context: Context) {
+        resetRecoveryJournalForUiSmokeTest(context)
         assertTrue(
             "Could not disable biometric lock for the home-screen smoke test",
             context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
