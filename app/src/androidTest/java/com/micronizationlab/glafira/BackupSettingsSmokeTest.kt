@@ -6,6 +6,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiScrollable
+import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -41,17 +43,21 @@ class BackupSettingsSmokeTest {
             assertTrue("GLAFIRA home screen did not open",
                 device.wait(Until.hasObject(By.text("СЕТЬ АГЕНТОВ · 2003")), 20_000))
             device.findObject(By.desc("Открыть настройки")).click()
+            assertTrue("Settings screen did not open",
+                device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000))
 
-            var saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
-            repeat(8) {
-                if (saveButton == null) {
-                    device.swipe(
-                        device.displayWidth / 2, device.displayHeight * 3 / 4,
-                        device.displayWidth / 2, device.displayHeight / 4, 12
-                    )
-                    saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
-                }
+            val settings = UiScrollable(UiSelector().scrollable(true)).apply {
+                setAsVerticalList()
+                setMaxSearchSwipes(30)
             }
+            assertTrue(
+                "Backup section was not reachable in the Settings scroll container",
+                settings.scrollIntoView(
+                    UiSelector().description("Создать резервную копию сейчас")
+                )
+            )
+            val saveButton = device.wait(
+                Until.findObject(By.desc("Создать резервную копию сейчас")), 5_000)
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
             assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
             saveButton!!.click()
