@@ -162,12 +162,20 @@ internal class GitHubTokenStore(context: Context) {
     }
 
     @Synchronized
-    fun loadAccessToken(): String? = decryptStored(ACCESS_TOKEN)
+    fun loadAccessToken(): String? {
+        val expiresAt = preferences.getLong(ACCESS_EXPIRES_AT, 0L)
+        if (expiresAt > 0L && expiresAt <= System.currentTimeMillis()) return null
+        return decryptStored(ACCESS_TOKEN)
+    }
 
     @Synchronized
     fun loadRefreshToken(): String? = decryptStored(REFRESH_TOKEN)
 
-    fun hasAccessToken(): Boolean = !preferences.getString(ACCESS_TOKEN, null).isNullOrBlank()
+    fun hasAccessToken(): Boolean {
+        val expiresAt = preferences.getLong(ACCESS_EXPIRES_AT, 0L)
+        return !preferences.getString(ACCESS_TOKEN, null).isNullOrBlank() &&
+            (expiresAt == 0L || expiresAt > System.currentTimeMillis())
+    }
 
     @Synchronized
     fun clear(): Boolean {
