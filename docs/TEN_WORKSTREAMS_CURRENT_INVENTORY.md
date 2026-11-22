@@ -60,7 +60,7 @@ The 150-step ledger currently names baseline `0649b3a24592e2ccd73b6997db04e2664f
 **Existing implementation:** Compose app, Settings, project/task planning UI, Bridge settings/client components, voice policy/plugin contracts, speech delivery tests and 47 Android test paths.
 
 **Current evidence / blockers:**
-- Issue [#137](https://github.com/micronizationlab/glafira-ai-hub/issues/137) tracks Bridge entry-point visibility, backup controls, Council action and user-facing task queue.
+- Issue [#137](https://github.com/micronizationlab/glafira-ai-hub/issues/137) is partly stale: current `MainActivity.kt` has clickable Council and task-queue entry points; `CouncilScreen.kt` has an enabled-when-idle run action and one-provider guidance; `TaskQueueScreen.kt` has an Add Task button/dialog. `SettingsScreen.kt` still has no Bridge entry point, so that remains the concrete UI gap. Backup accessibility remains under #372 and provider/restore acceptance under #387. The issue has been annotated to narrow scope and avoid duplicate UI.
 - Issue [#99](https://github.com/micronizationlab/glafira-ai-hub/issues/99) is partly stale: current `MainActivity.kt` already has an explicit `RequestPermission()` launcher for `RECORD_AUDIO`, called after the microphone tap. Denial currently shows only a Toast; rationale/permanent-denial recovery and app-settings route are not present in the inspected flow. Input remains one-shot `RecognizerIntent`, not a full controllable voice session; sound/voice settings and physical-device audio acceptance remain open. Do not recreate the permission launcher.
 - Main branch backup action still needs the end-to-end accessibility fix described above.
 
@@ -172,3 +172,5 @@ This update supersedes only the moving CI/source observations above; historical 
 - **Voice source recheck (2026-11-22):** confirmed the runtime microphone permission request exists on main; issue #99 has been annotated with the remaining denial/permanent-denial and voice-session gaps. This is a scope correction, not completion of voice acceptance.
 
 - **Windows Desktop recheck (2026-11-22):** confirmed the HTTPS host is lifecycle-wired into WPF, and task claim/result dispatch is present. Issue #123 now distinguishes implemented Hub transport/store from the still-unproven Desktop Core plan/DAG/multi-Agent integration and physical acceptance.
+
+- **Android UI recheck (2026-11-22):** confirmed Council and Add Task controls exist in source; Bridge entry point is still absent from SettingsScreen. Issue #137 now distinguishes source-present controls from installed-APK/physical acceptance and focuses remaining work on the Bridge entry point plus reproduced regressions.
