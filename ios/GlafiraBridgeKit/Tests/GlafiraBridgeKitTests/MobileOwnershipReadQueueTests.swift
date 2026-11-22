@@ -30,8 +30,15 @@ final class MobileOwnershipReadQueueTests: XCTestCase {
             pairingState: paired,
             nowEpochMs: now + 60_000
         )
+        let ownerFacingSnapshot = try await queue.snapshot(deviceId: "ios-device-0001")
         XCTAssertEqual(pending, [work])
         XCTAssertEqual(expiredPending, [])
+        XCTAssertEqual(ownerFacingSnapshot, [work])
+        await XCTAssertThrowsErrorAsync {
+            _ = try await queue.snapshot(deviceId: "bad")
+        } verify: { error in
+            XCTAssertEqual(error as? MobileOwnershipReadQueueError, .invalidIdentifier)
+        }
 
         for status in [
             MobileHubPairingStatus.unpaired, .revoked, .invalid
@@ -140,10 +147,22 @@ final class MobileOwnershipReadQueueTests: XCTestCase {
         try .paired(
             deviceId: deviceId,
             desktopHubId: "desktop-hub-0001",
-            endpoint: "https://192.168.1.20:8443/bridge/v1",
+            endpoint: "https://hub.example.test:8443/bridge/v1",
             certificateSHA256: String(repeating: "a", count: 64),
             expiresAtEpochMs: expiresAt,
             nowEpochMs: now
         )
+    }
+}
+
+private func XCTAssertThrowsErrorAsync<T>(
+    _ expression: () async throws -> T,
+    verify: (Error) -> Void
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected expression to throw")
+    } catch {
+        verify(error)
     }
 }

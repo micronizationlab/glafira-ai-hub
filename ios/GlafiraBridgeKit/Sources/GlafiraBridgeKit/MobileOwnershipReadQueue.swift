@@ -241,6 +241,22 @@ public actor MobileOwnershipReadQueue {
         }
     }
 
+    /// Returns non-secret durable work metadata for owner-facing status surfaces.
+    /// Unlike `pending`, this snapshot also includes work whose pairing is expired so the UI
+    /// can explain why a retry is blocked instead of silently hiding durable work.
+    public func snapshot(deviceId: String? = nil) throws -> [MobileOwnershipReadWork] {
+        if let deviceId,
+           !MobileOwnershipReadQueueValidation.validIdentifier(deviceId) {
+            throw MobileOwnershipReadQueueError.invalidIdentifier
+        }
+        return envelope.entries.filter { deviceId == nil || $0.deviceId == deviceId }.sorted {
+            if $0.enqueuedAtEpochMs != $1.enqueuedAtEpochMs {
+                return $0.enqueuedAtEpochMs < $1.enqueuedAtEpochMs
+            }
+            return $0.id < $1.id
+        }
+    }
+
     /// Cancels only ownership reads for this device; the ordinary mobile outbox is untouched.
     public func cancelAll(deviceId: String) throws {
         guard MobileOwnershipReadQueueValidation.validIdentifier(deviceId) else {

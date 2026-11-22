@@ -7,6 +7,7 @@ public struct GlafiraRootView: View {
     @State private var pairingStates: [MobileHubPairingState] = []
     @State private var credentialStatus = "Проверяем локальные учётные данные…"
     @StateObject private var workspace = GlafiraWorkspaceViewModel()
+    @StateObject private var ownership = OwnershipSyncViewModel()
 
     public init() {}
 
@@ -48,6 +49,12 @@ public struct GlafiraRootView: View {
                     }
 
                     NavigationLink {
+                        GlafiraOwnershipView(model: ownership)
+                    } label: {
+                        Label("Владение", systemImage: "person.crop.circle.badge.checkmark")
+                    }
+
+                    NavigationLink {
                         GlafiraSettingsPlaceholderView()
                     } label: {
                         Label("Настройки", systemImage: "gearshape")
@@ -62,9 +69,11 @@ public struct GlafiraRootView: View {
         .task {
             refreshCredentialState()
             await workspace.reload()
+            await ownership.reload()
         }
         .onReceive(NotificationCenter.default.publisher(for: .glafiraBridgeCredentialDidChange)) { _ in
             refreshCredentialState()
+            Task { await ownership.reload() }
         }
     }
 
@@ -94,6 +103,74 @@ public struct GlafiraRootView: View {
         case .revoked: return "локально отозвано"
         case .invalid: return "ошибка состояния"
         }
+    }
+}
+
+private struct GlafiraOwnershipView: View {
+    @ObservedObject var model: OwnershipSyncViewModel
+
+    var body: some View {
+        List {
+            Section("Состояние") {
+                Text(model.status)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Text("iPhone только читает подписанное состояние. Передача владения, lease и разрешение выполнения остаются на Windows Hub.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !model.pending.isEmpty {
+                Section("Ожидают синхронизации") {
+                    ForEach(model.pairings, id: \.deviceId) { pairing in
+                        if let deviceId = pairing.deviceId,
+                           model.pendingCount(deviceId: deviceId) > 0 {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(deviceId)
+                                    .font(.headline)
+                                Text("Проектов в очереди: \(model.pendingCount(deviceId: deviceId))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Button("Безопасно повторить чтение") {
+                                    Task { await model.syncNext(deviceId: deviceId) }
+                                }
+                                .disabled(pairing.status != .paired ||
+                                          model.syncingDeviceIds.contains(deviceId))
+                            }
+                        }
+                    }
+                    ForEach(model.pending.filter { work in
+                        !model.pairings.contains { $0.deviceId == work.deviceId }
+                    }) { work in
+                        Label(
+                            "Проект \(work.projectId): требуется новое сопряжение",
+                            systemImage: "exclamationmark.shield"
+                        )
+                        .font(.caption)
+                    }
+                }
+            }
+
+            if !model.projections.isEmpty {
+                Section("Проверенные владельцы") {
+                    ForEach(model.projections) { projection in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(projection.taskId)
+                                .font(.headline)
+                            Text("Проект: \(projection.projectId)")
+                            Text("Владелец: \(projection.ownerCoreId) · поколение \(projection.ownerGeneration)")
+                            Text("Версия состояния: \(projection.stateVersion)")
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+        }
+        .task { await model.reload() }
+        .refreshable { await model.reload() }
+        .navigationTitle("Владение")
     }
 }
 

@@ -33,7 +33,11 @@ final class MobileOwnershipSyncStoreTests: XCTestCase {
 
         let reopened = try MobileOwnershipSyncStore(directory: directory)
         let persisted = await reopened.projection(taskId: "task-000001", projectId: "project-0001")
+        let ownerFacingSnapshot = await reopened.projections(projectId: "project-0001")
+        let missingProjectSnapshot = await reopened.projections(projectId: "project-missing")
         XCTAssertEqual(persisted, applied.projection)
+        XCTAssertEqual(ownerFacingSnapshot, [applied.projection])
+        XCTAssertEqual(missingProjectSnapshot, [])
     }
 
     func testSignedButDivergentPreviousOwnerDoesNotAdvanceProjection() async throws {

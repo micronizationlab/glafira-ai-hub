@@ -247,6 +247,14 @@ public actor MobileOwnershipSyncStore {
         records[Self.key(taskId: taskId, projectId: projectId)]
     }
 
+    /// Stable owner-facing snapshot. Cryptographic material remains private to the store;
+    /// callers decide which projection fields are safe to present.
+    public func projections(projectId: String? = nil) -> [MobileOwnershipProjection] {
+        records.values.filter { projectId == nil || $0.projectId == projectId }.sorted {
+            ($0.projectId, $0.taskId) < ($1.projectId, $1.taskId)
+        }
+    }
+
     /// Correlates a scoped Hub read response before applying its signed envelope.
     /// The trusted key is deliberately supplied out-of-band and never read from the response.
     public func applyBridgeResponse(
