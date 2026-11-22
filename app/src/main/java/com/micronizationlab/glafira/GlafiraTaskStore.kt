@@ -1309,12 +1309,12 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     putNull("last_error")
                 },
                 "task_id = ? AND state = ?" + if (token != null) {
-                    " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ?)"
+                    " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? AND own.owner_generation = ? AND own.state_version = ?)"
                 } else if (ownerCoreId != null) {
                     " AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
                 } else "",
                 arrayOf(taskId, GlafiraTaskState.RUNNING.databaseValue) +
-                    if (token != null) arrayOf(token.ownerCoreId, token.ownerGeneration.toString())
+                    if (token != null) arrayOf(token.ownerCoreId, token.ownerGeneration.toString(), token.stateVersion.toString())
                     else if (ownerCoreId != null) arrayOf(ownerCoreId) else emptyArray()
             )
             if (changed != 1) return false
