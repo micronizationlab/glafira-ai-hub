@@ -97,7 +97,7 @@ The 150-step ledger currently names baseline `0649b3a24592e2ccd73b6997db04e2664f
 
 **Existing implementation:** Swift BridgeKit, pinned HTTPS client, pairing, credential import, Keychain, owner biometrics, native SwiftUI shell and four test paths.
 
-**Current evidence / blockers:** protocol and credential tests exist. README explicitly excludes App Store/TestFlight signing and requires physical-device validation for Keychain biometric prompts and enrollment-change invalidation. Project UI still needs authenticated Core data and a local outbox/cache.
+**Current evidence / blockers:** protocol and credential tests exist; an unsigned native Xcode app target is present. README excludes App Store/TestFlight signing and requires physical-device validation for Keychain biometric prompts and enrollment-change invalidation. Important integration mismatch: `PinnedBridgeHTTPSClient` and `BridgePairingView` target Android `/bridge/v1/pairing`, but current Android `GlafiraBridgeCoreGate`/dispatcher explicitly do not implement transport and return `APPROVAL_QUEUE_UNAVAILABLE` for owner approval; there is no Android HTTPS listener. iOS pairing is therefore not end-to-end against current main until the target authority is aligned (likely Windows Desktop Hub or a separately approved Android Gateway). Project UI still needs authenticated Core data and a local outbox/cache.
 
 **Next:** preserve protocol parity while binding project/conversation/task data after the shared Core contract stabilizes. Do not prioritize ahead of Android/Desktop Core delivery.
 
@@ -182,3 +182,5 @@ This update supersedes only the moving CI/source observations above; historical 
 - **Bridge UI architecture recheck (2026-11-22):** confirmed Android Bridge protocol/core gate do not implement a network listener or pairing; annotated #137 so the missing entry point is not mistaken for permission to recreate the legacy Android-hosted server. UI direction must match the Android peer ↔ Windows Desktop Hub authority model.
 
 - **#372 diagnostics and fix candidate (2026-11-22):** downloaded the failed emulator artifact and inspected the JUnit/logcat output; the old candidate failed 1/117 tests. The new semantics fix is in exact-head run #44965845799; no resolution claim until APK, emulator and exact-head summary complete successfully.
+
+- **iOS/Bridge cross-check (2026-11-22):** verified the unsigned Xcode app target and Keychain/biometric modules exist, but the iOS pairing client currently targets an Android `/bridge/v1/pairing` endpoint that current Android source does not host. This is a protocol/authority integration mismatch, not an iOS UI-only task; align the endpoint to the approved Hub/Core architecture before claiming pairing acceptance.
