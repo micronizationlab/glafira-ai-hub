@@ -6,7 +6,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.KeyStore
-import java.security.SecureRandom
 import java.time.Instant
 import java.util.Base64
 import javax.crypto.Cipher
@@ -22,13 +21,15 @@ interface MemoryPayloadProtector {
 
 /** AES-256-GCM envelope with the memory identifier bound as authenticated data. */
 class AesGcmMemoryPayloadProtector(
-    private val key: SecretKey,
-    private val random: SecureRandom = SecureRandom()
+    private val key: SecretKey
 ) : MemoryPayloadProtector {
     override fun protect(memoryId: MemoryIdentifier, plaintext: ByteArray): String {
-        val iv = ByteArray(12).also(random::nextBytes)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
+        // Android Keystore keys with randomized encryption enabled reject a caller-provided IV.
+        // Let the provider generate it and persist that IV in the existing envelope format.
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        require(iv.size == IV_BYTES) { "Unexpected AES-GCM IV length" }
         cipher.updateAAD(memoryId.value.toByteArray(Charsets.UTF_8))
         val ciphertext = cipher.doFinal(plaintext)
         val envelope = iv + ciphertext
@@ -43,9 +44,9 @@ class AesGcmMemoryPayloadProtector(
 
     override fun unprotect(memoryId: MemoryIdentifier, encoded: String): ByteArray {
         val envelope = Base64.getDecoder().decode(encoded)
-        require(envelope.size > 12 + 16) { "Invalid memory payload envelope" }
-        val iv = envelope.copyOfRange(0, 12)
-        val ciphertext = envelope.copyOfRange(12, envelope.size)
+        require(envelope.size > IV_BYTES + TAG_BYTES) { "Invalid memory payload envelope" }
+        val iv = envelope.copyOfRange(0, IV_BYTES)
+        val ciphertext = envelope.copyOfRange(IV_BYTES, envelope.size)
         return try {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
@@ -58,7 +59,11 @@ class AesGcmMemoryPayloadProtector(
         }
     }
 
-    private companion object { const val TRANSFORMATION = "AES/GCM/NoPadding" }
+    private companion object {
+        const val TRANSFORMATION = "AES/GCM/NoPadding"
+        const val IV_BYTES = 12
+        const val TAG_BYTES = 16
+    }
 }
 
 /** Device-bound production key. Recovery exports must re-encrypt through the portable backup flow. */
