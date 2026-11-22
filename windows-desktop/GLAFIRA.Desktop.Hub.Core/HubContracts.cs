@@ -78,6 +78,32 @@ public sealed record HubTaskEventSnapshot(
 
 public sealed record HubTaskResult(string? Result, string? ErrorCode, DateTimeOffset CompletedAt);
 
+public sealed record HubTaskArtifactMetadata(
+    int ContractVersion,
+    string ArtifactId,
+    string TaskId,
+    string OwnerCoreId,
+    long OwnerGeneration,
+    string LeaseId,
+    long FencingToken,
+    string SchemaId,
+    int SchemaVersion,
+    string ContentType,
+    int ByteLength,
+    string Sha256,
+    string RedactionStatus,
+    DateTimeOffset CreatedAt);
+
+public sealed record HubTaskArtifact(HubTaskArtifactMetadata Metadata, byte[] Payload);
+
+public enum HubTaskArtifactAcceptance
+{
+    Accepted,
+    Duplicate,
+    Conflict,
+    LeaseRejected
+}
+
 public sealed record HubOwnershipTransferSource(
     string TaskId,
     string ProjectId,

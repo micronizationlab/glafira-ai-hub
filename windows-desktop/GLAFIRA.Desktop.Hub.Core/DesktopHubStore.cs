@@ -845,6 +845,218 @@ public sealed class DesktopHubStore
         return UnprotectTaskResult(taskId, ciphertext);
     }
 
+    /// <summary>
+    /// Commits a bounded, redacted task artifact while the exact owner generation,
+    /// lease and fencing token are still active. An identical retry is accepted even
+    /// after the lease is gone so an Agent can recover from a lost acknowledgement.
+    /// </summary>
+    public HubTaskArtifactAcceptance AcceptTaskArtifact(
+        string agentId,
+        string projectId,
+        HubTaskArtifactMetadata metadata,
+        ReadOnlySpan<byte> payload,
+        DateTimeOffset now)
+    {
+        ValidateIdentifier(agentId, nameof(agentId));
+        ValidateIdentifier(projectId, nameof(projectId));
+        ArgumentNullException.ThrowIfNull(metadata);
+        ValidateTaskArtifact(metadata, payload);
+
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+        var existing = ReadTaskArtifact(connection, transaction, metadata.ArtifactId);
+        if (existing is not null)
+        {
+            var duplicate = StringComparer.Ordinal.Equals(existing.AgentId, agentId) &&
+                StringComparer.Ordinal.Equals(existing.ProjectId, projectId) &&
+                existing.Metadata == metadata &&
+                CryptographicOperations.FixedTimeEquals(existing.Artifact.Payload, payload);
+            CryptographicOperations.ZeroMemory(existing.Artifact.Payload);
+            transaction.Commit();
+            return duplicate ? HubTaskArtifactAcceptance.Duplicate : HubTaskArtifactAcceptance.Conflict;
+        }
+
+        using (var bounded = connection.CreateCommand())
+        {
+            bounded.Transaction = transaction;
+            bounded.CommandText = """
+                SELECT COUNT(*) FROM TaskArtifacts
+                WHERE task_id = $task AND schema_id = $schema AND schema_version = $version;
+                """;
+            bounded.Parameters.AddWithValue("$task", metadata.TaskId);
+            bounded.Parameters.AddWithValue("$schema", metadata.SchemaId);
+            bounded.Parameters.AddWithValue("$version", metadata.SchemaVersion);
+            if (Convert.ToInt32(bounded.ExecuteScalar()) != 0)
+            {
+                transaction.Commit();
+                return HubTaskArtifactAcceptance.Conflict;
+            }
+        }
+
+        using (var validate = connection.CreateCommand())
+        {
+            validate.Transaction = transaction;
+            validate.CommandText = """
+                SELECT COUNT(*)
+                FROM Leases l
+                JOIN Tasks t ON t.task_id = l.task_id
+                JOIN Agents a ON a.agent_id = l.agent_id
+                WHERE l.agent_id = $agent AND l.task_id = $task AND l.lease_id = $lease
+                  AND l.fencing_token = $fence AND l.expires_at_ms > $now
+                  AND t.state = 'Leased' AND t.fencing_token = $fence
+                  AND t.project_id = $project
+                  AND t.owner_core_id = $owner AND t.owner_generation = $generation
+                  AND a.owner_approved = 1;
+                """;
+            validate.Parameters.AddWithValue("$agent", agentId);
+            validate.Parameters.AddWithValue("$task", metadata.TaskId);
+            validate.Parameters.AddWithValue("$lease", metadata.LeaseId);
+            validate.Parameters.AddWithValue("$fence", metadata.FencingToken);
+            validate.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            validate.Parameters.AddWithValue("$project", projectId);
+            validate.Parameters.AddWithValue("$owner", metadata.OwnerCoreId);
+            validate.Parameters.AddWithValue("$generation", metadata.OwnerGeneration);
+            if (Convert.ToInt32(validate.ExecuteScalar()) != 1)
+            {
+                transaction.Commit();
+                return HubTaskArtifactAcceptance.LeaseRejected;
+            }
+        }
+
+        var entropy = Encoding.UTF8.GetBytes("glafira.desktop-hub.task-artifact.v1:" + metadata.ArtifactId);
+        byte[] ciphertext;
+        try
+        {
+            ciphertext = _dataProtector.Protect(payload, entropy);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(entropy);
+        }
+
+        try
+        {
+            using var save = connection.CreateCommand();
+            save.Transaction = transaction;
+            save.CommandText = """
+                INSERT INTO TaskArtifacts(
+                    artifact_id, task_id, project_id, agent_id, owner_core_id, owner_generation,
+                    lease_id, fencing_token, contract_version, schema_id, schema_version,
+                    content_type, byte_length, sha256, redaction_status, created_at_ms,
+                    payload_ciphertext, accepted_at_ms)
+                VALUES(
+                    $artifact, $task, $project, $agent, $owner, $generation,
+                    $lease, $fence, $contract, $schema, $schemaVersion,
+                    $contentType, $byteLength, $sha256, $redaction, $created,
+                    $ciphertext, $accepted);
+                """;
+            save.Parameters.AddWithValue("$artifact", metadata.ArtifactId);
+            save.Parameters.AddWithValue("$task", metadata.TaskId);
+            save.Parameters.AddWithValue("$project", projectId);
+            save.Parameters.AddWithValue("$agent", agentId);
+            save.Parameters.AddWithValue("$owner", metadata.OwnerCoreId);
+            save.Parameters.AddWithValue("$generation", metadata.OwnerGeneration);
+            save.Parameters.AddWithValue("$lease", metadata.LeaseId);
+            save.Parameters.AddWithValue("$fence", metadata.FencingToken);
+            save.Parameters.AddWithValue("$contract", metadata.ContractVersion);
+            save.Parameters.AddWithValue("$schema", metadata.SchemaId);
+            save.Parameters.AddWithValue("$schemaVersion", metadata.SchemaVersion);
+            save.Parameters.AddWithValue("$contentType", metadata.ContentType);
+            save.Parameters.AddWithValue("$byteLength", metadata.ByteLength);
+            save.Parameters.AddWithValue("$sha256", metadata.Sha256);
+            save.Parameters.AddWithValue("$redaction", metadata.RedactionStatus);
+            save.Parameters.AddWithValue("$created", metadata.CreatedAt.ToUnixTimeMilliseconds());
+            save.Parameters.AddWithValue("$ciphertext", ciphertext);
+            save.Parameters.AddWithValue("$accepted", now.ToUnixTimeMilliseconds());
+            save.ExecuteNonQuery();
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(ciphertext);
+        }
+
+        transaction.Commit();
+        return HubTaskArtifactAcceptance.Accepted;
+    }
+
+    public HubTaskArtifact? GetTaskArtifact(string artifactId)
+    {
+        ValidateIdentifier(artifactId, nameof(artifactId));
+        using var connection = Open();
+        var stored = ReadTaskArtifact(connection, transaction: null, artifactId);
+        return stored?.Artifact;
+    }
+
+    private StoredTaskArtifact? ReadTaskArtifact(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string artifactId)
+    {
+        using var read = connection.CreateCommand();
+        read.Transaction = transaction;
+        read.CommandText = """
+            SELECT artifact_id, task_id, project_id, agent_id, owner_core_id, owner_generation,
+                   lease_id, fencing_token, contract_version, schema_id, schema_version,
+                   content_type, byte_length, sha256, redaction_status, created_at_ms,
+                   payload_ciphertext
+            FROM TaskArtifacts WHERE artifact_id = $artifact;
+            """;
+        read.Parameters.AddWithValue("$artifact", artifactId);
+        using var reader = read.ExecuteReader();
+        if (!reader.Read()) return null;
+        var metadata = new HubTaskArtifactMetadata(
+            reader.GetInt32(8), reader.GetString(0), reader.GetString(1), reader.GetString(4),
+            reader.GetInt64(5), reader.GetString(6), reader.GetInt64(7), reader.GetString(9),
+            reader.GetInt32(10), reader.GetString(11), reader.GetInt32(12), reader.GetString(13),
+            reader.GetString(14), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(15)));
+        var ciphertext = (byte[])reader[16];
+        var entropy = Encoding.UTF8.GetBytes("glafira.desktop-hub.task-artifact.v1:" + artifactId);
+        byte[] plaintext;
+        try
+        {
+            plaintext = _dataProtector.Unprotect(ciphertext, entropy);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(entropy);
+        }
+        return new StoredTaskArtifact(reader.GetString(3), reader.GetString(2), metadata, new HubTaskArtifact(metadata, plaintext));
+    }
+
+    private static void ValidateTaskArtifact(HubTaskArtifactMetadata metadata, ReadOnlySpan<byte> payload)
+    {
+        ValidateIdentifier(metadata.TaskId, nameof(metadata.TaskId));
+        ValidateOwnerCoreId(metadata.OwnerCoreId, nameof(metadata.OwnerCoreId));
+        ValidateIdentifier(metadata.LeaseId, nameof(metadata.LeaseId));
+        if (metadata.ContractVersion != 1 || metadata.OwnerGeneration <= 0 || metadata.FencingToken <= 0 ||
+            metadata.SchemaVersion != 1 || metadata.ByteLength is < 1 or > 32_768 ||
+            metadata.ByteLength != payload.Length || metadata.CreatedAt.ToUnixTimeMilliseconds() <= 0 ||
+            metadata.ArtifactId is not { Length: >= 1 and <= 128 } ||
+            !char.IsAsciiLetterOrDigit(metadata.ArtifactId[0]) ||
+            metadata.ArtifactId.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('-' or '_' or '.' or ':')) ||
+            !StringComparer.Ordinal.Equals(metadata.SchemaId, "glafira.agent.diagnostics.snapshot") ||
+            !StringComparer.Ordinal.Equals(metadata.ContentType, "application/json") ||
+            !StringComparer.Ordinal.Equals(metadata.RedactionStatus, "REDACTED") ||
+            metadata.Sha256 is not { Length: 64 } ||
+            metadata.Sha256.Any(character => character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+            throw new ArgumentException("Invalid task artifact metadata.", nameof(metadata));
+
+        byte[] expected;
+        try { expected = Convert.FromHexString(metadata.Sha256); }
+        catch (FormatException error) { throw new ArgumentException("Invalid artifact SHA-256.", nameof(metadata), error); }
+        var actual = SHA256.HashData(payload);
+        try
+        {
+            if (!CryptographicOperations.FixedTimeEquals(expected, actual))
+                throw new ArgumentException("Artifact SHA-256 mismatch.", nameof(payload));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(expected);
+            CryptographicOperations.ZeroMemory(actual);
+        }
+    }
+
     private bool IsExactDuplicateCompletion(
         SqliteConnection connection,
         SqliteTransaction transaction,
@@ -1291,6 +1503,31 @@ public sealed class DesktopHubStore
                 completed_at_ms INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS TaskArtifacts(
+                artifact_id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL REFERENCES Tasks(task_id) ON DELETE CASCADE,
+                project_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL REFERENCES Agents(agent_id),
+                owner_core_id TEXT NOT NULL,
+                owner_generation INTEGER NOT NULL CHECK(owner_generation > 0),
+                lease_id TEXT NOT NULL,
+                fencing_token INTEGER NOT NULL CHECK(fencing_token > 0),
+                contract_version INTEGER NOT NULL CHECK(contract_version = 1),
+                schema_id TEXT NOT NULL,
+                schema_version INTEGER NOT NULL CHECK(schema_version = 1),
+                content_type TEXT NOT NULL,
+                byte_length INTEGER NOT NULL CHECK(byte_length BETWEEN 1 AND 32768),
+                sha256 TEXT NOT NULL,
+                redaction_status TEXT NOT NULL,
+                created_at_ms INTEGER NOT NULL,
+                payload_ciphertext BLOB NOT NULL,
+                accepted_at_ms INTEGER NOT NULL,
+                UNIQUE(task_id, schema_id, schema_version)
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_TaskArtifacts_Task
+                ON TaskArtifacts(task_id, accepted_at_ms);
+
             CREATE TABLE IF NOT EXISTS TaskEvents(
                 event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT NOT NULL REFERENCES Tasks(task_id) ON DELETE CASCADE,
@@ -1405,4 +1642,10 @@ public sealed class DesktopHubStore
         string? ApprovalRef,
         long FencingToken,
         string IdempotencyKey);
+
+    private sealed record StoredTaskArtifact(
+        string AgentId,
+        string ProjectId,
+        HubTaskArtifactMetadata Metadata,
+        HubTaskArtifact Artifact);
 }

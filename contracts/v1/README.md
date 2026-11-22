@@ -100,6 +100,26 @@ record delivered. Unacknowledged terminal records cannot be evicted. They surviv
 restart and are retried without running the handler again. Backpressure stops new
 claims when protected local history has no room.
 
+### Bounded diagnostics artifact acknowledgement
+
+`DESKTOP_TASK_ARTIFACT` uses the existing `desktop.task.result` scope and uploads one
+typed, already-redacted diagnostics snapshot for an active task lease. Its signed payload
+contains `contractVersion`, `artifactId`, `taskId`, `ownerCoreId`, `ownerGeneration`,
+`leaseId`, `fencingToken`, `schemaId`, `schemaVersion`, `contentType`, `byteLength`,
+`sha256`, `redactionStatus`, `createdAtEpochMs`, and canonical `payloadBase64`.
+
+Version 1 accepts only schema `glafira.agent.diagnostics.snapshot` version 1,
+`application/json`, `REDACTED`, a JSON object, and 1–32768 decoded bytes. The Hub verifies
+the decoded length and SHA-256 in constant time, binds the artifact to the authenticated
+Agent, project, owner generation, active lease and fencing token, then encrypts the payload
+at rest. A stale binding is rejected and an existing artifact ID cannot be overwritten.
+
+After the durable commit the Hub returns `accepted=true`, a `duplicate` flag, and the exact
+artifact/task/owner/lease/fence/schema/length/digest binding. An identical retry returns a
+duplicate acknowledgement even after the terminal result removed the lease, which closes
+the lost-ACK window without accepting a different payload. This defines Hub acceptance
+only; it does not enable any Windows Agent task handler or cause diagnostics collection.
+
 
 ## Dual-Core task ownership transfer v1
 

@@ -317,6 +317,149 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
             completed.Result["resultSha256"]);
     }
 
+    [Fact]
+    public async Task ArtifactIsBoundToActiveLeaseEncryptedAndAcknowledged()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+        var artifactBytes = Encoding.UTF8.GetBytes("{\"status\":\"healthy\",\"secrets\":\"redacted\"}");
+        var response = await dispatcher.DispatchAsync(
+            ArtifactRequest(artifactBytes, claim, now.AddSeconds(1)), now.AddSeconds(2));
+
+        Assert.Equal("SUCCEEDED", response.Status);
+        Assert.Equal("true", response.Result["accepted"]);
+        Assert.Equal("false", response.Result["duplicate"]);
+        Assert.Equal("artifact:diagnostics:0001", response.Result["artifactId"]);
+        Assert.Equal("task-0001", response.Result["taskId"]);
+        Assert.Equal(claim.Result["leaseId"], response.Result["leaseId"]);
+        Assert.Equal(claim.Result["fencingToken"], response.Result["fencingToken"]);
+
+        var restartedStore = new DesktopHubStore(_databasePath);
+        var stored = Assert.IsType<HubTaskArtifact>(restartedStore.GetTaskArtifact("artifact:diagnostics:0001"));
+        Assert.Equal("glafira.agent.diagnostics.snapshot", stored.Metadata.SchemaId);
+        Assert.Equal("REDACTED", stored.Metadata.RedactionStatus);
+        Assert.Equal(artifactBytes, stored.Payload);
+
+        using var connection = new SqliteConnection("Data Source=" + _databasePath);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT payload_ciphertext FROM TaskArtifacts WHERE artifact_id = $artifact;";
+        command.Parameters.AddWithValue("$artifact", "artifact:diagnostics:0001");
+        var ciphertext = Assert.IsType<byte[]>(command.ExecuteScalar());
+        Assert.NotEqual(artifactBytes, ciphertext);
+        Assert.DoesNotContain(Convert.ToHexString(artifactBytes), Convert.ToHexString(ciphertext));
+        CryptographicOperations.ZeroMemory(stored.Payload);
+        CryptographicOperations.ZeroMemory(artifactBytes);
+        CryptographicOperations.ZeroMemory(ciphertext);
+    }
+
+    [Fact]
+    public async Task ExactArtifactRetryAfterTaskCompletionReturnsDurableDuplicateAck()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+        var artifactBytes = Encoding.UTF8.GetBytes("{\"status\":\"healthy\"}");
+        var artifactRequest = ArtifactRequest(artifactBytes, claim, now.AddSeconds(1));
+
+        var first = await dispatcher.DispatchAsync(artifactRequest, now.AddSeconds(2));
+        var completion = await dispatcher.DispatchAsync(
+            ResultRequest("SUCCEEDED", claim.Result["leaseId"], long.Parse(claim.Result["fencingToken"]), "done"),
+            now.AddSeconds(3));
+        var retry = await dispatcher.DispatchAsync(artifactRequest with { RequestId = "request-retry-0001" }, now.AddSeconds(4));
+
+        Assert.Equal("SUCCEEDED", first.Status);
+        Assert.Equal("SUCCEEDED", completion.Status);
+        Assert.Equal("SUCCEEDED", retry.Status);
+        Assert.Equal("true", retry.Result["accepted"]);
+        Assert.Equal("true", retry.Result["duplicate"]);
+        Assert.Equal(first.Result["sha256"], retry.Result["sha256"]);
+        CryptographicOperations.ZeroMemory(artifactBytes);
+    }
+
+    [Fact]
+    public async Task ArtifactIdConflictCannotOverwriteCommittedPayload()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+        var original = Encoding.UTF8.GetBytes("{\"status\":\"healthy\"}");
+        var replacement = Encoding.UTF8.GetBytes("{\"status\":\"tampered\"}");
+
+        var first = await dispatcher.DispatchAsync(
+            ArtifactRequest(original, claim, now.AddSeconds(1)), now.AddSeconds(2));
+        var conflict = await dispatcher.DispatchAsync(
+            ArtifactRequest(replacement, claim, now.AddSeconds(1)), now.AddSeconds(3));
+
+        Assert.Equal("SUCCEEDED", first.Status);
+        Assert.Equal("FAILED", conflict.Status);
+        Assert.Equal("ARTIFACT_ID_CONFLICT", conflict.ErrorCode);
+        var stored = Assert.IsType<HubTaskArtifact>(_store.GetTaskArtifact("artifact:diagnostics:0001"));
+        Assert.Equal(original, stored.Payload);
+        CryptographicOperations.ZeroMemory(stored.Payload);
+        CryptographicOperations.ZeroMemory(original);
+        CryptographicOperations.ZeroMemory(replacement);
+    }
+
+    [Fact]
+    public async Task ArtifactRejectsWrongOwnerFenceAndDoesNotPersist()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+        var artifactBytes = Encoding.UTF8.GetBytes("{\"status\":\"healthy\"}");
+        var request = ArtifactRequest(artifactBytes, claim, now.AddSeconds(1));
+        var altered = new Dictionary<string, string>(request.Payload)
+        {
+            ["ownerGeneration"] = "2",
+            ["fencingToken"] = (long.Parse(claim.Result["fencingToken"]) + 1).ToString()
+        };
+
+        var response = await dispatcher.DispatchAsync(request with { Payload = altered }, now.AddSeconds(2));
+
+        Assert.Equal("FAILED", response.Status);
+        Assert.Equal("LEASE_FENCING_REJECTED", response.ErrorCode);
+        Assert.Null(_store.GetTaskArtifact("artifact:diagnostics:0001"));
+        CryptographicOperations.ZeroMemory(artifactBytes);
+    }
+
+    [Fact]
+    public async Task ArtifactRejectsDigestMismatchAndNonObjectJson()
+    {
+        var now = DateTimeOffset.UtcNow;
+        RegisterAgent(now, ["web.research"], 1);
+        EnqueueTask();
+        var dispatcher = CreateDispatcher(_payload);
+        var claim = await dispatcher.DispatchAsync(ClaimRequest(["web.research"], 1), now.AddSeconds(1));
+        var arrayBytes = Encoding.UTF8.GetBytes("[\"not-an-object\"]");
+        var nonObject = ArtifactRequest(arrayBytes, claim, now.AddSeconds(1));
+        var validBytes = Encoding.UTF8.GetBytes("{\"status\":\"healthy\"}");
+        var digestRequest = ArtifactRequest(validBytes, claim, now.AddSeconds(1));
+        var digestFields = new Dictionary<string, string>(digestRequest.Payload)
+        {
+            ["sha256"] = new string('0', 64)
+        };
+
+        var nonObjectResponse = await dispatcher.DispatchAsync(nonObject, now.AddSeconds(2));
+        var digestResponse = await dispatcher.DispatchAsync(
+            digestRequest with { Payload = digestFields }, now.AddSeconds(3));
+
+        Assert.Equal("INVALID_TASK_ARTIFACT", nonObjectResponse.ErrorCode);
+        Assert.Equal("INVALID_TASK_ARTIFACT", digestResponse.ErrorCode);
+        Assert.Null(_store.GetTaskArtifact("artifact:diagnostics:0001"));
+        CryptographicOperations.ZeroMemory(arrayBytes);
+        CryptographicOperations.ZeroMemory(validBytes);
+    }
+
     private BridgeV1TaskOperationDispatcher CreateDispatcher(byte[] payload) =>
         new(_store, new FakePayloadResolver(payload));
 
@@ -361,6 +504,29 @@ public sealed class BridgeV1TaskOperationDispatcherTests : IDisposable
             ["progressMessage"] = "completed",
             ["result"] = result,
             ["errorCode"] = "none"
+        });
+
+    private static BridgeV1SignedRequest ArtifactRequest(
+        byte[] artifactBytes,
+        BridgeV1DispatchResponse claim,
+        DateTimeOffset createdAt) =>
+        Request(BridgeV1Operation.DESKTOP_TASK_ARTIFACT, new Dictionary<string, string>
+        {
+            ["contractVersion"] = "1",
+            ["artifactId"] = "artifact:diagnostics:0001",
+            ["taskId"] = "task-0001",
+            ["ownerCoreId"] = claim.Result["ownerCoreId"],
+            ["ownerGeneration"] = claim.Result["ownerGeneration"],
+            ["leaseId"] = claim.Result["leaseId"],
+            ["fencingToken"] = claim.Result["fencingToken"],
+            ["schemaId"] = "glafira.agent.diagnostics.snapshot",
+            ["schemaVersion"] = "1",
+            ["contentType"] = "application/json",
+            ["byteLength"] = artifactBytes.Length.ToString(),
+            ["sha256"] = Convert.ToHexString(SHA256.HashData(artifactBytes)).ToLowerInvariant(),
+            ["redactionStatus"] = "REDACTED",
+            ["createdAtEpochMs"] = createdAt.ToUnixTimeMilliseconds().ToString(),
+            ["payloadBase64"] = Convert.ToBase64String(artifactBytes)
         });
 
     private static BridgeV1SignedRequest Request(

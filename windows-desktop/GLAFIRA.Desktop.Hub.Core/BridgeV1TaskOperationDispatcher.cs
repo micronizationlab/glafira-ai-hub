@@ -49,7 +49,7 @@ public sealed class BridgeV1TaskOperationDispatcher(
 
         if (request.Operation == BridgeV1Operation.OWNERSHIP_TRANSFER_READ)
             return Correlate(ReadOwnershipTransfer(request));
-        if (request.Operation is not (BridgeV1Operation.DESKTOP_TASK_CLAIM or BridgeV1Operation.DESKTOP_TASK_RESULT or BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT))
+        if (request.Operation is not (BridgeV1Operation.DESKTOP_TASK_CLAIM or BridgeV1Operation.DESKTOP_TASK_RESULT or BridgeV1Operation.DESKTOP_TASK_ARTIFACT or BridgeV1Operation.DESKTOP_AGENT_HEARTBEAT))
             return Correlate(Failure("OPERATION_NOT_IMPLEMENTED"));
 
         var agents = store.GetAgents(now).Where(agent =>
@@ -74,9 +74,12 @@ public sealed class BridgeV1TaskOperationDispatcher(
             }));
         }
 
-        var dispatched = request.Operation == BridgeV1Operation.DESKTOP_TASK_CLAIM
-            ? await ClaimAsync(request, agent, now, cancellationToken)
-            : CompleteOrReport(request, agent, now);
+        var dispatched = request.Operation switch
+        {
+            BridgeV1Operation.DESKTOP_TASK_CLAIM => await ClaimAsync(request, agent, now, cancellationToken),
+            BridgeV1Operation.DESKTOP_TASK_ARTIFACT => AcceptArtifact(request, agent, now),
+            _ => CompleteOrReport(request, agent, now)
+        };
         return Correlate(dispatched);
     }
 
@@ -279,6 +282,126 @@ public sealed class BridgeV1TaskOperationDispatcher(
                 now.Add(_leaseDuration).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
         return new BridgeV1DispatchResponse("SUCCEEDED", acknowledgement);
     }
+
+    private BridgeV1DispatchResponse AcceptArtifact(
+        BridgeV1SignedRequest request,
+        HubAgentSnapshot agent,
+        DateTimeOffset now)
+    {
+        var payload = request.Payload;
+        if (!int.TryParse(payload.GetValueOrDefault("contractVersion"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var contractVersion) || contractVersion != 1 ||
+            !payload.TryGetValue("artifactId", out var artifactId) || !IsArtifactIdentifier(artifactId) ||
+            !payload.TryGetValue("taskId", out var taskId) ||
+            !payload.TryGetValue("ownerCoreId", out var ownerCoreId) ||
+            !long.TryParse(payload.GetValueOrDefault("ownerGeneration"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var ownerGeneration) || ownerGeneration <= 0 ||
+            !payload.TryGetValue("leaseId", out var leaseId) ||
+            !long.TryParse(payload.GetValueOrDefault("fencingToken"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var fencingToken) || fencingToken <= 0 ||
+            !payload.TryGetValue("schemaId", out var schemaId) ||
+            !int.TryParse(payload.GetValueOrDefault("schemaVersion"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var schemaVersion) || schemaVersion != 1 ||
+            !payload.TryGetValue("contentType", out var contentType) ||
+            !int.TryParse(payload.GetValueOrDefault("byteLength"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var byteLength) || byteLength is < 1 or > 32_768 ||
+            !payload.TryGetValue("sha256", out var sha256) || !IsLowerHexSha256(sha256) ||
+            !payload.TryGetValue("redactionStatus", out var redactionStatus) ||
+            !long.TryParse(payload.GetValueOrDefault("createdAtEpochMs"), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var createdAtEpochMs) || createdAtEpochMs <= 0 ||
+            !payload.TryGetValue("payloadBase64", out var payloadBase64) ||
+            !StringComparer.Ordinal.Equals(schemaId, "glafira.agent.diagnostics.snapshot") ||
+            !StringComparer.Ordinal.Equals(contentType, "application/json") ||
+            !StringComparer.Ordinal.Equals(redactionStatus, "REDACTED"))
+            return Failure("INVALID_TASK_ARTIFACT");
+
+        DateTimeOffset createdAt;
+        try { createdAt = DateTimeOffset.FromUnixTimeMilliseconds(createdAtEpochMs); }
+        catch (ArgumentOutOfRangeException) { return Failure("INVALID_TASK_ARTIFACT"); }
+        if (createdAt > now.AddSeconds(30)) return Failure("INVALID_TASK_ARTIFACT");
+
+        byte[] artifactBytes;
+        try { artifactBytes = Convert.FromBase64String(payloadBase64); }
+        catch (FormatException) { return Failure("INVALID_TASK_ARTIFACT"); }
+        try
+        {
+            if (artifactBytes.Length != byteLength ||
+                !StringComparer.Ordinal.Equals(Convert.ToBase64String(artifactBytes), payloadBase64) ||
+                !IsJsonObject(artifactBytes))
+                return Failure("INVALID_TASK_ARTIFACT");
+
+            byte[] expectedHash;
+            try { expectedHash = Convert.FromHexString(sha256); }
+            catch (FormatException) { return Failure("INVALID_TASK_ARTIFACT"); }
+            var actualHash = SHA256.HashData(artifactBytes);
+            var hashMatches = CryptographicOperations.FixedTimeEquals(expectedHash, actualHash);
+            CryptographicOperations.ZeroMemory(expectedHash);
+            CryptographicOperations.ZeroMemory(actualHash);
+            if (!hashMatches) return Failure("INVALID_TASK_ARTIFACT");
+
+            var metadata = new HubTaskArtifactMetadata(
+                contractVersion, artifactId, taskId, ownerCoreId, ownerGeneration,
+                leaseId, fencingToken, schemaId, schemaVersion, contentType,
+                byteLength, sha256, redactionStatus, createdAt);
+            HubTaskArtifactAcceptance acceptance;
+            try
+            {
+                acceptance = store.AcceptTaskArtifact(
+                    agent.AgentId, request.ProjectId, metadata, artifactBytes, now);
+            }
+            catch (ArgumentException)
+            {
+                return Failure("INVALID_TASK_ARTIFACT");
+            }
+
+            if (acceptance == HubTaskArtifactAcceptance.Conflict)
+                return Failure("ARTIFACT_ID_CONFLICT");
+            if (acceptance == HubTaskArtifactAcceptance.LeaseRejected)
+                return Failure("LEASE_FENCING_REJECTED");
+
+            return new BridgeV1DispatchResponse("SUCCEEDED", new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["accepted"] = "true",
+                ["duplicate"] = (acceptance == HubTaskArtifactAcceptance.Duplicate).ToString().ToLowerInvariant(),
+                ["artifactId"] = artifactId,
+                ["taskId"] = taskId,
+                ["ownerCoreId"] = ownerCoreId,
+                ["ownerGeneration"] = ownerGeneration.ToString(CultureInfo.InvariantCulture),
+                ["leaseId"] = leaseId,
+                ["fencingToken"] = fencingToken.ToString(CultureInfo.InvariantCulture),
+                ["schemaId"] = schemaId,
+                ["schemaVersion"] = schemaVersion.ToString(CultureInfo.InvariantCulture),
+                ["byteLength"] = byteLength.ToString(CultureInfo.InvariantCulture),
+                ["sha256"] = sha256
+            });
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(artifactBytes);
+        }
+    }
+
+    private static bool IsJsonObject(byte[] bytes)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 8 });
+            return document.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsArtifactIdentifier(string value) =>
+        value is { Length: >= 1 and <= 128 } &&
+        char.IsAsciiLetterOrDigit(value[0]) &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or ':');
+
+    private static bool IsLowerHexSha256(string value) =>
+        value is { Length: 64 } &&
+        value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private static bool TryDecodePayload(
         byte[] bytes,

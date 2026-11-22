@@ -299,6 +299,49 @@ public sealed class BridgeV1RequestAuthenticatorTests
         Assert.Equal(0, replay.Claims);
     }
 
+    [Fact]
+    public async Task ArtifactUploadRequiresTaskResultScopeAndAcceptsBoundedSignedEnvelope()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var replay = new FakeReplayGuard();
+        var authenticator = CreateTaskResultAuthenticator(replay);
+        var request = Sign(TaskArtifactRequest(ValidTaskArtifactPayload(now), now));
+
+        var accepted = await authenticator.AuthenticateAsync(request, now);
+
+        Assert.True(accepted.Accepted);
+        Assert.Equal(1, replay.Claims);
+
+        var wrongScopeReplay = new FakeReplayGuard();
+        var wrongScope = new BridgeV1RequestAuthenticator(
+            new FakeCredentialResolver(new HubRequestCredential(
+                "device-0001", Secret, new HashSet<string> { "desktop.task.claim" })), wrongScopeReplay);
+        var denied = await wrongScope.AuthenticateAsync(
+            Sign(request with { RequestId = "request-task-artifact-02" }), now);
+        Assert.Equal(BridgeV1AdmissionFailure.ScopeDenied, denied.Failure);
+        Assert.Equal(0, wrongScopeReplay.Claims);
+    }
+
+    [Fact]
+    public async Task ArtifactEnvelopeRejectsOversizeOrMissingBindingBeforeReplayClaim()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var replay = new FakeReplayGuard();
+        var payload = ValidTaskArtifactPayload(now);
+        payload["payloadBase64"] = new string('A', 44_001);
+        var oversize = await CreateTaskResultAuthenticator(replay).AuthenticateAsync(
+            Sign(TaskArtifactRequest(payload, now)), now);
+        Assert.Equal(BridgeV1AdmissionFailure.InvalidEnvelope, oversize.Failure);
+        Assert.Equal(0, replay.Claims);
+
+        payload = ValidTaskArtifactPayload(now);
+        payload.Remove("leaseId");
+        var missing = await CreateTaskResultAuthenticator(replay).AuthenticateAsync(
+            Sign(TaskArtifactRequest(payload, now) with { RequestId = "request-task-artifact-03" }), now);
+        Assert.Equal(BridgeV1AdmissionFailure.InvalidEnvelope, missing.Failure);
+        Assert.Equal(0, replay.Claims);
+    }
+
     private static BridgeV1RequestAuthenticator CreateTaskResultAuthenticator(FakeReplayGuard replay) =>
         new(new FakeCredentialResolver(new HubRequestCredential(
             "device-0001", Secret, new HashSet<string> { "desktop.task.result" })), replay);
@@ -317,6 +360,29 @@ public sealed class BridgeV1RequestAuthenticatorTests
         ["errorCode"] = "none"
     };
 
+    private static Dictionary<string, string> ValidTaskArtifactPayload(DateTimeOffset now)
+    {
+        var bytes = Encoding.UTF8.GetBytes("{\"status\":\"healthy\"}");
+        return new Dictionary<string, string>
+        {
+            ["contractVersion"] = "1",
+            ["artifactId"] = "artifact:diagnostics:0001",
+            ["taskId"] = "task_1",
+            ["ownerCoreId"] = "windows-core-0001",
+            ["ownerGeneration"] = "1",
+            ["leaseId"] = "lease-0001",
+            ["fencingToken"] = "42",
+            ["schemaId"] = "glafira.agent.diagnostics.snapshot",
+            ["schemaVersion"] = "1",
+            ["contentType"] = "application/json",
+            ["byteLength"] = bytes.Length.ToString(),
+            ["sha256"] = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+            ["redactionStatus"] = "REDACTED",
+            ["createdAtEpochMs"] = now.ToUnixTimeMilliseconds().ToString(),
+            ["payloadBase64"] = Convert.ToBase64String(bytes)
+        };
+    }
+
     private static BridgeV1SignedRequest TaskResultRequest(IReadOnlyDictionary<string, string> payload)
     {
         var now = DateTimeOffset.UtcNow;
@@ -332,6 +398,21 @@ public sealed class BridgeV1RequestAuthenticatorTests
             payload,
             new string('0', 64));
     }
+
+    private static BridgeV1SignedRequest TaskArtifactRequest(
+        IReadOnlyDictionary<string, string> payload,
+        DateTimeOffset now) =>
+        new(
+            1,
+            "request-task-artifact-01",
+            "idem-task-artifact-01",
+            "device-0001",
+            "default",
+            BridgeV1Operation.DESKTOP_TASK_ARTIFACT,
+            now.AddSeconds(-1).ToUnixTimeMilliseconds(),
+            now.AddMinutes(1).ToUnixTimeMilliseconds(),
+            payload,
+            new string('0', 64));
 
     private static BridgeV1RequestAuthenticator CreateAuthenticator(FakeReplayGuard replay) =>
         new(new FakeCredentialResolver(new HubRequestCredential(
