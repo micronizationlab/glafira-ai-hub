@@ -311,7 +311,7 @@ internal class GitHubRepositoryOperations(
                 normalized == "build.gradle" || normalized == "build.gradle.kts" ||
                 normalized == "settings.gradle" || normalized == "settings.gradle.kts" ||
                 normalized == "gradlew" || normalized == "gradlew.bat" ||
-                segments.firstOrNull() in setOf(".github", ".gitlab", ".circleci") ||
+                segments.firstOrNull()?.let { it in setOf(".github", ".gitlab", ".circleci") } == true ||
                 
                 fileName.endsWith(".gradle") || fileName.endsWith(".gradle.kts") ||
                 fileName == "jenkinsfile" || fileName == "azure-pipelines.yml" ||
