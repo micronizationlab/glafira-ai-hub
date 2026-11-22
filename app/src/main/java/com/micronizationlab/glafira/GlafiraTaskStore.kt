@@ -1271,9 +1271,9 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             val task = queryTask(db, taskId) ?: return false
             if (token != null && (token.taskId != taskId || token.ownerCoreId != ownerCoreId)) return false
             if (ownerCoreId != null) {
-                val currentOwner = db.query(TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation"),
+                val currentOwner = db.query(TABLE_OWNERSHIP, arrayOf("owner_core_id", "owner_generation", "state_version"),
                     "task_id = ?", arrayOf(taskId), null, null, null, "1").use { cursor ->
-                    if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getLong(1)
+                    if (!cursor.moveToFirst()) null else Triple(cursor.getString(0), cursor.getLong(1), cursor.getLong(2))
                 } ?: return false
                 if (currentOwner.first != ownerCoreId ||
                     (token != null && (currentOwner.second != token.ownerGeneration || currentOwner.third != token.stateVersion))
