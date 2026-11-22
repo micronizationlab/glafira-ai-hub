@@ -33,3 +33,11 @@ This is an evidence snapshot, not a completion declaration. Source baseline insp
 ## Safety and merge discipline
 
 No PR was merged in this refresh. Keep stacked PR dependencies intact. Do not merge #372 or documentation-only #390 as a substitute for the required runtime acceptance. Required approvals and branch protection remain mandatory.
+
+
+## Post-snapshot result — 2026-11-22 02:05 UTC
+
+- PR #390 run `44973679849` finished successfully: managed Android emulator completed 115/115 instrumentation tests (0 failures, 0 errors, 0 skipped); Android JVM, shared contracts, iOS Swift tests/simulator build and APK packaging also passed. Windows Hub/Agent and workflow lint remained skipped.
+- PR #372 run `44973570586` finished with one emulator failure out of 117. The exact failure is still `Settings action is not exposed as clickable`; the test did not reach the manual-backup/guidance assertions. This confirms the child-Text content-description approach was insufficient.
+- Corrective commit `3283a98a8649677fcce118ecae91392d31830637` was pushed as a fast-forward to the existing PR #372 head. It puts an explicit Compose accessibility `onClick` action and stable content description on the merged Settings Box semantics node, both routed to `onSettingsClick()`. New exact-head CI run `44974395504` is queued; no result is claimed yet.
+- PR #372 remains Draft. No tests were weakened and no PR was merged.
