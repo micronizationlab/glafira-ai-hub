@@ -59,7 +59,9 @@ class BackupSettingsSmokeTest {
             val buttonSelector = By.descContains("Создать резервную копию сейчас")
             var saveAction = device.wait(Until.findObject(buttonSelector), 500)
             repeat(16) {
-                if (saveAction == null) {
+                // A non-empty visibleBounds can still be only a clipped sliver of a
+                // Compose button. Keep scrolling until the hit target is substantially visible.
+                if (saveAction == null || saveAction.visibleBounds.height() < 80) {
                     device.swipe(
                         device.displayWidth / 2,
                         (device.displayHeight * 0.82f).toInt(),
@@ -67,6 +69,7 @@ class BackupSettingsSmokeTest {
                         (device.displayHeight * 0.28f).toInt(),
                         18
                     )
+                    device.waitForIdle()
                     saveAction = device.wait(Until.findObject(buttonSelector), 500)
                 }
             }
@@ -75,10 +78,10 @@ class BackupSettingsSmokeTest {
             assertTrue("Manual backup button is disabled before input", button.isEnabled)
             val bounds = button.visibleBounds
             assertTrue(
-                "Manual backup action is not visible",
-                bounds.width() > 0 && bounds.height() > 0
+                "Manual backup action does not expose a sufficiently large visible hit target: $bounds",
+                bounds.width() > 0 && bounds.height() >= 80
             )
-            button.click()
+            device.click(bounds.centerX(), bounds.centerY())
             device.waitForIdle()
             val guidance = device.wait(
                 Until.findObject(By.descContains("Сначала выбери папку")), 10_000
