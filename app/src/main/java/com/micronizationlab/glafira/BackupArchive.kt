@@ -292,6 +292,7 @@ object BackupArchive {
                 var manifest: JSONObject? = null
                 var totalBytes = 0L
                 var entries = 0
+                val archiveEntryNames = mutableSetOf<String>()
                 val bufferedCipherInput = BufferedInputStream(CipherInputStream(input, cipher))
                 try {
                     // ZipInputStream stops at the ZIP central-directory marker, which can be
@@ -309,10 +310,8 @@ object BackupArchive {
                             entries++
                             require(entries <= MAX_FILES + 1) { "В архиве слишком много файлов." }
                             val name = entry.name
-                            require(!name.startsWith("/") && !name.contains("\\") &&
-                                name.split("/").none { it == ".." || it.isBlank() }) {
-                                "Обнаружен небезопасный путь в архиве."
-                            }
+                            requireUniqueArchiveEntryName(archiveEntryNames, name)
+                            validateArchiveEntryName(name)
                             if (name == "manifest.json") {
                                 require(manifest == null) { "Повторный manifest в архиве." }
                                 val bytes = zip.readBytesLimited(2L * 1024L * 1024L)
@@ -455,6 +454,19 @@ object BackupArchive {
             }
         }
         check(editor.commit()) { "Не удалось восстановить настройки приложения." }
+    }
+
+    /** Reject unsafe and non-canonical ZIP paths before any file is staged. */
+    internal fun validateArchiveEntryName(name: String) {
+        require(!name.startsWith("/") && !name.contains("\\") &&
+            name.split("/").none { it == "." || it == ".." || it.isBlank() }) {
+            "Обнаружен небезопасный путь в архиве."
+        }
+    }
+
+    /** Reject duplicate ZIP paths before staging; duplicate data entries can otherwise shadow each other. */
+    internal fun requireUniqueArchiveEntryName(names: MutableSet<String>, name: String) {
+        require(names.add(name)) { "Повторная запись в архиве: $name" }
     }
 
     private fun collectFiles(root: File): List<File> {
