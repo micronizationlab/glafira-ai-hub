@@ -1,0 +1,119 @@
+[
+  {
+    "schemaVersion": 1,
+    "taskId": "task-000001",
+    "projectId": "project-01",
+    "idempotencyKey": "idem-000001",
+    "taskType": "research.search",
+    "payloadRef": "payload://task-000001/input",
+    "payloadSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "issuedByDeviceId": "device-0001",
+    "targetAgentId": null,
+    "requiredCapabilities": [
+      "research.pubmed"
+    ],
+    "dependencyTaskIds": [],
+    "riskClass": "READ_ONLY",
+    "approvalRef": null,
+    "createdAt": "2026-11-19T20:00:00Z",
+    "deadlineAt": null,
+    "resourceBudget": {
+      "maxRuntimeSeconds": 600,
+      "maxMemoryMiB": 1024,
+      "maxCpuPercent": 50
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "taskId": "task-000002",
+    "agentId": "agent-00001",
+    "leaseId": "lease-00001",
+    "fencingToken": 2,
+    "attempt": 1,
+    "outcome": "SUCCEEDED",
+    "completedAt": "2026-11-19T20:01:00Z",
+    "resultRef": "result://task-000002/output",
+    "resultSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "errorCode": null,
+    "retryable": false,
+    "requiresReconciliation": false
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "event-0001",
+    "taskId": "task-000001",
+    "state": "QUEUED",
+    "occurredAt": "2026-11-19T20:00:00Z",
+    "sequence": 1,
+    "reasonCode": null
+  },
+  {
+    "schemaVersion": 1,
+    "agentId": "agent-00001",
+    "hostId": "host-00001",
+    "status": "READY",
+    "sentAt": "2026-11-19T20:00:00Z",
+    "capabilities": [
+      "research.pubmed"
+    ],
+    "activeLeaseIds": [],
+    "resourceUsage": {
+      "cpuPercent": 2.5,
+      "memoryUsedMiB": 512
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "enrollmentId": "enroll-001",
+    "agentId": "agent-00001",
+    "hostId": "host-00001",
+    "displayName": "Research node 1",
+    "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "requestedCapabilities": [
+      "research.pubmed"
+    ],
+    "requestedAt": "2026-11-19T20:00:00Z"
+  },
+  {
+    "schemaVersion": 1,
+    "enrollmentId": "enroll-001",
+    "agentId": "agent-00001",
+    "decision": "APPROVED",
+    "decidedByDeviceId": "device-0001",
+    "decidedAt": "2026-11-19T20:00:00Z",
+    "grantedCapabilities": [
+      "research.pubmed"
+    ]
+  },
+  {
+    "schemaVersion": 1,
+    "revocationId": "revoke-001",
+    "enrollmentId": "enroll-001",
+    "agentId": "agent-00001",
+    "requestedByDeviceId": "device-0001",
+    "requestedAt": "2026-11-19T20:02:00Z",
+    "reasonCode": "OWNER_REQUEST"
+  },
+  {
+    "schemaVersion": 1,
+    "revocationId": "revoke-001",
+    "enrollmentId": "enroll-001",
+    "agentId": "agent-00001",
+    "status": "REVOKED",
+    "decidedAt": "2026-11-19T20:02:01Z",
+    "revokedAt": "2026-11-19T20:02:01Z",
+    "lastAcceptedFencingToken": 7,
+    "activeLeaseDisposition": "OUTCOME_UNKNOWN",
+    "requiresOwnerReconciliation": true
+  },
+  {
+    "schemaVersion": 1,
+    "leaseId": "lease-00001",
+    "taskId": "task-000001",
+    "agentId": "agent-00001",
+    "fencingToken": 2,
+    "issuedAt": "2026-11-19T20:00:00Z",
+    "expiresAt": "2026-11-19T20:01:00Z",
+    "heartbeatIntervalSeconds": 15
+  }
+]

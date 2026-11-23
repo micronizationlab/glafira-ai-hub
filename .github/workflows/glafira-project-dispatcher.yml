@@ -1,0 +1,77 @@
+name: GLAFIRA Project Dispatcher
+
+on:
+  push:
+    branches:
+      - glafira/project-dispatcher-v1
+  workflow_run:
+    workflows:
+      - GLAFIRA CI — change-aware platform validation
+      - GLAFIRA Windows Agent
+    types: [completed]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: glafira-project-dispatcher
+  # Serialize global status reconciliation; do not cancel an active scan because another PR changed.
+  cancel-in-progress: false
+
+jobs:
+  project-status:
+    name: Reconcile all active GLAFIRA workstreams
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build cross-workstream status report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+          echo "# GLAFIRA Project Dispatcher"
+          echo ""
+          echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          echo "| PR | Workstream | Branch | Head SHA | Latest matching CI | Draft |"
+          echo "|---:|---|---|---|---|:---:|"
+
+          prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup)"
+          count="$(jq 'length' <<< "$prs")"
+          if [[ "$count" -eq 0 ]]; then
+            echo "No open pull requests."
+            exit 0
+          fi
+
+          # statusCheckRollup is returned with the PR list in one GraphQL query.
+          # Avoid the Actions REST API: per-PR gh run list calls exhausted the installation rate limit.
+          while IFS= read -r pr; do
+            number="$(jq -r '.number' <<< "$pr")"
+            title="$(jq -r '.title' <<< "$pr" | tr '|' '/')"
+            branch="$(jq -r '.headRefName' <<< "$pr")"
+            sha="$(jq -r '.headRefOid' <<< "$pr")"
+            draft="$(jq -r '.isDraft' <<< "$pr")"
+            url="$(jq -r '.url' <<< "$pr")"
+
+            checks="$(jq -c '.statusCheckRollup // []' <<< "$pr")"
+            if [[ "$(jq 'length' <<< "$checks")" -eq 0 ]]; then
+              ci="NO CHECKS REPORTED FOR CURRENT PR HEAD"
+            else
+              ci="$(jq -r 'map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")' <<< "$checks")"
+            fi
+            short_sha="${sha:0:12}"
+            echo "| [#$number]($url) $title | $branch | <code>$short_sha</code> | $ci | $draft |"
+          done < <(jq -c '.[]' <<< "$prs")
+
+          echo ""
+          echo "Policy: evaluate every open PR on its exact current head SHA; a successful run for an older SHA is not acceptance for the current branch."
+          } >> "$GITHUB_STEP_SUMMARY"
