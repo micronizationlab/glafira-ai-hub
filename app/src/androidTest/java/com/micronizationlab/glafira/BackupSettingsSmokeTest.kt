@@ -63,7 +63,7 @@ class BackupSettingsSmokeTest {
                 UiSelector().descriptionContains("Создать резервную копию сейчас")
             )
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
-            assertTrue("Manual backup button is disabled before input", saveButton.isEnabled)
+            assertTrue("Manual backup button is disabled before input", saveButton.isEnabled())
             saveButton.click()
             device.waitForIdle()
             val guidance = device.wait(
