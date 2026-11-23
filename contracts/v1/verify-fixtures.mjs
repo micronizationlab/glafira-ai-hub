@@ -149,6 +149,36 @@ assert.equal(scenario("unknown-side-effect-001").expect.outcome, "OUTCOME_UNKNOW
 assert.equal(scenario("unknown-side-effect-001").expect.retryable, false);
 assert.equal(scenario("unknown-side-effect-001").expect.automaticReplayAllowed, false);
 
+const coordinatorSchema = await readJson("./project-coordinator.schema.json");
+const coordinatorFixtures = await readJson("./fixtures/project-coordinator-messages.json");
+const coordinatorAjv = new Ajv2020({ allErrors: true, strict: true });
+addFormats(coordinatorAjv);
+const validateCoordinator = coordinatorAjv.compile(coordinatorSchema);
+for (const [index, message] of coordinatorFixtures.valid.entries()) {
+  assert.equal(validateCoordinator(message), true,
+    `Valid project coordinator fixture ${index} rejected: ${JSON.stringify(validateCoordinator.errors)}`);
+}
+for (const [index, message] of coordinatorFixtures.invalid.entries()) {
+  assert.equal(validateCoordinator(message), false,
+    `Invalid project coordinator fixture ${index} unexpectedly passed schema validation`);
+}
+const coordinatorNode = coordinatorFixtures.valid[0];
+assert.equal(coordinatorNode.nodeKind, "FULL_GLAFIRA");
+assert.equal(coordinatorNode.coordinatorEligible, true);
+const workerWithLeadership = structuredClone(coordinatorFixtures.invalid[0]);
+assert.equal(validateCoordinator(workerWithLeadership), false,
+  "A subordinate Windows Agent worker must not elect itself coordinator");
+const lease = coordinatorFixtures.valid[1];
+assert.ok(Date.parse(lease.expiresAt) > Date.parse(lease.issuedAt),
+  "Coordinator lease must expire after issue time");
+const nextClaim = coordinatorFixtures.valid[2];
+assert.equal(nextClaim.expectedGeneration, lease.coordinatorGeneration,
+  "Failover claim must fence against the generation it observed");
+const taskClaim = coordinatorFixtures.valid[3];
+assert.equal(taskClaim.coordinatorGeneration, 2,
+  "Task claim must be bound to the elected coordinator generation");
+assert.ok(taskClaim.fencingToken > 0, "Task claims require a positive fencing token");
+
 console.log(
   `Contract schema: ${validMessages.length} valid messages accepted, ${invalidMessages.length} invalid messages rejected.`
 );
