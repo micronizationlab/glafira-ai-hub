@@ -17,6 +17,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 if (-not (Test-Path $sourceExecutable)) {
     throw "Published Desktop executable not found: $sourceExecutable. Run publish-desktop.ps1 first."
 }
+if (Test-Path -LiteralPath $targetExecutable -PathType Leaf) {
+    throw "GLAFIRA Desktop is already installed. Use update-desktop.ps1 with a digest-pinned release package."
+}
 
 Get-Process -Name "GLAFIRA.Desktop.App" -ErrorAction SilentlyContinue | Stop-Process -Force
 if (Test-Path $InstallDirectory) {

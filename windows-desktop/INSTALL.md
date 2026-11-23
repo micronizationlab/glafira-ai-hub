@@ -24,6 +24,16 @@ From the repository root:
 
 The installer copies the app to `%ProgramFiles%\GLAFIRA\Desktop`, creates a Start Menu shortcut and adds an inbound Windows Firewall rule for TCP 8443 restricted to the **Private** network profile and `LocalSubnet`. It does not open the port to Public networks or the internet.
 
+## Update and automatic rollback
+
+Download the new `GLAFIRA-Desktop-win-x64.zip` and copy its SHA-256 digest from the matching release manifest. Do not reuse a digest from another workflow run. From an elevated PowerShell session, run:
+
+~~~powershell
+.\scripts\update-desktop.ps1 -PackagePath .\GLAFIRA-Desktop-win-x64.zip -ExpectedPackageSha256 <64-hex-digest>
+~~~
+
+The updater verifies the complete archive before extraction, rejects unsafe archive paths, stages the new binaries beside the current installation, stops Desktop, and swaps the installation atomically. The updated executable must pass an isolated launch check that exits before loading identity, database, credentials, or UI. If the check fails, the previous binaries are restored. Hub state remains outside the install directory under `%LocalAppData%\GLAFIRA\DesktopHub`; the updater fingerprints that state and refuses to commit if the isolated check changes it.
+
 ## Start the Hub
 
 1. Launch GLAFIRA Desktop from the Start Menu.

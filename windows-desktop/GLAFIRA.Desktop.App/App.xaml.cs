@@ -9,6 +9,13 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.Length == 1 &&
+            string.Equals(e.Args[0], "--glafira-update-health-check", StringComparison.Ordinal))
+        {
+            Shutdown(0);
+            return;
+        }
+
         try
         {
             CoreIdentity = new WindowsDesktopCoreInstallationIdentityStore().LoadOrCreate();

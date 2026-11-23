@@ -124,6 +124,9 @@ jobs:
           $paths = @(
             "windows-desktop/scripts/publish-desktop.ps1",
             "windows-desktop/scripts/install-desktop.ps1",
+            "windows-desktop/scripts/update-desktop.ps1",
+            "windows-desktop/scripts/DesktopUpdateTransaction.psm1",
+            "windows-desktop/scripts/tests/test-update-desktop.ps1",
             "windows-desktop/scripts/uninstall-desktop.ps1"
           )
           foreach ($path in $paths) {
@@ -132,6 +135,10 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
             if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
           }
+
+      - name: Test Desktop staged update and rollback transaction
+        shell: pwsh
+        run: pwsh -NoProfile -File windows-desktop/scripts/tests/test-update-desktop.ps1
 
       - name: Publish self-contained Desktop
         shell: pwsh
@@ -143,6 +150,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Desktop publish failed." }
           New-Item -ItemType Directory -Path (Join-Path $output "scripts") -Force | Out-Null
           Copy-Item windows-desktop/scripts/install-desktop.ps1 (Join-Path $output "scripts")
+          Copy-Item windows-desktop/scripts/update-desktop.ps1 (Join-Path $output "scripts")
+          Copy-Item windows-desktop/scripts/DesktopUpdateTransaction.psm1 (Join-Path $output "scripts")
           Copy-Item windows-desktop/scripts/uninstall-desktop.ps1 (Join-Path $output "scripts")
           Copy-Item windows-desktop/INSTALL.md (Join-Path $output "INSTALL.md")
           $package = Join-Path $env:RUNNER_TEMP "GLAFIRA-Desktop-win-x64.zip"
