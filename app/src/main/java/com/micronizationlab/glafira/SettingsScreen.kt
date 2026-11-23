@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -40,13 +41,21 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     val context = LocalContext.current
     val peerConsultationKey = currentProject?.id?.let { "peer_consultation_enabled_$it" } ?: "peer_consultation_enabled"
     val peerProvidersKey = currentProject?.id?.let { "peer_consultation_providers_$it" } ?: "peer_consultation_providers"
-    var gigachatKey by remember { mutableStateOf(loadApiKey(context)) }
-    var openaiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENAI)) }
-    var deepseekKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.DEEPSEEK)) }
-    var grokKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GROK)) }
-    var yandexKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.YANDEX)) }
-    var geminiKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.GEMINI)) }
-    var openRouterKey by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENROUTER)) }
+    // Keep decrypted provider secrets out of Compose state; blank input means keep existing.
+    var gigachatKey by remember { mutableStateOf("") }
+    var openaiKey by remember { mutableStateOf("") }
+    var deepseekKey by remember { mutableStateOf("") }
+    var grokKey by remember { mutableStateOf("") }
+    var yandexKey by remember { mutableStateOf("") }
+    var geminiKey by remember { mutableStateOf("") }
+    var openRouterKey by remember { mutableStateOf("") }
+    var gigachatConfigured by remember { mutableStateOf(loadApiKey(context).isNotBlank()) }
+    var openaiConfigured by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENAI).isNotBlank()) }
+    var deepseekConfigured by remember { mutableStateOf(loadProviderKey(context, ProviderId.DEEPSEEK).isNotBlank()) }
+    var grokConfigured by remember { mutableStateOf(loadProviderKey(context, ProviderId.GROK).isNotBlank()) }
+    var yandexConfigured by remember { mutableStateOf(loadProviderKey(context, ProviderId.YANDEX).isNotBlank()) }
+    var geminiConfigured by remember { mutableStateOf(loadProviderKey(context, ProviderId.GEMINI).isNotBlank()) }
+    var openRouterConfigured by remember { mutableStateOf(loadProviderKey(context, ProviderId.OPENROUTER).isNotBlank()) }
     var isSaved by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf(false) }
     var workingExpanded by remember { mutableStateOf(true) }
@@ -147,7 +156,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 label = "GigaChat (Authorization Key)",
                 value = gigachatKey,
                 onValueChange = { gigachatKey = it; isSaved = false; saveError = false },
-                configured = gigachatKey.isNotBlank()
+                configured = gigachatConfigured
             )
         }
 
@@ -168,37 +177,37 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 label = "OpenAI API Key (sk-...)",
                 value = openaiKey,
                 onValueChange = { openaiKey = it; isSaved = false; saveError = false },
-                configured = openaiKey.isNotBlank()
+                configured = openaiConfigured
             )
             ProviderKeyField(
                 label = "DeepSeek API Key",
                 value = deepseekKey,
                 onValueChange = { deepseekKey = it; isSaved = false; saveError = false },
-                configured = deepseekKey.isNotBlank()
+                configured = deepseekConfigured
             )
             ProviderKeyField(
                 label = "Grok (xAI API Key)",
                 value = grokKey,
                 onValueChange = { grokKey = it; isSaved = false; saveError = false },
-                configured = grokKey.isNotBlank()
+                configured = grokConfigured
             )
             ProviderKeyField(
                 label = "Алиса (Yandex Cloud API Key)",
                 value = yandexKey,
                 onValueChange = { yandexKey = it; isSaved = false; saveError = false },
-                configured = yandexKey.isNotBlank()
+                configured = yandexConfigured
             )
             ProviderKeyField(
                 label = "Google Gemini API Key (есть бесплатный тариф)",
                 value = geminiKey,
                 onValueChange = { geminiKey = it; isSaved = false; saveError = false },
-                configured = geminiKey.isNotBlank()
+                configured = geminiConfigured
             )
             ProviderKeyField(
                 label = "OpenRouter API Key (бесплатные модели)",
                 value = openRouterKey,
                 onValueChange = { openRouterKey = it; isSaved = false; saveError = false },
-                configured = openRouterKey.isNotBlank()
+                configured = openRouterConfigured
             )
         }
 
@@ -207,17 +216,35 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         Button(
             onClick = {
                 val saveResults = listOf(
-                    saveApiKey(context, gigachatKey.trim()),
-                    saveProviderKey(context, ProviderId.OPENAI, openaiKey),
-                    saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey),
-                    saveProviderKey(context, ProviderId.GROK, grokKey),
-                    saveProviderKey(context, ProviderId.YANDEX, yandexKey),
-                    saveProviderKey(context, ProviderId.GEMINI, geminiKey),
-                    saveProviderKey(context, ProviderId.OPENROUTER, openRouterKey)
+                    gigachatKey.isBlank() || saveApiKey(context, gigachatKey.trim()),
+                    openaiKey.isBlank() || saveProviderKey(context, ProviderId.OPENAI, openaiKey.trim()),
+                    deepseekKey.isBlank() || saveProviderKey(context, ProviderId.DEEPSEEK, deepseekKey.trim()),
+                    grokKey.isBlank() || saveProviderKey(context, ProviderId.GROK, grokKey.trim()),
+                    yandexKey.isBlank() || saveProviderKey(context, ProviderId.YANDEX, yandexKey.trim()),
+                    geminiKey.isBlank() || saveProviderKey(context, ProviderId.GEMINI, geminiKey.trim()),
+                    openRouterKey.isBlank() || saveProviderKey(context, ProviderId.OPENROUTER, openRouterKey.trim())
                 )
                 val saved = saveResults.all { it }
                 isSaved = saved
                 saveError = !saved
+                if (saved) {
+                    gigachatKey = ""
+                    openaiKey = ""
+                    deepseekKey = ""
+                    grokKey = ""
+                    yandexKey = ""
+                    geminiKey = ""
+                    openRouterKey = ""
+                    gigachatConfigured = loadApiKey(context).isNotBlank()
+                    openaiConfigured = loadProviderKey(context, ProviderId.OPENAI).isNotBlank()
+                    deepseekConfigured = loadProviderKey(context, ProviderId.DEEPSEEK).isNotBlank()
+                    grokConfigured = loadProviderKey(context, ProviderId.GROK).isNotBlank()
+                    yandexConfigured = loadProviderKey(context, ProviderId.YANDEX).isNotBlank()
+                    geminiConfigured = loadProviderKey(context, ProviderId.GEMINI).isNotBlank()
+                    openRouterConfigured = loadProviderKey(context, ProviderId.OPENROUTER).isNotBlank()
+                    workingExpanded = false
+                    pendingExpanded = false
+                }
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White)
@@ -678,7 +705,9 @@ fun ProviderKeyField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Вставьте ключ...", color = Tx, fontSize = 12.sp) },
+            placeholder = { Text("Вставьте новый ключ...", color = Tx, fontSize = 12.sp) },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.White, unfocusedContainerColor = Color.White,
                 focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020),
