@@ -110,7 +110,7 @@ class GlafiraProviderCapabilityPolicyTest {
 
     @Test fun paidOrUnknownCostNeverGetsSilentFreeFirstDispatch() {
         assertEquals(
-            GlafiraProviderEligibilityReason.PAID_USE_NOT_APPROVED,
+            GlafiraProviderEligibilityReason.FREE_ALTERNATIVE_NOT_EXHAUSTED,
             evaluate(runtime = status(cost = GlafiraProviderCostState.PAID)).reason
         )
         assertEquals(
