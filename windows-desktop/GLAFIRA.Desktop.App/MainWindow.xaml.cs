@@ -326,7 +326,7 @@ public partial class MainWindow : Window
                     : "Подключение и доступ к разрешённому репозиторию подтверждены";
                 GitHubDisconnectButton.IsEnabled = true;
                 GitHubConnectButton.Content = "Переподключить GitHub";
-                GitHubDeviceInstructionsText.Text = "Сессия сохранена в DPAPI CurrentUser. Этот экран пока выполняет только проверку доступа и не изменяет GitHub.";
+                GitHubDeviceInstructionsText.Text = "Сессия сохранена в DPAPI CurrentUser. Создание feature-ветки, запись разрешённого файла и Draft PR доступны только после отдельных подтверждений владельца. Слияние недоступно.";
                 GitHubDeviceCodeText.Text = "";
                 return;
             }
