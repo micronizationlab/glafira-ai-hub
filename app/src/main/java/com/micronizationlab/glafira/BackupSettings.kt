@@ -295,7 +295,15 @@ fun BackupSettingsSection() {
                                     "Создать резервную копию сейчас. $it"
                                 } ?: "Создать резервную копию сейчас"
                             }
-                    ) { Text("Сохранить сейчас") }
+                    ) {
+                        Text(
+                            if (manualBackupGuidance == null) {
+                                "Сохранить сейчас"
+                            } else {
+                                "Сначала выбери папку"
+                            }
+                        )
+                    }
                     OutlinedButton(
                         onClick = {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())

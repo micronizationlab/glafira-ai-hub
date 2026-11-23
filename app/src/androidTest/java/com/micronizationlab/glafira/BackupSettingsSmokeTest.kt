@@ -81,7 +81,7 @@ class BackupSettingsSmokeTest {
             button.click()
             device.waitForIdle()
             val guidance = device.wait(
-                Until.findObject(By.descContains("Сначала выбери папку")), 10_000
+                Until.findObject(By.textContains("Сначала выбери папку")), 10_000
             )
             assertNotNull(
                 "Missing-folder guidance was not shown after the manual backup action",
