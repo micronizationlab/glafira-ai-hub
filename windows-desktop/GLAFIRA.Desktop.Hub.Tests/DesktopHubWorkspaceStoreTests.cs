@@ -79,7 +79,8 @@ public sealed class DesktopHubWorkspaceStoreTests : IDisposable
         var dispatcher = new BridgeV1TaskOperationDispatcher(_store, new NoPayloadResolver());
 
         var project = await dispatcher.DispatchAsync(Request(
-            BridgeV1Operation.PROJECT_READ, "project-request-01", "project-idem-0001", []), now);
+            BridgeV1Operation.PROJECT_READ, "project-request-01", "project-idem-0001",
+            new Dictionary<string, string>()), now);
         var conversation = await dispatcher.DispatchAsync(Request(
             BridgeV1Operation.CONVERSATION_READ, "conversation-read-01", "conversation-read-idem-01",
             new Dictionary<string, string> { ["conversationId"] = "conversation-0001" }), now);

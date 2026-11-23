@@ -138,7 +138,8 @@ public enum BridgeProtocol {
         var allowed = requiredFields[request.operation, default: []]
         if request.operation == .conversationAppend { allowed.insert("baseRemoteVersion") }
         guard request.payload.keys.allSatisfy(allowed.contains) else { return .unknownPayloadField }
-        guard allowed.isSubset(of: Set(request.payload.keys)) else { return .missingPayloadField }
+        let required = requiredFields[request.operation, default: []]
+        guard required.isSubset(of: Set(request.payload.keys)) else { return .missingPayloadField }
         guard request.payload.values.allSatisfy({
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             $0.utf16.count <= maximumPayloadUTF16Units
