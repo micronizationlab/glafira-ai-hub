@@ -7,6 +7,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import androidx.test.uiautomator.UiScrollable
+import androidx.test.uiautomator.UiSelector
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,32 +40,41 @@ class BackupSettingsSmokeTest {
         )
         try {
             val device = UiDevice.getInstance(instrumentation)
-            assertTrue("GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.desc("Открыть настройки")), 20_000))
-            val settingsButton = device.findObject(By.desc("Открыть настройки"))
-            val settingsBounds = settingsButton.visibleBounds
-            assertTrue("Settings action is not visible", settingsBounds.width() > 0 && settingsBounds.height() > 0)
-            device.click(settingsBounds.centerX(), settingsBounds.centerY())
+            assertTrue(
+                "GLAFIRA home screen did not open",
+                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
+            )
+            device.findObject(By.descContains("Открыть настройки")).click()
+            assertTrue(
+                "Settings screen did not open",
+                device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
+            )
 
-            var saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
-            repeat(8) {
-                if (saveButton == null) {
-                    device.swipe(
-                        device.displayWidth / 2, device.displayHeight * 3 / 4,
-                        device.displayWidth / 2, device.displayHeight / 4, 12
-                    )
-                    saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
-                }
-            }
+            // Scroll the actual Compose settings container. Keep and use the UiObject
+            // returned by scrollIntoView: a second accessibility lookup can race with
+            // Compose semantics recycling after the scroll and incorrectly report null.
+            val scrollable = UiScrollable(UiSelector().scrollable(true)).setAsVerticalList()
+            val backupHeading = scrollable.scrollIntoView(
+                UiSelector().textContains("РЕЗЕРВНОЕ КОПИРОВАНИЕ")
+            )
+            assertNotNull("Backup section is not reachable in Settings", backupHeading)
+
+            val saveButton = scrollable.scrollIntoView(
+                UiSelector().descriptionContains("Создать резервную копию сейчас")
+            )
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
-            assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
-            val saveBounds = saveButton!!.visibleBounds
-            assertTrue("Manual backup action is not visible", saveBounds.width() > 0 && saveBounds.height() > 0)
-            device.click(saveBounds.centerX(), saveBounds.centerY())
+            assertTrue("Manual backup button is disabled before input", saveButton.isEnabled)
+            assertTrue("Manual backup action is not visible", saveButton.visibleBounds.width() > 0 &&
+                saveButton.visibleBounds.height() > 0)
+            assertTrue("Manual backup action could not be clicked", saveButton.click())
             device.waitForIdle()
             val guidance = device.wait(
-                Until.findObject(By.descContains("Сначала выбери папку")), 10_000)
-            assertNotNull("Missing-folder guidance was not shown beside the manual backup action", guidance)
+                Until.findObject(By.descContains("Сначала выбери папку")), 10_000
+            )
+            assertNotNull(
+                "Missing-folder guidance was not shown beside the manual backup action",
+                guidance
+            )
         } finally {
             scenario.close()
         }
