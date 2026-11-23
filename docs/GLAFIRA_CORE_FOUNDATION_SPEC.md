@@ -358,3 +358,44 @@ Core foundation is not complete until all applicable checks pass:
 - `IMPLEMENTATION_ROADMAP.md`: Core first, Backup second, Runtime third.
 
 This document narrows those existing principles into implementable Core contracts. Where older roadmap text places unified memory after Runtime, this specification and the updated roadmap move operational unified memory into Priority 1 Core.
+
+
+## 12. Core wallet integration and GLAFIRA identity-card contract
+
+The GLAFIRA Core exposes the account wallet as a first-class owner-facing capability, not merely as a checkout screen for Mother services. The same wallet can send tokens to another GLAFIRA/member wallet, receive tokens from another GLAFIRA/member, and pay for authorized Mother services such as Premium/AI entitlements and VPN. Peer-to-peer transfers are distinct from Mother service charges.
+
+### 12.1 Shared recipient identity card
+
+Use one versioned GLAFIRA identity card for both peer chat addressing and wallet recipient selection. Its human-readable address fields are nickname and network address. The card may carry a version and verifiable fingerprint/signature metadata, but must never contain a password, private key, session token, wallet secret or payment authorization.
+
+Core treats the card as an untrusted address claim. Before opening a trusted peer session or preparing a transfer, it validates the schema and resolves the card through the trusted account/network directory to a canonical immutable account ID and current key/status. A network address is mutable routing metadata; it is not the account's stable identity. A nickname/address pair by itself does not authenticate the remote GLAFIRA and does not grant project, memory, tool or file access.
+
+### 12.2 Wallet command contract
+
+Core should expose typed wallet operations equivalent to:
+- read available/reserved balance and transaction history;
+- prepare a peer transfer by resolving an imported identity card;
+- confirm and submit the exact prepared transfer;
+- receive/synchronize incoming ledger entries;
+- prepare and confirm Mother AI/Premium or VPN service charges;
+- inspect receipt, status and reconciliation requirements.
+
+The confirmation must bind the canonical recipient account ID, card/key fingerprint version, exact amount and token unit, transaction type, fee if one is later approved, expiry and idempotency key. Any change to recipient, amount or transaction type invalidates the prepared confirmation and requires a new explicit owner confirmation.
+
+### 12.3 Core authority and financial safety
+
+Core enforces owner authentication, policy, approvals, local intent capture, audit/Trace and safe presentation. Mother remains the initial authoritative registry, issuer and central ledger; client-side wallet balances are cached/read-only projections and must not mint tokens or independently finalize a transfer. Only a durable authoritative ledger commit can mark a transfer posted. When Mother is unavailable, the client may save a pending draft/request but must not show it as completed, spendable or credited.
+
+Peer transfers, Mother service charges, reward credits, issuance and reversals must have distinct typed transaction categories and receipts. Use double-entry accounting, immutable journal entries, atomic debit/credit, idempotency, no overdraft, concurrency safety, rate/limit/fraud checks and compensating reversals. A transfer to an offline recipient can be posted centrally and synchronized later; recipient online presence is not a prerequisite.
+
+### 12.4 Security and privacy acceptance
+
+- A forged, malformed, stale, revoked or ambiguous card cannot select an unintended recipient.
+- A network-address change after preparation invalidates resolution or requires re-resolution and renewed confirmation.
+- A card never grants chat trust, wallet authority, project access or approval by itself.
+- Confirmation is bound to recipient, amount, token unit and transaction digest; tampering with any field is rejected.
+- Duplicate requests with the same idempotency key post at most one transfer.
+- Concurrent spends cannot overdraw or spend the same funds twice.
+- Incoming sync is idempotent and does not double-credit the wallet.
+- Offline Mother/ledger never produces a false successful-payment state.
+- Peer transfers and Mother service charges are visibly distinct in history and receipts.
