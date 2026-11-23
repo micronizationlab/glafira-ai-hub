@@ -22,7 +22,7 @@ internal object AndroidGitHubChatIntentParser {
                 AndroidGitHubIntentPreviewBuilder.ALLOWED_REPOSITORY,
                 AndroidGitHubOperation.REPOSITORY_TREE,
                 baseRef = "main"
-            ).also(AndroidGitHubIntentPreviewBuilder::build)
+            ).also { AndroidGitHubIntentPreviewBuilder.build(it) }
         }
         val match = readFilePattern.matchEntire(message.trim()) ?: return null
         val path = match.groupValues[1].trim().trim('"', 39.toChar())
@@ -32,7 +32,7 @@ internal object AndroidGitHubChatIntentParser {
             AndroidGitHubOperation.READ_FILE,
             baseRef = "main",
             path = path
-        ).also(AndroidGitHubIntentPreviewBuilder::build)
+        ).also { AndroidGitHubIntentPreviewBuilder.build(it) }
     }
 }
 
