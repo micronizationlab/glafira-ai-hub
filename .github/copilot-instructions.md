@@ -1,3 +1,7 @@
+## Mandatory eleventh workstream: helper intake and PR integration
+
+At the start of every session, follow `docs/engineering/ELEVENTH_WORKSTREAM_PR_INTEGRATION.md`: inspect all helper/contributor work and all open PRs, collect completed work, review it against current main, and integrate suitable changes as soon as exact-head checks, review, dependencies, approvals and branch protection permit. PR collection and safe merging are the coordinator's primary responsibility; the other ten workstreams are prioritized around it. Never merge stale or unverified work, bypass protections, or claim skipped/cancelled checks passed.
+
 # GitHub Copilot collaboration rules for GLAFIRA
 
 ## Mandatory first-session startup — read before accepting any assignment
