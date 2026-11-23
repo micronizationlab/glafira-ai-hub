@@ -42,60 +42,49 @@ class BackupSettingsSmokeTest {
                 "GLAFIRA home screen did not open",
                 device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
             )
-            device.findObject(By.descContains("Открыть настройки")).click()
+            val settingsButton = device.findObject(By.descContains("Открыть настройки"))
+            assertTrue(
+                "Settings action is not visible",
+                settingsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
+            )
+            settingsButton.click()
             assertTrue(
                 "Settings screen did not open",
                 device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
             )
 
-            // Settings uses a Compose verticalScroll Column, which is not consistently
-            // exposed as a UiScrollable node by all emulator API levels. Scroll the
-            // actual device viewport in bounded steps and wait for the semantic node.
-            val backupHeading = By.text("РЕЗЕРВНОЕ КОПИРОВАНИЕ")
-            var headingVisible = device.wait(Until.hasObject(backupHeading), 1_000)
-            repeat(12) {
-                if (!headingVisible) {
+            // Compose Settings is a verticalScroll Column. The heading is not a stable
+            // accessibility selector on every emulator API level, so locate the actual
+            // actionable semantic node while moving through the viewport in bounded steps.
+            val buttonSelector = By.descContains("Создать резервную копию сейчас")
+            var saveAction = device.wait(Until.findObject(buttonSelector), 500)
+            repeat(16) {
+                if (saveAction == null) {
                     device.swipe(
                         device.displayWidth / 2,
                         (device.displayHeight * 0.82f).toInt(),
                         device.displayWidth / 2,
-                        (device.displayHeight * 0.30f).toInt(),
+                        (device.displayHeight * 0.28f).toInt(),
                         18
                     )
-                    headingVisible = device.wait(Until.hasObject(backupHeading), 500)
+                    saveAction = device.wait(Until.findObject(buttonSelector), 500)
                 }
             }
-            assertTrue("Backup section is not reachable in Settings", headingVisible)
-
-            val buttonSelector = By.desc("Создать резервную копию сейчас")
-            var saveButton = device.wait(Until.findObject(buttonSelector), 1_000)
-            repeat(8) {
-                if (saveButton == null) {
-                    device.swipe(
-                        device.displayWidth / 2,
-                        (device.displayHeight * 0.82f).toInt(),
-                        device.displayWidth / 2,
-                        (device.displayHeight * 0.30f).toInt(),
-                        18
-                    )
-                    saveButton = device.wait(Until.findObject(buttonSelector), 500)
-                }
-            }
-            assertNotNull("Manual backup button is not visible in Settings", saveButton)
-            val saveAction = requireNotNull(saveButton)
-            assertTrue("Manual backup button is disabled before input", saveAction.isEnabled)
-            val saveBounds = saveAction.visibleBounds
+            assertNotNull("Manual backup button is not reachable in Settings", saveAction)
+            val button = requireNotNull(saveAction)
+            assertTrue("Manual backup button is disabled before input", button.isEnabled)
+            val bounds = button.visibleBounds
             assertTrue(
                 "Manual backup action is not visible",
-                saveBounds.width() > 0 && saveBounds.height() > 0
+                bounds.width() > 0 && bounds.height() > 0
             )
-            saveAction.click()
+            button.click()
             device.waitForIdle()
             val guidance = device.wait(
                 Until.findObject(By.descContains("Сначала выбери папку")), 10_000
             )
             assertNotNull(
-                "Missing-folder guidance was not shown beside the manual backup action",
+                "Missing-folder guidance was not shown after the manual backup action",
                 guidance
             )
         } finally {
