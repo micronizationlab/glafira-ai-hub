@@ -250,3 +250,135 @@ In the prior project discussions, DeepSeek was used as a technical expert/review
 
 ### Evidence discipline
 Every price must carry retrieval date, currency, billing unit, region, tax basis, model/version and source URL. User reports must remain anecdotes, not population averages. Marketing claims, live payout data, and audited measurements must be distinguished. Refresh prices before quoting customers or making financial commitments.
+
+
+## 7A. Dated tariff comparison: YandexGPT Pro 5.1 vs Grok 4.7 (checked 2026-11-20)
+
+This comparison resolves an important ambiguity: **there is no single Yandex price**. Yandex AI Studio publishes separate synchronous and asynchronous tariffs. Compare like with like and preserve the latency/service mode.
+
+### Public API price card
+
+All Yandex RUB values below include VAT according to the official tariff page. xAI prices are USD, before any currency conversion or bank/foreign-exchange fees.
+
+| Model / mode | Input per 1K | Cached input per 1K | Tool tokens per 1K | Output per 1K | Billing basis |
+|---|---:|---:|---:|---:|---|
+| YandexGPT Pro 5.1 synchronous | 0.80 RUB | 0.80 RUB | 0.20 RUB | 0.80 RUB | Live synchronous request; VAT included |
+| YandexGPT Pro 5.1 asynchronous | 0.41 RUB | Not separately listed | Not separately listed | 0.41 RUB | Async mode; VAT included |
+| Grok 4.7 standard | $0.002 | $0.0005 | Tool billing depends on the tool | $0.006 | Public xAI API, short context below 200K |
+| Grok 4.7 long context | $0.004 | $0.001 | Tool billing depends on the tool | $0.012 | Applies to all tokens once prompt crosses 200K |
+| Grok 4.7 priority | 2× standard | 2× cached | 2× applicable token rate | 2× standard | Only when response confirms priority service tier |
+| Grok 4.7 batch | 20% below standard | 20% below standard | 20% where applicable | 20% below standard | Async batch; most jobs typically finish within 24 hours |
+
+### RUB normalization using the official 20-Nov-2026 USD rate
+
+Reference FX: **1 USD = 81.9290 RUB** on 2026-11-20. This is an analytical normalization, not a guaranteed settlement rate.
+
+| Model / mode | Input per 1K | Cached input per 1K | Output per 1K |
+|---|---:|---:|---:|
+| YandexGPT Pro 5.1 synchronous | 0.800 RUB | 0.800 RUB | 0.800 RUB |
+| YandexGPT Pro 5.1 asynchronous | 0.410 RUB | — | 0.410 RUB |
+| Grok 4.7 standard | 0.164 RUB | 0.041 RUB | 0.492 RUB |
+| Grok 4.7 long context ≥200K | 0.328 RUB | 0.082 RUB | 0.983 RUB |
+
+### Which is more expensive?
+
+- **Synchronous YandexGPT Pro 5.1 vs standard Grok 4.7:** Yandex is about **4.88× more expensive for input** and **1.63× for output** at the published rates. Yandex's listed cached-input price is about 19.5× Grok's cached-input price.
+- **Asynchronous YandexGPT Pro 5.1 vs standard Grok 4.7:** Yandex is about **2.50× more expensive for input**, but its 0.41 RUB output token is about **16.6% cheaper** than Grok's normalized 0.492 RUB output token.
+- For a simple illustrative workload of 10,000 input + 2,000 output tokens, before tools/retries/FX fees: synchronous Yandex ≈ 9.60 RUB; asynchronous Yandex ≈ 4.92 RUB; Grok 4.7 ≈ 2.62 RUB. This is price arithmetic only—not an equal-latency or equal-quality benchmark.
+- Long-context, priority, batch, cached tokens, tool calls and reasoning accounting can change the comparison materially. Never multiply only the visible input/output rates if the task uses additional modalities or services.
+
+**Conclusion:** for the published standard synchronous API tariffs, YandexGPT Pro 5.1 costs more than Grok 4.7 on both input and output. If comparing Yandex's cheaper asynchronous tariff, Yandex still costs more on input, but Grok costs more on output. The statement "Yandex is always more expensive" is therefore too broad.
+
+### Consumer offer and VPN price context
+
+- Amnezia Premium's official Russian page currently advertises one subscription for up to 7 devices, speeds up to 200 Mbps, a 14-day refund window and an advertised starting point from 325 RUB/month. Its displayed multi-month effective prices are 448 RUB/month for 6 months, 365 RUB/month for 1 year and 290 RUB/month for 2 years.
+- A proposed GLAFIRA VPN price of 300 RUB/month is below Amnezia's displayed 6-month and annual effective monthly rates, close to (but 10 RUB above) its 2-year effective rate, and below its 325 RUB headline starting point. That is competitive on price, but GLAFIRA must match or clearly explain differences in reliability, protocol resilience, locations, devices, support and refunds.
+- Poe's official help page states that multi-model subscriptions start at $4.99/month and include usage-limited compute points; unused points generally do not roll over unless a plan says otherwise. At the 20-Nov-2026 FX reference this is approximately 409 RUB before regional pricing/tax/payment friction. Therefore the proposed 500 RUB GLAFIRA AI tier is not the cheapest multi-model entry point; its premium needs to be justified by a persistent AI office and actual workflows, not simply access to several models.
+- Yandex AI Studio's Go subscription is a business/employee product priced at 2,490 RUB per employee/month including VAT (with larger Go X5/X15 plans). Do not compare this B2B per-seat plan directly with consumer chatbot subscriptions without explaining the difference.
+- Regional availability, accepted payment methods, account eligibility and local checkout prices must be checked separately before any Russian consumer launch. API pricing is not the same thing as consumer subscription pricing.
+
+### Source snapshots
+
+- Yandex AI Studio official tariff page, including sync/async tables and VAT statement: https://aistudio.yandex.ru/ru/docs/ai-studio/pricing
+- xAI official Grok 4.7 model card (input $2/M, cached $0.50/M, output $6/M, 500K context): https://docs.x.ai/developers/models/grok-4.7
+- xAI official API pricing, including long context, priority, batch and tool/media pricing: https://docs.x.ai/developers/pricing
+- xAI official Grok 4.7 announcement: https://x.ai/news/grok-4-7
+- Bank of Russia USD historical rate: https://www.cbr.ru/currency_base/daily/?UniDbQuery.Posted=True&UniDbQuery.To=20.11.2026
+- Amnezia Premium official Russian tariff page: https://amnezia.org/ru/premium
+- Poe official purchase FAQ (subscription from $4.99 and compute-point conditions): https://help.poe.com/hc/en-us/articles/19945140063636-Poe-Purchases-FAQs
+
+**Confidence:** high for the published source prices and FX arithmetic as of the stated snapshot; medium for Russian consumer competitiveness because checkout availability, regional pricing and payment acceptance vary. No quality equivalence is implied.
+
+
+## 5B. Grok Bot: a real cloud-computer competitor (checked 2026-11-20)
+
+Grok Bot is a direct competitor to the planned GLAFIRA AI-office experience—not merely a chat model.
+
+| Tier | Published monthly price | Included usage |
+|---|---:|---|
+| Premium | $30 (~2,458 RUB at 81.929 RUB/USD) | Grok Bot cloud computer, tool sign-in, scheduled routines, desktop/mobile, weekly Bot usage |
+| Super | $100 (~8,193 RUB) | Premium plus 3.5× Premium usage and priority model access |
+| Ultra | $200 (~16,386 RUB) | Super plus 12× Premium usage and earliest access |
+
+Important product details:
+- Each user's Bots share one persistent cloud computer (files, browser sessions and logins). The isolation boundary is per user, not per Bot; separate Bots are not separate security compartments.
+- Bots can run in parallel and continue on the cloud computer when the user's laptop is closed.
+- Windows, macOS and Linux desktop clients plus iOS/Android companion apps share the same Bots, conversations, routines and cloud computer.
+- The user can explicitly allow a Bot to execute on their local computer; local execution is not the default security boundary.
+- Usage is weekly pooled; extra usage can be billed based on token cost. This is not unlimited agent execution.
+- Routines have rate limits (up to 300 runs/hour across all routines and 200/hour per routine); a failed run is not automatically retried. Frequent routines consume the weekly usage pool quickly, and unattended routines may pause after long inactivity.
+
+**Competitive implication:** GLAFIRA must not claim that an AI teammate with a computer, tool sign-in, scheduled routines, parallel agents, mobile/desktop access or local execution with permission is unique. Grok Bot already markets all of these. GLAFIRA's defensible target is the combination of provider-neutral multi-model routing, durable cross-project task graph and evidence journal, user-controlled local Windows Desktop/Agent fleet, opt-in compute from independently owned devices, buyer-funded task marketplace, verifiable accepted-work rewards and an integrated optional VPN/service plane. These remain target-state claims until implemented and accepted.
+
+At 500 RUB/month, GLAFIRA's AI tier is far below Grok Bot Premium (~2,458 RUB/month) but above Poe's ~$4.99 entry tier (~409 RUB at the reference FX). This does not prove that 500 RUB is attractive: the included weekly/model usage, local execution, project continuity and task completion must be clearly specified. Never compare a capped 500-RUB plan with Grok Bot's cloud computer as if both provide unlimited work.
+
+Official sources:
+- Grok Bot pricing and product: https://x.ai/bot
+- Grok Bot setup, supported platforms and local execution boundary: https://docs.x.ai/grok-bot/get-started
+- Grok Bot routines, usage consumption and rate limits: https://docs.x.ai/grok-bot/skills-routines-and-automations
+- X Subscription shared usage pool: https://docs.x.ai/x-subscription/grok-bot
+
+## 5C. Compute and bandwidth contribution: real rates, payout friction and design lessons
+
+### GPU compute — Salad (not a smartphone benchmark)
+
+Salad's official GPU earning-rate page lists *active job* rates as of 2026-11-01. For example:
+- RTX 5070: $0.064–$0.160 per hour while a GPU job is running.
+- RTX 5070 Ti: $0.080–$0.216 per active job-hour.
+- RTX 5090: $0.200–$0.480 per active job-hour.
+
+These are not guaranteed 24-hour earnings. Salad explicitly says electricity and time between jobs are excluded from the published active-job rate. Its live earning dashboard separately reports average earnings per chopping hour, time with a job and top-chef outliers; these metrics must not be mixed with active-job tariffs.
+
+A community RTX 5090 owner reported ~40+ hours of high GPU utilization at ~497–500W and about $50 total, but clarified the jobs/rates were bursty and electricity cost mattered. This is one anecdote, not an average or earnings forecast.
+
+### Bandwidth sharing — Honeygain / JumpTask (not compute)
+
+Honeygain's current official payout rules illustrate how redemption friction affects user trust:
+- Honeygain mode: $20 minimum payout, PayPal/JumpTask-credit route, published $2.02 payout fee.
+- JumpTask mode: 1,000 credits = $1, cash-out from $0.50 (first payout minimum $1); gift-card/PayPal routes through the payout partner and fees vary by country.
+- Honeygain mode has a 5% earning boost; JumpTask mode does not. The user can switch modes, but previously earned balances are not retroactively redirected.
+
+This is bandwidth-sharing economics, not phone CPU/GPU compute. It should not be used to infer the earning potential of a smartphone running GLAFIRA's 10% compute ceiling.
+
+### What GLAFIRA should learn
+
+1. **Immediate utility first:** the AI workspace and VPN must be valuable without compute contribution. Token rewards are an optional extra, not a condition for using the service.
+2. **No tapping or artificial engagement:** no daily tap, check-in, ad watch, forced screen-on time, fake visits or uptime farming. The phone should contribute only when safe and useful.
+3. **Reward accepted work, not resource promises:** task result, quality, verification and requester acceptance determine reward; no pay for raw uptime or unverified benchmark claims.
+4. **Net reward transparency:** show measured incremental energy, data, active time, accepted workload, resource confidence, reward formula and pending/available GLF. For PCs, include actual job occupancy and incremental kWh; for phones, include the incremental draw over charging idle.
+5. **Low-friction usefulness:** small rewards should remain visible and usable inside the ecosystem if legal and unit economics permit. Avoid arbitrary high withdrawal thresholds and expiring balances. Do not promise cash redemption.
+6. **Different device classes, different economics:** a smartphone at a 10% ceiling is not a GPU server. Its tasks should be small, interruptible, Wi-Fi-only and scheduled only when charging/thermal/idle conditions allow. A desktop GPU can use a different workload and reward curve.
+7. **Demand-backed rewards:** if no buyer needs the work, there is no compute reward. Never mint rewards simply because a device stayed online.
+8. **Payout trust matters:** publish the minimum, fees, settlement delay, region restrictions, reversals and support route before enrollment. Honeygain's $20 vs $0.50 modes show how much the cash-out route changes perceived usability.
+
+Official sources:
+- Salad GPU earning rates: https://support.salad.com/faq/compatibility/compatible-gpus-and-earning-rates/
+- Salad live average dashboard: https://app.salad.io/earning-rates/
+- Salad electricity/profit calculation: https://support.salad.com/faq/jobs/calculating-profitability-and-electricity-costs/
+- Honeygain minimum payout and fees: https://support.honeygain.com/hc/en-us/articles/30688405604252-What-is-the-minimum-payout-threshold
+- Honeygain payout methods: https://support.honeygain.com/hc/en-us/articles/30688374419228-What-are-the-payout-methods
+- JumpTask mode: https://support.honeygain.com/hc/en-us/articles/30688517831708-What-is-JumpTask-mode
+- JumpTask credits: https://support.honeygain.com/hc/en-us/articles/30688558061084-What-are-credits-JumpTask
+- Verified user anecdote (RTX 5090): https://www.reddit.com/r/SaladChefs/comments/1vzmeyf/rtx_5090_on_salad_made_about_50_but_i_dont_think/
+
+**Evidence caution:** Salad's rates are provider-published but are job-availability dependent; the Reddit report is anecdotal; Honeygain's thresholds are provider policy and may change. None of these sources establish that GLAFIRA smartphone compute can earn a particular amount. GLAFIRA must measure its own accepted workloads and incremental energy before publishing any reward estimate.
