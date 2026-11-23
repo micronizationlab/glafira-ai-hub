@@ -20,6 +20,12 @@ public partial class MainWindow : Window
     private readonly GitHubDesktopTokenStore _githubTokenStore = new();
     private readonly GitHubDesktopCodingClient _githubCodingClient;
     private CancellationTokenSource? _githubAuthorizationCancellation;
+    private string? _githubActiveBranch;
+    private bool _githubBranchHasChanges;
+    private bool _githubDraftPullRequestOpened;
+    private string? _githubSelectedFilePath;
+    private string? _githubSelectedFileSha;
+    private readonly Dictionary<string, string> _githubWrittenFileShas = new(StringComparer.Ordinal);
     public MainWindow()
     {
         InitializeComponent();
@@ -320,7 +326,7 @@ public partial class MainWindow : Window
                     : "Подключение и доступ к разрешённому репозиторию подтверждены";
                 GitHubDisconnectButton.IsEnabled = true;
                 GitHubConnectButton.Content = "Переподключить GitHub";
-                GitHubDeviceInstructionsText.Text = "Сессия сохранена в DPAPI CurrentUser. Этот экран пока выполняет только проверку доступа и не изменяет GitHub.";
+                GitHubDeviceInstructionsText.Text = "Сессия сохранена в DPAPI CurrentUser. Создание feature-ветки, запись разрешённого файла и Draft PR доступны только после отдельных подтверждений владельца. Слияние недоступно.";
                 GitHubDeviceCodeText.Text = "";
                 return;
             }
@@ -410,7 +416,10 @@ public partial class MainWindow : Window
             var token = await GetGitHubAccessTokenAsync(CancellationToken.None);
             GitHubFileContentText.Text = await _githubCodingClient.ReadFileAsync(
                 token, GitHubDesktopAppConfiguration.AllowedRepository, selected.Path, "main");
-            GitHubWorkspaceStatusText.Text = $"Файл прочитан: {selected.Path}";
+            _githubSelectedFilePath = selected.Path;
+            _githubSelectedFileSha = selected.Sha;
+            GitHubWriteFileButton.IsEnabled = !string.IsNullOrWhiteSpace(_githubActiveBranch);
+            GitHubWorkspaceStatusText.Text = $"Файл прочитан из main: {selected.Path}. Редактор локальный; запись не выполнялась.";
         }
         catch (Exception error)
         {
@@ -420,6 +429,98 @@ public partial class MainWindow : Window
         {
             GitHubReadFileButton.IsEnabled = true;
         }
+    }
+
+    private async void GitHubCreateBranch_Click(object sender, RoutedEventArgs e)
+    {
+        var branch = GitHubFeatureBranchText.Text.Trim();
+        try { GitHubDesktopCodingClient.RequireWritableBranch(branch); }
+        catch (ArgumentException error) { GitHubWorkspaceStatusText.Text = error.Message; return; }
+        if (_githubActiveBranch is not null)
+        {
+            GitHubWorkspaceStatusText.Text = $"Ветка {_githubActiveBranch} уже активна. Для другой задачи начните новый сеанс.";
+            return;
+        }
+        var answer = MessageBox.Show(
+            $"Создать feature-ветку {branch} от main в разрешённом репозитории? Это создаст удалённую ветку, но не изменит main.",
+            "Подтверждение создания GitHub-ветки", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        GitHubCreateBranchButton.IsEnabled = false;
+        GitHubWorkspaceStatusText.Text = $"Создаём ветку {branch} от main…";
+        try
+        {
+            var token = await GetGitHubAccessTokenAsync(CancellationToken.None);
+            await _githubCodingClient.CreateBranchAsync(token, GitHubDesktopAppConfiguration.AllowedRepository, branch, "main");
+            _githubActiveBranch = branch;
+            _githubBranchHasChanges = false;
+            _githubDraftPullRequestOpened = false;
+            _githubWrittenFileShas.Clear();
+            GitHubCreateBranchButton.IsEnabled = false;
+            GitHubWriteFileButton.IsEnabled = !string.IsNullOrWhiteSpace(_githubSelectedFilePath);
+            GitHubOpenDraftPullRequestButton.IsEnabled = false;
+            GitHubFeatureBranchText.IsEnabled = false;
+            GitHubWorkspaceStatusText.Text = $"Создана отдельная ветка {branch}. main не изменён.";
+        }
+        catch (Exception error) { GitHubWorkspaceStatusText.Text = error.Message; GitHubCreateBranchButton.IsEnabled = true; }
+    }
+
+    private async void GitHubWriteFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_githubActiveBranch is null || string.IsNullOrWhiteSpace(_githubSelectedFilePath) ||
+            string.IsNullOrWhiteSpace(_githubSelectedFileSha))
+        {
+            GitHubWorkspaceStatusText.Text = "Сначала создайте feature-ветку и прочитайте выбранный файл из main.";
+            return;
+        }
+        try { GitHubDesktopCodingClient.RequireWritablePath(_githubSelectedFilePath); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        { GitHubWorkspaceStatusText.Text = error.Message; return; }
+        var answer = MessageBox.Show(
+            $"Записать содержимое файла:\n{_githubSelectedFilePath}\n\nВ ветку: {_githubActiveBranch}\n\nЭто создаст commit в feature-ветке. main не изменится. Продолжить?",
+            "Подтверждение записи файла", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        GitHubWriteFileButton.IsEnabled = false;
+        try
+        {
+            var token = await GetGitHubAccessTokenAsync(CancellationToken.None);
+            var expectedSha = _githubWrittenFileShas.TryGetValue(_githubSelectedFilePath, out var writtenSha)
+                ? writtenSha : _githubSelectedFileSha;
+            var result = await _githubCodingClient.WriteFileAsync(
+                token, GitHubDesktopAppConfiguration.AllowedRepository, _githubSelectedFilePath,
+                GitHubFileContentText.Text, $"GLAFIRA: update {_githubSelectedFilePath}", _githubActiveBranch, expectedSha);
+            _githubWrittenFileShas[_githubSelectedFilePath] = result.ContentSha;
+            _githubBranchHasChanges = true;
+            GitHubOpenDraftPullRequestButton.IsEnabled = !_githubDraftPullRequestOpened;
+            GitHubWorkspaceStatusText.Text = $"Файл записан в {_githubActiveBranch}. Commit: {result.CommitSha}. main не изменён.";
+        }
+        catch (Exception error) { GitHubWorkspaceStatusText.Text = error.Message; }
+        finally { GitHubWriteFileButton.IsEnabled = _githubActiveBranch is not null; }
+    }
+
+    private async void GitHubOpenDraftPullRequest_Click(object sender, RoutedEventArgs e)
+    {
+        if (_githubActiveBranch is null || !_githubBranchHasChanges || _githubDraftPullRequestOpened)
+        {
+            GitHubWorkspaceStatusText.Text = "Сначала запишите хотя бы один файл в feature-ветку.";
+            return;
+        }
+        var title = GitHubPullRequestTitleText.Text.Trim();
+        var body = GitHubPullRequestBodyText.Text.Trim();
+        if (string.IsNullOrWhiteSpace(title)) { GitHubWorkspaceStatusText.Text = "Укажите заголовок Draft PR."; return; }
+        var answer = MessageBox.Show(
+            $"Открыть Draft PR из {_githubActiveBranch} в main?\n\nСлияние не выполняется. PR останется черновиком до отдельной проверки.",
+            "Подтверждение создания Draft PR", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        GitHubOpenDraftPullRequestButton.IsEnabled = false;
+        try
+        {
+            var token = await GetGitHubAccessTokenAsync(CancellationToken.None);
+            var pullRequest = await _githubCodingClient.OpenDraftPullRequestAsync(
+                token, GitHubDesktopAppConfiguration.AllowedRepository, title, body, _githubActiveBranch, "main");
+            _githubDraftPullRequestOpened = true;
+            GitHubWorkspaceStatusText.Text = $"Draft PR #{pullRequest.Number} создан: {pullRequest.Url}. Слияние не выполнялось.";
+        }
+        catch (Exception error) { GitHubWorkspaceStatusText.Text = error.Message; GitHubOpenDraftPullRequestButton.IsEnabled = true; }
     }
 
     private void GitHubCancel_Click(object sender, RoutedEventArgs e) =>
