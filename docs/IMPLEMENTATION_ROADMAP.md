@@ -53,6 +53,8 @@ No rented server or paid backend is required for the initial implementation. And
 
 ## Priority 3 — Autonomous Runtime, Bridge, Roles and Voice
 
+The owner-controlled 24/7 runtime model, Android foreground-service/WorkManager split, recovery behavior and honest uptime limitations are specified in [GLAFIRA Autonomous Runtime — 24/7 operating model](GLAFIRA_AUTONOMOUS_RUNTIME_24X7.md).
+
 1. Make role definitions executable and provider-independent.
 2. Add role registry and project-level assignment.
 3. Implement the optional Voice Assistant plugin with a simple enable/disable, plugin selection and availability status.
