@@ -60,4 +60,29 @@ final class GlafiraSettingsViewTests: XCTestCase {
         XCTAssertEqual(row.statusTitle, "Ошибка состояния")
         XCTAssertTrue(row.requiresAttention)
     }
+
+    func testMixedSummarySeparatesActiveAndUnpairedDevices() throws {
+        let paired = try MobileHubPairingState.paired(
+            deviceId: "ios-device-active",
+            desktopHubId: "desktop-hub-0001",
+            endpoint: "https://192.168.1.20:8443/bridge/v1",
+            certificateSHA256: String(repeating: "d", count: 64),
+            expiresAtEpochMs: 2_000_000,
+            nowEpochMs: 1_900_000
+        )
+        let unpaired = MobileHubPairingState.disconnected(
+            .unpaired,
+            deviceId: "ios-device-unpaired"
+        )
+
+        let summary = GlafiraSettingsSummary(
+            pairingStates: [paired, unpaired],
+            pendingOperationCount: 0,
+            conflictCount: 0
+        )
+
+        XCTAssertEqual(summary.activePairingCount, 1)
+        XCTAssertEqual(summary.attentionPairingCount, 1)
+        XCTAssertEqual(GlafiraPairingSettingsRow(unpaired).statusTitle, "Не подключено")
+    }
 }
