@@ -61,7 +61,7 @@ class GlafiraProviderContextPolicyTest {
         val restricted = item.copy(classification = GlafiraProviderDataClassification.RESTRICTED)
         val result = GlafiraProviderContextPolicy.assemble("project-a", ProviderId.OPENAI, listOf(restricted), fixed, now)
         assertTrue(result.allowedItems.isEmpty())
-        assertEquals(GlafiraProviderContextDenial.CLASSIFICATION_NOT_GRANTED, result.deniedItems.single().second)
+        assertEquals(GlafiraProviderContextDenial.RESTRICTED_NEVER_SHARED, result.deniedItems.single().second)
         val error = runCatching {
             @Suppress("UNCHECKED_CAST")
             (fixed.allowedClassifications as MutableSet<GlafiraProviderDataClassification>)
