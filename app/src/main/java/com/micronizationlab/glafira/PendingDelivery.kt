@@ -36,23 +36,52 @@ internal object PendingDeliveryRuntime {
 
 internal fun appendPendingUserMessage(context: Context, message: PendingMessage): List<Msg> =
     updateHistory(context, "${message.projectId}_${message.agentName}") { current ->
-        if (current.any { it.operationId == message.id && it.isUser }) current
-        else {
-            // The old queue already wrote its user message before enqueueing. Adopt that row.
-            val legacyIndex = current.indexOfLast { it.isUser && it.operationId.isEmpty() && it.text == message.text && it.time == message.time }
-            if (legacyIndex >= 0 && message.date.isEmpty()) current.mapIndexed { index, row -> if (index == legacyIndex) row.copy(operationId = message.id) else row }
-            else current + Msg(message.text, true, message.time, message.date, message.id)
-        }
+        reconcilePendingUserHistory(current, message)
     }
+
+internal fun reconcilePendingUserHistory(current: List<Msg>, message: PendingMessage): List<Msg> {
+    val bound = current.filter { it.operationId == message.id && it.isUser }
+    check(bound.size <= 1) { "PENDING_HISTORY_USER_DUPLICATE" }
+    check(bound.all { it.text == message.text }) { "PENDING_HISTORY_USER_CONFLICT" }
+    if (bound.isNotEmpty()) return current
+
+    // The old queue already wrote its user message before enqueueing. Adopt that row.
+    val legacyIndex = current.indexOfLast {
+        it.isUser && it.operationId.isEmpty() && it.text == message.text && it.time == message.time
+    }
+    return if (legacyIndex >= 0 && message.date.isEmpty()) {
+        current.mapIndexed { index, row ->
+            if (index == legacyIndex) row.copy(operationId = message.id) else row
+        }
+    } else {
+        current + Msg(message.text, true, message.time, message.date, message.id)
+    }
+}
+
+internal fun reconcilePendingResultHistory(
+    current: List<Msg>,
+    message: PendingMessage,
+    result: String,
+    time: String,
+    date: String
+): List<Msg> {
+    val bound = current.filter { it.operationId == message.id && !it.isUser }
+    check(bound.size <= 1) { "PENDING_HISTORY_RESULT_DUPLICATE" }
+    check(bound.all { it.text == result }) { "PENDING_HISTORY_RESULT_CONFLICT" }
+    return if (bound.isNotEmpty()) current
+    else current + Msg(result, false, time, date, message.id)
+}
 
 private fun deliverSavedResult(context: Context, message: PendingMessage) {
     val result = message.result ?: return
     appendPendingUserMessage(context, message)
     val now = Date()
-    appendHistory(context, "${message.projectId}_${message.agentName}", listOf(Msg(
-        result, false, SimpleDateFormat("HH:mm", Locale.getDefault()).format(now),
-        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now), message.id
-    )))
+    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
+    val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
+    updateHistory(context, "${message.projectId}_${message.agentName}") { current ->
+        reconcilePendingResultHistory(current, message, result, time, date)
+    }
+    // A conflicting row must leave RESULT_READY intact for owner-visible recovery.
     pendingMessageStore(context).delivered(message.id)
 }
 
