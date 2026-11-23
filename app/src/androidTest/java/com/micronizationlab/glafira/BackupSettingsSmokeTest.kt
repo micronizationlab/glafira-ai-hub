@@ -1,19 +1,26 @@
 package com.micronizationlab.glafira
 
 import android.content.Intent
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.uiautomator.By
-import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class BackupSettingsSmokeTest {
+    @get:Rule
+    val compose = createEmptyComposeRule()
+
     @Test
     fun manualBackupActionRemainsEnabledAndExplainsMissingFolder() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -37,56 +44,30 @@ class BackupSettingsSmokeTest {
             )
         )
         try {
-            val device = UiDevice.getInstance(instrumentation)
-            assertTrue(
-                "GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
-            )
-            val settingsButton = device.findObject(By.descContains("Открыть настройки"))
-            assertTrue(
-                "Settings action is not visible",
-                settingsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
-            )
-            settingsButton.click()
-            assertTrue(
-                "Settings screen did not open",
-                device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
-            )
-
-            // Compose Settings is a verticalScroll Column. The heading is not a stable
-            // accessibility selector on every emulator API level, so locate the actual
-            // actionable semantic node while moving through the viewport in bounded steps.
-            val buttonSelector = By.descContains("Создать резервную копию сейчас")
-            var saveAction = device.wait(Until.findObject(buttonSelector), 500)
-            repeat(16) {
-                if (saveAction == null) {
-                    device.swipe(
-                        device.displayWidth / 2,
-                        (device.displayHeight * 0.82f).toInt(),
-                        device.displayWidth / 2,
-                        (device.displayHeight * 0.28f).toInt(),
-                        18
-                    )
-                    saveAction = device.wait(Until.findObject(buttonSelector), 500)
-                }
+            compose.waitUntil(20_000) {
+                compose.onAllNodesWithText("СЕТЬ АГЕНТОВ · 2003")
+                    .fetchSemanticsNodes().isNotEmpty()
             }
-            assertNotNull("Manual backup button is not reachable in Settings", saveAction)
-            val button = requireNotNull(saveAction)
-            assertTrue("Manual backup button is disabled before input", button.isEnabled)
-            val bounds = button.visibleBounds
-            assertTrue(
-                "Manual backup action is not visible",
-                bounds.width() > 0 && bounds.height() > 0
+            compose.onNodeWithContentDescription("Открыть настройки")
+                .performClick()
+            compose.onNodeWithText("НАСТРОЙКИ")
+                .assertExists("Settings screen did not open")
+
+            // Drive the Compose semantics node directly. UiAutomator can resolve a virtual
+            // accessibility node whose center belongs to the adjacent export action after
+            // the scrolling column is repositioned, so a successful click there did not
+            // prove that the manual backup action actually ran.
+            compose.onNodeWithContentDescription(
+                "Создать резервную копию сейчас",
+                substring = true
             )
-            button.click()
-            device.waitForIdle()
-            val guidance = device.wait(
-                Until.findObject(By.textContains("Сначала выбери папку")), 10_000
-            )
-            assertNotNull(
-                "Missing-folder guidance was not shown after the manual backup action",
-                guidance
-            )
+                .performScrollTo()
+                .assertIsEnabled()
+                .performClick()
+            compose.onNodeWithText("Сначала выбери папку", substring = true)
+                .assertExists(
+                    "Missing-folder guidance was not shown after the manual backup action"
+                )
         } finally {
             scenario.close()
         }
