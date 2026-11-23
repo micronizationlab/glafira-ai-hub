@@ -467,6 +467,7 @@ public partial class MainWindow : Window
             _githubBranchHasChanges = false;
             _githubDraftPullRequestOpened = false;
             _githubWrittenFileShas.Clear();
+            GitHubCreateBranchButton.IsEnabled = false;
             GitHubWriteFileButton.IsEnabled = !string.IsNullOrWhiteSpace(_githubSelectedFilePath);
             GitHubOpenDraftPullRequestButton.IsEnabled = false;
             GitHubFeatureBranchText.IsEnabled = false;
