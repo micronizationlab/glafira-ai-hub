@@ -36,8 +36,8 @@ When commercial activation is explicitly scheduled:
 
 1. Maintain a versioned capability manifest for each role and tier.
 2. Resolve the effective tier per role from the role's valid entitlement; default to Standard only after the future rollout is deliberately activated.
-3. Support an independently purchasable Premium Upgrade for each role.
-4. Verify purchase/restore/refund/revocation through a trusted entitlement/billing boundary. Do not trust a client-side flag or a value supplied by an LLM.
+3. Support an independently purchasable Premium Upgrade for each role. The intended settlement currency is the GLAFIRA network token recorded in `docs/GLAFIRA_NETWORK_BUSINESS_AND_TOKEN_ECONOMY.md`; do not substitute fiat billing or a third-party payment processor by assumption.
+4. Verify purchase/restore/refund/revocation through the authoritative Mother token ledger and trusted entitlement boundary. Token debit and role entitlement grant must be atomic or recoverably idempotent, bound to the account, stable role ID, entitlement version and ledger transaction. Do not trust a client-side flag or a value supplied by an LLM.
 5. Make entitlement checks available to the authoritative Core at execution time; UI visibility alone must never grant a capability.
 6. Record entitlement changes and capability decisions in the audit/Trace trail without logging payment secrets or credentials.
 7. Define offline behavior, entitlement expiry, refunds and revocation before enabling paid upgrades; fail closed for Premium-only operations when entitlement validity cannot be established, while preserving safe Standard functionality.
