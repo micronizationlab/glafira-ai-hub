@@ -576,3 +576,47 @@ The target differentiation is the combination of persistent owner-controlled pro
 This is a target-state description, not a current feature claim. The current build was characterized in a 2026-11-18 external technical review as an Android LLM-orchestration client with nascent multi-agent logic; Web/Browser Agent, Desktop Bridge and CRM were still planned. Every public claim must be gated by implementation and end-to-end acceptance.
 
 The proposed 500 RUB GLAFIRA subscription must be compared directly with multi-model aggregators such as Poe, whose published entry subscription starts at $4.99/month (about 409 RUB at the 2026-11-20 CBR rate before local tax/pricing) and uses capped compute points. GLAFIRA's premium over that entry price must be justified by operational workspaces, agents, local/desktop execution, service network value and transparent optional contribution rewards.
+
+
+## 17. GLAFIRA identity card and wallet-to-wallet settlement
+
+### 17.1 One portable GLAFIRA identity card
+
+The same GLAFIRA identity card is used to address another GLAFIRA in peer communication and to select a recipient for token transfers. The card is intended to be shareable through any ordinary messaging channel. Its human-facing fields are:
+
+- `nickname`: the public GLAFIRA nickname shown to the sender;
+- `networkAddress`: the GLAFIRA network address/locator used to reach or resolve that GLAFIRA;
+- `cardVersion`: version of the card format;
+- optional display metadata and a verifiable signature/key fingerprint where the protocol supports it.
+
+The card is a portable address, not an authentication credential. A nickname or network address alone must never prove ownership, authorize a chat, grant project access, or authorize a payment. On import, GLAFIRA validates the card format and resolves it through the trusted directory/Mother registry (or an explicitly trusted, authenticated directory path) to an immutable `accountId` and current recipient key/status. Network addresses may change; they are locators, not immutable account identities. A stale, revoked, ambiguous or unverified card must fail closed and require the sender to obtain an updated card or complete an explicit verification flow.
+
+### 17.2 Wallet is a first-class capability of every GLAFIRA
+
+Every registered GLAFIRA account has its own token wallet. The wallet is available in the GLAFIRA client and supports both directions:
+- **Send:** the owner can transfer available tokens from this wallet to another GLAFIRA/member wallet.
+- **Receive:** this wallet can receive token transfers initiated by another GLAFIRA/member.
+- **Spend with Mother:** the wallet can pay for Mother-provided services, including GLAFIRA AI/Premium entitlements and VPN plans, according to published tariffs.
+- **Receive from Mother/network:** authorized issuance, accepted contribution rewards, grants or other approved credits are posted to the same wallet through the authoritative ledger.
+
+The wallet is therefore not merely a payment instrument for Mother services. Peer-to-peer settlement between GLAFIRA wallets is a first-class network function. Mother remains the initial authoritative registry, issuer and ledger operator; this does not make Mother the beneficiary or counterparty of every transfer. A peer transfer moves value from the sender's wallet to the recipient's wallet and does not represent a service purchase from Mother.
+
+### 17.3 Send and receive experience using the identity card
+
+A sender opens **Wallet → Send / Pay**, imports or pastes the recipient's GLAFIRA identity card (or enters its nickname and network address), enters the amount and reviews a confirmation screen. GLAFIRA resolves the card to the canonical recipient account and displays the resolved nickname plus a safe verification hint before the sender confirms. The transfer is posted only after explicit confirmation and authoritative ledger validation.
+
+The recipient does not need to be online. Once posted, the credit belongs to the recipient wallet in the authoritative ledger; notification and local wallet display synchronize when the recipient GLAFIRA next connects. A receiver can likewise share its identity card so another GLAFIRA can send tokens to it. The sender must never be able to redirect a payment silently by changing a network address after confirmation: the confirmed transfer binds the canonical recipient `accountId`, resolved card fingerprint/key version, amount, currency/token unit, fee (if any; default not established), and idempotency key.
+
+### 17.4 Peer settlement, trust and safeguards
+
+- Resolve nickname + network address to one immutable `accountId`; reject ambiguity and stale/revoked mappings.
+- Show the exact resolved recipient before confirmation; provide a safe way to compare the recipient's card/fingerprint through the out-of-band channel used to share it.
+- The card is not a bearer token, password, private key, payment authorization or proof of consent.
+- Require sender authentication and explicit confirmation bound to recipient, amount and transaction digest. Step-up authentication and limits may apply to high-risk transfers.
+- Use the same central double-entry ledger, atomic debit/credit, no-overdraft, idempotency, concurrency controls, immutable journal and compensating reversal rules defined in Section 6.
+- Record peer transfer counterparty IDs and ledger references; never store private keys or raw authentication secrets in the card or transaction metadata.
+- A transfer is not a Mother service charge. Separate transaction types and receipts must distinguish `PEER_TRANSFER`, `AI_SERVICE_CHARGE`, `VPN_SERVICE_CHARGE`, `REWARD_CREDIT`, `ISSUANCE` and `REVERSAL`.
+- Do not claim direct offline settlement or independent local minting. If Mother/the authoritative ledger is unreachable, a new transfer remains pending locally and must not be shown as posted or spendable until authoritative commit.
+- Any future direct peer settlement without Mother requires a separate owner-approved protocol, double-spend prevention design, legal review and reconciliation model; it is not implied by the portable card.
+
+This extends the wallet and transfer direction without approving token prices, cash redemption, external blockchain settlement or new issuance policy.
