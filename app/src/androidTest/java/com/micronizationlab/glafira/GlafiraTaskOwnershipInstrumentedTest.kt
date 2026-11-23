@@ -248,6 +248,104 @@ class GlafiraTaskOwnershipInstrumentedTest {
         ).use { it.moveToFirst() })
     }
 
+    @Test
+    fun coreB_cannotClaimTaskOwnedByCoreA() {
+        val coreA = store("android-core-owner-a")
+        val coreB = store("android-core-owner-b")
+        val item = task("ownership-isolated-claim")
+        assertTrue(coreA.enqueue(item).inserted)
+
+        assertNull(coreB.claimNextOwned(2_000L))
+        val claim = requireNotNull(coreA.claimNextOwned(2_000L))
+        assertEquals(item.taskId, claim.task.taskId)
+        assertEquals("android-core-owner-a", claim.ownershipToken.ownerCoreId)
+        assertEquals(1L, claim.ownershipToken.ownerGeneration)
+    }
+
+    @Test
+    fun staleOwnerGenerationCannotTransitionOrCommitResultAfterGenerationChanges() {
+        val core = store("android-core-generation-a")
+        val item = task("ownership-stale-generation")
+        assertTrue(core.enqueue(item).inserted)
+        val staleClaim = requireNotNull(core.claimNextOwned(2_000L))
+
+        // Simulate a committed ownership-generation handoff while an old executor is still alive.
+        core.writableDatabase.execSQL(
+            "UPDATE core_task_ownership SET owner_generation = 2 WHERE task_id = ?",
+            arrayOf(item.taskId)
+        )
+        core.writableDatabase.execSQL(
+            "UPDATE core_tasks SET state = ?, updated_at = ? WHERE task_id = ?",
+            arrayOf(GlafiraTaskState.QUEUED.databaseValue, 3_000L, item.taskId)
+        )
+
+        assertFalse(core.transitionOwned(
+            staleClaim.ownershipToken,
+            setOf(GlafiraTaskState.QUEUED),
+            GlafiraTaskState.RUNNING,
+            4_000L
+        ))
+        val currentClaim = requireNotNull(core.claimNextOwned(5_000L))
+        assertEquals(2L, currentClaim.ownershipToken.ownerGeneration)
+        assertFalse(core.persistCoreTaskResultOwned(
+            staleClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            "stale-result",
+            6_000L
+        ))
+        assertTrue(core.persistCoreTaskResultOwned(
+            currentClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            "current-result",
+            6_000L
+        ))
+        assertEquals("current-result", core.coreTaskResult(item.taskId, item.projectId)?.result)
+    }
+
+    @Test
+    fun staleClaimWithinSameOwnerGenerationCannotCommitAfterRetryAndReclaim() {
+        val core = store("android-core-same-generation")
+        val item = task("ownership-stale-claim-same-generation")
+        assertTrue(core.enqueue(item).inserted)
+
+        val firstClaim = requireNotNull(core.claimNextOwned(2_000L))
+        assertTrue(core.transitionOwned(
+            firstClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            GlafiraTaskState.RETRY_SCHEDULED,
+            2_500L,
+            retryAtMillis = 3_000L,
+            lastError = "TEST_RETRY"
+        ))
+
+        val secondClaim = requireNotNull(core.claimNextOwned(3_001L))
+        assertEquals(firstClaim.ownershipToken.ownerCoreId, secondClaim.ownershipToken.ownerCoreId)
+        assertEquals(firstClaim.ownershipToken.ownerGeneration, secondClaim.ownershipToken.ownerGeneration)
+        assertTrue(secondClaim.ownershipToken.stateVersion > firstClaim.ownershipToken.stateVersion)
+
+        assertFalse(core.transitionOwned(
+            firstClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            GlafiraTaskState.FAILED,
+            3_500L,
+            lastError = "LATE_FAILURE_FROM_FIRST_CLAIM"
+        ))
+        assertFalse(core.persistCoreTaskResultOwned(
+            firstClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            "late-result-from-first-claim",
+            4_000L
+        ))
+        assertTrue(core.persistCoreTaskResultOwned(
+            secondClaim.ownershipToken,
+            setOf(GlafiraTaskState.RUNNING),
+            "result-from-current-claim",
+            4_001L
+        ))
+        assertEquals("result-from-current-claim",
+            core.coreTaskResult(item.taskId, item.projectId)?.result)
+    }
+
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
     }
