@@ -59,11 +59,17 @@ class BackupSettingsSmokeTest {
             )
             assertNotNull("Backup section is not reachable in Settings", backupHeading)
 
-            val saveButton = scrollable.scrollIntoView(
+            val backupActionFound = scrollable.scrollIntoView(
                 UiSelector().descriptionContains("Создать резервную копию сейчас")
             )
-            assertNotNull("Manual backup button is not visible in Settings", saveButton)
-            assertTrue("Manual backup button is disabled before input", saveButton.isEnabled())
+            assertNotNull("Manual backup button is not visible in Settings", backupActionFound)
+            val saveButton = requireNotNull(
+                device.wait(
+                    Until.findObject(By.descContains("Создать резервную копию сейчас")),
+                    5_000
+                )
+            ) { "Manual backup button disappeared after scrolling" }
+            assertTrue("Manual backup button is disabled before input", saveButton.isEnabled)
             saveButton.click()
             device.waitForIdle()
             val guidance = device.wait(
