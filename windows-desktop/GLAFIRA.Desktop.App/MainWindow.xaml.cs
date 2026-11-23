@@ -501,12 +501,7 @@ public partial class MainWindow : Window
         }
 
         var answer = MessageBox.Show(
-            $"Записать содержимое файла:
-{_githubSelectedFilePath}
-
-В ветку: {_githubActiveBranch}
-
-Это создаст commit в feature-ветке. main не изменится. Продолжить?",
+            $"Записать содержимое файла:\n{_githubSelectedFilePath}\n\nВ ветку: {_githubActiveBranch}\n\nЭто создаст commit в feature-ветке. main не изменится. Продолжить?",
             "Подтверждение записи файла",
             MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (answer != MessageBoxResult.Yes) return;
@@ -558,9 +553,7 @@ public partial class MainWindow : Window
         }
 
         var answer = MessageBox.Show(
-            $"Открыть Draft PR из {_githubActiveBranch} в main?
-
-Слияние не выполняется. PR останется черновиком до отдельной проверки.",
+            $"Открыть Draft PR из {_githubActiveBranch} в main?\n\nСлияние не выполняется. PR останется черновиком до отдельной проверки.",
             "Подтверждение создания Draft PR",
             MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (answer != MessageBoxResult.Yes) return;
