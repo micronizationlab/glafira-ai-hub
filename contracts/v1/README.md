@@ -149,3 +149,16 @@ The signature covers every transfer field except `signature`, in the exact field
 **Important limitation:** the current fixture's signature is deliberately a placeholder and is not cryptographically valid. The schema and canonicalization checks do not verify a signature, establish a trusted old-Core public key, enforce key revocation, or persist a transfer inbox/outbox. Production adoption requires platform-level ECDSA verification against the authenticated old-Core identity, durable nonce replay protection, atomic owner-generation compare-and-set, and adversarial two-Core acceptance. No failover or task ownership mutation is enabled by this schema-only change.
 
 Android and iOS owner clients may maintain a non-authoritative ownership projection. They must resolve the old Core's public key by the authenticated Core ID, key epoch and SHA-256 fingerprint; verify the fixed-width P-256 signature; require the current time to be inside the signed validity window; and advance only from the exact recorded old owner/generation and state binding to the signed next generation. An exact transfer retry is idempotent, while a reused transfer ID, stale generation, divergent state or untrusted key fails closed without replacing the projection. This projection does not issue leases, authorize execution or make a mobile client a Hub; Windows Hub remains authoritative.
+
+
+## Project coordinator and multi-node participation v1
+
+The separate `project-coordinator.schema.json` defines four versioned messages:
+- `ProjectNodeRecord`: enrolled Android, Windows Desktop, iOS or Windows Agent installation, with platform, capabilities, enrollment/credential epochs, liveness sequence and explicit coordinator eligibility.
+- `CoordinatorLeaseRecord`: project coordinator identity, monotonic generation, lease, heartbeat sequence and node signature.
+- `CoordinatorClaimRequest`: signed compare-and-swap claim against the generation and lease observed by the candidate.
+- `ProjectTaskClaimRecord`: task claim bound to coordinator generation, task state version, idempotency key and fencing token.
+
+The fixtures and validator are part of the same v1 conformance gate. A subordinate `WORKER_AGENT` is schema-ineligible to elect itself. A Windows Agent may participate in election only after explicit provisioning as a full GLAFIRA node. This project-level coordinator role never replaces per-task Core ownership, owner approval or the Windows Hub's local Agent-fleet role.
+
+The schema describes message shape, not storage atomicity. A runtime must implement GitHub ref compare-and-swap using a non-force fast-forward update from the exact observed parent, and prove concurrent claims have exactly one winner. It must use GitHub's HTTPS response `Date` header (or another independently trusted server-time source) for lease decisions; device wall clocks and commit author timestamps are not authoritative. A read-then-write sequence without CAS is not an election protocol.
