@@ -314,9 +314,24 @@ class GlafiraCoreOwnerApprovalStore(
                     "task_id = ? AND status = ? AND owner_core_id = ? AND owner_generation = ?",
                     arrayOf(task.taskId, APPROVED, row.ownerCoreId.orEmpty(), row.ownerGeneration.toString())
                 )
-            } else if (row != null && row.status == APPROVED && row.grantExpiresAt <= nowMillis) {
-                db.update("core_action_approvals", ContentValues().apply { put("status", EXPIRED) },
-                    "task_id = ? AND status = ?", arrayOf(task.taskId, APPROVED))
+            } else if (row != null && row.status == APPROVED && row.grantExpiresAt <= nowMillis &&
+                ownershipMatches(task, row.ownerCoreId, row.ownerGeneration) &&
+                row.projectId == task.projectId && row.toolId == task.taskType && row.actionHash == hash
+            ) {
+                val expired = db.update(
+                    "core_action_approvals",
+                    ContentValues().apply { put("status", EXPIRED) },
+                    "task_id = ? AND status = ? AND owner_core_id = ? AND owner_generation = ?",
+                    arrayOf(task.taskId, APPROVED, row.ownerCoreId.orEmpty(), row.ownerGeneration.toString())
+                )
+                if (expired == 1) {
+                    appendApprovalTrace(
+                        db, task,
+                        GlafiraCoreTraceEventType.APPROVAL_EXPIRED,
+                        "OWNER_APPROVAL_EXPIRED", nowMillis,
+                        resultStatus = "expired"
+                    )
+                }
             }
             db.setTransactionSuccessful()
         } finally {
@@ -329,6 +344,20 @@ class GlafiraCoreOwnerApprovalStore(
     fun pendingApprovals(nowMillis: Long = System.currentTimeMillis(), limit: Int = 100): List<GlafiraPendingActionApproval> {
         require(limit in 1..100)
         return inDatabaseTransaction { database ->
+            // Capture only approvals that still belong to the task's current owner generation.
+            // Stale approvals are invalidated below, but must not be attributed to a new owner.
+            val expiredRows = database.rawQuery(
+                "SELECT a.task_id, a.project_id FROM core_action_approvals a " +
+                    "INNER JOIN core_task_ownership o ON o.task_id = a.task_id " +
+                    "AND o.project_id = a.project_id AND o.owner_core_id = a.owner_core_id " +
+                    "AND o.owner_generation = a.owner_generation " +
+                    "WHERE a.status = ? AND a.expires_at <= ?",
+                arrayOf(PENDING, nowMillis.toString())
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(0) to cursor.getString(1))
+                }
+            }
             database.update(
                 "core_action_approvals",
                 ContentValues().apply { put("status", EXPIRED) },
@@ -362,6 +391,17 @@ class GlafiraCoreOwnerApprovalStore(
                     GlafiraTaskState.WAITING_FOR_OWNER.databaseValue, EXPIRED, nowMillis
                 )
             )
+            expiredRows.forEach { (taskId, projectId) ->
+                val task = taskStore.getTask(taskId)
+                if (task != null && task.projectId == projectId) {
+                    appendApprovalTrace(
+                        database, task,
+                        GlafiraCoreTraceEventType.APPROVAL_EXPIRED,
+                        "OWNER_APPROVAL_EXPIRED", nowMillis,
+                        resultStatus = "expired"
+                    )
+                }
+            }
             val rows = database.query(
                 "core_action_approvals",
                 arrayOf("task_id", "action_hash", "requested_scopes", "requested_at", "expires_at", "owner_core_id", "owner_generation"),
