@@ -102,6 +102,21 @@ These are snapshot statuses, not permanent truths. Always fetch current PR metad
 - **#117 (P1):** VPN control plane, token tariffs, per-device provisioning and isolated VPN nodes.
 - Related existing work: **#106** shared project workspaces; **#107** AI-provider/energy-token research; **#109** VPN app/self-hosted infrastructure; **#110** native iOS and Windows Desktop; **#112** account-owned replication/recovery; **#113** trusted cooperation between independently owned GLAFIRAs.
 
+## Mandatory PR size rules
+
+Every contributor and AI helper, including Berestovkon, must follow [PR Size and Merge Policy](engineering/PR_SIZE_AND_MERGE_POLICY.md):
+
+- Target **50–150 changed lines** and **no more than 5 files** per PR.
+- **200 changed lines is the normal hard ceiling.**
+- **201–300 lines** is an exception only with the owner's/integrator's written approval obtained before implementation; maximum 10 files.
+- **More than 300 lines is prohibited** for an ordinary implementation PR and must be split.
+- Count additions + deletions, not net changes. Tests/docs count too. Generated artifacts must be identified separately and cannot conceal broad handwritten changes.
+- One PR = one logical change. Split Android, iOS, Windows, Core, Backup and Bridge work into dependency-ordered PRs. Check current main, active PRs and file overlaps first.
+- Never push directly to main, merge your own PR, bypass protection or report skipped/cancelled checks as passed.
+- If the task exceeds the limit, stop and submit a short split plan before coding.
+
+These limits apply to every assistant/helper without exception based on contributor identity. The policy document is normative; if this handoff conflicts with it, the stricter rule applies.
+
 ## 7. How to collaborate safely
 
 Before coding:
