@@ -3,6 +3,28 @@
 **Purpose:** provide a reliable entry point for any collaborating engineer or AI assistant, including Костя.  
 **Important:** this is a handoff and navigation document, not proof that listed features are implemented.
 
+## Mandatory first-visit instruction for every new GLAFIRA helper
+
+Before starting any assigned subproject, every new AI helper/coding agent must:
+
+1. Read this handoff and `.github/copilot-instructions.md` completely.
+2. Refresh current GitHub state and exact-head CI; this document's PR/issue tables are snapshots.
+3. Analyze the **whole GLAFIRA platform first**—purpose, product architecture, Android and Windows Desktop Core independence, owner authority, security, GitHub execution, Bridge, Backup & Recovery, failover, and current blockers. Return concrete additions and alternative development paths with benefits, risks, dependencies, free-first options and priorities.
+4. Submit that analysis for owner discussion. This is not implementation authorization. Do not open feature PRs or change architecture/priorities based on your own recommendations.
+5. Then analyze your separately assigned project and clearly distinguish findings from approved decisions.
+
+### Berestovkon — pending owner-requested analysis
+
+The required starting point is [GitHub issue #473](https://github.com/micronizationlab/glafira-ai-hub/issues/473). The deliverable must contain three separate parts in this order:
+
+- **First: GLAFIRA itself.** Platform-wide review and development proposals, including what should be added, alternative architecture/product paths, dependencies and free-first choices.
+- **Second: Project Token.** Separate business/product/technical analysis. Include the owner's proposal that a day be the basic service billing unit, but do not assume whether it means a rolling 24-hour period or a calendar day. Analyze start, renewal, pause, refunds, insufficient balance, grace period and idempotent charging. No prices or billing behavior are approved.
+- **Third: Кадровик.** Separate analysis of the HR project, its value, scope, risks, data/privacy requirements and dependencies on GLAFIRA Core and permissions.
+
+For each recommendation provide: current evidence/state, benefit, risk, dependencies, free-first implementation path, priority and smallest safe next action. This is **analysis and recommendations only**. Do not implement, create feature PRs, modify `main`, start charges, or treat proposals as owner-approved. Post the report in issue #473 or attach a durable report linked from that issue. If you cannot see or act on the issue, explicitly report the access blocker instead of silently omitting the task.
+
+Berestovkon (and every future helper) must acknowledge this startup instruction in its first report. Repository instructions are the durable handoff; a previous chat message or a PR comment alone is not a reliable startup mechanism.
+
 ## 1. Read these documents first
 
 1. [Engineering Roadmap](IMPLEMENTATION_ROADMAP.md) — owner priority order and dependency rules.
