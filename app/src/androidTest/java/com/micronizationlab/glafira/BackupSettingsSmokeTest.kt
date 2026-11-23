@@ -47,8 +47,7 @@ class BackupSettingsSmokeTest {
                 "Settings action is not visible",
                 settingsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
             )
-            val settingsBounds = settingsButton.visibleBounds
-            device.click(settingsBounds.centerX(), settingsBounds.centerY())
+            settingsButton.click()
             assertTrue(
                 "Settings screen did not open",
                 device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
@@ -79,9 +78,7 @@ class BackupSettingsSmokeTest {
                 "Manual backup action is not visible",
                 bounds.width() > 0 && bounds.height() > 0
             )
-            // Compose exposes a merged semantics node; tap its visible screen bounds so
-            // UiAutomator invokes the actual Button hit target rather than an inert node action.
-            device.click(bounds.centerX(), bounds.centerY())
+            button.click()
             device.waitForIdle()
             val guidance = device.wait(
                 Until.findObject(By.descContains("Сначала выбери папку")), 10_000
