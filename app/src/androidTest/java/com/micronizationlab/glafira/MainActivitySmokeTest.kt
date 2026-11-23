@@ -60,7 +60,7 @@ class MainActivitySmokeTest {
     @Test
     fun taskQueueEntryOpensAndShowsAddTaskDialog() {
         val device = launch()
-        device.findObject(By.desc("Открыть очередь задач")).click()
+        device.findObject(By.descContains("Открыть очередь задач")).click()
         assertTrue("Task queue screen did not open",
             device.wait(Until.hasObject(By.text("ОЧЕРЕДЬ ЗАДАЧ")), 10_000))
         device.findObject(By.text("＋ ЗАДАЧА")).click()
@@ -71,7 +71,7 @@ class MainActivitySmokeTest {
     @Test
     fun councilEntryOpensAndItsActionButtonIsEnabled() {
         val device = launch()
-        device.findObject(By.desc("Открыть совет директоров")).click()
+        device.findObject(By.descContains("Открыть совет директоров")).click()
         assertTrue("Council screen did not open",
             device.wait(Until.hasObject(By.text("СОБРАТЬ СОВЕТ")), 10_000))
         val button = device.findObject(By.text("СОБРАТЬ СОВЕТ"))
