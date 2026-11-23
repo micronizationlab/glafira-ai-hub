@@ -7,6 +7,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import androidx.test.uiautomator.UiScrollable
+import androidx.test.uiautomator.UiSelector
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,27 +40,39 @@ class BackupSettingsSmokeTest {
         )
         try {
             val device = UiDevice.getInstance(instrumentation)
-            assertTrue("GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.desc("Открыть настройки")), 20_000))
-            device.findObject(By.desc("Открыть настройки")).click()
+            assertTrue(
+                "GLAFIRA home screen did not open",
+                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
+            )
+            device.findObject(By.descContains("Открыть настройки")).click()
+            assertTrue(
+                "Settings screen did not open",
+                device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
+            )
 
-            var saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
-            repeat(8) {
-                if (saveButton == null) {
-                    device.swipe(
-                        device.displayWidth / 2, device.displayHeight * 3 / 4,
-                        device.displayWidth / 2, device.displayHeight / 4, 12
-                    )
-                    saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
-                }
-            }
+            // Settings contains several long sections before backup. Ask UiAutomator to
+            // scroll the actual Compose scroll container to the section instead of relying
+            // on a fixed number of swipes that varies with emulator density and viewport.
+            val scrollable = UiScrollable(UiSelector().scrollable(true)).setAsVerticalList()
+            val backupHeading = scrollable.scrollIntoView(
+                UiSelector().textContains("РЕЗЕРВНОЕ КОПИРОВАНИЕ")
+            )
+            assertNotNull("Backup section is not reachable in Settings", backupHeading)
+
+            val saveButton = scrollable.scrollIntoView(
+                UiSelector().descriptionContains("Создать резервную копию сейчас")
+            )
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
-            assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
-            saveButton!!.click()
+            assertTrue("Manual backup button is disabled before input", saveButton.isEnabled)
+            saveButton.click()
             device.waitForIdle()
             val guidance = device.wait(
-                Until.findObject(By.descContains("Сначала выбери папку")), 10_000)
-            assertNotNull("Missing-folder guidance was not shown beside the manual backup action", guidance)
+                Until.findObject(By.descContains("Сначала выбери папку")), 10_000
+            )
+            assertNotNull(
+                "Missing-folder guidance was not shown beside the manual backup action",
+                guidance
+            )
         } finally {
             scenario.close()
         }
