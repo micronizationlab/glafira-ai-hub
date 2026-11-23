@@ -21,11 +21,12 @@ import kotlinx.coroutines.runBlocking
 @RunWith(AndroidJUnit4::class)
 class GlafiraTaskQueueRecoveryInstrumentedTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
+    private companion object { const val TEST_CORE_ID = "glafira-test-core-0001" }
     private lateinit var store: GlafiraTaskStore
 
     @Before fun setUp() {
         context.deleteDatabase("glafira_core_tasks.db")
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
     }
     @After fun tearDown() {
         store.close()
@@ -42,7 +43,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertTrue(store.transition("network", setOf(GlafiraTaskState.RUNNING),
             GlafiraTaskState.WAITING_FOR_NETWORK, 3_000))
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         assertNull(store.claimNext(4_000))
         assertTrue(store.hasWaitingForNetworkTasks())
         assertEquals(1, store.resumeWaitingForNetwork(5_000))
@@ -71,7 +72,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(0, store.recoverInterruptedCoreTasks(5_000, 5))
         assertNull(store.claimNext(5_000))
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         assertEquals(listOf(GlafiraTaskState.SUCCEEDED, GlafiraTaskState.RUNNING, GlafiraTaskState.QUEUED),
             store.taskHistory("completed", "project").map { it.toState })
         assertTrue(store.taskHistory("completed", "other-project").isEmpty())
@@ -130,7 +131,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         store.writableDatabase.execSQL("DROP TRIGGER inject_core_claim_history_failure")
 
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         val reopened = requireNotNull(store.getTask("injected-claim-history-failure"))
         assertEquals(GlafiraTaskState.QUEUED, reopened.state)
         assertEquals(0, reopened.attemptCount)
@@ -200,7 +201,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         )
 
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         assertEquals(GlafiraTaskState.RUNNING, store.getTask("injected-result-failure")?.state)
         assertNull(store.coreTaskResult("injected-result-failure", "project"))
         assertEquals(
@@ -280,7 +281,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
 
         store.writableDatabase.execSQL("DROP TRIGGER inject_desktop_progress_update_failure")
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         val reopened = store.readableDatabase.rawQuery(
             "SELECT lease_expires_at, progress_percent, progress_message FROM core_desktop_leases WHERE task_id = ?",
             arrayOf("desktop-progress")
@@ -367,7 +368,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
             database.close()
         }
 
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         assertEquals(11, store.readableDatabase.version)
         assertNotNull(store.getTask("legacy-v1"))
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v1")?.state)
@@ -408,7 +409,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
             database.close()
         }
 
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         assertEquals(11, store.readableDatabase.version)
         assertNotNull(store.getTask("legacy-v2"))
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v2")?.state)
@@ -430,7 +431,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         db.execSQL("DROP TRIGGER IF EXISTS core_task_ownership_state_version")
         db.version = 3
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         assertEquals(11, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy")?.state)
         assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy")?.lastError)
@@ -483,7 +484,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
             database.close()
         }
 
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         val leaseExists = store.readableDatabase.rawQuery(
             "SELECT 1 FROM core_desktop_leases WHERE task_id = ?",
             arrayOf("legacy-desktop")
@@ -518,7 +519,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
             database.close()
         }
 
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         assertNotNull(store.getTask("legacy-v8"))
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v8")?.state)
         assertTrue(store.readableDatabase.rawQuery(
@@ -534,7 +535,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         store.writableDatabase.execSQL("DROP TRIGGER IF EXISTS core_task_ownership_state_version")
         store.writableDatabase.version = 4
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
 
         assertEquals(11, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v4")?.state)
@@ -561,7 +562,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         repeat(taskCount) { index -> store.enqueue(task("parallel-$index")) }
         val start = CountDownLatch(1)
         val claimedIds = Collections.synchronizedList(mutableListOf<String>())
-        val secondStore = GlafiraTaskStore(context)
+        val secondStore = GlafiraTaskStore(context, TEST_CORE_ID)
         val stores = listOf(store, secondStore)
         val pool = Executors.newFixedThreadPool(8)
         try {
@@ -603,7 +604,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
     @Test fun cancellationVsCompletionRaceHasExactlyOneDurableWinner() {
         store.enqueue(task("cancel-complete-race"))
         assertNotNull(store.claimNext(2_000))
-        val secondStore = GlafiraTaskStore(context)
+        val secondStore = GlafiraTaskStore(context, TEST_CORE_ID)
         val start = CountDownLatch(1)
         val pool = Executors.newFixedThreadPool(2)
         try {
@@ -656,7 +657,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         repeat(2) { assertNotNull(store.claimNext(2_000)) }
 
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         assertEquals(2, store.recoverInterruptedCoreTasks(3_000, 5))
 
         assertEquals(GlafiraTaskState.RETRY_SCHEDULED, store.getTask("restart-read")?.state)
@@ -689,7 +690,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertNull(store.coreTaskResult("result-task", "another-project"))
 
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         assertEquals(GlafiraTaskState.SUCCEEDED, store.getTask("result-task")?.state)
         assertEquals("private handler result", store.coreTaskResult("result-task", "project")?.result)
     }
@@ -730,7 +731,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
 
         store.writableDatabase.execSQL("DROP TRIGGER inject_core_retry_history_failure")
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
 
         assertEquals(1, store.recoverInterruptedCoreTasks(3_000L, 5))
         val recovered = requireNotNull(store.getTask("handler-failure-recovery"))
@@ -787,7 +788,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         store.writableDatabase.execSQL("DROP TRIGGER inject_core_result_persist_failure")
         store.writableDatabase.execSQL("DROP TRIGGER inject_core_retry_history_after_result_failure")
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
 
         assertEquals(1, store.recoverInterruptedCoreTasks(3_000L, 5))
         val recovered = requireNotNull(store.getTask("result-persist-recovery"))
@@ -863,7 +864,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         assertEquals(GlafiraTaskState.QUEUED, store.getTask(read.taskId)?.state)
 
         store.close()
-        store = GlafiraTaskStore(context)
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
         val reopenedAdmission = GlafiraCoreLiveRunStore(store)
         assertTrue(reopenedAdmission.allows(requireNotNull(store.getTask(read.taskId)), 4_000L))
         val liveExecutor = GlafiraCoreTaskExecutor(

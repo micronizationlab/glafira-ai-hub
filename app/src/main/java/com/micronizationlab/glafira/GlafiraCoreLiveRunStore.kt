@@ -118,8 +118,15 @@ class GlafiraCoreLiveRunStore(private val taskStore: GlafiraTaskStore) : Glafira
 
     @Synchronized
     override fun allows(task: GlafiraTask, nowMillis: Long): Boolean {
-        if (!isAllowedReadHandler(task.taskType)) return false
         if (task.deadlineAtMillis != null && task.deadlineAtMillis <= nowMillis) return false
+
+        // These mutations may enter LIVE admission only because the executor immediately
+        // runs RegistryBackedGlafiraTaskAuthorizer next. That authorizer requires the exact
+        // owner-approved task hash and all registered scopes before invoking a handler.
+        // Provider/model output is never an authorization source.
+        if (task.taskType in OWNER_APPROVAL_GATED_MUTATIONS) return true
+
+        if (!isAllowedReadHandler(task.taskType)) return false
         val actionSummary = actionSummary(task)
         if (actionSummary.isBlank()) return false
         val preview = taskStore.dryRunPreview(task.taskId) ?: return false
@@ -157,7 +164,13 @@ class GlafiraCoreLiveRunStore(private val taskStore: GlafiraTaskStore) : Glafira
     companion object {
         const val TABLE = "core_live_run_grants"
         private const val LIVE_GRANT_TTL_MILLIS = 10L * 60L * 1000L
-        private val ALLOWED_READ_HANDLERS = setOf("project.read", "conversation.read")
+        private val ALLOWED_READ_HANDLERS = setOf(
+            "project.read", "conversation.read",
+            "github.repository.tree", "github.file.read"
+        )
+        private val OWNER_APPROVAL_GATED_MUTATIONS = setOf(
+            "github.branch.create", "github.file.write", "github.pull_request.draft"
+        )
 
         fun createSchema(db: SQLiteDatabase) {
             db.execSQL(
