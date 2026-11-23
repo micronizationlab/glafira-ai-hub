@@ -14,13 +14,19 @@ class GlafiraProviderCapabilityPolicyTest {
         classifications: Set<GlafiraProviderDataClassification> =
             setOf(GlafiraProviderDataClassification.PUBLIC),
         sharing: Boolean = true,
-        expiresAt: Long? = null
+        expiresAt: Long? = null,
+        freeAlternativeUnavailable: Boolean = false,
+        paidUseApproved: Boolean = false,
+        maxCostMicrosUsd: Long? = null
     ) = GlafiraProviderCapabilityGrant(
         providerId = provider,
         operations = operations,
         allowedClassifications = classifications,
         contextSharingApproved = sharing,
-        expiresAtMillis = expiresAt
+        expiresAtMillis = expiresAt,
+        freeAlternativeUnavailable = freeAlternativeUnavailable,
+        paidUseApproved = paidUseApproved,
+        maxCostMicrosUsd = maxCostMicrosUsd
     )
 
     private fun status(
@@ -28,8 +34,9 @@ class GlafiraProviderCapabilityPolicyTest {
         availability: GlafiraProviderAvailability = GlafiraProviderAvailability.AVAILABLE,
         cost: GlafiraProviderCostState = GlafiraProviderCostState.FREE_CONFIRMED,
         quota: Long? = 10L,
-        checkedAt: Long = now
-    ) = GlafiraProviderRuntimeSnapshot(provider, connection, availability, cost, quota, checkedAt)
+        checkedAt: Long = now,
+        estimatedCostMicrosUsd: Long? = null
+    ) = GlafiraProviderRuntimeSnapshot(provider, connection, availability, cost, quota, checkedAt, estimatedCostMicrosUsd)
 
     private fun evaluate(
         ownerGrant: GlafiraProviderCapabilityGrant? = grant(),
@@ -109,6 +116,45 @@ class GlafiraProviderCapabilityPolicyTest {
         assertEquals(
             GlafiraProviderEligibilityReason.COST_UNKNOWN,
             evaluate(runtime = status(cost = GlafiraProviderCostState.UNKNOWN)).reason
+        )
+    }
+
+    @Test fun paidRouteRequiresNoFreeAlternativeOwnerConsentAndBoundedCost() {
+        assertEquals(
+            GlafiraProviderEligibilityReason.FREE_ALTERNATIVE_NOT_EXHAUSTED,
+            evaluate(runtime = status(cost = GlafiraProviderCostState.PAID, estimatedCostMicrosUsd = 50L)).reason
+        )
+        assertEquals(
+            GlafiraProviderEligibilityReason.PAID_USE_NOT_APPROVED,
+            evaluate(
+                ownerGrant = grant(freeAlternativeUnavailable = true),
+                runtime = status(cost = GlafiraProviderCostState.PAID, estimatedCostMicrosUsd = 50L)
+            ).reason
+        )
+        val approved = grant(
+            freeAlternativeUnavailable = true,
+            paidUseApproved = true,
+            maxCostMicrosUsd = 100L
+        )
+        assertTrue(
+            evaluate(
+                ownerGrant = approved,
+                runtime = status(cost = GlafiraProviderCostState.PAID, estimatedCostMicrosUsd = 75L)
+            ).eligible
+        )
+        assertEquals(
+            GlafiraProviderEligibilityReason.PAID_BUDGET_EXCEEDED,
+            evaluate(
+                ownerGrant = approved,
+                runtime = status(cost = GlafiraProviderCostState.PAID, estimatedCostMicrosUsd = 101L)
+            ).reason
+        )
+        assertEquals(
+            GlafiraProviderEligibilityReason.PAID_COST_UNKNOWN,
+            evaluate(
+                ownerGrant = approved,
+                runtime = status(cost = GlafiraProviderCostState.PAID)
+            ).reason
         )
     }
 
