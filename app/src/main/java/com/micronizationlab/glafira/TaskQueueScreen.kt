@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -42,6 +43,9 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     val projectTasks = tasks.filter {
         it.projectId == currentProject.id && it.taskId !in plannedTaskIds
     }
+    var approvals by remember {
+        mutableStateOf(owner.pendingOwnerApprovals().filter { it.task.projectId == currentProject.id })
+    }
     var showAddDialog by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var instruction by remember { mutableStateOf("") }
@@ -66,6 +70,46 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         plans = owner.taskPlans(currentProject.id)
         previews = owner.dryRunPreviewRecords(200).filter { it.projectId == currentProject.id }
         resultReviews = loadResultReviews(owner, currentProject.id, tasks)
+        approvals = owner.pendingOwnerApprovals().filter { it.task.projectId == currentProject.id }
+    }
+
+    fun authenticateApproval(approval: GlafiraPendingActionApproval, approve: Boolean) {
+        val activity = context as? FragmentActivity
+        if (activity == null) {
+            message = "Не удалось открыть подтверждение владельца из текущего окна."
+            return
+        }
+        showBiometricPromptWithResult(
+            activity = activity,
+            onSuccess = { authenticationResult ->
+                val session = GlafiraCoreOwnerSession.fromAuthentication(authenticationResult)
+                val result = if (approve) {
+                    owner.approveOwnerAction(approval.task.taskId, approval.requestedScopes, session)
+                } else {
+                    owner.rejectOwnerAction(approval.task.taskId, session)
+                }
+                message = when (result) {
+                    GlafiraCoreOwnerApprovalMutation.APPROVED ->
+                        "Подтверждено. Core разрешил только показанные действие и scopes."
+                    GlafiraCoreOwnerApprovalMutation.REJECTED ->
+                        "Действие отклонено. Core не будет его выполнять."
+                    GlafiraCoreOwnerApprovalMutation.OWNER_AUTHENTICATION_REQUIRED ->
+                        "Подтверждение владельца не принято. Повтори биометрическую проверку."
+                    GlafiraCoreOwnerApprovalMutation.INVALID_SCOPE_SELECTION ->
+                        "Набор разрешений не совпал с зарегистрированными scopes. Действие оставлено без разрешения."
+                    GlafiraCoreOwnerApprovalMutation.NOT_FOUND ->
+                        "Запрос подтверждения истёк или больше не существует."
+                    GlafiraCoreOwnerApprovalMutation.ALREADY_DECIDED ->
+                        "Этот запрос уже обработан или истёк."
+                    GlafiraCoreOwnerApprovalMutation.STORAGE_ERROR ->
+                        "Не удалось безопасно сохранить решение владельца."
+                }
+                refresh()
+            },
+            onError = { error ->
+                message = "Биометрическое подтверждение отменено: $error"
+            }
+        )
     }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
@@ -75,7 +119,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         ) {
             Text("←  НАЗАД", color = Color.White, modifier = Modifier.clickable { onBack() }.padding(4.dp))
             Text("ОЧЕРЕДЬ ЗАДАЧ", color = Color.White, fontWeight = FontWeight.Bold)
-            Row {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text(
                     "ПАМЯТЬ",
                     color = Color.White,
@@ -84,6 +128,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                         showOperationalMemory = true
                     }.semantics { contentDescription = "Operational memory проекта" }
                 )
+                Text("↻", color = Color.White, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 8.dp).clickable { refresh() }.semantics { contentDescription = "Обновить очередь и подтверждения" })
                 Text("＋", color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 8.dp).clickable { showAddDialog = true }.semantics { contentDescription = "Добавить задачу" })
             }
         }
@@ -120,8 +165,56 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
             )
         }
         message?.let {
-            Text(it, color = Tx, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
+            Text(it, color = Tx, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
         }
+        if (approvals.isNotEmpty()) {
+            Text(
+                "ТРЕБУЮТ ПОДТВЕРЖДЕНИЯ ВЛАДЕЛЬЦА",
+                color = Red,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            LazyColumn(
+                Modifier.fillMaxWidth().heightIn(max = 300.dp).padding(horizontal = 10.dp)
+            ) {
+                items(approvals, key = { it.task.taskId }) { approval ->
+                    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(approval.actionSummary.ifBlank { approval.task.taskType }, color = Gr, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Инструмент: ${approval.task.taskType}", color = Tx, fontSize = 10.sp)
+                            Text("Детали действия:", color = Tx, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                            Text(
+                                approval.reviewDetails.ifBlank { "Дополнительные безопасно отображаемые детали отсутствуют." },
+                                color = Color(0xFF202020),
+                                fontSize = 10.sp
+                            )
+                            Text("Запрашиваемые права:", color = Tx, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                            approval.requestedScopes.sorted().forEach { scope ->
+                                Text("• $scope", color = Color(0xFF202020), fontSize = 10.sp)
+                            }
+                            Text(
+                                "Решение относится только к этому task ID и точному хешу действия. Для подтверждения потребуется новая биометрическая проверка.",
+                                color = Tx,
+                                fontSize = 10.sp
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { authenticateApproval(approval, true) },
+                                    enabled = approval.requestedScopes.isNotEmpty(),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("ПОДТВЕРДИТЬ") }
+                                OutlinedButton(
+                                    onClick = { authenticateApproval(approval, false) },
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("ОТКЛОНИТЬ") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (projectTasks.isEmpty() && planRows.isEmpty()) {
             Column(Modifier.fillMaxWidth().padding(24.dp)) {
                 Text("Очередь пока пуста.", color = Tx)
