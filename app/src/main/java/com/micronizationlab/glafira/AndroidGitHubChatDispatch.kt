@@ -57,9 +57,9 @@ internal object AndroidGitHubChatTaskFactory {
         }
         val actionSummary = when (preview.operation) {
             AndroidGitHubOperation.REPOSITORY_TREE ->
-                "Показать дерево \${preview.repository} на ветке \${preview.baseRef}"
+                "Показать дерево " + preview.repository + " на ветке " + preview.baseRef
             AndroidGitHubOperation.READ_FILE ->
-                "Прочитать файл \${preview.path} из \${preview.repository} на ветке \${preview.baseRef}"
+                "Прочитать файл " + preview.path + " из " + preview.repository + " на ветке " + preview.baseRef
             else -> error("GITHUB_CHAT_MUTATION_NOT_SUPPORTED")
         }
         val payload = JSONObject()
