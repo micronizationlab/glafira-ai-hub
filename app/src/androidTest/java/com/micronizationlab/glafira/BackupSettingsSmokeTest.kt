@@ -1,26 +1,19 @@
 package com.micronizationlab.glafira
 
 import android.content.Intent
-import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class BackupSettingsSmokeTest {
-    @get:Rule
-    val compose = createEmptyComposeRule()
-
     @Test
     fun manualBackupActionRemainsEnabledAndExplainsMissingFolder() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -44,18 +37,33 @@ class BackupSettingsSmokeTest {
             )
         )
         try {
-            compose.waitUntil(20_000) {
-                compose.onAllNodesWithText("СЕТЬ АГЕНТОВ · 2003").fetchSemanticsNodes().isNotEmpty()
+            val device = UiDevice.getInstance(instrumentation)
+            assertTrue("GLAFIRA home screen did not open",
+                device.wait(Until.hasObject(By.desc("Открыть настройки")), 20_000))
+            val settingsButton = device.findObject(By.desc("Открыть настройки"))
+            val settingsBounds = settingsButton.visibleBounds
+            assertTrue("Settings action is not visible", settingsBounds.width() > 0 && settingsBounds.height() > 0)
+            device.click(settingsBounds.centerX(), settingsBounds.centerY())
+
+            var saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
+            repeat(8) {
+                if (saveButton == null) {
+                    device.swipe(
+                        device.displayWidth / 2, device.displayHeight * 3 / 4,
+                        device.displayWidth / 2, device.displayHeight / 4, 12
+                    )
+                    saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
+                }
             }
-            compose.onNodeWithContentDescription("Открыть настройки").performClick()
-            compose.onNodeWithText("НАСТРОЙКИ").assertExists("Settings screen did not open")
-            compose.onNodeWithContentDescription("Создать резервную копию сейчас")
-                .performScrollTo()
-                .assertIsEnabled()
-                .performClick()
-            compose.onNodeWithContentDescription(
-                "Сначала выбери папку Google Drive или Яндекс Диска."
-            ).assertExists("Missing-folder guidance was not shown beside the manual backup action")
+            assertNotNull("Manual backup button is not visible in Settings", saveButton)
+            assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
+            val saveBounds = saveButton!!.visibleBounds
+            assertTrue("Manual backup action is not visible", saveBounds.width() > 0 && saveBounds.height() > 0)
+            device.click(saveBounds.centerX(), saveBounds.centerY())
+            device.waitForIdle()
+            val guidance = device.wait(
+                Until.findObject(By.descContains("Сначала выбери папку")), 10_000)
+            assertNotNull("Missing-folder guidance was not shown beside the manual backup action", guidance)
         } finally {
             scenario.close()
         }

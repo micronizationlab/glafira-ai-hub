@@ -135,13 +135,25 @@ public enum BridgeProtocol {
         }
         guard payloadUnits <= maximumPayloadUTF16Units else { return .payloadTooLarge }
 
-        let allowed = requiredFields[request.operation, default: []]
+        var allowed = requiredFields[request.operation, default: []]
+        if request.operation == .conversationAppend { allowed.insert("baseRemoteVersion") }
         guard request.payload.keys.allSatisfy(allowed.contains) else { return .unknownPayloadField }
         guard allowed.isSubset(of: Set(request.payload.keys)) else { return .missingPayloadField }
         guard request.payload.values.allSatisfy({
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             $0.utf16.count <= maximumPayloadUTF16Units
         }) else { return .invalidPayloadValue }
+
+        if request.operation == .conversationAppend,
+           let baseRemoteVersion = request.payload["baseRemoteVersion"] {
+            guard
+                  baseRemoteVersion.first.map({ $0 >= "1" && $0 <= "9" }) == true,
+                  baseRemoteVersion.allSatisfy({ $0 >= "0" && $0 <= "9" }),
+                  let parsedVersion = Int64(baseRemoteVersion),
+                  parsedVersion > 0 else {
+                return .invalidPayloadValue
+            }
+        }
 
         if request.operation == .ownershipTransferRead,
            !isValidIdentifier(request.payload["transferId"] ?? "") {

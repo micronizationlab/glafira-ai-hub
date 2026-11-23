@@ -11,7 +11,7 @@ namespace GLAFIRA.Desktop.Hub.Core;
 /// This store is called only after the HTTPS admission layer has authenticated
 /// the device, checked scopes/replay protection and enforced owner approval.
 /// </summary>
-public sealed class DesktopHubStore
+public sealed partial class DesktopHubStore
 {
     private static readonly TimeSpan AgentFreshness = TimeSpan.FromMinutes(2);
     private readonly string _connectionString;
@@ -1750,6 +1750,36 @@ public sealed class DesktopHubStore
                 ON Tasks(state, priority DESC, created_at_ms ASC);
             CREATE INDEX IF NOT EXISTS IX_Leases_Agent
                 ON Leases(agent_id, expires_at_ms);
+
+            CREATE TABLE IF NOT EXISTS WorkspaceProjects(
+                project_id TEXT PRIMARY KEY,
+                version INTEGER NOT NULL CHECK(version > 0),
+                snapshot_ciphertext BLOB NOT NULL,
+                updated_at_ms INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS WorkspaceConversations(
+                project_id TEXT NOT NULL REFERENCES WorkspaceProjects(project_id) ON DELETE CASCADE,
+                conversation_id TEXT NOT NULL,
+                version INTEGER NOT NULL CHECK(version > 0),
+                snapshot_ciphertext BLOB NOT NULL,
+                updated_at_ms INTEGER NOT NULL,
+                PRIMARY KEY(project_id, conversation_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS WorkspaceAppendReceipts(
+                project_id TEXT NOT NULL REFERENCES WorkspaceProjects(project_id) ON DELETE CASCADE,
+                idempotency_key TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                base_version INTEGER NOT NULL CHECK(base_version > 0),
+                resulting_version INTEGER NOT NULL CHECK(resulting_version > base_version),
+                message_sha256 TEXT NOT NULL,
+                committed_at_ms INTEGER NOT NULL,
+                PRIMARY KEY(project_id, idempotency_key)
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_WorkspaceConversations_Project
+                ON WorkspaceConversations(project_id, conversation_id);
             """;
         command.ExecuteNonQuery();
         EnsureTaskColumn(connection, "owner_core_id", "TEXT NOT NULL DEFAULT 'legacy-owner'");

@@ -8,6 +8,25 @@ class GlafiraBridgeProtocolTest {
     private val now = 1_730_000_000_000L
 
     @Test
+    fun conversationAppendRequiresPositiveRemoteVersion() {
+        val valid = bridgeRequest(
+            GlafiraBridgeOperation.CONVERSATION_APPEND,
+            mapOf(
+                "conversationId" to "conversation-0001",
+                "messageText" to "hello",
+                "baseRemoteVersion" to "1"
+            )
+        )
+        val stale = valid.copy(payload = valid.payload + ("baseRemoteVersion" to "0"))
+
+        assertNull(GlafiraBridgeProtocol.validate(valid, now))
+        assertEquals(
+            GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE,
+            GlafiraBridgeProtocol.validate(stale, now)
+        )
+    }
+
+    @Test
     fun ownershipDiscoveryRequiresEmptyPayload() {
         val valid = bridgeRequest(GlafiraBridgeOperation.OWNERSHIP_TRANSFER_DISCOVER, emptyMap())
         val unexpected = bridgeRequest(

@@ -51,7 +51,10 @@ object GlafiraBridgeProtocol {
         GlafiraBridgeOperation.DESKTOP_TASK_CLAIM to setOf("capabilities", "maxParallelTasks", "taskTypes"),
         GlafiraBridgeOperation.DESKTOP_TASK_RESULT to setOf("taskId", "ownerCoreId", "ownerGeneration", "leaseId", "fencingToken", "state", "progressPercent", "progressMessage", "result", "errorCode")
     )
-    private val allowedFields = requiredFields
+    private val allowedFields = requiredFields + (
+        GlafiraBridgeOperation.CONVERSATION_APPEND to
+            setOf("conversationId", "messageText", "baseRemoteVersion")
+    )
 
     fun sign(request: GlafiraBridgeRequest, deviceSecret: ByteArray): GlafiraBridgeRequest {
         require(deviceSecret.size >= 32) { "Device secret must contain at least 256 bits." }
@@ -134,7 +137,13 @@ object GlafiraBridgeProtocol {
             return GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD
         if (request.payload.values.any { it.isBlank() || it.length > MAX_PAYLOAD_CHARS })
             return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
-        if (request.operation == GlafiraBridgeOperation.DESKTOP_TASK_RESULT) {
+        if (request.operation == GlafiraBridgeOperation.CONVERSATION_APPEND) {
+            val baseVersionText = request.payload["baseRemoteVersion"]
+            val baseVersion = baseVersionText?.toLongOrNull()
+            if (baseVersionText != null &&
+                (!baseVersionText.matches(Regex("[1-9][0-9]*")) || baseVersion == null || baseVersion <= 0L))
+                return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
+        } else if (request.operation == GlafiraBridgeOperation.DESKTOP_TASK_RESULT) {
             if (request.payload["resultEncoding"]?.let { it != "json" } == true)
                 return GlafiraBridgeValidationError.INVALID_PAYLOAD_VALUE
             val leaseId = request.payload["leaseId"] ?: return GlafiraBridgeValidationError.MISSING_PAYLOAD_FIELD

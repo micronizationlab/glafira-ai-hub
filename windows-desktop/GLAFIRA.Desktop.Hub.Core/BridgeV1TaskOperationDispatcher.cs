@@ -48,6 +48,9 @@ public sealed class BridgeV1TaskOperationDispatcher(
             RequestId = request.RequestId
         };
 
+        if (request.Operation is BridgeV1Operation.PROJECT_READ or
+            BridgeV1Operation.CONVERSATION_READ or BridgeV1Operation.CONVERSATION_APPEND)
+            return Correlate(DispatchWorkspace(request, now));
         if (request.Operation == BridgeV1Operation.OWNERSHIP_TRANSFER_DISCOVER)
             return Correlate(DiscoverOwnershipTransfers(request, now));
         if (request.Operation == BridgeV1Operation.OWNERSHIP_TRANSFER_READ)
@@ -84,6 +87,91 @@ public sealed class BridgeV1TaskOperationDispatcher(
             _ => CompleteOrReport(request, agent, now)
         };
         return Correlate(dispatched);
+    }
+
+    private BridgeV1DispatchResponse DispatchWorkspace(
+        BridgeV1SignedRequest request,
+        DateTimeOffset now)
+    {
+        if (request.Operation == BridgeV1Operation.PROJECT_READ)
+        {
+            var project = store.GetWorkspaceProject(request.ProjectId);
+            if (project is null) return Failure("WORKSPACE_PROJECT_NOT_FOUND");
+            return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["projectId"] = project.ProjectId,
+                ["name"] = project.Name,
+                ["version"] = project.Version.ToString(CultureInfo.InvariantCulture),
+                ["updatedAtEpochMs"] = project.UpdatedAtEpochMs.ToString(CultureInfo.InvariantCulture),
+                ["conversations"] = JsonSerializer.Serialize(project.Conversations)
+            });
+        }
+
+        if (!request.Payload.TryGetValue("conversationId", out var conversationId))
+            return Failure("WORKSPACE_CONVERSATION_ID_REQUIRED");
+        if (request.Operation == BridgeV1Operation.CONVERSATION_READ)
+        {
+            var conversation = store.GetWorkspaceConversation(request.ProjectId, conversationId);
+            if (conversation is null) return Failure("WORKSPACE_CONVERSATION_NOT_FOUND");
+            return Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["projectId"] = conversation.ProjectId,
+                ["conversationId"] = conversation.ConversationId,
+                ["title"] = conversation.Title,
+                ["version"] = conversation.Version.ToString(CultureInfo.InvariantCulture),
+                ["updatedAtEpochMs"] = conversation.UpdatedAtEpochMs.ToString(CultureInfo.InvariantCulture),
+                ["messages"] = JsonSerializer.Serialize(conversation.Messages)
+            });
+        }
+
+        if (!request.Payload.TryGetValue("messageText", out var messageText) ||
+            !request.Payload.TryGetValue("baseRemoteVersion", out var baseVersionText) ||
+            !long.TryParse(baseVersionText, NumberStyles.None, CultureInfo.InvariantCulture, out var baseVersion) ||
+            baseVersion <= 0)
+            return Failure("WORKSPACE_APPEND_INVALID");
+        HubWorkspaceAppendResult append;
+        try
+        {
+            append = store.AppendWorkspaceMessage(
+                request.ProjectId,
+                conversationId,
+                request.IdempotencyKey,
+                baseVersion,
+                messageText,
+                now);
+        }
+        catch (ArgumentException)
+        {
+            return Failure("WORKSPACE_APPEND_INVALID");
+        }
+        catch (InvalidOperationException error)
+            when (error.Message == "WORKSPACE_CONVERSATION_MESSAGE_LIMIT")
+        {
+            return Failure("WORKSPACE_CONVERSATION_LIMIT");
+        }
+        return append.Status switch
+        {
+            HubWorkspaceAppendStatus.Committed or HubWorkspaceAppendStatus.Duplicate =>
+                Accepted(new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["conversationId"] = conversationId,
+                    ["version"] = append.Version!.Value.ToString(CultureInfo.InvariantCulture),
+                    ["operationId"] = request.IdempotencyKey,
+                    ["duplicate"] = (append.Status == HubWorkspaceAppendStatus.Duplicate)
+                        .ToString().ToLowerInvariant()
+                }),
+            HubWorkspaceAppendStatus.ProjectNotFound => Failure("WORKSPACE_PROJECT_NOT_FOUND"),
+            HubWorkspaceAppendStatus.ConversationNotFound => Failure("WORKSPACE_CONVERSATION_NOT_FOUND"),
+            HubWorkspaceAppendStatus.VersionConflict => new BridgeV1DispatchResponse(
+                "FAILED",
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["currentVersion"] = append.Version!.Value.ToString(CultureInfo.InvariantCulture)
+                },
+                "WORKSPACE_VERSION_CONFLICT"),
+            HubWorkspaceAppendStatus.IdempotencyConflict => Failure("WORKSPACE_IDEMPOTENCY_CONFLICT"),
+            _ => Failure("WORKSPACE_APPEND_FAILED")
+        };
     }
 
     private BridgeV1DispatchResponse ReadOwnershipTransfer(BridgeV1SignedRequest request)

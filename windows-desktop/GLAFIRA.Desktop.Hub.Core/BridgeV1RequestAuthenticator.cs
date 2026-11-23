@@ -204,15 +204,28 @@ public sealed class BridgeV1RequestAuthenticator(
                 item.Key.Length > 64 ||
                 string.IsNullOrWhiteSpace(item.Value) ||
                 item.Value.Length > maxValueLength ||
-                (!allowed.Contains(item.Key) && !(request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT &&
-                    item.Key is "resultEncoding" or "canonicalResult"))) ||
+                (!allowed.Contains(item.Key) &&
+                    !(request.Operation == BridgeV1Operation.CONVERSATION_APPEND && item.Key == "baseRemoteVersion") &&
+                    !(request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT &&
+                        item.Key is "resultEncoding" or "canonicalResult"))) ||
             request.Payload.Sum(item => (long)item.Key.Length + item.Value.Length) > maxPayloadLength)
             return BridgeV1AdmissionFailure.InvalidEnvelope;
 
         if (!allowed.All(request.Payload.ContainsKey))
             return BridgeV1AdmissionFailure.InvalidEnvelope;
 
-        if (request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT)
+        if (request.Operation == BridgeV1Operation.CONVERSATION_APPEND)
+        {
+            if (request.Payload.TryGetValue("baseRemoteVersion", out var baseVersionText) &&
+                (baseVersionText.Length == 0 || baseVersionText[0] is < '1' or > '9' ||
+                baseVersionText.Any(character => character is < '0' or > '9') ||
+                !long.TryParse(baseVersionText,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var baseVersion) ||
+                baseVersion <= 0))
+                return BridgeV1AdmissionFailure.InvalidEnvelope;
+        }
+        else if (request.Operation == BridgeV1Operation.DESKTOP_TASK_RESULT)
         {
             if (request.Payload.TryGetValue("resultEncoding", out var encoding) && encoding != "json")
                 return BridgeV1AdmissionFailure.InvalidEnvelope;
