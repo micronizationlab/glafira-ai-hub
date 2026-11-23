@@ -245,33 +245,27 @@ public sealed class GitHubDesktopCodingClient
     {
         RequireSafePath(path);
         var normalized = path.ToLowerInvariant();
-        var segments = normalized.Split('/');
-        var fileName = segments[^1];
-        var blocked =
-            normalized == ".gitmodules" ||
-            normalized == ".gitlab-ci.yml" ||
-            normalized == ".travis.yml" ||
-            normalized == "global.json" ||
-            normalized == "nuget.config" ||
-            normalized == "nuget.lock" ||
-            segments[0] is ".github" or ".gitlab" or ".circleci" ||
-            fileName == "jenkinsfile" ||
-            fileName == "azure-pipelines.yml" ||
-            fileName == "dockerfile" ||
-            fileName.StartsWith("docker-compose", StringComparison.Ordinal) ||
-            fileName.EndsWith(".csproj", StringComparison.Ordinal) ||
-            fileName.EndsWith(".sln", StringComparison.Ordinal) ||
-            fileName.EndsWith(".slnx", StringComparison.Ordinal) ||
-            fileName.EndsWith(".props", StringComparison.Ordinal) ||
-            fileName.EndsWith(".targets", StringComparison.Ordinal) ||
-            fileName.EndsWith(".wapproj", StringComparison.Ordinal) ||
-            fileName.EndsWith(".nuspec", StringComparison.Ordinal) ||
-            fileName == "packages.lock.json" ||
-            fileName == "directory.build.props" ||
-            fileName == "directory.build.targets";
-        if (blocked)
+        var allowedRoots = new[]
+        {
+            "app/src/",
+            "desktop-bridge/src/",
+            "windows-desktop/",
+            "windows-agent/",
+            "ios/glafirabridgekit/sources/",
+            "ios/glafirabridgekit/tests/",
+            "docs/"
+        };
+        var allowedExtensions = new HashSet<string>(StringComparer.Ordinal)
+        {
+            ".cs", ".xaml", ".kt", ".java", ".swift", ".py",
+            ".md", ".txt", ".rst", ".adoc"
+        };
+        var allowedRoot = normalized == "readme.md" ||
+            allowedRoots.Any(root => normalized.StartsWith(root, StringComparison.Ordinal));
+        var extension = Path.GetExtension(normalized);
+        if (!allowedRoot || !allowedExtensions.Contains(extension))
             throw new InvalidOperationException(
-                "GLAFIRA GitHub coding API cannot modify CI, build bootstrap, dependency or executable project files without a separate owner-reviewed workflow.");
+                "GLAFIRA GitHub coding API writes only allowlisted source and documentation files. Unknown paths and file types are denied by default.");
     }
 
     private static void RequireReference(string reference)
