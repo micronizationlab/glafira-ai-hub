@@ -93,6 +93,12 @@ final class BridgePairingTests: XCTestCase {
         XCTAssertThrowsError(try BridgePairingInvitation.parseDesktopHubBundle(
             bundle(extra: ["ownershipSigningKeyEpoch": 7.5]), nowEpochMs: 1_950_000
         ))
+        XCTAssertThrowsError(try BridgePairingInvitation.parseDesktopHubBundle(
+            bundle(extra: ["pairingCode": pairingCode + "="]), nowEpochMs: 1_950_000
+        ))
+        XCTAssertThrowsError(try BridgePairingInvitation.parseDesktopHubBundle(
+            bundle(), nowEpochMs: 0
+        ))
     }
 
     func testPairingRequestContainsOnlyWindowsHubContractFields() throws {

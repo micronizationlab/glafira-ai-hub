@@ -69,13 +69,15 @@ public struct BridgePairingInvitation: Sendable {
         }
 
         let expiry = expiryNumber.int64Value
+        let (remainingLifetime, lifetimeOverflow) = expiry.subtractingReportingOverflow(nowEpochMs)
         let trustedSigningKey = BridgeOwnershipTrustedSigningKey(
             ownerCoreId: ownerCoreId,
             signingKeyEpoch: keyEpochNumber.int64Value,
             signingPublicKeySHA256: publicKeyFingerprint,
             derEncodedPublicKey: Data(base64Encoded: publicKeyText) ?? Data()
         )
-        guard expiry > nowEpochMs, expiry - nowEpochMs <= 10 * 60 * 1_000 else {
+        guard nowEpochMs > 0, !lifetimeOverflow,
+              expiry > nowEpochMs, remainingLifetime <= 10 * 60 * 1_000 else {
             throw BridgeInvitationError.expired
         }
         guard let url = URL(string: endpoint),
@@ -88,7 +90,8 @@ public struct BridgePairingInvitation: Sendable {
               pin.utf8.count == 64, pin.allSatisfy({ $0.isHexDigit && !$0.isUppercase }),
               BridgeOwnershipTrustValidation.isValid(trustedSigningKey),
               trustedSigningKey.derEncodedPublicKey.base64EncodedString() == publicKeyText,
-              let pairingBytes = Data(base64URLEncoded: pairingCode), pairingBytes.count == 32 else {
+              let pairingBytes = Data(base64URLEncoded: pairingCode), pairingBytes.count == 32,
+              pairingBytes.base64URLEncodedString() == pairingCode else {
             throw BridgeInvitationError.invalidServerIdentity
         }
         let scopes = Set(scopesArray)
@@ -230,6 +233,11 @@ private extension Data {
         let remainder = normalized.count % 4
         if remainder != 0 { normalized += String(repeating: "=", count: 4 - remainder) }
         self.init(base64Encoded: normalized)
+    }
+
+    func base64URLEncodedString() -> String {
+        base64EncodedString().replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
     }
 }
 
