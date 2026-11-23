@@ -94,6 +94,17 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertTrue(selected["agent"])
         self.assertTrue(selected["desktop_hub"])
 
+    def test_release_plan_change_selects_every_distributable(self):
+        selected = MODULE.classify_paths(
+            ["release/release-plan.json"], "pull_request", self.root,
+        )
+        self.assertTrue(selected["android"])
+        self.assertTrue(selected["android_acceptance"])
+        self.assertTrue(selected["ios"])
+        self.assertTrue(selected["agent"])
+        self.assertTrue(selected["desktop_hub"])
+        self.assertTrue(selected["contracts"])
+
     def test_android_persistence_and_backup_changes_always_select_emulator(self):
         for name in ("GlafiraTaskStore.kt", "GlafiraTaskPayloadCrypto.kt", "BackupArchive.kt",
                      "DataManager.kt", "PendingQueue.kt", "PasswordVaultScreen.kt"):

@@ -6,12 +6,16 @@ on:
     paths:
       - "windows-agent/**"
       - "windows-desktop/**"
+      - "release/**"
+      - ".github/scripts/release_manifest.py"
       - ".github/workflows/windows-deployment-package.yml"
   push:
     branches: [main]
     paths:
       - "windows-agent/**"
       - "windows-desktop/**"
+      - "release/**"
+      - ".github/scripts/release_manifest.py"
       - ".github/workflows/windows-deployment-package.yml"
 
 permissions:
@@ -29,6 +33,15 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate canonical release plan
+        shell: pwsh
+        run: python .github/scripts/release_manifest.py validate-plan --plan release/release-plan.json --root .
 
       - name: Validate Agent PowerShell scripts
         shell: pwsh
@@ -57,13 +70,21 @@ jobs:
           Copy-Item windows-agent/scripts/install-agent.ps1 (Join-Path $output "scripts")
           Copy-Item windows-agent/scripts/uninstall-agent.ps1 (Join-Path $output "scripts")
           Copy-Item windows-agent/README.md (Join-Path $output "README.md")
-          Compress-Archive -Path (Join-Path $output "*") -DestinationPath (Join-Path $env:RUNNER_TEMP "GLAFIRA-Agent-win-x64.zip") -Force
+          $package = Join-Path $env:RUNNER_TEMP "GLAFIRA-Agent-win-x64.zip"
+          $manifest = Join-Path $env:RUNNER_TEMP "GLAFIRA-Agent-win-x64.manifest.json"
+          Compress-Archive -Path (Join-Path $output "*") -DestinationPath $package -Force
+          python .github/scripts/release_manifest.py build-manifest --plan release/release-plan.json --output $manifest --source-revision $env:GITHUB_SHA --artifact "windows-agent=$package"
+          if ($LASTEXITCODE -ne 0) { throw "Agent release manifest generation failed." }
+          python .github/scripts/release_manifest.py verify-manifest --plan release/release-plan.json --manifest $manifest --artifact "windows-agent=$package"
+          if ($LASTEXITCODE -ne 0) { throw "Agent release manifest verification failed." }
 
       - name: Upload Agent package
         uses: actions/upload-artifact@v4
         with:
           name: GLAFIRA-Agent-win-x64
-          path: ${{ runner.temp }}/GLAFIRA-Agent-win-x64.zip
+          path: |
+            ${{ runner.temp }}/GLAFIRA-Agent-win-x64.zip
+            ${{ runner.temp }}/GLAFIRA-Agent-win-x64.manifest.json
           if-no-files-found: error
           retention-days: 14
 
@@ -78,6 +99,15 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate canonical release plan
+        shell: pwsh
+        run: python .github/scripts/release_manifest.py validate-plan --plan release/release-plan.json --root .
 
       - name: Validate Desktop PowerShell scripts
         shell: pwsh
@@ -106,12 +136,20 @@ jobs:
           Copy-Item windows-desktop/scripts/install-desktop.ps1 (Join-Path $output "scripts")
           Copy-Item windows-desktop/scripts/uninstall-desktop.ps1 (Join-Path $output "scripts")
           Copy-Item windows-desktop/INSTALL.md (Join-Path $output "INSTALL.md")
-          Compress-Archive -Path (Join-Path $output "*") -DestinationPath (Join-Path $env:RUNNER_TEMP "GLAFIRA-Desktop-win-x64.zip") -Force
+          $package = Join-Path $env:RUNNER_TEMP "GLAFIRA-Desktop-win-x64.zip"
+          $manifest = Join-Path $env:RUNNER_TEMP "GLAFIRA-Desktop-win-x64.manifest.json"
+          Compress-Archive -Path (Join-Path $output "*") -DestinationPath $package -Force
+          python .github/scripts/release_manifest.py build-manifest --plan release/release-plan.json --output $manifest --source-revision $env:GITHUB_SHA --artifact "windows-desktop=$package"
+          if ($LASTEXITCODE -ne 0) { throw "Desktop release manifest generation failed." }
+          python .github/scripts/release_manifest.py verify-manifest --plan release/release-plan.json --manifest $manifest --artifact "windows-desktop=$package"
+          if ($LASTEXITCODE -ne 0) { throw "Desktop release manifest verification failed." }
 
       - name: Upload Desktop package
         uses: actions/upload-artifact@v4
         with:
           name: GLAFIRA-Desktop-win-x64
-          path: ${{ runner.temp }}/GLAFIRA-Desktop-win-x64.zip
+          path: |
+            ${{ runner.temp }}/GLAFIRA-Desktop-win-x64.zip
+            ${{ runner.temp }}/GLAFIRA-Desktop-win-x64.manifest.json
           if-no-files-found: error
           retention-days: 14

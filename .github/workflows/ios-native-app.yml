@@ -5,12 +5,16 @@ on:
     paths:
       - "ios/**"
       - "contracts/v1/**"
+      - "release/**"
+      - ".github/scripts/release_manifest.py"
       - ".github/workflows/ios-native-app.yml"
   push:
     branches: [main]
     paths:
       - "ios/**"
       - "contracts/v1/**"
+      - "release/**"
+      - ".github/scripts/release_manifest.py"
       - ".github/workflows/ios-native-app.yml"
   workflow_dispatch:
 
@@ -34,6 +38,9 @@ jobs:
         run: |
           swift --version
           xcodebuild -version
+
+      - name: Validate canonical release plan
+        run: python3 .github/scripts/release_manifest.py validate-plan --plan release/release-plan.json --root .
 
       - name: Run BridgeKit unit tests
         working-directory: ios/GlafiraBridgeKit

@@ -51,6 +51,20 @@ def classify_paths(
                 root / "windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj"
             ).is_file()
             selected["desktop_hub"] |= (root / "windows-desktop").is_dir()
+        elif path.startswith("release/"):
+            # A release-plan change affects the version/identity contract of every
+            # distributable and must never validate only one platform.
+            selected["android"] = (root / "app/build.gradle.kts").is_file()
+            selected["ios"] = (root / "ios/GlafiraBridgeKit/Package.swift").is_file()
+            selected["agent"] = (
+                root / "windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj"
+            ).is_file()
+            selected["desktop_hub"] = (root / "windows-desktop").is_dir()
+            selected["contracts"] = (root / "contracts").is_dir()
+            selected["android_acceptance"] = (
+                (root / "app/build.gradle.kts").is_file()
+                and (root / "app/src/androidTest").is_dir()
+            )
         elif path.startswith(".github/workflows/") or path.startswith(".github/scripts/"):
             # CI control-plane changes must exercise the suites whose selection/execution
             # they can affect. A green linter alone is not validation of a changed pipeline.

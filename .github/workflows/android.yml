@@ -116,11 +116,30 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: Validate canonical release plan
+        run: python3 .github/scripts/release_manifest.py validate-plan --plan release/release-plan.json --root .
+      - name: Build debug APK and verified CI manifest
+        run: |
+          set -Eeuo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          package="${RUNNER_TEMP}/GLAFIRA-Android.apk"
+          manifest="${RUNNER_TEMP}/GLAFIRA-Android.manifest.json"
+          cp app/build/outputs/apk/debug/app-debug.apk "$package"
+          python3 .github/scripts/release_manifest.py build-manifest \
+            --plan release/release-plan.json \
+            --output "$manifest" \
+            --source-revision "$GITHUB_SHA" \
+            --artifact "android=$package"
+          python3 .github/scripts/release_manifest.py verify-manifest \
+            --plan release/release-plan.json \
+            --manifest "$manifest" \
+            --artifact "android=$package"
       - uses: actions/upload-artifact@v4
         with:
           name: glafira-debug-apk-${{ github.sha }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            ${{ runner.temp }}/GLAFIRA-Android.apk
+            ${{ runner.temp }}/GLAFIRA-Android.manifest.json
           if-no-files-found: error
           retention-days: 14
 

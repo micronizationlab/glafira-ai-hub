@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "0.1.0",
+  "releaseSequence": 1,
+  "bridgeProtocolVersion": 1,
+  "minimumSupportedReleaseSequence": 1,
+  "components": {
+    "android": {
+      "platform": "ANDROID",
+      "packageId": "com.micronizationlab.glafira",
+      "version": "0.1.0",
+      "buildNumber": 1,
+      "artifactName": "GLAFIRA-Android.apk"
+    },
+    "ios": {
+      "platform": "IOS",
+      "packageId": "com.micronizationlab.glafira.ios",
+      "version": "0.1.0",
+      "buildNumber": 1,
+      "artifactName": "GLAFIRA-iOS.ipa"
+    },
+    "windows-desktop": {
+      "platform": "WINDOWS",
+      "packageId": "com.micronizationlab.glafira.desktop",
+      "version": "0.1.0",
+      "buildNumber": 1,
+      "artifactName": "GLAFIRA-Desktop-win-x64.zip"
+    },
+    "windows-agent": {
+      "platform": "WINDOWS",
+      "packageId": "com.micronizationlab.glafira.agent",
+      "version": "0.1.0",
+      "buildNumber": 1,
+      "artifactName": "GLAFIRA-Agent-win-x64.zip"
+    }
+  }
+}

@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Version>0.1.0</Version><FileVersion>0.1.0.1</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../GLAFIRA.Desktop.Hub.Core/GLAFIRA.Desktop.Hub.Core.csproj" />
