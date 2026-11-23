@@ -59,6 +59,18 @@ class GlafiraProviderCapabilityPolicyTest {
         )
     }
 
+    @Test fun restrictedClassificationIsNeverProviderEligibleEvenWhenOwnerGrantListsIt() {
+        val result = evaluate(
+            ownerGrant = grant(classifications = setOf(GlafiraProviderDataClassification.RESTRICTED)),
+            classification = GlafiraProviderDataClassification.RESTRICTED
+        )
+        assertFalse(result.eligible)
+        assertEquals(
+            GlafiraProviderEligibilityReason.RESTRICTED_CLASSIFICATION_NEVER_SHARED,
+            result.reason
+        )
+    }
+
     @Test fun missingGrantAndMissingContextConsentFailClosed() {
         assertEquals(GlafiraProviderEligibilityReason.NO_OWNER_GRANT, evaluate(ownerGrant = null).reason)
         assertEquals(
