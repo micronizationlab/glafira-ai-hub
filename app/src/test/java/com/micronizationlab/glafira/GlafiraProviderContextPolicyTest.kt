@@ -35,6 +35,9 @@ class GlafiraProviderContextPolicyTest {
             "project-a", ProviderId.OPENAI, listOf(item, personal, other), grant(), now
         )
         assertEquals(listOf(item), result.allowedItems)
+        assertTrue(runCatching {
+            (result.allowedItems as MutableList<GlafiraProviderContextItem>).clear()
+        }.exceptionOrNull() is UnsupportedOperationException)
         assertEquals(
             listOf(GlafiraProviderContextDenial.CLASSIFICATION_NOT_GRANTED, GlafiraProviderContextDenial.PROJECT_MISMATCH),
             result.deniedItems.map { it.second }
