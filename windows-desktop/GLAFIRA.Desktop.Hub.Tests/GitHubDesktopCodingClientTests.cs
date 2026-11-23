@@ -36,10 +36,30 @@ public sealed class GitHubDesktopCodingClientTests
     }
 
     [Fact]
-    public void AllowsOrdinarySourceAndDocumentationWrites()
+    public void AllowsOnlyApprovedSourceAndDocumentationFiles()
     {
-        GitHubDesktopCodingClient.RequireWritablePath("windows-desktop/src/Example.cs");
+        GitHubDesktopCodingClient.RequireWritablePath("windows-desktop/GLAFIRA.Desktop.App/Example.cs");
+        GitHubDesktopCodingClient.RequireWritablePath("windows-desktop/GLAFIRA.Desktop.App/MainWindow.xaml");
+        GitHubDesktopCodingClient.RequireWritablePath("app/src/main/Example.kt");
+        GitHubDesktopCodingClient.RequireWritablePath("ios/GlafiraBridgeKit/Sources/Example.swift");
         GitHubDesktopCodingClient.RequireWritablePath("docs/architecture.md");
+        GitHubDesktopCodingClient.RequireWritablePath("README.md");
+    }
+
+    [Theory]
+    [InlineData("app/build.gradle.kts")]
+    [InlineData("app/src/main/AndroidManifest.xml")]
+    [InlineData(".github/workflows/ci.yml")]
+    [InlineData("windows-desktop/scripts/update-desktop.ps1")]
+    [InlineData("windows-desktop/GLAFIRA.Desktop.App/unknown.bin")]
+    [InlineData("windows-desktop/GLAFIRA.Desktop.App/settings.json")]
+    [InlineData("windows-desktop/GLAFIRA.Desktop.App/Project.csproj")]
+    [InlineData("outside/Example.cs")]
+    [InlineData(".github/README.md")]
+    public void RejectsUnknownProtectedAndOutOfScopeWrites(string path)
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            GitHubDesktopCodingClient.RequireWritablePath(path));
     }
 
     [Theory]
