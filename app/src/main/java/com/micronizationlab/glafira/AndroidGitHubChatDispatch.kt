@@ -1,7 +1,7 @@
 package com.micronizationlab.glafira
 
 import org.json.JSONObject
-import java.util.UUID
+import java.security.MessageDigest
 
 /** Deterministic first vertical: explicit GitHub read commands only. */
 internal object AndroidGitHubChatIntentParser {
@@ -38,6 +38,8 @@ internal object AndroidGitHubChatIntentParser {
 
 /** Creates an owner-authored read-only task for the existing durable Core queue. */
 internal object AndroidGitHubChatTaskFactory {
+    private const val IDEMPOTENCY_WINDOW_MILLIS = 5L * 60L * 1000L
+
     fun create(
         projectId: String,
         intent: AndroidGitHubIntent,
@@ -68,8 +70,13 @@ internal object AndroidGitHubChatTaskFactory {
             .put("actionSummary", actionSummary)
             .apply { preview.path?.let { put("path", it) } }
             .toString()
+        // A short deterministic window deduplicates rapid retries/recomposition while
+        // allowing the owner to intentionally repeat the same read later.
+        val window = nowMillis / IDEMPOTENCY_WINDOW_MILLIS
+        val identity = sha256("$projectId|$taskType|$payload|$window")
+        val stableId = "github-chat-" + identity.take(32)
         return GlafiraTask(
-            taskId = UUID.randomUUID().toString(),
+            taskId = stableId,
             projectId = projectId,
             taskType = taskType,
             payload = payload,
@@ -77,8 +84,13 @@ internal object AndroidGitHubChatTaskFactory {
             createdAtMillis = nowMillis,
             updatedAtMillis = nowMillis,
             deadlineAtMillis = nowMillis + 30L * 60L * 1000L,
-            idempotencyKey = UUID.randomUUID().toString(),
+            idempotencyKey = stableId,
             requiredScopes = setOf("github.repo.read")
         ).also(GlafiraTaskPolicy::validate)
     }
+
+    private fun sha256(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 }
