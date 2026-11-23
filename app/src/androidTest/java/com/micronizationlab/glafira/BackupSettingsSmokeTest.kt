@@ -50,23 +50,36 @@ class BackupSettingsSmokeTest {
                 device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
             )
 
-            // Scroll the actual Compose settings container. Keep and use the UiObject
-            // returned by scrollIntoView: a second accessibility lookup can race with
-            // Compose semantics recycling after the scroll and incorrectly report null.
+            // UiScrollable.scrollIntoView(UiSelector) returns Boolean, not a UiObject.
+            // After scrolling, wait for the Compose accessibility node and interact with
+            // the UiObject2 returned by UiDevice.wait; this avoids a racy immediate lookup.
             val scrollable = UiScrollable(UiSelector().scrollable(true)).setAsVerticalList()
-            val backupHeading = scrollable.scrollIntoView(
-                UiSelector().textContains("РЕЗЕРВНОЕ КОПИРОВАНИЕ")
+            assertTrue(
+                "Backup section is not reachable in Settings",
+                scrollable.scrollIntoView(
+                    UiSelector().textContains("РЕЗЕРВНОЕ КОПИРОВАНИЕ")
+                )
             )
-            assertNotNull("Backup section is not reachable in Settings", backupHeading)
+            assertTrue(
+                "Manual backup button could not be scrolled into view",
+                scrollable.scrollIntoView(
+                    UiSelector().descriptionContains("Создать резервную копию сейчас")
+                )
+            )
 
-            val saveButton = scrollable.scrollIntoView(
-                UiSelector().descriptionContains("Создать резервную копию сейчас")
+            val saveButton = device.wait(
+                Until.findObject(By.desc("Создать резервную копию сейчас")),
+                10_000
             )
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
-            assertTrue("Manual backup button is disabled before input", saveButton.isEnabled)
-            assertTrue("Manual backup action is not visible", saveButton.visibleBounds.width() > 0 &&
-                saveButton.visibleBounds.height() > 0)
-            assertTrue("Manual backup action could not be clicked", saveButton.click())
+            val saveAction = requireNotNull(saveButton)
+            assertTrue("Manual backup button is disabled before input", saveAction.isEnabled)
+            val saveBounds = saveAction.visibleBounds
+            assertTrue(
+                "Manual backup action is not visible",
+                saveBounds.width() > 0 && saveBounds.height() > 0
+            )
+            saveAction.click()
             device.waitForIdle()
             val guidance = device.wait(
                 Until.findObject(By.descContains("Сначала выбери папку")), 10_000
