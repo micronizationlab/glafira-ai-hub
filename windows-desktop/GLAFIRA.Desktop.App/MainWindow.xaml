@@ -63,7 +63,7 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="18" MaxWidth="820" HorizontalAlignment="Left">
             <TextBlock Text="GITHUB · НЕЗАВИСИМЫЙ КАНАЛ DESKTOP" FontSize="13" FontWeight="Bold" Foreground="#176B55"/>
-            <TextBlock Text="Подключение выполняется отдельно от Android и Bridge. Доступ ограничен репозиторием micronizationlab/glafira-ai-hub; текущий этап — только чтение." TextWrapping="Wrap" Foreground="#52645D" Margin="0,6,0,14"/>
+            <TextBlock Text="Подключение выполняется независимо от Android и Bridge. Доступ ограничен репозиторием micronizationlab/glafira-ai-hub. Изменения выполняются только в отдельной feature-ветке; слияние в main из этого интерфейса невозможно." TextWrapping="Wrap" Foreground="#52645D" Margin="0,6,0,14"/>
             <Border Background="#F4F7F6" CornerRadius="8" Padding="16">
               <StackPanel>
                 <TextBlock Text="СОСТОЯНИЕ АВТОРИЗАЦИИ" FontWeight="Bold" Foreground="#176B55"/>
@@ -81,10 +81,18 @@
             <Border Background="#F4F7F6" CornerRadius="8" Padding="14" Margin="0,16,0,0">
               <StackPanel>
                 <TextBlock Text="РАБОЧЕЕ ПРОСТРАНСТВО GITHUB" FontWeight="Bold" Foreground="#176B55"/>
-                <TextBlock Text="Чтение дерева и файлов разрешённого репозитория. На этом этапе запись, создание веток и PR из интерфейса отключены." TextWrapping="Wrap" Foreground="#52645D" Margin="0,4,0,8"/>
+                <TextBlock Text="Чтение main, создание feature-ветки, изменение выбранного файла и открытие Draft PR. Каждый шаг требует отдельного подтверждения владельца. Слияния и изменение настроек репозитория недоступны." TextWrapping="Wrap" Foreground="#52645D" Margin="0,4,0,8"/>
                 <WrapPanel>
                   <Button x:Name="GitHubLoadTreeButton" Content="Загрузить дерево main" Height="32" Padding="12,0" Click="GitHubLoadTree_Click"/>
                   <Button x:Name="GitHubReadFileButton" Content="Прочитать выбранный файл" Height="32" Padding="12,0" Margin="8,0,0,0" Click="GitHubReadFile_Click"/>
+                </WrapPanel>
+                <TextBlock Text="FEATURE-ВЕТКА (НЕ MAIN)" FontWeight="Bold" Foreground="#176B55" Margin="0,12,0,5"/>
+                <WrapPanel>
+                  <TextBox x:Name="GitHubFeatureBranchText" Text="glafira/owner-work" Width="260" Height="30" VerticalContentAlignment="Center"/>
+                  <Button x:Name="GitHubCreateBranchButton" Content="Создать ветку от main" Height="32" Padding="12,0" Margin="8,0,0,0" Click="GitHubCreateBranch_Click"/>
+                </WrapPanel>
+                <WrapPanel Margin="0,8,0,0">
+                  <Button x:Name="GitHubWriteFileButton" Content="Записать выбранный файл в ветку" Height="32" Padding="12,0" Click="GitHubWriteFile_Click" IsEnabled="False"/>
                 </WrapPanel>
                 <TextBlock x:Name="GitHubWorkspaceStatusText" Text="Подключите GitHub, затем загрузите дерево репозитория." Foreground="#52645D" TextWrapping="Wrap" Margin="0,8,0,6"/>
                 <DataGrid x:Name="GitHubTreeGrid" Height="230" AutoGenerateColumns="False" IsReadOnly="True"
@@ -96,14 +104,18 @@
                     <DataGridTextColumn Header="SHA" Binding="{Binding Sha}" Width="2*"/>
                   </DataGrid.Columns>
                 </DataGrid>
-                <TextBlock Text="СОДЕРЖИМОЕ ВЫБРАННОГО ФАЙЛА" FontWeight="Bold" Foreground="#176B55" Margin="0,12,0,5"/>
-                <TextBox x:Name="GitHubFileContentText" IsReadOnly="True" AcceptsReturn="True"
+                <TextBlock Text="СОДЕРЖИМОЕ ВЫБРАННОГО ФАЙЛА · РЕДАКТИРУЕТСЯ ЛОКАЛЬНО ДО НАЖАТИЯ «ЗАПИСАТЬ»" FontWeight="Bold" Foreground="#176B55" Margin="0,12,0,5"/>
+                <TextBox x:Name="GitHubFileContentText" IsReadOnly="False" AcceptsReturn="True"
                          TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto"
                          VerticalScrollBarVisibility="Auto" Height="220" FontFamily="Consolas" FontSize="11"/>
+                <TextBlock Text="DRAFT PULL REQUEST" FontWeight="Bold" Foreground="#176B55" Margin="0,12,0,5"/>
+                <TextBox x:Name="GitHubPullRequestTitleText" Text="GLAFIRA: owner-reviewed changes" Height="30" VerticalContentAlignment="Center"/>
+                <TextBox x:Name="GitHubPullRequestBodyText" Text="Изменения подготовлены GLAFIRA в отдельной feature-ветке. Требуются проверка CI и независимое review владельца/сопровождающего. Автоматическое слияние не выполняется." AcceptsReturn="True" TextWrapping="Wrap" Height="74" Margin="0,6,0,0"/>
+                <Button x:Name="GitHubOpenDraftPullRequestButton" Content="Открыть Draft PR" Height="34" Padding="14,0" Margin="0,8,0,0" Click="GitHubOpenDraftPullRequest_Click" IsEnabled="False"/>
               </StackPanel>
             </Border>
             <TextBlock Text="Безопасность" FontWeight="Bold" Foreground="#176B55" Margin="0,16,0,5"/>
-            <TextBlock Text="Токены хранятся через Windows DPAPI CurrentUser. Client Secret и приватный ключ GitHub App не используются. Подключение и проверка запускаются только по вашему нажатию; произвольные команды оболочки, запись в репозиторий и слияние изменений этим экраном не выполняются. Отдельная блокировка владельца и разрешение на операции остаются обязательным следующим этапом." TextWrapping="Wrap" Foreground="#52645D"/>
+            <TextBlock Text="Токены хранятся через Windows DPAPI CurrentUser. Client Secret и приватный ключ GitHub App не используются. Запись возможна только после отдельного подтверждения владельца, только в feature-ветку и только в разрешённые исходные/документные файлы; CI, build/dependency configuration, настройки репозитория и main защищены. Интерфейс может открыть только Draft PR; merge, обход branch protection и произвольное выполнение команд отсутствуют." TextWrapping="Wrap" Foreground="#52645D"/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
