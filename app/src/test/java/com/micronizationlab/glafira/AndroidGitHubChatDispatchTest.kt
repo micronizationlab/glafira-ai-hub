@@ -68,6 +68,27 @@ class AndroidGitHubChatDispatchTest {
     }
 
     @Test
+    fun identicalRapidRetriesShareStableTaskAndIdempotencyIdentity() {
+        val intent = requireNotNull(
+            AndroidGitHubChatIntentParser.parse("Прочитай файл README.md")
+        )
+        val first = AndroidGitHubChatTaskFactory.create("project-main", intent, 301_000L)
+        val retry = AndroidGitHubChatTaskFactory.create("project-main", intent, 302_000L)
+        assertEquals(first.taskId, retry.taskId)
+        assertEquals(first.idempotencyKey, retry.idempotencyKey)
+    }
+
+    @Test
+    fun intentionalRepeatOutsideIdempotencyWindowGetsNewIdentity() {
+        val intent = requireNotNull(
+            AndroidGitHubChatIntentParser.parse("Прочитай файл README.md")
+        )
+        val first = AndroidGitHubChatTaskFactory.create("project-main", intent, 301_000L)
+        val later = AndroidGitHubChatTaskFactory.create("project-main", intent, 601_000L)
+        assertFalse(first.taskId == later.taskId)
+    }
+
+    @Test
     fun factoryRejectsMutationIntents() {
         val mutation = AndroidGitHubIntent(
             repository = AndroidGitHubIntentPreviewBuilder.ALLOWED_REPOSITORY,
