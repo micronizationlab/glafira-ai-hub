@@ -20,7 +20,7 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
     @Before
     fun setUp() {
         context.deleteDatabase(DATABASE_NAME)
-        taskStore = GlafiraTaskStore(context)
+        taskStore = GlafiraTaskStore(context, TEST_CORE_ID)
         approvals = GlafiraCoreOwnerApprovalStore(taskStore)
     }
 
@@ -72,7 +72,7 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
         assertEquals(1, approvals.pendingApprovals(3_001L).size)
 
         taskStore.close()
-        taskStore = GlafiraTaskStore(context)
+        taskStore = GlafiraTaskStore(context, TEST_CORE_ID)
         approvals = GlafiraCoreOwnerApprovalStore(taskStore)
         val persisted = approvals.pendingApprovals(3_002L).single()
         assertEquals(original.taskId, persisted.task.taskId)
@@ -131,6 +131,155 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
                 )
             }.toSet()
         )
+    }
+
+    @Test
+    fun staleOwnerGenerationCannotReadOrConsumeAnApprovedGrant() {
+        val original = task("approval-stale-generation")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        val summary = "Send a test message to test@example.invalid"
+        assertTrue(approvals.requestApproval(running, summary, 3_000L))
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                original.taskId,
+                setOf("communications.send"),
+                authenticatedOwnerSession(),
+                4_000L
+            )
+        )
+
+        val queued = requireNotNull(taskStore.getTask(original.taskId))
+        val owner = requireNotNull(taskStore.taskOwnership(original.taskId, original.projectId))
+        taskStore.writableDatabase.update(
+            "core_task_ownership",
+            android.content.ContentValues().apply {
+                put("owner_generation", owner.ownerGeneration + 1L)
+                put("state_version", owner.stateVersion + 1L)
+            },
+            "task_id = ? AND project_id = ?",
+            arrayOf(original.taskId, original.projectId)
+        )
+
+        assertTrue("A previous generation must not expose scopes", approvals.grantedScopes(queued).isEmpty())
+        assertNull("A previous generation must not expose a reviewable grant",
+            approvals.peekApprovalGrant(queued, summary, 4_100L))
+        assertNull("A previous generation must not consume a grant",
+            approvals.approvalGrant(queued, summary, 4_101L))
+        val status = taskStore.readableDatabase.rawQuery(
+            "SELECT status FROM core_action_approvals WHERE task_id = ?",
+            arrayOf(original.taskId)
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        assertEquals("EXPIRED", status)
+    }
+
+    @Test
+    fun staleGenerationCannotApproveOrRejectPendingOwnerApproval() {
+        val original = task("approval-stale-decision-generation")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        val summary = "Send a test message to test@example.invalid"
+        assertTrue(approvals.requestApproval(running, summary, 3_000L))
+
+        val owner = requireNotNull(taskStore.taskOwnership(original.taskId, original.projectId))
+        taskStore.writableDatabase.update(
+            "core_task_ownership",
+            android.content.ContentValues().apply {
+                put("owner_generation", owner.ownerGeneration + 1L)
+                put("state_version", owner.stateVersion + 1L)
+            },
+            "task_id = ? AND project_id = ?",
+            arrayOf(original.taskId, original.projectId)
+        )
+
+        assertNotEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                original.taskId,
+                setOf("communications.send"),
+                authenticatedOwnerSession(),
+                3_100L
+            )
+        )
+        assertNotEquals(
+            GlafiraCoreOwnerApprovalMutation.REJECTED,
+            approvals.reject(original.taskId, authenticatedOwnerSession(), 3_101L)
+        )
+        assertEquals(
+            GlafiraTaskState.WAITING_FOR_OWNER,
+            requireNotNull(taskStore.getTask(original.taskId)).state
+        )
+        val status = taskStore.readableDatabase.rawQuery(
+            "SELECT status FROM core_action_approvals WHERE task_id = ?",
+            arrayOf(original.taskId)
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        assertEquals("PENDING", status)
+    }
+
+    @Test
+    fun legacyApprovalWithoutOwnerMetadataFailsClosedWithoutCrashing() {
+        val original = task("approval-legacy-null-owner")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        val summary = "Send a test message to test@example.invalid"
+        assertTrue(approvals.requestApproval(running, summary, 3_000L))
+        assertEquals(
+            GlafiraCoreOwnerApprovalMutation.APPROVED,
+            approvals.approve(
+                original.taskId,
+                setOf("communications.send"),
+                authenticatedOwnerSession(),
+                4_000L
+            )
+        )
+        taskStore.writableDatabase.execSQL(
+            "UPDATE core_action_approvals SET owner_core_id = NULL, owner_generation = NULL WHERE task_id = ?",
+            arrayOf(original.taskId)
+        )
+        val queued = requireNotNull(taskStore.getTask(original.taskId))
+        assertTrue(approvals.grantedScopes(queued).isEmpty())
+        assertNull(approvals.peekApprovalGrant(queued, summary, 4_100L))
+        assertNull(approvals.approvalGrant(queued, summary, 4_101L))
+    }
+
+    @Test
+    fun stalePendingApprovalIsExpiredAndCanBeReRequestedByTheNewGeneration() {
+        val original = task("approval-stale-pending")
+        taskStore.enqueue(original)
+        val running = requireNotNull(taskStore.claimNext(2_000L))
+        val summary = "Send a test message to test@example.invalid"
+        assertTrue(approvals.requestApproval(running, summary, 3_000L))
+
+        val owner = requireNotNull(taskStore.taskOwnership(original.taskId, original.projectId))
+        taskStore.writableDatabase.update(
+            "core_task_ownership",
+            android.content.ContentValues().apply {
+                put("owner_generation", owner.ownerGeneration + 1L)
+                put("state_version", owner.stateVersion + 1L)
+            },
+            "task_id = ? AND project_id = ?",
+            arrayOf(original.taskId, original.projectId)
+        )
+
+        // Make the stale generation-N approval expired as well as owner-mismatched.
+        // Cleanup may expire the approval row, but must not fail the generation-N+1 task.
+        taskStore.writableDatabase.execSQL(
+            "UPDATE core_action_approvals SET expires_at = ? WHERE task_id = ?",
+            arrayOf("3050", original.taskId)
+        )
+        assertTrue("A stale-generation request must not appear in the owner queue",
+            approvals.pendingApprovals(3_100L).isEmpty())
+        val status = taskStore.readableDatabase.rawQuery(
+            "SELECT status FROM core_action_approvals WHERE task_id = ?",
+            arrayOf(original.taskId)
+        ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        assertEquals("EXPIRED", status)
+        val waiting = requireNotNull(taskStore.getTask(original.taskId))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, waiting.state)
+        assertTrue("The new generation can request a fresh approval",
+            approvals.requestApproval(waiting, summary, 3_200L))
+        assertEquals(1, approvals.pendingApprovals(3_201L).size)
     }
 
     @Test
@@ -455,5 +604,6 @@ class GlafiraCoreOwnerApprovalStoreInstrumentedTest {
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
+        private const val TEST_CORE_ID = "glafira-test-core-0001"
     }
 }
