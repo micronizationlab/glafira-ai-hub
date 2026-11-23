@@ -17,8 +17,8 @@ class GlafiraProviderDataGrant(
     init {
         require(isSafePolicyId(projectId)) { "PROVIDER_GRANT_PROJECT_INVALID" }
         require(this.allowedClassifications.isNotEmpty()) { "PROVIDER_GRANT_EMPTY" }
-        require(GlafiraProviderDataClassification.SECRET !in this.allowedClassifications) {
-            "PROVIDER_SECRET_CLASSIFICATION_NEVER_GRANTABLE"
+        require(GlafiraProviderDataClassification.RESTRICTED !in this.allowedClassifications) {
+            "PROVIDER_RESTRICTED_CLASSIFICATION_NEVER_GRANTABLE"
         }
         require(expiresAtMillis > 0L) { "PROVIDER_GRANT_EXPIRY_INVALID" }
         require(revokedAtMillis == null || revokedAtMillis > 0L) {
@@ -45,7 +45,7 @@ data class GlafiraProviderContextItem(
 enum class GlafiraProviderContextDenial {
     NO_VALID_GRANT,
     PROJECT_MISMATCH,
-    SECRET_NEVER_SHARED,
+    RESTRICTED_NEVER_SHARED,
     CLASSIFICATION_NOT_GRANTED
 }
 
@@ -96,8 +96,8 @@ object GlafiraProviderContextPolicy {
             val reason = when {
                 !grantIsValid -> GlafiraProviderContextDenial.NO_VALID_GRANT
                 item.projectId != projectId -> GlafiraProviderContextDenial.PROJECT_MISMATCH
-                item.classification == GlafiraProviderDataClassification.SECRET ->
-                    GlafiraProviderContextDenial.SECRET_NEVER_SHARED
+                item.classification == GlafiraProviderDataClassification.RESTRICTED ->
+                    GlafiraProviderContextDenial.RESTRICTED_NEVER_SHARED
                 item.classification !in grant!!.allowedClassifications ->
                     GlafiraProviderContextDenial.CLASSIFICATION_NOT_GRANTED
                 else -> null
