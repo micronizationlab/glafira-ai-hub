@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public struct MobileWorkspaceProject: Codable, Equatable, Identifiable, Sendable {
@@ -118,6 +119,7 @@ public enum MobileWorkspaceStoreError: Error, Equatable, Sendable {
     case operationNotFound
     case operationRequiresOwnerResolution
     case invalidPersistedState
+    case invalidEncryptionKey
 }
 
 /// Durable offline cache/outbox for the native iOS client.
@@ -126,6 +128,9 @@ public enum MobileWorkspaceStoreError: Error, Equatable, Sendable {
 /// replays an offline write: the exact outbox entry is fenced and exposed for an
 /// explicit owner decision.
 public actor MobileWorkspaceStore {
+    private static let sealedHeader = Data("GLAFIRA-MOBILE-WORKSPACE\u{0}1".utf8)
+    private static let authenticatedContext = Data("com.micronizationlab.glafira.mobile-workspace.v1".utf8)
+
     private struct Envelope: Codable {
         var schemaVersion = 1
         var projects: [String: MobileWorkspaceProject] = [:]
@@ -135,21 +140,55 @@ public actor MobileWorkspaceStore {
 
     private let directory: URL
     private let fileURL: URL
+    private let legacyFileURL: URL
     private let fileManager: FileManager
+    private let encryptionKey: SymmetricKey
     private var envelope: Envelope
 
     public init(directory: URL, fileManager: FileManager = .default) throws {
+        try self.init(
+            directory: directory,
+            encryptionKey: MobileWorkspaceEncryptionKeyStore().loadOrCreate(),
+            fileManager: fileManager
+        )
+    }
+
+    public init(
+        directory: URL,
+        encryptionKey: Data,
+        fileManager: FileManager = .default
+    ) throws {
+        guard encryptionKey.count == 32 else {
+            throw MobileWorkspaceStoreError.invalidEncryptionKey
+        }
         self.directory = directory
-        self.fileURL = directory.appendingPathComponent("mobile-workspace-v1.json", isDirectory: false)
+        self.fileURL = directory.appendingPathComponent("mobile-workspace-v1.sealed", isDirectory: false)
+        self.legacyFileURL = directory.appendingPathComponent("mobile-workspace-v1.json", isDirectory: false)
         self.fileManager = fileManager
+        self.encryptionKey = SymmetricKey(data: encryptionKey)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         if fileManager.fileExists(atPath: fileURL.path) {
             let bytes = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
-            let decoded = try JSONDecoder().decode(Envelope.self, from: bytes)
+            let decoded = try Self.open(bytes, encryptionKey: self.encryptionKey)
             guard decoded.schemaVersion == 1, Self.isValid(decoded) else {
                 throw MobileWorkspaceStoreError.invalidPersistedState
             }
             self.envelope = decoded
+        } else if fileManager.fileExists(atPath: legacyFileURL.path) {
+            let bytes = try Data(contentsOf: legacyFileURL, options: [.mappedIfSafe])
+            let decoded: Envelope
+            do {
+                decoded = try JSONDecoder().decode(Envelope.self, from: bytes)
+            } catch {
+                throw MobileWorkspaceStoreError.invalidPersistedState
+            }
+            guard decoded.schemaVersion == 1, Self.isValid(decoded) else {
+                throw MobileWorkspaceStoreError.invalidPersistedState
+            }
+            self.envelope = decoded
+            let sealed = try Self.seal(decoded, encryptionKey: self.encryptionKey)
+            try Self.write(sealed, to: fileURL, fileManager: fileManager)
+            try fileManager.removeItem(at: legacyFileURL)
         } else {
             self.envelope = Envelope()
         }
@@ -412,9 +451,44 @@ public actor MobileWorkspaceStore {
 
     private func persist() throws {
         guard Self.isValid(envelope) else { throw MobileWorkspaceStoreError.invalidPersistedState }
+        let bytes = try Self.seal(envelope, encryptionKey: encryptionKey)
+        try Self.write(bytes, to: fileURL, fileManager: fileManager)
+    }
+
+    private static func seal(_ envelope: Envelope, encryptionKey: SymmetricKey) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let bytes = try encoder.encode(envelope)
+        let plaintext = try encoder.encode(envelope)
+        let box = try AES.GCM.seal(
+            plaintext,
+            using: encryptionKey,
+            authenticating: authenticatedContext
+        )
+        guard let combined = box.combined else {
+            throw MobileWorkspaceStoreError.invalidPersistedState
+        }
+        return sealedHeader + combined
+    }
+
+    private static func open(_ bytes: Data, encryptionKey: SymmetricKey) throws -> Envelope {
+        guard bytes.count > sealedHeader.count,
+              bytes.prefix(sealedHeader.count) == sealedHeader else {
+            throw MobileWorkspaceStoreError.invalidPersistedState
+        }
+        do {
+            let box = try AES.GCM.SealedBox(combined: bytes.dropFirst(sealedHeader.count))
+            let plaintext = try AES.GCM.open(
+                box,
+                using: encryptionKey,
+                authenticating: authenticatedContext
+            )
+            return try JSONDecoder().decode(Envelope.self, from: plaintext)
+        } catch {
+            throw MobileWorkspaceStoreError.invalidPersistedState
+        }
+    }
+
+    private static func write(_ bytes: Data, to fileURL: URL, fileManager: FileManager) throws {
         try bytes.write(to: fileURL, options: [.atomic])
 #if os(iOS)
         try fileManager.setAttributes(

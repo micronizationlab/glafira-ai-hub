@@ -4,6 +4,7 @@ import XCTest
 
 final class MobileWorkspaceStoreTests: XCTestCase {
     private var directory: URL!
+    private let encryptionKey = Data(repeating: 0xA5, count: 32)
 
     override func setUpWithError() throws {
         directory = FileManager.default.temporaryDirectory
@@ -18,7 +19,7 @@ final class MobileWorkspaceStoreTests: XCTestCase {
     }
 
     func testOfflineMessageAndOutboxSurviveRepositoryRestart() async throws {
-        let first = try MobileWorkspaceStore(directory: directory)
+        let first = try store()
         try await first.replaceAuthorizedProjects([project("project-001", name: "Клиенты")])
         let entry = try await first.appendOfflineMessage(
             projectId: "project-001",
@@ -29,7 +30,7 @@ final class MobileWorkspaceStoreTests: XCTestCase {
             createdAtEpochMs: 1_800_000_000_000
         )
 
-        let reopened = try MobileWorkspaceStore(directory: directory)
+        let reopened = try store()
         let outbox = await reopened.pendingOutbox()
         let conversation = try await reopened.conversation(
             projectId: "project-001",
@@ -42,7 +43,7 @@ final class MobileWorkspaceStoreTests: XCTestCase {
     }
 
     func testExactAcknowledgementCommitsMessageAndAdvancesRemoteVersion() async throws {
-        let store = try MobileWorkspaceStore(directory: directory)
+        let store = try store()
         try await store.replaceAuthorizedProjects([project("project-001", name: "Клиенты")])
         let entry = try await store.appendOfflineMessage(
             projectId: "project-001",
@@ -66,7 +67,7 @@ final class MobileWorkspaceStoreTests: XCTestCase {
     }
 
     func testRemoteGenerationChangeRequiresExplicitOwnerResolution() async throws {
-        let store = try MobileWorkspaceStore(directory: directory)
+        let store = try store()
         try await store.replaceAuthorizedProjects([project("project-001", name: "Клиенты")])
         _ = try await store.applyRemoteConversation(
             projectId: "project-001",
@@ -114,7 +115,7 @@ final class MobileWorkspaceStoreTests: XCTestCase {
     }
 
     func testProjectRevocationDeletesItsCacheAndPendingWrites() async throws {
-        let store = try MobileWorkspaceStore(directory: directory)
+        let store = try store()
         try await store.replaceAuthorizedProjects([
             project("project-001", name: "Первый"),
             project("project-002", name: "Второй")
@@ -146,7 +147,7 @@ final class MobileWorkspaceStoreTests: XCTestCase {
     }
 
     func testDuplicateRemoteOperationIdsFailClosedWithoutReplacingCurrentConversation() async throws {
-        let store = try MobileWorkspaceStore(directory: directory)
+        let store = try store()
         try await store.replaceAuthorizedProjects([project("project-001", name: "Клиенты")])
         _ = try await store.applyRemoteConversation(
             projectId: "project-001",
@@ -180,7 +181,7 @@ final class MobileWorkspaceStoreTests: XCTestCase {
     }
 
     func testExactRemoteEchoAcknowledgesOutboxWithoutReplayingTheWrite() async throws {
-        let store = try MobileWorkspaceStore(directory: directory)
+        let store = try store()
         try await store.replaceAuthorizedProjects([project("project-001", name: "Клиенты")])
         _ = try await store.applyRemoteConversation(
             projectId: "project-001",
@@ -225,6 +226,63 @@ final class MobileWorkspaceStoreTests: XCTestCase {
         )
         XCTAssertEqual(conversation?.messages.filter { $0.id == entry.operationId }.count, 1)
         XCTAssertEqual(conversation?.messages.first { $0.id == entry.operationId }?.origin, .remote)
+    }
+
+    func testPersistedWorkspaceIsAuthenticatedCiphertext() async throws {
+        let store = try store()
+        try await store.replaceAuthorizedProjects([project("project-001", name: "Секретный проект")])
+        _ = try await store.appendOfflineMessage(
+            projectId: "project-001",
+            conversationId: "conversation-001",
+            title: "ГЛАФИРА",
+            text: "Конфиденциальный офлайн-текст",
+            expectedRemoteVersion: nil,
+            createdAtEpochMs: 1_800_000_000_000
+        )
+
+        let sealedURL = directory.appendingPathComponent("mobile-workspace-v1.sealed")
+        let bytes = try Data(contentsOf: sealedURL)
+        let encoded = String(decoding: bytes, as: UTF8.self)
+        XCTAssertFalse(encoded.contains("Секретный проект"))
+        XCTAssertFalse(encoded.contains("Конфиденциальный офлайн-текст"))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("mobile-workspace-v1.json").path
+        ))
+    }
+
+    func testWrongKeyFailsClosedWithoutReplacingCiphertext() async throws {
+        let store = try store()
+        try await store.replaceAuthorizedProjects([project("project-001", name: "Клиенты")])
+        let sealedURL = directory.appendingPathComponent("mobile-workspace-v1.sealed")
+        let before = try Data(contentsOf: sealedURL)
+
+        XCTAssertThrowsError(try MobileWorkspaceStore(
+            directory: directory,
+            encryptionKey: Data(repeating: 0xB6, count: 32)
+        )) { error in
+            XCTAssertEqual(error as? MobileWorkspaceStoreError, .invalidPersistedState)
+        }
+        XCTAssertEqual(try Data(contentsOf: sealedURL), before)
+    }
+
+    func testLegacyPlaintextIsMigratedOnceToSealedStorage() async throws {
+        let legacy = """
+        {"schemaVersion":1,"projects":{"project-001":{"id":"project-001","name":"Legacy","revision":"project-v1","updatedAtEpochMs":1800000000000}},"conversations":{},"outbox":[]}
+        """
+        let legacyURL = directory.appendingPathComponent("mobile-workspace-v1.json")
+        try Data(legacy.utf8).write(to: legacyURL, options: [.atomic])
+
+        let migrated = try store()
+        let projectIds = await migrated.projectSummaries().map(\.id)
+        XCTAssertEqual(projectIds, ["project-001"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("mobile-workspace-v1.sealed").path
+        ))
+    }
+
+    private func store() throws -> MobileWorkspaceStore {
+        try MobileWorkspaceStore(directory: directory, encryptionKey: encryptionKey)
     }
 
     private func project(_ id: String, name: String) -> MobileWorkspaceProject {
