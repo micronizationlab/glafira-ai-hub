@@ -31,14 +31,15 @@ data class VaultEntry(
 class VaultSession internal constructor(
     context: Context,
     private val keyBytes: ByteArray,
-    private val salt: ByteArray
+    private val salt: ByteArray,
+    private val deadline: VaultSessionDeadline = VaultSessionDeadline()
 ) {
     private val file = File(context.filesDir, FILE_NAME)
     private var active = true
 
     @Synchronized
     fun loadEntries(): List<VaultEntry> {
-        check(active) { "Хранилище заблокировано" }
+        requireActive()
         val envelope = JSONObject(file.readText())
         val iv = Base64.decode(envelope.getString("iv"), Base64.NO_WRAP)
         val ciphertext = Base64.decode(envelope.getString("data"), Base64.NO_WRAP)
@@ -67,7 +68,7 @@ class VaultSession internal constructor(
 
     @Synchronized
     fun saveEntries(entries: List<VaultEntry>) {
-        check(active) { "Хранилище заблокировано" }
+        requireActive()
         val array = JSONArray()
         entries.forEach { entry ->
             array.put(JSONObject().apply {
@@ -107,10 +108,28 @@ class VaultSession internal constructor(
 
     @Synchronized
     fun lock() {
-        if (active) {
-            keyBytes.fill(0)
-            active = false
+        deactivate()
+    }
+
+    @Synchronized
+    internal fun remainingLifetimeMillis(): Long {
+        if (!active) return 0L
+        val remaining = deadline.remainingMillis()
+        if (remaining == 0L) deactivate()
+        return remaining
+    }
+
+    private fun requireActive() {
+        if (!active || deadline.isExpired()) {
+            deactivate()
+            error("Хранилище заблокировано")
         }
+    }
+
+    private fun deactivate() {
+        if (!active) return
+        keyBytes.fill(0)
+        active = false
     }
 
     companion object {
@@ -173,5 +192,32 @@ class VaultSession internal constructor(
                 spec.clearPassword()
             }
         }
+    }
+}
+
+internal class VaultSessionDeadline(
+    private val lifetimeNanos: Long = DEFAULT_LIFETIME_NANOS,
+    private val nanoTime: () -> Long = System::nanoTime
+) {
+    private val openedAtNanos = nanoTime()
+
+    init {
+        require(lifetimeNanos > 0L) { "Session lifetime must be positive" }
+    }
+
+    fun isExpired(): Boolean = elapsedNanos() >= lifetimeNanos
+
+    fun remainingMillis(): Long {
+        val remainingNanos = (lifetimeNanos - elapsedNanos()).coerceAtLeast(0L)
+        if (remainingNanos == 0L) return 0L
+        return ((remainingNanos - 1L) / NANOS_PER_MILLISECOND) + 1L
+    }
+
+    private fun elapsedNanos(): Long = (nanoTime() - openedAtNanos).coerceAtLeast(0L)
+
+    companion object {
+        internal const val DEFAULT_LIFETIME_MILLIS = 5 * 60_000L
+        private const val NANOS_PER_MILLISECOND = 1_000_000L
+        private const val DEFAULT_LIFETIME_NANOS = DEFAULT_LIFETIME_MILLIS * NANOS_PER_MILLISECOND
     }
 }

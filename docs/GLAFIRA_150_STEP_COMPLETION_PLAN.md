@@ -1,8 +1,10 @@
 # GLAFIRA — ordered 150-step completion plan
 
-**Baseline main for this ledger revision:** `c6959c73d0fb9225d84814e6652b4134937c27a0` (verified after Android GitHub chat command PR #428 was merged on 2026-11-22).
-**Owner priority (owner's latest instruction, 2026-11-22):** (1) GLAFIRA Android must be able to perform GitHub work; (2) Windows Desktop Agent must independently perform GitHub work; (3) resume the previously established Core, Backup & Recovery, Bridge and remaining priorities. Keep the ten workstreams active in parallel, but do not let lower-priority work displace these first two deliverables.  
+**Baseline main for this ledger revision:** `2381faedb06e604c759c0c5294f154f5f9ec3e4f` (verified after Android sound reliability PR #442 was merged on 2026-11-23).
+**Owner priority (owner's latest instruction, 2026-11-23):** (1) GLAFIRA Android must be able to perform GitHub work; (2) Windows Desktop Agent must independently perform GitHub work; (3) resume the previously established Core, Backup & Recovery, Bridge and remaining priorities. Keep the ten workstreams active in parallel, but do not let lower-priority work displace these first two deliverables.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
+
+**Latest verified mainline update (2026-11-23):** PR #442 (`fix(android): make sound test reliable while samples load`) merged at `2381faedb06e604c759c0c5294f154f5f9ec3e4f`. Exact-head Android JVM tests, managed-emulator acceptance and debug APK packaging passed. This is a sound/UI reliability fix; it does not complete an additional numbered Program 150 acceptance step. Physical audio playback still needs owner-device verification.
 
 ## Scope and denominator clarification
 

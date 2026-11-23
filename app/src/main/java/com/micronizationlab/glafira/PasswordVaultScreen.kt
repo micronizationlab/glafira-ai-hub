@@ -80,10 +80,10 @@ fun PasswordVaultScreen(onBack: () -> Unit) {
         onDispose { lifecycle?.removeObserver(observer) }
     }
     LaunchedEffect(session) {
-        if (session != null) {
-            delay(5 * 60_000L)
-            lockVault()
-        }
+        val activeSession = session ?: return@LaunchedEffect
+        delay(activeSession.remainingLifetimeMillis())
+        // A cancelled timer from an older unlock must never close a newer session.
+        if (session === activeSession) lockVault()
     }
     fun importSelectedCsv(uri: android.net.Uri, activeSession: VaultSession) {
         try {
