@@ -1,6 +1,6 @@
 # GLAFIRA Windows Agent
 
-The Windows Agent is a separate background-worker product, not a Desktop clone.
+The Windows Agent is a separate background worker, not a Desktop clone. It pairs with a GLAFIRA Desktop Hub and runs as a Windows service.
 
 ## Ready-to-install package
 
@@ -37,6 +37,35 @@ Restart-Service "GLAFIRA Agent"
 
 6. In GLAFIRA Desktop, select the pending Agent, assign only the capabilities it should receive, choose the parallelism limit and explicitly approve it. The Agent should appear online within 30 seconds after approval; no second restart is required.
 
+## Current task execution boundary
+
+The service currently registers exactly one typed task handler:
+
+- `diagnostics.snapshot` — bounded, read-only collection of a fixed set of non-identifying runtime facts (Windows platform, process/OS architecture and .NET runtime version). It writes a redacted, content-addressed artifact and returns its reference and digest.
+
+The Agent does have task polling, authenticated lease handling, durable execution journal, result-artifact outbox and exact Hub ACK infrastructure. The handler registry is not empty: this diagnostics handler is registered in `Program.cs`. Do not describe the current build as a general-purpose remote executor.
+
+The following remain disabled or unimplemented:
+
+- arbitrary shell/process execution;
+- arbitrary filesystem, registry, environment-variable or installed-software inspection;
+- non-read-only task effects;
+- general-purpose Windows coding/GitHub task execution;
+- a broader handler set beyond the fixed diagnostics snapshot.
+
+The executor fails closed for unknown task types, unapproved capabilities and every effect class other than `ReadOnly`. A connected Agent with no owner-approved capability profile does not claim tasks.
+
+## Security and implementation boundary
+
+- The Agent uses a pinned HTTPS pairing endpoint and a 256-bit one-time ticket.
+- The shared secret is stored as a DPAPI LocalMachine-protected blob; plaintext is not written to disk.
+- The credential directory and file are ACL-protected for LocalSystem and local Administrators.
+- The Windows service runs as LocalSystem so it can decrypt the machine-scoped credential.
+- Desktop enrollment creates a pending Agent with no capabilities. The owner explicitly assigns capabilities and approves it; revocation disables the credential and enrollment.
+- The service sends a TLS-pinned, HMAC-signed Bridge heartbeat every 30 seconds. Pending Agents cannot refresh liveness or receive a capability profile.
+- Task claims require the Agent to be in the Ready state with at least one registered handler.
+- Results and redacted artifacts remain journaled/outboxed until the Hub acknowledges the exact task/fence/digest tuple.
+
 ## Remove
 
 Open elevated PowerShell:
@@ -50,20 +79,3 @@ The default uninstall retains the machine-protected enrollment file. To also rem
 ~~~powershell
 .\scripts\uninstall-agent.ps1 -RemoveCredentials
 ~~~
-
-## Security and implementation boundary
-
-- The Agent uses a pinned HTTPS pairing endpoint and a 256-bit one-time ticket.
-- The shared secret is stored as a DPAPI LocalMachine-protected blob; plaintext is not written to disk.
-- The credential directory and file are ACL-protected for LocalSystem and local Administrators.
-- The Windows service runs as LocalSystem so it can decrypt the machine-scoped credential.
-- Desktop enrollment creates a pending Agent with no capabilities. The owner explicitly assigns capabilities and approves it; revocation disables the credential and enrollment.
-- The service sends a TLS-pinned, HMAC-signed Bridge heartbeat every 30 seconds. Pending Agents cannot refresh liveness or receive a capability profile.
-
-**Current runtime boundary:** pairing, owner approval and heartbeat are implemented. Task polling,
-lease renewal and result ACK infrastructure exists, but no typed task handler is registered, so
-task claims and remote execution remain disabled. The independent bounded artifact outbox may
-deliver a previously validated, redacted diagnostics artifact while the Agent is connected. Its
-app-owned file survives restarts and is deleted only after an exact Hub ACK (including an exact
-duplicate ACK); transport, project/owner, lease/fence or digest failures retain the local file.
-Do not describe this build as a functioning remote task executor.

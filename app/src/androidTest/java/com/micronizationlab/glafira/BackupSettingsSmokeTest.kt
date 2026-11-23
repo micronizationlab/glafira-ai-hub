@@ -38,32 +38,55 @@ class BackupSettingsSmokeTest {
         )
         try {
             val device = UiDevice.getInstance(instrumentation)
-            assertTrue("GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.desc("Открыть настройки")), 20_000))
-            val settingsButton = device.findObject(By.desc("Открыть настройки"))
-            val settingsBounds = settingsButton.visibleBounds
-            assertTrue("Settings action is not visible", settingsBounds.width() > 0 && settingsBounds.height() > 0)
-            device.click(settingsBounds.centerX(), settingsBounds.centerY())
+            assertTrue(
+                "GLAFIRA home screen did not open",
+                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
+            )
+            val settingsButton = device.findObject(By.descContains("Открыть настройки"))
+            assertTrue(
+                "Settings action is not visible",
+                settingsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
+            )
+            settingsButton.click()
+            assertTrue(
+                "Settings screen did not open",
+                device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
+            )
 
-            var saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
-            repeat(8) {
-                if (saveButton == null) {
+            // Compose Settings is a verticalScroll Column. The heading is not a stable
+            // accessibility selector on every emulator API level, so locate the actual
+            // actionable semantic node while moving through the viewport in bounded steps.
+            val buttonSelector = By.descContains("Создать резервную копию сейчас")
+            var saveAction = device.wait(Until.findObject(buttonSelector), 500)
+            repeat(16) {
+                if (saveAction == null) {
                     device.swipe(
-                        device.displayWidth / 2, device.displayHeight * 3 / 4,
-                        device.displayWidth / 2, device.displayHeight / 4, 12
+                        device.displayWidth / 2,
+                        (device.displayHeight * 0.82f).toInt(),
+                        device.displayWidth / 2,
+                        (device.displayHeight * 0.28f).toInt(),
+                        18
                     )
-                    saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
+                    saveAction = device.wait(Until.findObject(buttonSelector), 500)
                 }
             }
-            assertNotNull("Manual backup button is not visible in Settings", saveButton)
-            assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
-            val saveBounds = saveButton!!.visibleBounds
-            assertTrue("Manual backup action is not visible", saveBounds.width() > 0 && saveBounds.height() > 0)
-            device.click(saveBounds.centerX(), saveBounds.centerY())
+            assertNotNull("Manual backup button is not reachable in Settings", saveAction)
+            val button = requireNotNull(saveAction)
+            assertTrue("Manual backup button is disabled before input", button.isEnabled)
+            val bounds = button.visibleBounds
+            assertTrue(
+                "Manual backup action is not visible",
+                bounds.width() > 0 && bounds.height() > 0
+            )
+            button.click()
             device.waitForIdle()
             val guidance = device.wait(
-                Until.findObject(By.descContains("Сначала выбери папку")), 10_000)
-            assertNotNull("Missing-folder guidance was not shown beside the manual backup action", guidance)
+                Until.findObject(By.descContains("Сначала выбери папку")), 10_000
+            )
+            assertNotNull(
+                "Missing-folder guidance was not shown after the manual backup action",
+                guidance
+            )
         } finally {
             scenario.close()
         }
