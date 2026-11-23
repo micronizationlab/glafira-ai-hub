@@ -55,13 +55,7 @@ data class GlafiraProviderContextDecision(
     val deniedItems: List<Pair<String, GlafiraProviderContextDenial>>
 )
 
-/**
- * Pure fail-closed policy for project/provider context assembly.
- *
- * This is the policy kernel only: callers must obtain grants from an authenticated,
- * durable owner-controlled store and persist a metadata-only Trace decision before dispatch.
- * API-key presence, provider availability and peer approval are not data-sharing grants.
- */
+/** Pure fail-closed policy kernel; callers must use durable owner grants and Trace-before-dispatch. */
 object GlafiraProviderContextPolicy {
     const val MAX_PROVIDER_CONTEXT_ITEMS = 64
     const val MAX_PROVIDER_CONTEXT_TOTAL_CHARS = 65_536
@@ -104,7 +98,10 @@ object GlafiraProviderContextPolicy {
             }
             if (reason == null) allowed += item else denied += item.referenceId to reason
         }
-        return GlafiraProviderContextDecision(allowed.toList(), denied.toList())
+        return GlafiraProviderContextDecision(
+            Collections.unmodifiableList(allowed.toList()),
+            Collections.unmodifiableList(denied.toList())
+        )
     }
 }
 
