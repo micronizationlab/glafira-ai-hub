@@ -373,6 +373,18 @@ public actor MobileWorkspaceStore {
         try persist()
     }
 
+    /// Fences an outbox write after the Hub reports a version/idempotency conflict or
+    /// before transport when the stored base version cannot satisfy the Bridge contract.
+    /// The entry and its local message remain visible until the owner explicitly rebases
+    /// or discards them.
+    public func requireOwnerResolution(operationId: String) throws {
+        guard let index = envelope.outbox.firstIndex(where: { $0.operationId == operationId }) else {
+            throw MobileWorkspaceStoreError.operationNotFound
+        }
+        envelope.outbox[index].state = .requiresOwnerResolution
+        try persist()
+    }
+
     public func resolveConflict(operationId: String, choice: MobileConflictChoice) throws {
         guard let index = envelope.outbox.firstIndex(where: { $0.operationId == operationId }) else {
             throw MobileWorkspaceStoreError.operationNotFound
