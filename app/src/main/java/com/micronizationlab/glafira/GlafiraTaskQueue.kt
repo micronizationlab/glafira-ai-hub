@@ -19,6 +19,61 @@ interface GlafiraTaskQueue {
     ): Boolean
 }
 
+/** Ownership-aware Dry Run persistence used by the production Core executor. */
+interface GlafiraOwnedDryRunPreviewPersistence : GlafiraDryRunPreviewPersistence {
+    fun persistDryRunPreviewOwned(
+        token: GlafiraTaskOwnershipExecutionToken,
+        expectedStates: Set<GlafiraTaskState>,
+        plan: GlafiraDryRunPlan,
+        nowMillis: Long
+    ): Boolean
+}
+
+/** Immutable authority captured atomically with a Core task claim. */
+data class GlafiraTaskOwnershipExecutionToken(
+    val taskId: String,
+    val ownerCoreId: String,
+    val ownerGeneration: Long,
+    val stateVersion: Long
+) {
+    init {
+        require(taskId.isNotBlank())
+        require(ownerCoreId.matches(Regex("^[A-Za-z0-9._-]{8,128}$")))
+        require(ownerGeneration > 0L)
+        require(stateVersion > 0L)
+    }
+}
+
+data class GlafiraOwnedTaskClaim(
+    val task: GlafiraTask,
+    val ownershipToken: GlafiraTaskOwnershipExecutionToken
+)
+
+/** Optional strict ownership-aware execution seam for installation-backed Core stores. */
+interface GlafiraTaskOwnershipExecutionFence {
+    /** False only for legacy/test stores that have no installation identity to fence against. */
+    val ownershipFencingEnabled: Boolean get() = true
+    fun claimNextOwned(nowMillis: Long = System.currentTimeMillis()): GlafiraOwnedTaskClaim?
+    fun transitionOwned(
+        token: GlafiraTaskOwnershipExecutionToken,
+        expectedStates: Set<GlafiraTaskState>,
+        nextState: GlafiraTaskState,
+        nowMillis: Long = System.currentTimeMillis(),
+        retryAtMillis: Long? = null,
+        lastError: String? = null
+    ): Boolean
+}
+
+/** Optional result persistence that verifies the exact owner generation captured at claim. */
+interface GlafiraOwnedCoreTaskResultPersistence : GlafiraCoreTaskResultPersistence {
+    fun persistCoreTaskResultOwned(
+        token: GlafiraTaskOwnershipExecutionToken,
+        expectedStates: Set<GlafiraTaskState>,
+        result: String,
+        nowMillis: Long
+    ): Boolean
+}
+
 /**
  * Optional durable recovery seam for Core tasks left RUNNING by process death.
  * Desktop tasks use independent expiring leases and must not be recovered here.

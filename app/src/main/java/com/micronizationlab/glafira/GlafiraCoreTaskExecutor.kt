@@ -86,11 +86,14 @@ class GlafiraCoreTaskExecutor(
                     } else {
                         withContext(dispatcher) {
                             val now = clock()
-                            val task = queue.claimNext(now)
-                                ?: return@withContext GlafiraTaskExecutionResult(
-                                    null, GlafiraTaskExecutionStatus.IDLE
-                                )
-                            executeClaimed(task, now, effectiveBudget)
+                            val fence = queue as? GlafiraTaskOwnershipExecutionFence
+                            val useOwnershipFence = fence?.ownershipFencingEnabled == true
+                            val ownedClaim = if (useOwnershipFence) fence?.claimNextOwned(now) else null
+                            val task = if (useOwnershipFence) ownedClaim?.task else queue.claimNext(now)
+                            if (task == null) return@withContext GlafiraTaskExecutionResult(
+                                null, GlafiraTaskExecutionStatus.IDLE
+                            )
+                            executeClaimed(task, ownedClaim?.ownershipToken, now, effectiveBudget)
                         }
                     }
                 }
@@ -121,6 +124,7 @@ class GlafiraCoreTaskExecutor(
 
     private suspend fun executeClaimed(
         task: GlafiraTask,
+        ownershipToken: GlafiraTaskOwnershipExecutionToken?,
         nowMillis: Long,
         effectiveBudget: GlafiraRuntimeBudget
     ): GlafiraTaskExecutionResult {
@@ -137,13 +141,13 @@ class GlafiraCoreTaskExecutor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            return fail(task, "AUTHORIZATION_ERROR")
+            return fail(task, ownershipToken, "AUTHORIZATION_ERROR")
         }
 
         when (authorization.status) {
             GlafiraTaskAuthorizationStatus.DENIED -> {
                 if (mode == GlafiraExecutionMode.LIVE) {
-                    return fail(task, authorization.reason ?: "AUTHORIZATION_DENIED")
+                    return fail(task, ownershipToken, authorization.reason ?: "AUTHORIZATION_DENIED")
                 }
             }
             GlafiraTaskAuthorizationStatus.WAITING_FOR_OWNER -> {
@@ -151,8 +155,8 @@ class GlafiraCoreTaskExecutor(
                     val currentState = queue.getTask(task.taskId)?.state
                     val changed = when (currentState) {
                         GlafiraTaskState.WAITING_FOR_OWNER -> true
-                        GlafiraTaskState.RUNNING -> queue.transition(
-                            task.taskId, setOf(GlafiraTaskState.RUNNING),
+                        GlafiraTaskState.RUNNING -> transitionOwnedOrLegacy(
+                            ownershipToken, task.taskId, setOf(GlafiraTaskState.RUNNING),
                             GlafiraTaskState.WAITING_FOR_OWNER, nowMillis,
                             lastError = authorization.reason
                         )
@@ -169,7 +173,7 @@ class GlafiraCoreTaskExecutor(
             GlafiraTaskAuthorizationStatus.AUTHORIZED -> Unit
         }
 
-        val handler = handlerMap[task.taskType] ?: return fail(task, "NO_HANDLER_REGISTERED")
+        val handler = handlerMap[task.taskType] ?: return fail(task, ownershipToken, "NO_HANDLER_REGISTERED")
         val budgetDecision = GlafiraRuntimeBudgetPolicy.evaluate(
             task = task,
             nowMillis = clock(),
@@ -177,7 +181,7 @@ class GlafiraCoreTaskExecutor(
             budget = effectiveBudget,
             measuredCostMicros = runCatching { costMeter?.measuredCostMicros(task.taskId) }.getOrNull()
         )
-        if (!budgetDecision.allowed) return fail(task, budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED")
+        if (!budgetDecision.allowed) return fail(task, ownershipToken, budgetDecision.reason ?: "RUNTIME_BUDGET_REJECTED")
 
         // Dry Run is a planning path, not a mock invocation of the live handler.
         // When Core supplies the typed persistence port, the encrypted preview row and
@@ -185,13 +189,21 @@ class GlafiraCoreTaskExecutor(
         if (mode == GlafiraExecutionMode.DRY_RUN) {
             val plan = GlafiraDryRunPlanner.build(task, authorization)
             val preview = "DRY_RUN_PREVIEW:" + plan.toSafeJson()
-            val changed = dryRunPreviewPersistence?.persistDryRunPreview(
-                task.taskId, setOf(GlafiraTaskState.RUNNING), plan, clock()
-            ) ?: queue.transition(
-                task.taskId, setOf(GlafiraTaskState.RUNNING),
-                GlafiraTaskState.WAITING_FOR_OWNER, clock(),
-                lastError = preview
-            )
+            val changed = when {
+                ownershipToken != null && dryRunPreviewPersistence is GlafiraOwnedDryRunPreviewPersistence ->
+                    dryRunPreviewPersistence.persistDryRunPreviewOwned(
+                        ownershipToken, setOf(GlafiraTaskState.RUNNING), plan, clock()
+                    )
+                ownershipToken != null -> false
+                dryRunPreviewPersistence != null -> dryRunPreviewPersistence.persistDryRunPreview(
+                    task.taskId, setOf(GlafiraTaskState.RUNNING), plan, clock()
+                )
+                else -> transitionOwnedOrLegacy(
+                    ownershipToken, task.taskId, setOf(GlafiraTaskState.RUNNING),
+                    GlafiraTaskState.WAITING_FOR_OWNER, clock(),
+                    lastError = preview
+                )
+            }
             return GlafiraTaskExecutionResult(
                 task.taskId,
                 if (changed) GlafiraTaskExecutionStatus.DRY_RUN_PREVIEWED
@@ -205,18 +217,18 @@ class GlafiraCoreTaskExecutor(
             // bounds cooperative suspend handlers and cancels them when their allowance ends.
             withTimeout(budgetDecision.timeoutMillis) { handler.execute(task) }
         } catch (timeout: TimeoutCancellationException) {
-            return scheduleRetry(task, "RUNTIME_TIME_LIMIT_EXCEEDED", clock(), effectiveBudget.maxRetries)
+            return scheduleRetry(task, ownershipToken, "RUNTIME_TIME_LIMIT_EXCEEDED", clock(), effectiveBudget.maxRetries)
         } catch (cancelled: CancellationException) {
             // Persist a risk-aware recovery state even while the parent coroutine is cancelling,
             // then preserve structured concurrency by propagating cancellation.
             withContext(NonCancellable) {
                 runCatching {
-                    scheduleRetry(task, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
+                    scheduleRetry(task, ownershipToken, "EXECUTION_CANCELLED", clock(), effectiveBudget.maxRetries)
                 }
             }
             throw cancelled
         } catch (failure: Exception) {
-            return scheduleRetry(task, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock(), effectiveBudget.maxRetries)
+            return scheduleRetry(task, ownershipToken, "HANDLER_ERROR:${failure.javaClass.simpleName}", clock(), effectiveBudget.maxRetries)
         }
 
         return when (outcome) {
@@ -228,17 +240,26 @@ class GlafiraCoreTaskExecutor(
                 val now = clock()
                 val resultPersistence = queue as? GlafiraCoreTaskResultPersistence
                 val changed = try {
-                    resultPersistence?.persistCoreTaskResult(
-                        task.taskId, setOf(GlafiraTaskState.RUNNING), summary, now
-                    ) ?: queue.transition(
-                        task.taskId, setOf(GlafiraTaskState.RUNNING),
-                        GlafiraTaskState.SUCCEEDED, now
-                    )
+                    when {
+                        ownershipToken != null && resultPersistence is GlafiraOwnedCoreTaskResultPersistence ->
+                            resultPersistence.persistCoreTaskResultOwned(
+                                ownershipToken, setOf(GlafiraTaskState.RUNNING), summary, now
+                            )
+                        ownershipToken != null -> false
+                        resultPersistence != null ->
+                            resultPersistence.persistCoreTaskResult(
+                                task.taskId, setOf(GlafiraTaskState.RUNNING), summary, now
+                            )
+                        else -> transitionOwnedOrLegacy(
+                            ownershipToken, task.taskId, setOf(GlafiraTaskState.RUNNING),
+                            GlafiraTaskState.SUCCEEDED, now
+                        )
+                    }
                 } catch (_: Exception) {
-                    return reconcileResultPersistenceFailure(task, effectiveBudget.maxRetries, now)
+                    return reconcileResultPersistenceFailure(task, ownershipToken, effectiveBudget.maxRetries, now)
                 }
                 if (!changed && resultPersistence != null) {
-                    return reconcileResultPersistenceFailure(task, effectiveBudget.maxRetries, now)
+                    return reconcileResultPersistenceFailure(task, ownershipToken, effectiveBudget.maxRetries, now)
                 }
                 GlafiraTaskExecutionResult(
                     task.taskId,
@@ -248,11 +269,11 @@ class GlafiraCoreTaskExecutor(
                 )
             }
             is GlafiraTaskExecutionOutcome.RetryableFailure ->
-                scheduleRetry(task, outcome.reason, clock(), effectiveBudget.maxRetries)
-            is GlafiraTaskExecutionOutcome.PermanentFailure -> fail(task, outcome.reason)
+                scheduleRetry(task, ownershipToken, outcome.reason, clock(), effectiveBudget.maxRetries)
+            is GlafiraTaskExecutionOutcome.PermanentFailure -> fail(task, ownershipToken, outcome.reason)
             GlafiraTaskExecutionOutcome.WaitingForNetwork -> {
-                val changed = queue.transition(
-                    task.taskId, setOf(GlafiraTaskState.RUNNING),
+                val changed = transitionOwnedOrLegacy(
+                    ownershipToken, task.taskId, setOf(GlafiraTaskState.RUNNING),
                     GlafiraTaskState.WAITING_FOR_NETWORK, clock()
                 )
                 GlafiraTaskExecutionResult(
@@ -262,8 +283,8 @@ class GlafiraCoreTaskExecutor(
                 )
             }
             GlafiraTaskExecutionOutcome.WaitingForOwner -> {
-                val changed = queue.transition(
-                    task.taskId, setOf(GlafiraTaskState.RUNNING),
+                val changed = transitionOwnedOrLegacy(
+                    ownershipToken, task.taskId, setOf(GlafiraTaskState.RUNNING),
                     GlafiraTaskState.WAITING_FOR_OWNER, clock(),
                     lastError = "OWNER_APPROVAL_REQUIRED"
                 )
@@ -282,13 +303,14 @@ class GlafiraCoreTaskExecutor(
      */
     private fun reconcileResultPersistenceFailure(
         task: GlafiraTask,
+        ownershipToken: GlafiraTaskOwnershipExecutionToken?,
         maxRetries: Int,
         nowMillis: Long
     ): GlafiraTaskExecutionResult {
         val decision = GlafiraTaskRecoveryPolicy.interrupted(task, maxRetries)
         val changed = runCatching {
-            queue.transition(
-                task.taskId,
+            transitionOwnedOrLegacy(
+                ownershipToken, task.taskId,
                 setOf(GlafiraTaskState.RUNNING),
                 decision.state,
                 nowMillis,
@@ -311,6 +333,7 @@ class GlafiraCoreTaskExecutor(
     /** Automatic retries are restricted to registry-classified read-only operations. */
     private fun scheduleRetry(
         task: GlafiraTask,
+        ownershipToken: GlafiraTaskOwnershipExecutionToken?,
         reason: String,
         nowMillis: Long,
         configuredMaxRetries: Int
@@ -318,8 +341,8 @@ class GlafiraCoreTaskExecutor(
         // An exception, timeout or cancellation may happen after an external side effect.
         // Only registry-classified read-only operations are safe for automatic replay.
         if (GlafiraToolRegistry.find(task.taskType)?.risk != ToolRiskLevel.READ_ONLY) {
-            val changed = queue.transition(
-                task.taskId,
+            val changed = transitionOwnedOrLegacy(
+                ownershipToken, task.taskId,
                 setOf(GlafiraTaskState.RUNNING),
                 GlafiraTaskState.WAITING_FOR_OWNER,
                 nowMillis,
@@ -333,12 +356,12 @@ class GlafiraCoreTaskExecutor(
             )
         }
         val retryLimit = minOf(maxAttempts - 1, configuredMaxRetries)
-        if (task.attemptCount >= retryLimit + 1) return fail(task, "RETRY_LIMIT_REACHED:$reason")
+        if (task.attemptCount >= retryLimit + 1) return fail(task, ownershipToken, "RETRY_LIMIT_REACHED:$reason")
         val exponent = (task.attemptCount - 1).coerceIn(0, 20)
         val delay = (baseRetryDelayMillis * (1L shl exponent)).coerceAtMost(maxRetryDelayMillis)
         val retryAt = if (Long.MAX_VALUE - nowMillis < delay) Long.MAX_VALUE else nowMillis + delay
-        val changed = queue.transition(
-            task.taskId, setOf(GlafiraTaskState.RUNNING),
+        val changed = transitionOwnedOrLegacy(
+            ownershipToken, task.taskId, setOf(GlafiraTaskState.RUNNING),
             GlafiraTaskState.RETRY_SCHEDULED, nowMillis,
             retryAtMillis = retryAt, lastError = reason
         )
@@ -350,9 +373,27 @@ class GlafiraCoreTaskExecutor(
         )
     }
 
-    private fun fail(task: GlafiraTask, reason: String): GlafiraTaskExecutionResult {
-        val changed = queue.transition(
-            task.taskId, setOf(GlafiraTaskState.RUNNING),
+
+    private fun transitionOwnedOrLegacy(
+        token: GlafiraTaskOwnershipExecutionToken?,
+        taskId: String,
+        expectedStates: Set<GlafiraTaskState>,
+        nextState: GlafiraTaskState,
+        nowMillis: Long,
+        retryAtMillis: Long? = null,
+        lastError: String? = null
+    ): Boolean {
+        val fence = queue as? GlafiraTaskOwnershipExecutionFence
+        return if (token != null && fence != null) {
+            fence.transitionOwned(token, expectedStates, nextState, nowMillis, retryAtMillis, lastError)
+        } else {
+            queue.transition(taskId, expectedStates, nextState, nowMillis, retryAtMillis, lastError)
+        }
+    }
+
+    private fun fail(task: GlafiraTask, ownershipToken: GlafiraTaskOwnershipExecutionToken?, reason: String): GlafiraTaskExecutionResult {
+        val changed = transitionOwnedOrLegacy(
+            ownershipToken, task.taskId, setOf(GlafiraTaskState.RUNNING),
             GlafiraTaskState.FAILED, clock(), lastError = reason
         )
         return GlafiraTaskExecutionResult(
