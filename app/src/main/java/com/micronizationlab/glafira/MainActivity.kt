@@ -410,8 +410,8 @@ fun ContactList(
             Spacer(Modifier.width(6.dp))
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
-                    .clickable { onCouncilClick() }
-                    .semantics { contentDescription = "Открыть совет директоров" },
+                    .semantics { contentDescription = "Открыть совет директоров" }
+                    .clickable { onCouncilClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Text("🏛", fontSize = 12.sp)
@@ -423,8 +423,8 @@ fun ContactList(
             Spacer(Modifier.width(6.dp))
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
-                    .clickable { onSettingsClick() }
-                    .semantics { contentDescription = "Открыть настройки" },
+                    .semantics { contentDescription = "Открыть настройки" }
+                    .clickable { onSettingsClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Text("⚙", fontSize = 12.sp)
