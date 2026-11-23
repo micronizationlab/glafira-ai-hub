@@ -33,6 +33,17 @@ class BackupPreferencePolicyTest {
         }
     }
 
+    @Test fun malformedPeerProviderSelectionsAndProjectKeysAreNotPortable() {
+        listOf("OPENAI,UNKNOWN", "OPENAI,OPENAI", "OPENAI,", ",OPENAI", "NOT A PROVIDER").forEach { value ->
+            assertNull(BackupArchive.portablePreferenceValue("peer_consultation_providers", value))
+        }
+        listOf("peer_consultation_providers_", "peer_consultation_providers_bad project",
+            "peer_consultation_enabled_", "peer_consultation_enabled_bad/project").forEach { key ->
+            assertNull(BackupArchive.portablePreferenceValue(key, "OPENAI"))
+            assertNull(BackupArchive.portablePreferenceValue(key, true))
+        }
+    }
+
     @Test fun primaryProviderMustBeAnActualEnumValue() {
         assertEquals(ProviderId.GEMINI.name, BackupArchive.portablePreferenceValue("glafira_primary_provider", ProviderId.GEMINI.name))
         assertNull(BackupArchive.portablePreferenceValue("glafira_primary_provider", "local"))
