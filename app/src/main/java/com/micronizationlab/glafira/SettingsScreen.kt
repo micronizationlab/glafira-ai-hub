@@ -96,6 +96,23 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
     var showWindowsHubUnpairConfirm by remember { mutableStateOf(false) }
     var showWindowsHubRevokeConfirm by remember { mutableStateOf(false) }
     val windowsHubScope = rememberCoroutineScope()
+    val workspaceOutbox = remember {
+        runCatching { AndroidWorkspaceOutboxStore(context.applicationContext) }.getOrNull()
+    }
+    var workspaceSnapshot by remember {
+        mutableStateOf(
+            runCatching { workspaceOutbox?.snapshot() }
+                .getOrNull() ?: AndroidWorkspaceOutboxSnapshot(0, 0, null)
+        )
+    }
+    var workspaceProjectId by remember(currentProject?.id) {
+        mutableStateOf(currentProject?.id.orEmpty())
+    }
+    var workspaceConversationId by remember { mutableStateOf("") }
+    var workspaceBaseVersion by remember { mutableStateOf("") }
+    var workspaceMessageText by remember { mutableStateOf("") }
+    var workspaceBusy by remember { mutableStateOf(false) }
+    var workspaceStatus by remember { mutableStateOf<String?>(null) }
     val audioPreferences = remember {
         context.getSharedPreferences("glafira_audio", Context.MODE_PRIVATE)
     }
@@ -288,6 +305,215 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                         OutlinedButton(onClick = { showWindowsHubRevokeConfirm = true }) {
                             Text("ОТОЗВАТЬ ЛОКАЛЬНОЕ ДОВЕРИЕ")
                         }
+                    }
+                }
+                if (windowsHubState.status == GlafiraWindowsHubPairingStatus.PAIRED &&
+                    workspaceOutbox != null && windowsHubStore != null
+                ) {
+                    Spacer(Modifier.height(14.dp))
+                    HorizontalDivider(color = Tx.copy(alpha = 0.25f))
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "ЗАПИСЬ В WORKSPACE",
+                        color = Gr,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        "Ожидают: ${workspaceSnapshot.pendingCount}; конфликтов: ${workspaceSnapshot.conflictCount}",
+                        color = Tx,
+                        fontSize = 11.sp,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Windows Hub workspace outbox: pending ${workspaceSnapshot.pendingCount}, conflicts ${workspaceSnapshot.conflictCount}"
+                        }
+                    )
+                    workspaceStatus?.let {
+                        Spacer(Modifier.height(4.dp))
+                        Text(it, color = Tx, fontSize = 11.sp)
+                    }
+                    val conflicted = workspaceSnapshot.oldest?.takeIf {
+                        it.state == AndroidWorkspaceOutboxState.REQUIRES_OWNER_RESOLUTION
+                    }
+                    if (conflicted != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Конфликт ${conflicted.operationId}: локальная версия ${conflicted.baseRemoteVersion ?: "не задана"}; " +
+                                "версия Hub ${conflicted.currentRemoteVersion ?: "не сообщена"}.",
+                            color = Tx,
+                            fontSize = 11.sp
+                        )
+                        OutlinedTextField(
+                            value = workspaceBaseVersion,
+                            onValueChange = { if (it.length <= 20) workspaceBaseVersion = it },
+                            label = { Text("Новая версия Hub") },
+                            enabled = !workspaceBusy,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                enabled = !workspaceBusy && workspaceBaseVersion.isNotBlank(),
+                                onClick = {
+                                    workspaceBusy = true
+                                    workspaceStatus = null
+                                    windowsHubScope.launch {
+                                        val result = withContext(Dispatchers.IO) {
+                                            runCatching {
+                                                workspaceOutbox.rebase(
+                                                    conflicted.operationId,
+                                                    workspaceBaseVersion.trim()
+                                                )
+                                            }
+                                        }
+                                        workspaceStatus = if (result.isSuccess) {
+                                            "Конфликт перебазирован владельцем; запись снова ожидает отправки."
+                                        } else {
+                                            "Перебазирование не выполнено: проверьте положительную версию Hub."
+                                        }
+                                        workspaceSnapshot = runCatching { workspaceOutbox.snapshot() }
+                                            .getOrDefault(workspaceSnapshot)
+                                        workspaceBusy = false
+                                    }
+                                }
+                            ) { Text("ПЕРЕБАЗИРОВАТЬ") }
+                            OutlinedButton(
+                                enabled = !workspaceBusy,
+                                onClick = {
+                                    workspaceBusy = true
+                                    workspaceStatus = null
+                                    windowsHubScope.launch {
+                                        val result = withContext(Dispatchers.IO) {
+                                            runCatching { workspaceOutbox.discard(conflicted.operationId) }
+                                        }
+                                        workspaceStatus = if (result.isSuccess) {
+                                            "Локальная запись отброшена владельцем."
+                                        } else {
+                                            "Не удалось отбросить конфликтующую запись."
+                                        }
+                                        workspaceSnapshot = runCatching { workspaceOutbox.snapshot() }
+                                            .getOrDefault(workspaceSnapshot)
+                                        workspaceBusy = false
+                                    }
+                                }
+                            ) { Text("ОТБРОСИТЬ") }
+                        }
+                    } else {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = workspaceProjectId,
+                            onValueChange = { if (it.length <= 128) workspaceProjectId = it },
+                            label = { Text("Project ID в Windows Hub") },
+                            enabled = !workspaceBusy,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = workspaceConversationId,
+                            onValueChange = { if (it.length <= 128) workspaceConversationId = it },
+                            label = { Text("Conversation ID в Windows Hub") },
+                            enabled = !workspaceBusy,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = workspaceBaseVersion,
+                            onValueChange = { if (it.length <= 20) workspaceBaseVersion = it },
+                            label = { Text("Текущая версия conversation в Hub") },
+                            enabled = !workspaceBusy,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = workspaceMessageText,
+                            onValueChange = { if (it.length <= 16_384) workspaceMessageText = it },
+                            label = { Text("Сообщение владельца") },
+                            enabled = !workspaceBusy,
+                            minLines = 2,
+                            maxLines = 5,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Button(
+                            enabled = !workspaceBusy && workspaceProjectId.isNotBlank() &&
+                                workspaceConversationId.isNotBlank() && workspaceBaseVersion.isNotBlank() &&
+                                workspaceMessageText.isNotBlank(),
+                            onClick = {
+                                workspaceBusy = true
+                                workspaceStatus = null
+                                windowsHubScope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        runCatching {
+                                            workspaceOutbox.enqueue(
+                                                projectId = workspaceProjectId.trim(),
+                                                conversationId = workspaceConversationId.trim(),
+                                                messageText = workspaceMessageText.trim(),
+                                                baseRemoteVersion = workspaceBaseVersion.trim()
+                                            )
+                                        }
+                                    }
+                                    workspaceStatus = if (result.isSuccess) {
+                                        workspaceMessageText = ""
+                                        "Сообщение сохранено в зашифрованной очереди."
+                                    } else {
+                                        "Сообщение не поставлено в очередь: проверьте ID и версию Hub."
+                                    }
+                                    workspaceSnapshot = runCatching { workspaceOutbox.snapshot() }
+                                        .getOrDefault(workspaceSnapshot)
+                                    workspaceBusy = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("СОХРАНИТЬ В ОЧЕРЕДЬ") }
+                    }
+                    if (workspaceSnapshot.pendingCount > 0) {
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            enabled = !workspaceBusy,
+                            onClick = {
+                                workspaceBusy = true
+                                workspaceStatus = null
+                                windowsHubScope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        runCatching {
+                                            AndroidGlafiraWindowsHubWorkspaceOutboxConsumer(
+                                                store = workspaceOutbox,
+                                                credentials = windowsHubStore,
+                                                exchange = AndroidGlafiraPinnedHttpsBridgeExchange()
+                                            ).consumeNext()
+                                        }
+                                    }
+                                    workspaceStatus = result.fold(
+                                        onSuccess = { outcome ->
+                                            when (outcome) {
+                                                AndroidWorkspaceOutboxOutcome.NoPendingWork ->
+                                                    "Очередь пуста."
+                                                is AndroidWorkspaceOutboxOutcome.Synchronized ->
+                                                    if (outcome.duplicate) {
+                                                        "Hub подтвердил ранее принятую запись; версия ${outcome.newRemoteVersion}."
+                                                    } else {
+                                                        "Hub принял запись; версия ${outcome.newRemoteVersion}."
+                                                    }
+                                                is AndroidWorkspaceOutboxOutcome.RequiresOwnerResolution -> {
+                                                    workspaceBaseVersion = outcome.currentRemoteVersion.orEmpty()
+                                                    "Hub сообщил конфликт; требуется решение владельца."
+                                                }
+                                                is AndroidWorkspaceOutboxOutcome.Unavailable ->
+                                                    "Hub не принял запись; она оставлена для повторной ручной отправки."
+                                            }
+                                        },
+                                        onFailure = {
+                                            "Отправка не выполнена; запись и idempotency key сохранены."
+                                        }
+                                    )
+                                    workspaceSnapshot = runCatching { workspaceOutbox.snapshot() }
+                                        .getOrDefault(workspaceSnapshot)
+                                    workspaceBusy = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(if (workspaceBusy) "ОТПРАВКА…" else "ОТПРАВИТЬ СЛЕДУЮЩЕЕ") }
                     }
                 }
             }
