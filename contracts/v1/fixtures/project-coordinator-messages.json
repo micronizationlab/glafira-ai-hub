@@ -1,0 +1,76 @@
+{
+  "valid": [
+    {
+      "schemaVersion": 1, "projectId": "glafira-main", "nodeId": "android-node-01",
+      "installationId": "android-install-01", "platform": "ANDROID",
+      "nodeKind": "FULL_GLAFIRA", "coordinatorEligible": true,
+      "capabilities": ["github.read", "github.branch.write"],
+      "appVersion": "1.0.0", "enrollmentGeneration": 1, "credentialEpoch": 1,
+      "lastSeenSequence": 1, "participationState": "ACTIVE",
+      "updatedAt": "2026-11-23T02:00:00Z"
+    },
+    {
+      "schemaVersion": 1, "projectId": "glafira-main", "coordinatorNodeId": "android-node-01",
+      "coordinatorGeneration": 1, "leaseId": "lease-project-0001",
+      "heartbeatSequence": 1, "issuedAt": "2026-11-23T02:00:00Z",
+      "expiresAt": "2026-11-23T02:05:00Z", "credentialEpoch": 1,
+      "state": "ACTIVE", "signingKeyEpoch": 1,
+      "signingPublicKeySha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "signatureAlgorithm": "ECDSA_P256_SHA256",
+      "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    },
+    {
+      "schemaVersion": 1, "projectId": "glafira-main", "candidateNodeId": "windows-node-01",
+      "expectedGeneration": 1, "observedLeaseId": "lease-project-0001",
+      "requestId": "claim-request-0001", "idempotencyKey": "claim-idem-0001",
+      "issuedAt": "2026-11-23T02:05:01Z", "signingKeyEpoch": 1,
+      "signingPublicKeySha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "signatureAlgorithm": "ECDSA_P256_SHA256",
+      "signature": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=="
+    },
+    {
+      "schemaVersion": 1, "projectId": "glafira-main", "taskId": "task-core-0001",
+      "assignedNodeId": "windows-node-01", "coordinatorGeneration": 2,
+      "taskStateVersion": 4, "leaseId": "task-lease-0001", "fencingToken": 9,
+      "idempotencyKey": "task-idem-0001",
+      "inputSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "claimedAt": "2026-11-23T02:05:02Z", "expiresAt": "2026-11-23T02:10:02Z"
+    }
+  ],
+  "invalid": [
+    {
+      "schemaVersion": 1, "projectId": "glafira-main", "nodeId": "agent-node-01",
+      "installationId": "agent-install-01", "platform": "WINDOWS_AGENT",
+      "nodeKind": "WORKER_AGENT", "coordinatorEligible": true,
+      "capabilities": ["github.read"], "appVersion": "1.0.0",
+      "enrollmentGeneration": 1, "credentialEpoch": 1, "lastSeenSequence": 1,
+      "participationState": "ACTIVE", "updatedAt": "2026-11-23T02:00:00Z"
+    },
+    {
+      "schemaVersion": 1, "projectId": "glafira-main", "coordinatorNodeId": "android-node-01",
+      "coordinatorGeneration": 0, "leaseId": "lease-project-0001",
+      "heartbeatSequence": 1, "issuedAt": "2026-11-23T02:00:00Z",
+      "expiresAt": "2026-11-23T02:05:00Z", "credentialEpoch": 1,
+      "state": "ACTIVE", "signingKeyEpoch": 1,
+      "signingPublicKeySha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "signatureAlgorithm": "ECDSA_P256_SHA256",
+      "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    },
+    {
+      "schemaVersion": 1, "projectId": "glafira-main", "taskId": "task-core-0001",
+      "assignedNodeId": "windows-node-01", "coordinatorGeneration": 2,
+      "taskStateVersion": 4, "leaseId": "task-lease-0001", "fencingToken": 0,
+      "idempotencyKey": "task-idem-0001",
+      "inputSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "claimedAt": "2026-11-23T02:05:02Z", "expiresAt": "2026-11-23T02:10:02Z"
+    },
+    {
+      "schemaVersion": 1, "projectId": "glafira-main", "taskId": "task-core-0001",
+      "assignedNodeId": "windows-node-01", "coordinatorGeneration": 2,
+      "taskStateVersion": 4, "leaseId": "task-lease-0001", "fencingToken": 9,
+      "idempotencyKey": "task-idem-0001",
+      "inputSha256": "invalid", "claimedAt": "2026-11-23T02:05:02Z",
+      "expiresAt": "2026-11-23T02:10:02Z"
+    }
+  ]
+}
