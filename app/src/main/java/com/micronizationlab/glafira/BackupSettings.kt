@@ -299,7 +299,7 @@ fun BackupSettingsSection() {
                         enabled = !busy,
                         modifier = Modifier
                             .weight(1f)
-                            .semantics {
+                            .semantics(mergeDescendants = true) {
                                 contentDescription = manualBackupGuidance?.let {
                                     "Создать резервную копию сейчас. $it"
                                 } ?: "Создать резервную копию сейчас"
