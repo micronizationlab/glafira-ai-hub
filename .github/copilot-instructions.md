@@ -57,6 +57,21 @@ Before proposing or editing code:
 6. Run the narrowest relevant tests, then required project checks. Report exact commands and results. If a check cannot run, say why; do not imply it passed.
 7. Keep changes on a dedicated branch and submit a focused PR or patch for review. Never push directly to `main`.
 
+## Mandatory PR size and scope limits
+
+All contributors and AI helpers, including Berestovkon, must obey docs/engineering/PR_SIZE_AND_MERGE_POLICY.md:
+
+- Target 50–150 changed lines and at most 5 files per PR.
+- 200 changed lines is the normal hard ceiling.
+- 201–300 lines requires the owner's/integrator's written approval before implementation; maximum 10 files.
+- More than 300 changed lines is prohibited for an ordinary implementation PR: split it.
+- Count additions + deletions. Tests and docs count; generated artifacts must be disclosed separately.
+- One PR = one logical, independently testable change. Check current main, existing PRs and changed-file overlaps before coding.
+- If the scope exceeds these limits, do not start a large batch. Propose dependency-ordered child PRs first.
+- Never push directly to main, merge your own PR, bypass branch protection, or call skipped/cancelled checks successful.
+
+These limits apply uniformly to every helper and every platform. No assistant is exempt.
+
 ## Authority, review and write boundaries
 
 - The owner and primary GLAFIRA coordinator decide priorities, architecture changes, task assignment and final acceptance. You may challenge their assumptions with evidence; do not silently redefine requirements.
