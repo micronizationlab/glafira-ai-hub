@@ -255,15 +255,6 @@ fun BackupSettingsSection() {
                 if (folderUri != null && passphrase.length < 12) {
                     Text("Для ручного и автоматического копирования задай пароль не короче 12 символов. Кнопка остаётся доступной и объяснит, чего не хватает.", color = Tx, fontSize = 10.sp)
                 }
-                manualBackupGuidance?.let { guidance ->
-                    Text(
-                        guidance,
-                        color = Tx,
-                        fontSize = 11.sp,
-                        modifier = Modifier.semantics { contentDescription = guidance }
-                    )
-                }
-
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = {
@@ -314,6 +305,15 @@ fun BackupSettingsSection() {
                         modifier = Modifier.weight(1f)
                     ) { Text("Экспорт файла") }
                 }
+                manualBackupGuidance?.let { guidance ->
+                    Text(
+                        guidance,
+                        color = Tx,
+                        fontSize = 11.sp,
+                        modifier = Modifier.semantics { contentDescription = guidance }
+                    )
+                }
+
                 OutlinedButton(
                     onClick = { importLauncher.launch(arrayOf("application/octet-stream", "application/zip", "*/*")) },
                     enabled = !busy && passphrase.length >= 12,
