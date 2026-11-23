@@ -4,7 +4,7 @@ import android.content.Context
 
 enum class ProviderId(val prefKey: String, val displayName: String) {
     GIGACHAT("gigachat_api_key", "GigaChat"),
-    OPENAI("openai_api_key", "ChatGPT"),
+    OPENAI("openai_api_key", "OpenAI"),
     DEEPSEEK("deepseek_api_key", "DeepSeek"),
     GROK("grok_api_key", "Grok"),
     YANDEX("yandex_api_key", "Алиса"),
