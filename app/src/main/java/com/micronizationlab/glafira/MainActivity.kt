@@ -699,6 +699,32 @@ fun ChatScreen(
             ToastHelper.short(context, "Сначала завершите восстановление резервной копии в настройках.")
             return
         }
+        if (agent.n == "ГЛАФИРА") {
+            val githubIntent = try {
+                AndroidGitHubChatIntentParser.parse(text)
+            } catch (error: IllegalArgumentException) {
+                ToastHelper.short(context, "Команда GitHub отклонена: " + (error.message ?: "некорректные параметры") + ".")
+                return
+            }
+            if (githubIntent != null) {
+                try {
+                    val core = GlafiraCoreRuntimeOwner.get(context)
+                    val task = AndroidGitHubChatTaskFactory.create(project.id, githubIntent)
+                    val queued = core.enqueue(task)
+                    clearDraft(context, project.id, agent.n)
+                    if (inputText == text) inputText = ""
+                    val status = if (core.isEnabled) {
+                        "Задание GitHub сохранено в Core. Проверь очередь и подтверди Dry Run перед чтением."
+                    } else {
+                        "Задание GitHub сохранено в Core. Автономное выполнение пока приостановлено."
+                    }
+                    ToastHelper.short(context, if (queued.inserted) status else "Такое задание уже зарегистрировано в Core.")
+                } catch (error: Exception) {
+                    ToastHelper.short(context, "Не удалось сохранить задание GitHub в Core: " + (error.message ?: "ошибка"))
+                }
+                return
+            }
+        }
         val now = Date()
         val projectContext = buildProjectContext(context, project.id, agent.n)
         val fullPrompt = if (projectContext.isBlank()) agent.prompt else "${agent.prompt}\n\n$projectContext"
