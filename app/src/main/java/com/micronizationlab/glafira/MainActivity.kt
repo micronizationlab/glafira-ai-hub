@@ -695,6 +695,10 @@ fun ChatScreen(
             ToastHelper.short(context, "Открыл настройки подключения GitHub.")
             return
         }
+        if (isPendingDispatchBlocked(context)) {
+            ToastHelper.short(context, "Сначала завершите восстановление резервной копии в настройках.")
+            return
+        }
         if (agent.n == "ГЛАФИРА") {
             val githubIntent = try {
                 AndroidGitHubChatIntentParser.parse(text)
@@ -723,10 +727,6 @@ fun ChatScreen(
                 }
                 return
             }
-        }
-        if (isPendingDispatchBlocked(context)) {
-            ToastHelper.short(context, "Сначала завершите восстановление резервной копии в настройках.")
-            return
         }
         val now = Date()
         val projectContext = buildProjectContext(context, project.id, agent.n)
