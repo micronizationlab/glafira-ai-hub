@@ -17,6 +17,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 
 @RunWith(AndroidJUnit4::class)
 class GlafiraTaskOwnershipInstrumentedTest {
@@ -344,6 +347,51 @@ class GlafiraTaskOwnershipInstrumentedTest {
         ))
         assertEquals("result-from-current-claim",
             core.coreTaskResult(item.taskId, item.projectId)?.result)
+    }
+
+    @Test
+    fun executorCannotCommitHandlerResultAfterOwnershipChangesWhileHandlerIsRunning() = runBlocking {
+        val store = store("android-core-owner-a")
+        val item = task("stale-executor-owner-generation")
+        assertTrue(store.enqueue(item).inserted)
+
+        val handlerStarted = CompletableDeferred<Unit>()
+        val releaseHandler = CompletableDeferred<GlafiraTaskExecutionOutcome>()
+        val executor = GlafiraCoreTaskExecutor(
+            queue = store,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("project.read" to GlafiraTaskHandler {
+                handlerStarted.complete(Unit)
+                releaseHandler.await()
+            }),
+            clock = { 4_000L }
+        )
+
+        val execution = async { executor.executeNext() }
+        handlerStarted.await()
+
+        val claimedVersion = requireNotNull(ownership(store, item.taskId))
+            .getValue("state_version")!!.toLong()
+        store.writableDatabase.update(
+            "core_task_ownership",
+            ContentValues().apply {
+                put("owner_core_id", "android-core-owner-b")
+                put("owner_generation", 2L)
+                put("state_version", claimedVersion + 1L)
+            },
+            "task_id = ?",
+            arrayOf(item.taskId)
+        )
+
+        releaseHandler.complete(GlafiraTaskExecutionOutcome.Succeeded("stale-handler-result"))
+        val result = execution.await()
+
+        assertEquals(GlafiraTaskExecutionStatus.FAILED, result.status)
+        assertEquals(GlafiraTaskState.RUNNING, store.getTask(item.taskId)?.state)
+        assertNull(store.coreTaskResult(item.taskId, item.projectId))
+        assertEquals("android-core-owner-b", ownership(store, item.taskId)?.get("owner_core_id"))
     }
 
     companion object {
