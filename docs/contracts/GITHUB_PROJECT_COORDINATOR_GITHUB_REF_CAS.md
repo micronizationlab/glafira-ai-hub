@@ -10,6 +10,18 @@ For each enrolled project, maintain one dedicated coordination ref outside `main
 
 The ref points to a commit whose tree contains the canonical coordinator lease, enrolled-node projection and bounded active task-claim index. The record is versioned and binds every mutable claim to a monotonic generation/state version. Never use a GitHub issue comment, local SQLite row, last-write-wins file upload or local device clock as the global authority.
 
+## First-claim bootstrap
+
+A newly enrolled project may not have a coordination ref yet. The initial election must still have exactly one winner:
+
+1. Each eligible contender validates its owner-approved enrollment and creates a candidate root commit containing a generation-1 active lease and its signed node identity.
+2. The contender attempts to create the one canonical project ref with GitHub's create-ref endpoint, targeting that root commit.
+3. GitHub permits only one ref with that name. Exactly one concurrent create succeeds; all other contenders receive an already-exists/conflict response.
+4. A losing contender discards its root proposal, fetches the winner's ref and joins as a contributor. It must not try to update the winner's lease or reuse its own root commit.
+5. The winner's created ref is the authoritative initial election. All later renewals and successions use the exact-parent, non-force fast-forward update below.
+
+The project ref name must be derived from a validated, normalized project ID and must not permit path traversal or ambiguous encodings. Bootstrap requires owner-approved node enrollment before any contender may attempt ref creation.
+
 ## Claim protocol
 
 1. Fetch the exact current ref SHA and the canonical coordination record.
@@ -44,6 +56,7 @@ If GitHub is unreachable, no new coordinator can be elected, no global lease can
 
 ## Required concurrency acceptance
 
+- Launch at least 20 contenders against an uninitialized project; exactly one create-ref succeeds and every loser becomes a contributor.
 - Launch at least 20 contenders against one expired generation using the same observed parent; exactly one ref update succeeds.
 - Verify all losing sibling commits are rejected as non-fast-forward.
 - Verify a losing candidate refetches and cannot promote its stale commit.
