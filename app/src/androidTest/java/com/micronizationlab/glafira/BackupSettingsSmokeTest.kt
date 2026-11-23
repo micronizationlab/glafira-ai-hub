@@ -64,7 +64,7 @@ class BackupSettingsSmokeTest {
                 .performScrollTo()
                 .assertIsEnabled()
                 .performClick()
-            compose.onNodeWithText("Сначала выбери папку", substring = true)
+            compose.onNodeWithText("Сначала выбери папку")
                 .assertExists(
                     "Missing-folder guidance was not shown after the manual backup action"
                 )
