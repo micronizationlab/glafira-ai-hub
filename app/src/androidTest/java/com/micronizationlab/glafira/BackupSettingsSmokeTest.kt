@@ -40,7 +40,9 @@ class BackupSettingsSmokeTest {
             val device = UiDevice.getInstance(instrumentation)
             assertTrue("GLAFIRA home screen did not open",
                 device.wait(Until.hasObject(By.desc("Открыть настройки")), 20_000))
-            device.findObject(By.desc("Открыть настройки")).click()
+            val settingsButton = device.findObject(By.desc("Открыть настройки"))
+            assertTrue("Settings action is exposed without a click action", settingsButton.isClickable)
+            settingsButton.click()
 
             var saveButton = device.findObject(By.desc("Создать резервную копию сейчас"))
             repeat(8) {
@@ -54,6 +56,7 @@ class BackupSettingsSmokeTest {
             }
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
             assertTrue("Manual backup button is disabled before input", saveButton!!.isEnabled)
+            assertTrue("Manual backup action is exposed without a click action", saveButton!!.isClickable)
             saveButton!!.click()
             device.waitForIdle()
             val guidance = device.wait(
