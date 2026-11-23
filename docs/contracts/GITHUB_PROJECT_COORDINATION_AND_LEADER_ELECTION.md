@@ -2,7 +2,7 @@
 
 **Status:** proposed normative contract; implementation and platform acceptance are separate release gates.  
 **Applies to:** Android GLAFIRA, Windows Desktop GLAFIRA, Windows Agent GLAFIRA workers, and iOS GLAFIRA.  
-**Product rule:** every installed GLAFIRA build includes the project participation runtime. When background execution is permitted by its host OS and the owner has enabled project participation, it may resume GitHub project work without requiring the chat screen to remain open.
+**Product rule:** every GLAFIRA build produced for this project includes the project participation runtime and enables project participation by default after owner-approved GitHub enrollment. It resumes eligible GitHub work automatically when the host OS permits background execution, without requiring the chat screen to remain open. The owner can pause participation or revoke a node; it must not require repeated manual start commands.
 
 ## 1. One project, one coordinator, many cooperating nodes
 
@@ -54,7 +54,7 @@ No node may disable branch protection, bypass required checks, force-push shared
 
 ## 6. Background operation and platform reality
 
-The project participation runtime is included in all platform builds and schedules eligible work when the owner enables it:
+The project participation runtime is included and enabled by default in all platform builds after owner-approved GitHub enrollment. The owner may pause it or revoke the node. It schedules eligible work within platform limits:
 - Windows Desktop: background service/task scheduler may provide durable execution while machine is awake and service enabled.
 - Windows Agent: subordinate worker under enrolled Hub/project policy; election eligibility requires explicit provisioning as a full GLAFIRA node.
 - Android: WorkManager/foreground service only for permitted work, network constraints and user-visible long-running execution where required. Do not promise continuous execution after force-stop, battery restrictions or OS termination.
