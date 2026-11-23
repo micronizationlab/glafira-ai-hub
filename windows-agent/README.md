@@ -37,6 +37,20 @@ Restart-Service "GLAFIRA Agent"
 
 6. In GLAFIRA Desktop, select the pending Agent, assign only the capabilities it should receive, choose the parallelism limit and explicitly approve it. The Agent should appear online within 30 seconds after approval; no second restart is required.
 
+## Update without replacing enrollment
+
+Do not run `install-agent.ps1` over an existing service. Download the new package without extracting it, obtain that ZIP's SHA-256 from a separately trusted release manifest/channel, and run the updater installed with the current Agent from an elevated PowerShell session:
+
+~~~powershell
+& "$env:ProgramFiles\GLAFIRA\Agent\scripts\update-agent.ps1" `
+  -PackagePath ".\GLAFIRA-Agent-win-x64.zip" `
+  -ExpectedPackageSha256 "<64 lowercase hex characters>"
+~~~
+
+The updater verifies the ZIP before extraction, builds a complete payload, verifies the staged executable before stopping the service, swaps same-volume directories without deleting/recreating the service, waits for the existing LocalSystem service to become healthy, and verifies that the machine enrollment blob and its ACL are unchanged. A failed start or health check restores the previous binaries and lifecycle scripts and restarts the old service. Staging and rollback directories are removed after a conclusive outcome.
+
+This is a digest-pinned update transaction, not proof of release signing. Until an approved Windows signing certificate and signed installer/catalog are available, unsigned CI packages remain non-production and must not be treated as trusted merely because their digest is known.
+
 ## Current task execution boundary
 
 The service currently registers exactly one typed task handler:

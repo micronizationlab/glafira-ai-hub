@@ -19,12 +19,7 @@ if (-not (Test-Path $sourceExecutable)) {
 
 $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($null -ne $existing) {
-    if ($existing.Status -ne "Stopped") {
-        Stop-Service -Name $serviceName -Force
-        $existing.WaitForStatus("Stopped", [TimeSpan]::FromSeconds(30))
-    }
-    sc.exe delete $serviceName | Out-Null
-    Start-Sleep -Seconds 2
+    throw "GLAFIRA Agent is already installed. Use update-agent.ps1 for a staged update or uninstall it explicitly first."
 }
 
 if (Test-Path $InstallDirectory) {
@@ -32,6 +27,15 @@ if (Test-Path $InstallDirectory) {
 }
 New-Item -ItemType Directory -Path $InstallDirectory -Force | Out-Null
 Copy-Item -Path (Join-Path $PublishDirectory "*") -Destination $InstallDirectory -Recurse -Force
+$installedScripts = Join-Path $InstallDirectory "scripts"
+New-Item -ItemType Directory -Path $installedScripts -Force | Out-Null
+foreach ($script in @("update-agent.ps1", "AgentUpdateTransaction.psm1", "uninstall-agent.ps1")) {
+    $sourceScript = Join-Path $PSScriptRoot $script
+    if (-not (Test-Path -LiteralPath $sourceScript -PathType Leaf)) {
+        throw "Required lifecycle script not found: $sourceScript"
+    }
+    Copy-Item -LiteralPath $sourceScript -Destination $installedScripts -Force
+}
 
 New-Service -Name $serviceName -BinaryPathName ('"' + $targetExecutable + '"') -DisplayName "GLAFIRA Agent" -Description "Owner-approved GLAFIRA background Agent." -StartupType Automatic
 $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'"

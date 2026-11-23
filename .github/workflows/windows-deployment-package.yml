@@ -49,6 +49,9 @@ jobs:
           $paths = @(
             "windows-agent/scripts/publish-agent.ps1",
             "windows-agent/scripts/install-agent.ps1",
+            "windows-agent/scripts/update-agent.ps1",
+            "windows-agent/scripts/AgentUpdateTransaction.psm1",
+            "windows-agent/scripts/tests/test-update-agent.ps1",
             "windows-agent/scripts/uninstall-agent.ps1"
           )
           foreach ($path in $paths) {
@@ -57,6 +60,10 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).Path, [ref]$tokens, [ref]$errors) | Out-Null
             if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
           }
+
+      - name: Test Agent staged update and rollback transaction
+        shell: pwsh
+        run: pwsh -NoProfile -File windows-agent/scripts/tests/test-update-agent.ps1
 
       - name: Publish self-contained Agent
         shell: pwsh
@@ -68,6 +75,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Agent publish failed." }
           New-Item -ItemType Directory -Path (Join-Path $output "scripts") -Force | Out-Null
           Copy-Item windows-agent/scripts/install-agent.ps1 (Join-Path $output "scripts")
+          Copy-Item windows-agent/scripts/update-agent.ps1 (Join-Path $output "scripts")
+          Copy-Item windows-agent/scripts/AgentUpdateTransaction.psm1 (Join-Path $output "scripts")
           Copy-Item windows-agent/scripts/uninstall-agent.ps1 (Join-Path $output "scripts")
           Copy-Item windows-agent/README.md (Join-Path $output "README.md")
           $package = Join-Path $env:RUNNER_TEMP "GLAFIRA-Agent-win-x64.zip"
