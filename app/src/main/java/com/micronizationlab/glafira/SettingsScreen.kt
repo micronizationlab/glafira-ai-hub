@@ -453,6 +453,22 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                     valueRange = 0f..1f
                 )
                 Text("${(soundEffectsVolume * 100).toInt()}%", color = Tx, fontSize = 11.sp)
+
+                OutlinedButton(
+                    onClick = {
+                        SoundHelper.init(context)
+                        val requested = SoundHelper.playTest()
+                        ToastHelper.short(
+                            context,
+                            if (requested) "Тестовый звук запрошен. Если его не слышно, проверь системную громкость мультимедиа."
+                            else "Не удалось запустить тестовый звук. Проверь настройки звука приложения."
+                        )
+                    },
+                    enabled = soundEffectsEnabled,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("ПРОВЕРИТЬ ЗВУК")
+                }
             }
         }
 
