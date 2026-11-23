@@ -55,7 +55,11 @@ public struct GlafiraRootView: View {
                     }
 
                     NavigationLink {
-                        GlafiraSettingsPlaceholderView()
+                        GlafiraSettingsView(
+                            pairingStates: pairingStates,
+                            credentialStatus: credentialStatus,
+                            workspace: workspace
+                        )
                     } label: {
                         Label("Настройки", systemImage: "gearshape")
                     }
@@ -477,17 +481,6 @@ private struct GlafiraAgentsPlaceholderView: View {
             symbol: "person.3"
         )
         .navigationTitle("Агенты")
-    }
-}
-
-private struct GlafiraSettingsPlaceholderView: View {
-    var body: some View {
-        ContentPlaceholder(
-            title: "Настройки",
-            message: "Здесь будут состояние подключения, управление устройством, голос и параметры приложения.",
-            symbol: "gearshape"
-        )
-        .navigationTitle("Настройки")
     }
 }
 
