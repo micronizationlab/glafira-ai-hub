@@ -23,7 +23,7 @@ public struct GlafiraRootView: View {
                     NavigationLink {
                         BridgePairingView()
                     } label: {
-                        Label("Сопряжение Android", systemImage: "iphone.and.arrow.right.inward")
+                        Label("Сопряжение Windows Hub", systemImage: "desktopcomputer.and.arrow.down")
                     }
                 }
 
@@ -95,8 +95,8 @@ private struct GlafiraWelcomeView: View {
                 .foregroundStyle(.secondary)
 
             Text(hasPairedDevice
-                 ? "Ключ хранится в Keychain. Проекты и диалоги появятся после подключения к доступному Core."
-                 : "После безопасного сопряжения здесь появятся ваши проекты и диалоги.")
+                 ? "Ключ и привязка к Windows Hub хранятся в Keychain. Проекты и диалоги появятся после защищённого подключения."
+                 : "После безопасного сопряжения с Windows Hub здесь появятся ваши проекты и диалоги.")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
