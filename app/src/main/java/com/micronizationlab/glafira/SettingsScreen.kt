@@ -670,10 +670,36 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
                 )
                 OutlinedButton(onClick = {
                     modelMessage = if (saveProviderModel(context, primaryProvider, modelId))
-                        "Модель сохранена. Доступность подтверждается ответом API."
+                        "Модель сохранена. Статус обновится только после фактического ответа API."
                     else "Не удалось сохранить ID модели."
                 }) { Text("СОХРАНИТЬ МОДЕЛЬ") }
                 modelMessage?.let { Text(it, color = Tx, fontSize = 10.sp) }
+                val observedStatus = remember(primaryProvider, modelId, modelMessage, isSaved) {
+                    runCatching {
+                        ProviderObservedStatusStore(context).load(primaryProvider, modelId.trim())
+                    }.getOrNull()
+                }
+                if (observedStatus == null) {
+                    Text(
+                        "Для выбранного ID модели ещё нет фактической проверки.",
+                        color = Tx,
+                        fontSize = 10.sp
+                    )
+                } else {
+                    Text(providerObservedStatusLabel(observedStatus), color = Tx, fontSize = 10.sp)
+                    Text(
+                        "Проверено: ${DateFormat.getDateTimeInstance().format(Date(observedStatus.checkedAtMillis))}",
+                        color = Tx,
+                        fontSize = 10.sp
+                    )
+                    if (observedStatus.requestOutcome == ProviderObservedRequestOutcome.UNKNOWN) {
+                        Text(
+                            "Исход последнего запроса неизвестен; автоматический повтор отключён.",
+                            color = Tx,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
                 if (configuredProviders.isEmpty()) {
                     Text("Сначала подключи хотя бы одну модель выше.", color = Tx, fontSize = 10.sp)
                 }

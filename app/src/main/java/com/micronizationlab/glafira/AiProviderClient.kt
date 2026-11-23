@@ -87,14 +87,21 @@ private suspend fun callAiProviderResultWithinBudget(
     history: List<Msg>,
     systemPrompt: String
 ): AiProviderResult {
-    if (providerId == ProviderId.YANDEX) return AiProviderResult.Failure(AiProviderError(
-        AiProviderErrorCategory.UNSUPPORTED, "Подключение YandexGPT пока не реализовано.",
-        outcome = AiRequestOutcome.NOT_SENT))
-    val apiKey = loadProviderKey(context, providerId)
-    if (apiKey.isBlank()) return AiProviderResult.Failure(AiProviderError(
-        AiProviderErrorCategory.NOT_CONFIGURED, "API-ключ ${providerId.displayName} не задан.",
-        outcome = AiRequestOutcome.NOT_SENT))
-    return withContext(Dispatchers.IO) {
+    val modelId = loadProviderModel(context, providerId, defaultProviderModel(providerId))
+    val result = if (providerId == ProviderId.YANDEX) {
+        AiProviderResult.Failure(AiProviderError(
+            AiProviderErrorCategory.UNSUPPORTED, "Подключение YandexGPT пока не реализовано.",
+            outcome = AiRequestOutcome.NOT_SENT
+        ))
+    } else {
+        val apiKey = loadProviderKey(context, providerId)
+        if (apiKey.isBlank()) {
+            AiProviderResult.Failure(AiProviderError(
+                AiProviderErrorCategory.NOT_CONFIGURED,
+                "API-ключ ${providerId.displayName} не задан.",
+                outcome = AiRequestOutcome.NOT_SENT
+            ))
+        } else withContext(Dispatchers.IO) {
         var connection: HttpsURLConnection? = null
         var tokenConnection: HttpsURLConnection? = null
         var modelPostAttempted = false
@@ -137,7 +144,7 @@ private suspend fun callAiProviderResultWithinBudget(
                 put(JSONObject().put("role", "system").put("content", systemPrompt))
                 history.forEach { put(JSONObject().put("role", if (it.isUser) "user" else "assistant").put("content", it.text)) }
             }
-            val body = JSONObject().put("model", loadProviderModel(context, providerId, defaultProviderModel(providerId)))
+            val body = JSONObject().put("model", modelId)
                 .put("messages", messages).toString().toByteArray(Charsets.UTF_8)
             val chat = providerConnection(endpoint.url)
             connection = chat
@@ -178,7 +185,14 @@ private suspend fun callAiProviderResultWithinBudget(
             connection?.disconnect()
             tokenConnection?.disconnect()
         }
+        }
     }
+    runCatching {
+        ProviderObservedStatusStore(context).record(
+            classifyProviderObservation(providerId, modelId, result, System.currentTimeMillis())
+        )
+    }
+    return result
 }
 
 private fun providerConnection(url: String): HttpsURLConnection =
