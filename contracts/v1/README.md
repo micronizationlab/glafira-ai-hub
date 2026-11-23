@@ -3,7 +3,7 @@
 Status: initial cross-platform contract draft; requires review before platform adoption.
 
 ## Scope
-This schema is the shared language-neutral source for task dispatch and Windows Agent lifecycle. Android and iOS remain owner-facing clients. Windows Desktop is the Agent host/coordinator. GLAFIRA Core remains the policy and approval authority.
+This schema is the shared language-neutral source for task dispatch and participating-node lifecycle. Android, iOS and Windows Desktop full GLAFIRA installations may participate in the GitHub-backed project coordinator election when owner-enrolled and eligible. A Windows Agent remains a subordinate worker unless explicitly provisioned as a full eligible GLAFIRA node. Project coordination does not replace the owning Core's policy and approval authority.
 
 ## Message families
 - `TaskEnvelope`: immutable task intent, project scope, idempotency key, typed task kind, payload reference and hash, dependencies, risk/approval metadata and resource budget.
@@ -17,7 +17,7 @@ This schema is the shared language-neutral source for task dispatch and Windows 
 ## Security rules
 1. Never place passwords, API keys, private keys, cookies, bearer tokens or reusable credentials in these payloads.
 2. Payloads are references to separately authorized, integrity-checked data, not arbitrary executable commands.
-3. Desktop may coordinate leases but cannot grant Core permissions or bypass owner approval.
+3. The elected project coordinator may schedule and arbitrate task claims but cannot grant Core permissions or bypass owner approval; the Windows Desktop Hub may separately coordinate its local Agent transport fleet.
 4. Agent capabilities are allowlisted typed handlers; no generic shell, arbitrary code execution or unrestricted filesystem access.
 5. External side effects require Core policy admission and owner approval where applicable.
 6. Lease expiry does not prove that a side effect did not occur. Use `OUTCOME_UNKNOWN` and reconciliation; do not blindly retry.
