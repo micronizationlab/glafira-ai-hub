@@ -78,6 +78,7 @@ enum class GlafiraProviderEligibilityReason {
     CONTEXT_SHARING_NOT_APPROVED,
     OPERATION_NOT_GRANTED,
     DATA_CLASSIFICATION_NOT_GRANTED,
+    RESTRICTED_CLASSIFICATION_NEVER_SHARED,
     GRANT_EXPIRED,
     PROVIDER_NOT_CONNECTED,
     PROVIDER_UNAVAILABLE,
@@ -121,6 +122,9 @@ object GlafiraProviderCapabilityPolicy {
         }
         if (operation !in grant.operations) {
             return denied(GlafiraProviderEligibilityReason.OPERATION_NOT_GRANTED)
+        }
+        if (classification == GlafiraProviderDataClassification.RESTRICTED) {
+            return denied(GlafiraProviderEligibilityReason.RESTRICTED_CLASSIFICATION_NEVER_SHARED)
         }
         if (classification !in grant.allowedClassifications) {
             return denied(GlafiraProviderEligibilityReason.DATA_CLASSIFICATION_NOT_GRANTED)
