@@ -608,3 +608,24 @@ The settlement contract must identify at least the requesting project, task/oper
 Use the existing authoritative Mother ledger and idempotent, auditable transfer/settlement mechanisms. A peer GLAFIRA must not mint tokens, change its own reward, debit the Mother's treasury or settle the same accepted operation twice. Retries must reuse the same idempotency key and must not repeat the underlying work solely to recover a payment response. The exact rates, budget allocation, dispute process, tax/legal treatment and whether settlement is a transfer from treasury or a separately authorized reward issuance remain to be decided before implementation.
 
 This is a product/economics requirement only. It does not authorize autonomous payments, external cash settlement, public-chain transfers or changes to the existing free-first policy.
+
+
+## 16.10 Role-level and project-level cost attribution
+
+Premium role pricing and peer-GLAFIRA settlement must use the same auditable unit-economics foundation as all other GLAFIRA services. Attribute consumption to the full chain:
+
+`project → account/customer → role ID + effective tier → task/operation → provider/model or peer node`.
+
+For each role task, meter where available:
+- provider and exact model/revision, request route and region;
+- input, output, cached and reasoning token quantities when exposed by the provider;
+- image, audio, video, tool, search and other modality charges;
+- retries, failed attempts, orchestration, storage, egress and verification overhead;
+- local/peer compute work units (GCU) separately from provider-billed tokens;
+- accepted output status, quality/verification result and the applicable tariff/formula version.
+
+Keep vendor cost currencies and GLAFIRA settlement tokens distinct. Convert actual provider cost into an internal cost basis using a dated/versioned exchange-rate and tariff snapshot; never assume one provider token equals one GLAFIRA token or that all models have the same cost. Allocate shared orchestration overhead transparently and prevent duplicate charging for idempotent retries.
+
+The Premium Upgrade tariff for each role should be reviewed against both the incremental capability value and its expected/observed operating cost. A role-specific token price may later be a fixed entitlement fee, metered usage, or a separately approved hybrid; this choice is open and must not be guessed. Premium must have a visible budget/usage receipt and hard spending limit where metered provider costs are involved. Do not promise unlimited frontier-model access through a fixed token upgrade.
+
+The Mother dashboard and project reports should be able to compare role-level gross token revenue, provider/compute cost, peer settlement, verification/operating overhead and net contribution across all owner projects. Preserve the raw usage facts and formula versions so historical cost reports can be reproduced after tariffs change. This is accounting/measurement design only; no tariff, price, margin or billing implementation is authorized by this update.
