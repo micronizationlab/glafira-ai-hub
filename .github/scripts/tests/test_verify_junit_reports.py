@@ -73,6 +73,52 @@ class VerifyJUnitReportsTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
             self.assertIn("skipped test cases", result.stderr)
 
+    def test_rejects_missing_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            missing = Path(temp) / "missing"
+            result = self.run_verifier(missing)
+            self.assertEqual(1, result.returncode)
+            self.assertIn("directory is missing", result.stderr)
+
+    def test_rejects_malformed_xml(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "TEST-broken.xml").write_text("<testsuite><testcase>", encoding="utf-8")
+            result = self.run_verifier(root)
+            self.assertEqual(1, result.returncode)
+            self.assertIn("cannot parse", result.stderr)
+
+    def test_rejects_suite_level_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "TEST-error.xml").write_text(
+                '<testsuite tests="1" failures="0" errors="1">'
+                '<testcase classname="Example" name="error"><error/></testcase>'
+                '</testsuite>',
+                encoding="utf-8",
+            )
+            result = self.run_verifier(root)
+            self.assertEqual(1, result.returncode)
+            self.assertIn("contain failures or errors", result.stderr)
+
+    def test_each_requested_directory_must_have_reports(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            valid = root / "valid"
+            empty = root / "empty"
+            valid.mkdir()
+            empty.mkdir()
+            (valid / "TEST-ok.xml").write_text(
+                '<testsuite tests="1"><testcase name="ok"/></testsuite>',
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), str(valid), str(empty)],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(1, result.returncode)
+            self.assertIn("no TEST-*.xml", result.stderr)
+
     def test_rejects_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
