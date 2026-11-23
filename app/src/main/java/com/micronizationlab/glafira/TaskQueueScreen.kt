@@ -112,6 +112,48 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         )
     }
 
+    fun applyRuntimeEnablement(enabled: Boolean, session: GlafiraCoreOwnerSession? = null) {
+        val result = owner.setEnabled(enabled, session)
+        runtimeEnabled = owner.isEnabled
+        message = when (result) {
+            GlafiraCoreRuntimeEnablementMutation.ENABLED ->
+                "Core включён после подтверждения владельца."
+            GlafiraCoreRuntimeEnablementMutation.PAUSED ->
+                "Core безопасно приостановлен."
+            GlafiraCoreRuntimeEnablementMutation.OWNER_AUTHENTICATION_REQUIRED ->
+                "Для включения Core нужна новая биометрическая проверка владельца."
+            GlafiraCoreRuntimeEnablementMutation.RESTORE_RECOVERY_REQUIRED ->
+                "Core нельзя включить до завершения восстановления."
+            GlafiraCoreRuntimeEnablementMutation.STORAGE_ERROR ->
+                "Не удалось безопасно изменить режим Core; обработка оставлена выключенной."
+        }
+    }
+
+    fun requestRuntimeEnablement(enabled: Boolean) {
+        if (!enabled) {
+            applyRuntimeEnablement(false)
+            return
+        }
+        val activity = context as? FragmentActivity
+        if (activity == null) {
+            message = "Не удалось открыть подтверждение владельца из текущего окна."
+            return
+        }
+        showBiometricPromptWithResult(
+            activity = activity,
+            onSuccess = { authenticationResult ->
+                applyRuntimeEnablement(
+                    true,
+                    GlafiraCoreOwnerSession.fromAuthentication(authenticationResult)
+                )
+            },
+            onError = { error ->
+                runtimeEnabled = owner.isEnabled
+                message = "Включение Core отменено: $error"
+            }
+        )
+    }
+
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
             Modifier.fillMaxWidth().background(XpBlue).padding(horizontal = 10.dp, vertical = 9.dp),
@@ -146,21 +188,14 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text("Автообработка Core", color = Gr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 Text(
-                    "Обрабатывает durable-очередь и создаёт Dry Run. Desktop LIVE, публикации и платежи остаются выключены.",
+                    "Включение durable-очереди требует свежего подтверждения владельца. Desktop LIVE, публикации и платежи остаются выключены.",
                     color = Tx,
                     fontSize = 10.sp
                 )
             }
             Switch(
                 checked = runtimeEnabled,
-                onCheckedChange = { enabled ->
-                    runCatching { owner.setEnabled(enabled) }
-                        .onSuccess {
-                            runtimeEnabled = enabled
-                            message = if (enabled) "Core включён владельцем." else "Core приостановлен владельцем."
-                        }
-                        .onFailure { message = it.message ?: "Не удалось изменить режим Core." }
-                },
+                onCheckedChange = ::requestRuntimeEnablement,
                 modifier = Modifier.semantics { contentDescription = "Автообработка Core" }
             )
         }

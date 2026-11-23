@@ -17,6 +17,12 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     // SharedPreferences is read only for one-time migration. Runtime policy is SQLite-backed.
     private val legacyPreferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
     private val runtimeConfigStore = GlafiraCoreRuntimeConfigStore(appContext)
+    private val runtimeEnablement = GlafiraCoreRuntimeEnablementController(
+        restoreInterrupted = { GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext) },
+        persistEnabled = { enabled -> runtimeConfigStore.setEnabled(enabled) },
+        scheduleImmediate = { GlafiraCoreWorkScheduler.scheduleImmediate(appContext) },
+        cancelScheduledWork = { GlafiraCoreWorkScheduler.cancel(appContext) }
+    )
 
     init {
         val legacyEnabled = if (legacyPreferences.contains(KEY_ENABLED)) {
@@ -172,16 +178,14 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     private fun loadRuntimeBudget(): GlafiraRuntimeBudget =
         runCatching { runtimeConfigStore.read()?.budget }.getOrNull() ?: GlafiraRuntimeBudget()
 
-    fun setEnabled(enabled: Boolean) {
-        if (enabled) {
-            check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) {
-                "RESTORE_RECOVERY_REQUIRED"
-            }
-        }
-        runtimeConfigStore.setEnabled(enabled)
-        if (enabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
-        else GlafiraCoreWorkScheduler.cancel(appContext)
-    }
+    /** Enabling requires one fresh owner proof; pausing is deliberately always available. */
+    fun setEnabled(
+        enabled: Boolean,
+        ownerSession: GlafiraCoreOwnerSession? = null
+    ): GlafiraCoreRuntimeEnablementMutation = runtimeEnablement.apply(
+        enabled = enabled,
+        consumeOwnerProof = ownerSession?.let { session -> { session.consume() } }
+    )
 
     fun enqueue(task: GlafiraTask): GlafiraTaskEnqueueResult {
         check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
