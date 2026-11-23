@@ -13,6 +13,8 @@ Before starting any assigned subproject, every new AI helper/coding agent must:
 4. Submit that analysis for owner discussion. This is not implementation authorization. Do not open feature PRs or change architecture/priorities based on your own recommendations.
 5. Then analyze your separately assigned project and clearly distinguish findings from approved decisions.
 
+**One-time analysis only:** the platform-wide GLAFIRA analysis and the helper's assigned subproject analysis are onboarding deliverables, each completed once. After submitting them for owner discussion, continue normal assigned work; do not repeat these analyses at every startup or periodically. Prepare a new analysis or additional proposals only on the owner's separate request. This does not remove ordinary task-specific code, issue, or CI checks.
+
 ### Berestovkon — pending owner-requested analysis
 
 The required starting point is [GitHub issue #473](https://github.com/micronizationlab/glafira-ai-hub/issues/473). The deliverable must contain three separate parts in this order:
