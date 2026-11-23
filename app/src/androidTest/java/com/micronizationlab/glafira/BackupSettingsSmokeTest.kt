@@ -7,8 +7,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
-import androidx.test.uiautomator.UiScrollable
-import androidx.test.uiautomator.UiSelector
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -50,27 +48,39 @@ class BackupSettingsSmokeTest {
                 device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
             )
 
-            // UiScrollable.scrollIntoView(UiSelector) returns Boolean, not a UiObject.
-            // After scrolling, wait for the Compose accessibility node and interact with
-            // the UiObject2 returned by UiDevice.wait; this avoids a racy immediate lookup.
-            val scrollable = UiScrollable(UiSelector().scrollable(true)).setAsVerticalList()
-            assertTrue(
-                "Backup section is not reachable in Settings",
-                scrollable.scrollIntoView(
-                    UiSelector().textContains("РЕЗЕРВНОЕ КОПИРОВАНИЕ")
-                )
-            )
-            assertTrue(
-                "Manual backup button could not be scrolled into view",
-                scrollable.scrollIntoView(
-                    UiSelector().descriptionContains("Создать резервную копию сейчас")
-                )
-            )
+            // Settings uses a Compose verticalScroll Column, which is not consistently
+            // exposed as a UiScrollable node by all emulator API levels. Scroll the
+            // actual device viewport in bounded steps and wait for the semantic node.
+            val backupHeading = By.text("РЕЗЕРВНОЕ КОПИРОВАНИЕ")
+            var headingVisible = device.wait(Until.hasObject(backupHeading), 1_000)
+            repeat(12) {
+                if (!headingVisible) {
+                    device.swipe(
+                        device.displayWidth / 2,
+                        (device.displayHeight * 0.82f).toInt(),
+                        device.displayWidth / 2,
+                        (device.displayHeight * 0.30f).toInt(),
+                        18
+                    )
+                    headingVisible = device.wait(Until.hasObject(backupHeading), 500)
+                }
+            }
+            assertTrue("Backup section is not reachable in Settings", headingVisible)
 
-            val saveButton = device.wait(
-                Until.findObject(By.desc("Создать резервную копию сейчас")),
-                10_000
-            )
+            val buttonSelector = By.desc("Создать резервную копию сейчас")
+            var saveButton = device.wait(Until.findObject(buttonSelector), 1_000)
+            repeat(8) {
+                if (saveButton == null) {
+                    device.swipe(
+                        device.displayWidth / 2,
+                        (device.displayHeight * 0.82f).toInt(),
+                        device.displayWidth / 2,
+                        (device.displayHeight * 0.30f).toInt(),
+                        18
+                    )
+                    saveButton = device.wait(Until.findObject(buttonSelector), 500)
+                }
+            }
             assertNotNull("Manual backup button is not visible in Settings", saveButton)
             val saveAction = requireNotNull(saveButton)
             assertTrue("Manual backup button is disabled before input", saveAction.isEnabled)
