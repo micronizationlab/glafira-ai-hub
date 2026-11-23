@@ -6,11 +6,11 @@ Last reviewed: 2026-11-21.
 
 ## 1. Product intent
 
-GLAFIRA is a distributed AI assistant with Android and Desktop nodes, with iOS planned. The Android and Desktop Cores must each retain useful independent capability; neither device is a permanent single point of failure.
+GLAFIRA is a distributed AI assistant with Android, Windows Desktop, Windows Agent and iOS nodes. Android and Windows Desktop Cores retain useful independent task authority; no single device is a permanent single point of failure. A separate GitHub-backed project coordinator role is elected among eligible enrolled GLAFIRA nodes and does not replace per-task Core ownership or policy authority.
 
 The long-term product experience combines a polished, calm Apple-like interface with friendly, conversational character. Prioritize correctness, security, recovery and task integrity before decorative UI work.
 
-## 2. Accepted two-Core architecture
+## 2. Independent Core authorities and elected project coordination
 
 - Desktop Core is the primary high-capability execution node for complex tasks, local files, tools, long-running work and agents.
 - Android Core is a limited but independently useful node for chat, available models, local tasks, durable queueing, results and owner approvals.
@@ -18,7 +18,13 @@ The long-term product experience combines a polished, calm Apple-like interface 
 - Reconnection must reconcile durable state without losing results or executing one task twice.
 - Device capabilities and authority are independent. A device does not inherit the other's permissions merely because it is paired.
 
-Required protocol concepts:
+Project-level coordination requirements:
+- the first eligible node to win the GitHub-backed coordinator claim becomes the initial project coordinator;
+- other online nodes join as contributors and receive non-overlapping tasks;
+- coordinator succession requires authoritative lease expiry or signed handoff plus a higher fencing generation;
+- stale coordinators and duplicate task claims are rejected; GitHub outage cannot create a second global leader.
+
+Per-task Core ownership remains distinct. Required protocol concepts:
 - stable task IDs and per-installation Core IDs;
 - durable per-Core queues and inbox/outbox;
 - explicit owner/lease records and monotonic ownership generations;
@@ -41,10 +47,10 @@ The document `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md` is the accepte
 - The current Desktop CLI is a terminal validation utility, not the final Desktop GUI.
 
 ### Windows Desktop Hub ↔ Windows Agent fleet
-- Windows Desktop Core is the primary high-capability owner node. Windows Desktop Hub is its authenticated Agent-fleet transport and scheduling subsystem; Windows Agents pair with this Hub, heartbeat, advertise capabilities and receive fenced task leases.
+- Windows Desktop Core is a high-capability task-authority node. Windows Desktop Hub is its authenticated Agent-fleet transport and scheduling subsystem; Windows Agents pair with this Hub, heartbeat, advertise capabilities and receive fenced task leases. This local Hub role does not automatically make Desktop the global project coordinator.
 - Desktop Core owns canonical task/project policy, owner approvals, task lifecycle, accepted results and audit history for tasks assigned to its ownership domain. The Hub owns the Agent registry, heartbeat/capability inventory, bounded fleet scheduling, worker lease/fencing journal and delivery receipts for tasks explicitly delegated by Desktop Core. Hub results must reconcile to Desktop Core; Hub cannot independently grant permissions, approve actions or create cross-Core ownership.
 - Android Core remains an independent peer with its own durable queue and authority for tasks it owns. Cross-Core work requires exactly one task owner, monotonic ownership generation and an explicit signed handoff; pairing or heartbeat alone does not transfer ownership. See `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md`.
-- This is a separate transport and authority direction from the Android-hosted Bridge above. Do not describe the Android device as the Windows Agent fleet's central server, or the Windows Hub as a global replacement for either Core.
+- This is a separate transport and authority direction from the Android-hosted Bridge above. Do not describe the Android device as the Windows Agent fleet's central server, or the Windows Hub as a global replacement for either Core. Global project coordination is a separate GitHub-backed elected role.
 - The Windows Desktop HTTPS Hub and multi-agent scheduler are tracked by issue #123. The local Agent pairing/heartbeat/lease/result path is implemented in the current main, but the full Desktop Core→Hub task assignment and canonical result reconciliation, production Agent handlers and two-PC acceptance are not yet end-to-end.
 - Enrollment must be owner-approved; TLS certificate pinning, per-device HMAC, scope checks, replay/idempotency protection, lease fencing and explicit approval for external side effects remain mandatory.
 
