@@ -2,9 +2,12 @@ package com.micronizationlab.glafira
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Coroutine-safe dynamic concurrency limiter. A new permit uses the current configured limit;
@@ -19,6 +22,9 @@ class GlafiraCoreExecutionLimiter internal constructor() {
         require(limit in 1..GlafiraRuntimeBudget.MAX_CONCURRENT_TASKS) {
             "Core concurrency limit is outside the supported range."
         }
+        // A provider call made by a Core handler already owns this limiter's slot.
+        // Re-acquiring at limit=1 would deadlock; another limiter must not inherit it.
+        if (currentCoroutineContext()[PermitContext]?.owner === this) return block()
 
         while (true) {
             val waitForChange = lock.withLock {
@@ -34,7 +40,7 @@ class GlafiraCoreExecutionLimiter internal constructor() {
         }
 
         try {
-            return block()
+            return withContext(PermitContext(this)) { block() }
         } finally {
             withContext(NonCancellable) {
                 lock.withLock {
@@ -46,5 +52,11 @@ class GlafiraCoreExecutionLimiter internal constructor() {
                 }
             }
         }
+    }
+
+    private class PermitContext(
+        val owner: GlafiraCoreExecutionLimiter
+    ) : AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<PermitContext>
     }
 }

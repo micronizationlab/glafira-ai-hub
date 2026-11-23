@@ -69,6 +69,24 @@ suspend fun callAiProvider(context: Context, providerId: ProviderId, history: Li
 
 suspend fun callAiProviderResult(context: Context, providerId: ProviderId, history: List<Msg>,
     systemPrompt: String): AiProviderResult {
+    val runtime = GlafiraCoreRuntimeOwner.get(context)
+    return when (val outcome = executeWithProviderRuntimeBudget(
+        budget = runtime.runtimeBudget(),
+        limiter = runtime.executionLimiter
+    ) {
+        callAiProviderResultWithinBudget(context, providerId, history, systemPrompt)
+    }) {
+        is GlafiraProviderBudgetOutcome.Completed -> outcome.value
+        is GlafiraProviderBudgetOutcome.Rejected -> providerBudgetFailure(outcome.reason)
+    }
+}
+
+private suspend fun callAiProviderResultWithinBudget(
+    context: Context,
+    providerId: ProviderId,
+    history: List<Msg>,
+    systemPrompt: String
+): AiProviderResult {
     if (providerId == ProviderId.YANDEX) return AiProviderResult.Failure(AiProviderError(
         AiProviderErrorCategory.UNSUPPORTED, "Подключение YandexGPT пока не реализовано.",
         outcome = AiRequestOutcome.NOT_SENT))
