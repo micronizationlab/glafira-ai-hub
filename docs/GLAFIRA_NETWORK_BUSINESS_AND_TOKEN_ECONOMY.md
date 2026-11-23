@@ -576,3 +576,35 @@ The target differentiation is the combination of persistent owner-controlled pro
 This is a target-state description, not a current feature claim. The current build was characterized in a 2026-11-18 external technical review as an Android LLM-orchestration client with nascent multi-agent logic; Web/Browser Agent, Desktop Bridge and CRM were still planned. Every public claim must be gated by implementation and end-to-end acceptance.
 
 The proposed 500 RUB GLAFIRA subscription must be compared directly with multi-model aggregators such as Poe, whose published entry subscription starts at $4.99/month (about 409 RUB at the 2026-11-20 CBR rate before local tax/pricing) and uses capped compute points. GLAFIRA's premium over that entry price must be justified by operational workspaces, agents, local/desktop execution, service network value and transparent optional contribution rewards.
+
+
+## 16.8 Specialist role tiers and token-funded Premium Upgrades (owner decision, 2026-11-23)
+
+GLAFIRA specialist roles will have two capability tiers: **Standard** and **Premium**. A user may later purchase a separate Premium Upgrade for an individual role using GLAFIRA network tokens. The upgrade is role-specific: purchasing Premium for one role does not upgrade any other role. The token price, duration/renewal model, refund rules and exact capability split remain open decisions; do not invent rates or enable purchases until separately approved.
+
+During the current development stage, every role continues to operate with Premium-level capabilities by default. This is a development baseline, not a claim that users have already paid for those capabilities. Do not restrict existing role capabilities while the commercial model is being designed.
+
+The currently discussed display-name mapping is:
+
+| Standard role name | Premium role name |
+|---|---|
+| Юрист | Адвокат |
+| Врач | Семейный доктор |
+| Программист | Старый хакер |
+| Кадровик (HR) | Ассистент |
+
+Other specialist roles, including Финансист and Пресс-секретарь, are acknowledged role directions; their Premium display names and role-specific capability matrices have not yet been approved. Preserve the role's stable internal ID when its display name changes between tiers. The tier/name label must not be confused with online state, selected AI model, quota, availability or task status.
+
+This commercial design must align with `docs/architecture/ROLE_CAPABILITY_TIERS.md`. Core remains authoritative for the effective role entitlement at execution time. Premium must never bypass owner approval, Core ownership/generation fencing, least privilege, safety rules or audit requirements. Any token debit and entitlement grant must eventually be atomic or recoverably idempotent, bound to the account, role ID, entitlement version and ledger transaction. Expiry, refund, revocation, offline behavior and cross-device synchronization must be specified before activation.
+
+Implementation is deferred until the currently prioritized Android GitHub workflow, Windows Desktop, Core ownership/result delivery, Backup & Recovery and Bridge acceptance gates are complete. No purchase UI, payment integration, token debit or runtime role restriction is authorized by this documentation update.
+
+## 16.9 Settlement for work performed by another GLAFIRA instance (owner direction, 2026-11-23)
+
+When an independently running/third-party GLAFIRA instance performs an operation or task for GLAFIRA-Mother / the owner's projects, GLAFIRA-Mother is the paying coordinator and settles the accepted work by transferring the agreed amount of internal network tokens to that GLAFIRA instance's registered network account.
+
+The settlement contract must identify at least the requesting project, task/operation ID, receiving GLAFIRA account, agreed budget or rate, acceptance evidence, reward/tariff formula version, ledger transaction ID and audit record. Payment is made only under an authorized task contract and the configured acceptance policy; assignment, an unverified claim or mere online availability is not sufficient unless a separate availability contract is explicitly approved.
+
+Use the existing authoritative Mother ledger and idempotent, auditable transfer/settlement mechanisms. A peer GLAFIRA must not mint tokens, change its own reward, debit the Mother's treasury or settle the same accepted operation twice. Retries must reuse the same idempotency key and must not repeat the underlying work solely to recover a payment response. The exact rates, budget allocation, dispute process, tax/legal treatment and whether settlement is a transfer from treasury or a separately authorized reward issuance remain to be decided before implementation.
+
+This is a product/economics requirement only. It does not authorize autonomous payments, external cash settlement, public-chain transfers or changes to the existing free-first policy.
