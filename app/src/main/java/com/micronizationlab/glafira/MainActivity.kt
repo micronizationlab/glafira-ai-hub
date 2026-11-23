@@ -32,6 +32,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -402,7 +403,10 @@ fun ContactList(
             Box(
                 Modifier.size(28.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
                     .clickable { onTaskQueueClick() }
-                    .semantics(mergeDescendants = true) { contentDescription = "Открыть очередь задач" },
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Открыть очередь задач"
+                        onClick(label = "Открыть очередь задач") { onTaskQueueClick(); true }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text("☷", color = Gr, fontSize = 16.sp)
@@ -411,7 +415,10 @@ fun ContactList(
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
                     .clickable { onCouncilClick() }
-                    .semantics(mergeDescendants = true) { contentDescription = "Открыть совет директоров" },
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Открыть совет директоров"
+                        onClick(label = "Открыть совет директоров") { onCouncilClick(); true }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text("🏛", fontSize = 12.sp)
@@ -424,7 +431,10 @@ fun ContactList(
             Box(
                 Modifier.size(24.dp).border(1.dp, Gr, RoundedCornerShape(2.dp))
                     .clickable { onSettingsClick() }
-                    .semantics(mergeDescendants = true) { contentDescription = "Открыть настройки" },
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Открыть настройки"
+                        onClick(label = "Открыть настройки") { onSettingsClick(); true }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text("⚙", fontSize = 12.sp)
