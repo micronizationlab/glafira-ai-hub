@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 fun saveApiKey(context: Context, key: String): Boolean =
     EncryptedApiKeyStore.save(context, "gigachat_api_key", key)
@@ -124,6 +125,10 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
             Text("←", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { onBack() }.padding(end = 14.dp))
             Text("НАСТРОЙКИ", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
+
+        GitHubIntegrationSection()
+
+        Spacer(Modifier.height(16.dp))
 
         Spacer(Modifier.height(24.dp))
 
@@ -680,5 +685,193 @@ fun ProviderKeyField(
                 focusedIndicatorColor = Gr
             )
         )
+    }
+}
+
+
+@Composable
+private fun GitHubIntegrationSection() {
+    val context = LocalContext.current
+    val store = remember(context) { GitHubTokenStore(context) }
+    val scope = rememberCoroutineScope()
+    var connected by remember { mutableStateOf(store.hasAccessToken()) }
+    var connecting by remember { mutableStateOf(false) }
+    var userCode by remember { mutableStateOf<String?>(null) }
+    var accountLogin by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf(if (connected) "GitHub подключён на этом устройстве." else "Подключите GLAFIRA к своему GitHub App.") }
+    var authorizationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = GrD),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text("ИНТЕГРАЦИЯ С GITHUB", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "GLAFIRA получит доступ от вашего имени. Токен хранится отдельно от ключей ИИ и шифруется Android Keystore.",
+                color = Tx, fontSize = 11.sp
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(status, color = if (connected) Gr else Tx, fontSize = 12.sp)
+            accountLogin?.let { Text("GitHub: @$it", color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            if (userCode != null) {
+                Spacer(Modifier.height(10.dp))
+                Text("КОД ПОДТВЕРЖДЕНИЯ", color = Tx, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(userCode!!, color = Color(0xFF202020), fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Text("На странице GitHub проверьте, что приложение называется GLAFIRA AI HUB и запрошены только ожидаемые права.", color = Tx, fontSize = 11.sp)
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/login/device")))
+                    },
+                    enabled = connecting
+                ) { Text("ОТКРЫТЬ GITHUB ДЛЯ ПОДТВЕРЖДЕНИЯ") }
+            }
+            Spacer(Modifier.height(8.dp))
+            if (!connected) {
+                Button(
+                    onClick = {
+                        authorizationJob?.cancel()
+                        authorizationJob = scope.launch {
+                            connecting = true
+                            userCode = null
+                            status = "Запрашиваю одноразовый код у GitHub…"
+                            try {
+                                val authorization = GitHubDeviceAuthorization()
+                                val deviceCode = authorization.requestDeviceCode()
+                                userCode = deviceCode.userCode
+                                status = "Ожидаю подтверждения в GitHub. Не сообщайте этот код другим людям."
+                                var interval = deviceCode.intervalSeconds
+                                while (System.currentTimeMillis() < deviceCode.expiresAtMillis) {
+                                    kotlinx.coroutines.delay(interval * 1000L)
+                                    when (val result = authorization.poll(deviceCode)) {
+                                        GitHubDevicePollResult.Pending -> Unit
+                                        is GitHubDevicePollResult.SlowDown -> interval = result.intervalSeconds
+                                        is GitHubDevicePollResult.Authorized -> {
+                                            val saved = store.save(
+                                                accessToken = result.accessToken,
+                                                refreshToken = result.refreshToken,
+                                                expiresInSeconds = result.expiresInSeconds,
+                                                refreshTokenExpiresInSeconds = result.refreshTokenExpiresInSeconds
+                                            )
+                                            if (saved) {
+                                                connected = true
+                                                status = "Токен сохранён. Проверяю GitHub-профиль и доступ к репозиторию…"
+                                                try {
+                                                    val api = GitHubApiClient()
+                                                    val user = api.getAuthenticatedUser(result.accessToken)
+                                                    accountLogin = user.login
+                                                    val installations = api.listInstallations(result.accessToken)
+                                                    var repositoryFound = false
+                                                    for (installation in installations) {
+                                                        val repositories = api.listInstallationRepositories(result.accessToken, installation.id)
+                                                        if (repositories.any { it.fullName.equals("micronizationlab/glafira-ai-hub", ignoreCase = true) }) {
+                                                            repositoryFound = true
+                                                            break
+                                                        }
+                                                    }
+                                                    status = if (repositoryFound) {
+                                                        "GitHub подключён. Профиль подтверждён, доступ к glafira-ai-hub проверен."
+                                                    } else {
+                                                        "Профиль @$accountLogin подтверждён. Установи GLAFIRA AI HUB на репозиторий glafira-ai-hub в настройках GitHub App."
+                                                    }
+                                                } catch (verificationError: Exception) {
+                                                    status = "Токен сохранён, но проверка GitHub API не завершилась: ${verificationError.message ?: "ошибка сети"}"
+                                                }
+                                            } else {
+                                                status = "Не удалось сохранить токен в Android Keystore. Повторите подключение."
+                                            }
+                                            userCode = null
+                                            return@launch
+                                        }
+                                        GitHubDevicePollResult.Denied -> {
+                                            status = "Авторизация отклонена в GitHub."
+                                            userCode = null
+                                            return@launch
+                                        }
+                                        GitHubDevicePollResult.Expired -> {
+                                            status = "Срок действия кода истёк. Запустите подключение заново."
+                                            userCode = null
+                                            return@launch
+                                        }
+                                    }
+                                }
+                                status = "Срок действия кода истёк. Запустите подключение заново."
+                                userCode = null
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                status = error.message ?: "Не удалось подключиться к GitHub."
+                                userCode = null
+                            } finally {
+                                connecting = false
+                            }
+                        }
+                    },
+                    enabled = !connecting,
+                    colors = ButtonDefaults.buttonColors(containerColor = Gr, contentColor = Color.White)
+                ) {
+                    Text(if (connecting) "ОЖИДАНИЕ GITHUB…" else "ПОДКЛЮЧИТЬ GITHUB")
+                }
+                if (connecting) {
+                    OutlinedButton(onClick = {
+                        authorizationJob?.cancel()
+                        authorizationJob = null
+                        connecting = false
+                        userCode = null
+                        status = "Подключение отменено."
+                    }) { Text("ОТМЕНИТЬ") }
+                }
+            } else {
+                OutlinedButton(onClick = {
+                    authorizationJob?.cancel()
+                    authorizationJob = scope.launch {
+                        connecting = true
+                        status = "Проверяю авторизацию и доступ к репозиторию…"
+                        try {
+                            val token = GitHubSession(context).accessTokenOrRefresh()
+                            if (token.isNullOrBlank()) {
+                                connected = false
+                                accountLogin = null
+                                status = "Авторизация истекла или отозвана. Подключи GitHub заново."
+                            } else {
+                                val api = GitHubApiClient()
+                                val user = api.getAuthenticatedUser(token)
+                                accountLogin = user.login
+                                val installations = api.listInstallations(token)
+                                var repositoryFound = false
+                                for (installation in installations) {
+                                    if (api.listInstallationRepositories(token, installation.id)
+                                            .any { it.fullName.equals("micronizationlab/glafira-ai-hub", ignoreCase = true) }) {
+                                        repositoryFound = true
+                                        break
+                                    }
+                                }
+                                status = if (repositoryFound) {
+                                    "Профиль @$accountLogin подтверждён; доступ к glafira-ai-hub активен."
+                                } else {
+                                    "Профиль @$accountLogin подтверждён, но репозиторий ещё не предоставлен приложению."
+                                }
+                            }
+                        } catch (error: Exception) {
+                            status = error.message ?: "Не удалось проверить доступ GitHub."
+                            if (status.contains("401") || status.contains("expired", ignoreCase = true) || status.contains("revoked", ignoreCase = true)) {
+                                connected = false
+                                accountLogin = null
+                            }
+                        } finally {
+                            connecting = false
+                        }
+                    }
+                }, enabled = !connecting) { Text("ПРОВЕРИТЬ ДОСТУП К РЕПОЗИТОРИЮ") }
+                OutlinedButton(onClick = {
+                    authorizationJob?.cancel()
+                    connected = false
+                    userCode = null
+                    status = if (store.clear()) "GitHub отключён, локальные токены удалены." else "Не удалось удалить токены. Повторите отключение."
+                }) { Text("ОТКЛЮЧИТЬ GITHUB") }
+            }
+        }
     }
 }
