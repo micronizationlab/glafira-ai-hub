@@ -29,7 +29,7 @@ class GlafiraProviderContextPolicyTest {
     }
 
     @Test fun onlyGrantedClassificationForExactProjectIsIncluded() {
-        val personal = item.copy(referenceId = "personal", classification = GlafiraProviderDataClassification.PERSONAL)
+        val personal = item.copy(referenceId = "personal", classification = GlafiraProviderDataClassification.CONFIDENTIAL)
         val other = item.copy(referenceId = "other", projectId = "project-b")
         val result = GlafiraProviderContextPolicy.assemble(
             "project-a", ProviderId.OPENAI, listOf(item, personal, other), grant(), now
