@@ -436,7 +436,7 @@ object BackupArchive {
         key == "glafira_primary_provider" -> (value as? String)?.takeIf { candidate ->
             ProviderId.values().any { it.name == candidate }
         }
-        isPeerProvidersKey(key) -> value as? String
+        isPeerProvidersKey(key) -> (value as? String)?.takeIf(::validPeerProviderSelection)
         isPeerEnabledKey(key) -> value as? Boolean
         modelProvider(key) != null -> (value as? String)?.takeIf(::validProviderModel)
         else -> null
@@ -447,10 +447,26 @@ object BackupArchive {
             isPeerEnabledKey(key) || modelProvider(key) != null
 
     private fun isPeerProvidersKey(key: String): Boolean =
-        key == "peer_consultation_providers" || key.startsWith("peer_consultation_providers_")
+        key == "peer_consultation_providers" || isProjectScopedKey(key, "peer_consultation_providers_")
 
     private fun isPeerEnabledKey(key: String): Boolean =
-        key == "peer_consultation_enabled" || key.startsWith("peer_consultation_enabled_")
+        key == "peer_consultation_enabled" || isProjectScopedKey(key, "peer_consultation_enabled_")
+
+    private fun validPeerProviderSelection(value: String): Boolean {
+        if (value.isEmpty()) return true
+        val providerNames = ProviderId.values().map { it.name }.toSet()
+        val selected = value.split(',')
+        return selected.size <= providerNames.size &&
+            selected.all { it in providerNames } &&
+            selected.distinct().size == selected.size
+    }
+
+    private fun isProjectScopedKey(key: String, prefix: String): Boolean {
+        if (!key.startsWith(prefix)) return false
+        val projectId = key.removePrefix(prefix)
+        return projectId.length in 1..128 &&
+            projectId.all { it.isLetterOrDigit() || it in "-_." }
+    }
 
     private fun modelProvider(key: String): ProviderId? =
         ProviderId.values().firstOrNull { key == "provider_model_${it.name}" }
