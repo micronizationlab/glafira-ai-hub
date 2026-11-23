@@ -414,6 +414,103 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
+
+    @Test
+    fun backupRestorePreservesProviderModelPreferencesWithoutTransferringCredentials() {
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val providersKey = "peer_consultation_providers_model_backup"
+        val enabledKey = "peer_consultation_enabled_model_backup"
+        val modelKey = "provider_model_${ProviderId.OPENAI.name}"
+        val apiKey = "openai_api_key"
+        val previous = preferences.all.filterKeys { it in setOf(providersKey, enabledKey, modelKey, apiKey) }
+        val passphrase = "GLAFIRA-provider-model-backup-test".toCharArray()
+        var archive: File? = null
+        try {
+            assertTrue(preferences.edit()
+                .putString(providersKey, listOf(ProviderId.OPENAI, ProviderId.DEEPSEEK).joinToString(",") { it.name })
+                .putBoolean(enabledKey, true)
+                .putString(modelKey, "owner-selected-model-v2")
+                .putString(apiKey, "source-secret-must-not-transfer")
+                .commit())
+            archive = BackupArchive.create(context, passphrase)
+            assertTrue(preferences.edit()
+                .putString(providersKey, ProviderId.GEMINI.name)
+                .putBoolean(enabledKey, false)
+                .putString(modelKey, "changed-after-backup")
+                .putString(apiKey, "destination-secret-must-remain")
+                .commit())
+
+            BackupArchive.restore(context, archive!!, passphrase)
+
+            assertEquals(listOf(ProviderId.OPENAI, ProviderId.DEEPSEEK).joinToString(",") { it.name },
+                preferences.getString(providersKey, null))
+            assertTrue(preferences.getBoolean(enabledKey, false))
+            assertEquals("owner-selected-model-v2", loadProviderModel(context, ProviderId.OPENAI, "safe-default"))
+            assertEquals("destination-secret-must-remain", preferences.getString(apiKey, null))
+        } finally {
+            archive?.delete()
+            passphrase.fill('\u0000')
+            val editor = preferences.edit()
+            listOf(providersKey, enabledKey, modelKey, apiKey).forEach { editor.remove(it) }
+            previous.forEach { (key, value) ->
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Float -> editor.putFloat(key, value)
+                }
+            }
+            assertTrue(editor.commit())
+        }
+    }
+
+    @Test
+    fun backupRestoreRejectsInvalidProviderModelAndLeavesUnknownOrCredentialSlotsLocal() {
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val modelKey = "provider_model_${ProviderId.OPENAI.name}"
+        val unknownKey = "provider_model_NOT_A_PROVIDER"
+        val apiKey = "openai_api_key"
+        val keys = listOf(modelKey, unknownKey, apiKey)
+        val previous = preferences.all.filterKeys { it in keys }
+        val passphrase = "GLAFIRA-invalid-model-backup-test".toCharArray()
+        var archive: File? = null
+        try {
+            assertTrue(preferences.edit()
+                .putString(modelKey, "invalid model\n")
+                .putString(unknownKey, "source-unknown-model")
+                .putString(apiKey, "source-secret-must-not-transfer")
+                .commit())
+            archive = BackupArchive.create(context, passphrase)
+            assertTrue(preferences.edit()
+                .putString(modelKey, "destination-model")
+                .putString(unknownKey, "destination-unknown-model")
+                .putString(apiKey, "destination-secret-must-remain")
+                .commit())
+
+            BackupArchive.restore(context, archive!!, passphrase)
+
+            assertEquals("safe-default", loadProviderModel(context, ProviderId.OPENAI, "safe-default"))
+            assertEquals("destination-unknown-model", preferences.getString(unknownKey, null))
+            assertEquals("destination-secret-must-remain", preferences.getString(apiKey, null))
+        } finally {
+            archive?.delete()
+            passphrase.fill('\u0000')
+            val editor = preferences.edit()
+            keys.forEach { editor.remove(it) }
+            previous.forEach { (key, value) ->
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Float -> editor.putFloat(key, value)
+                }
+            }
+            assertTrue(editor.commit())
+        }
+    }
+
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
     }
