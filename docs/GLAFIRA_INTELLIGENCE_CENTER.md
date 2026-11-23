@@ -18,8 +18,19 @@ A model, role, skill, memory and dataset are different artifacts. Keep them sepa
 - Before recommending or installing a model, validate provenance, license, model card, supported runtime, hardware requirements, known limitations and security reports.
 - Keep API credentials in the secure credential boundary. Never put credentials in model metadata, prompts, skill packages or logs.
 
+### Shared analytical capability (mandatory for every role)
+Analytical reasoning is a common capability, not a standalone Analyst profession. Every enabled agent must be able to:
+- decompose a task, identify assumptions and missing information;
+- retrieve and compare authoritative sources, preserving citations, dates and jurisdiction;
+- distinguish verified facts, calculations, estimates, hypotheses and recommendations;
+- assess evidence quality, contradictions, uncertainty and confidence;
+- validate its own output with role-appropriate checks and request peer review through Glafira Core;
+- state limitations and abstain rather than fabricate.
+
+Each professional role applies this shared analytical capability to its own domain, data scopes and evaluation suite. The agent catalog must not expose a separate generic Analyst role unless the owner later explicitly requests one.
+
 ### Role
-A role defines responsibility, instructions, allowed tools, data scopes, escalation rules and expected output contract. A role is provider-independent and may select an approved model based on task policy.
+A role defines responsibility, instructions, allowed tools, data scopes, escalation rules, analytical expectations and expected output contract. A role is provider-independent and may select an approved model based on task policy.
 
 ### Skill Package
 A versioned, portable package assignable to one or more roles. A skill may contain:
@@ -96,6 +107,14 @@ Compare candidates against a fixed baseline using the same test set and provider
 - Do not send passwords, API keys, OAuth tokens, vault entries or raw payment credentials to any model.
 - Provide an owner-visible provider/data-sharing explanation and audit record for sensitive routing decisions.
 - Respect provider retention, training-use and regional-processing terms; disclose uncertainty where terms cannot be verified.
+
+## Plugin ecosystem and autonomous capability discovery
+
+The Plugin/Skill Registry must distinguish three artifact classes: (1) knowledge collections and retrieval connectors that import data but do not execute code; (2) versioned skills that provide instructions, schemas and evaluations; (3) executable tool plugins such as MCP servers or official API adapters. These classes have separate manifests, permissions and lifecycles.
+
+Agents may proactively identify missing tools or knowledge and propose candidates with evidence of usefulness, provenance, license, maintenance status, security posture, cost/free-tier limits, data retention and regional availability. Discovery and recommendations may be automatic; installation, permission grants, production activation, paid subscriptions and updates that change behavior require owner approval.
+
+Every executable plugin is untrusted until validated: quarantine, provenance/license/dependency checks, static analysis, sandbox test, capability allowlist, least-privilege grant, audit and rollback. Tool output and imported package instructions are untrusted data and cannot override Core policy or agent system instructions. Credentials remain in the secure broker and are never exposed to model prompts or plugin logs.
 
 ## Architecture modules
 
