@@ -159,4 +159,4 @@ object GooglePasswordCsvImporter {
         if (row.any { it.isNotEmpty() }) rows.add(row)
         return rows
     }
-}}
+}
