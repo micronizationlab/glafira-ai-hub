@@ -42,15 +42,15 @@ class GlafiraProviderContextPolicyTest {
     }
 
     @Test fun secretIsNeverForwardedAndDeniedContentIsNotReturned() {
-        val secret = item.copy(referenceId = "secret-ref", classification = GlafiraProviderDataClassification.SECRET,
-            content = "secret-canary")
+        val secret = item.copy(referenceId = "restricted-ref", classification = GlafiraProviderDataClassification.RESTRICTED,
+            content = "restricted-canary")
         val result = GlafiraProviderContextPolicy.assemble("project-a", ProviderId.OPENAI, listOf(secret), grant(), now)
         assertTrue(result.allowedItems.isEmpty())
-        assertEquals("secret-ref", result.deniedItems.single().first)
-        assertEquals(GlafiraProviderContextDenial.SECRET_NEVER_SHARED, result.deniedItems.single().second)
-        assertFalse(result.deniedItems.toString().contains("secret-canary"))
-        assertEquals("PROVIDER_SECRET_CLASSIFICATION_NEVER_GRANTABLE", runCatching {
-            grant(classes = setOf(GlafiraProviderDataClassification.SECRET))
+        assertEquals("restricted-ref", result.deniedItems.single().first)
+        assertEquals(GlafiraProviderContextDenial.RESTRICTED_NEVER_SHARED, result.deniedItems.single().second)
+        assertFalse(result.deniedItems.toString().contains("restricted-canary"))
+        assertEquals("PROVIDER_RESTRICTED_CLASSIFICATION_NEVER_GRANTABLE", runCatching {
+            grant(classes = setOf(GlafiraProviderDataClassification.RESTRICTED))
         }.exceptionOrNull()?.message)
     }
 
