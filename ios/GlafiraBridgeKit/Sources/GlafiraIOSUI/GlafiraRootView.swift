@@ -73,7 +73,10 @@ public struct GlafiraRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .glafiraBridgeCredentialDidChange)) { _ in
             refreshCredentialState()
-            Task { await ownership.reload() }
+            Task {
+                await workspace.reload()
+                await ownership.reload()
+            }
         }
     }
 
@@ -247,36 +250,71 @@ private struct GlafiraProjectsView: View {
     @ObservedObject var model: GlafiraWorkspaceViewModel
 
     var body: some View {
-        Group {
-            if model.projects.isEmpty {
-                ContentPlaceholder(
-                    title: "Проекты",
-                    message: model.status,
-                    symbol: "folder"
-                )
-            } else {
-                List(model.projects) { project in
-                    NavigationLink {
-                        GlafiraProjectConversationsView(model: model, project: project)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(project.name)
-                                .font(.headline)
-                            Text("Диалогов: \(project.conversationCount) · ожидают: \(project.pendingCount)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            if project.conflictCount > 0 {
-                                Label("Нужно разрешить конфликт: \(project.conflictCount)", systemImage: "exclamationmark.triangle")
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
+        List {
+            Section("Синхронизация") {
+                Text(model.status)
+                    .font(.callout)
+                    .foregroundStyle(model.conflictCount > 0 ? Color.orange : Color.secondary)
+
+                if model.pendingCount > 0 {
+                    ForEach(model.pairings, id: \.deviceId) { pairing in
+                        if let deviceId = pairing.deviceId {
+                            Button {
+                                Task { await model.syncNext(deviceId: deviceId) }
+                            } label: {
+                                Label(
+                                    "Отправить следующее сообщение через \(deviceId)",
+                                    systemImage: "arrow.up.circle"
+                                )
                             }
+                            .disabled(pairing.status != .paired ||
+                                      model.syncingDeviceIds.contains(deviceId))
                         }
                     }
-                    .accessibilityLabel("Открыть проект \(project.name)")
+                    if !model.pairings.contains(where: { $0.status == .paired }) {
+                        Label(
+                            "Для отправки восстановите сопряжение с Windows Hub",
+                            systemImage: "exclamationmark.shield"
+                        )
+                        .font(.caption)
+                    }
+                    Text("Отправляется одна durable-операция только после нажатия владельцем. Автоматическая фоновая отправка не выполняется.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if model.projects.isEmpty {
+                Section("Проекты") {
+                    Label("Разрешённых проектов пока нет", systemImage: "folder")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Section("Проекты") {
+                    ForEach(model.projects) { project in
+                        NavigationLink {
+                            GlafiraProjectConversationsView(model: model, project: project)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(project.name)
+                                    .font(.headline)
+                                Text("Диалогов: \(project.conversationCount) · ожидают: \(project.pendingCount)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if project.conflictCount > 0 {
+                                    Label("Нужно разрешить конфликт: \(project.conflictCount)", systemImage: "exclamationmark.triangle")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                        .accessibilityLabel("Открыть проект \(project.name)")
+                    }
                 }
             }
         }
         .task { await model.reload() }
+        .refreshable { await model.reload() }
         .navigationTitle("Проекты")
     }
 }
