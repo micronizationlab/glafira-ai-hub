@@ -160,7 +160,7 @@ fun SettingsScreen(onBack: () -> Unit, currentProject: Project? = null) {
         }
         if (pendingExpanded) {
             ProviderKeyField(
-                label = "ChatGPT (OpenAI API Key, sk-...)",
+                label = "OpenAI API Key (sk-...)",
                 value = openaiKey,
                 onValueChange = { openaiKey = it; isSaved = false; saveError = false },
                 configured = openaiKey.isNotBlank()
