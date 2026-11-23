@@ -51,7 +51,13 @@ data class GlafiraProviderCapabilityGrant(
     val operations: Set<GlafiraProviderOperation>,
     val allowedClassifications: Set<GlafiraProviderDataClassification>,
     val contextSharingApproved: Boolean,
-    val expiresAtMillis: Long? = null
+    val expiresAtMillis: Long? = null,
+    /** Owner confirms no suitable free route remains for this operation. */
+    val freeAlternativeUnavailable: Boolean = false,
+    /** Separate explicit owner consent for a paid route. */
+    val paidUseApproved: Boolean = false,
+    /** Maximum approved estimated cost in USD micro-units for this operation. */
+    val maxCostMicrosUsd: Long? = null
 )
 
 /** Live, non-secret provider health and quota snapshot. */
@@ -61,7 +67,9 @@ data class GlafiraProviderRuntimeSnapshot(
     val availability: GlafiraProviderAvailability,
     val costState: GlafiraProviderCostState,
     val quotaRemaining: Long? = null,
-    val checkedAtMillis: Long
+    val checkedAtMillis: Long,
+    /** Estimated cost in USD micro-units for this exact model/operation. */
+    val estimatedCostMicrosUsd: Long? = null
 )
 
 enum class GlafiraProviderEligibilityReason {
@@ -76,6 +84,9 @@ enum class GlafiraProviderEligibilityReason {
     QUOTA_EXHAUSTED,
     COST_UNKNOWN,
     PAID_USE_NOT_APPROVED,
+    FREE_ALTERNATIVE_NOT_EXHAUSTED,
+    PAID_COST_UNKNOWN,
+    PAID_BUDGET_EXCEEDED,
     PROVIDER_STATUS_STALE
 }
 
@@ -141,8 +152,22 @@ object GlafiraProviderCapabilityPolicy {
         }
         when (status.costState) {
             GlafiraProviderCostState.FREE_CONFIRMED -> Unit
-            GlafiraProviderCostState.PAID ->
-                return denied(GlafiraProviderEligibilityReason.PAID_USE_NOT_APPROVED)
+            GlafiraProviderCostState.PAID -> {
+                if (!grant.freeAlternativeUnavailable) {
+                    return denied(GlafiraProviderEligibilityReason.FREE_ALTERNATIVE_NOT_EXHAUSTED)
+                }
+                if (!grant.paidUseApproved) {
+                    return denied(GlafiraProviderEligibilityReason.PAID_USE_NOT_APPROVED)
+                }
+                val estimate = status.estimatedCostMicrosUsd
+                val budget = grant.maxCostMicrosUsd
+                if (estimate == null || estimate < 0L || budget == null || budget <= 0L) {
+                    return denied(GlafiraProviderEligibilityReason.PAID_COST_UNKNOWN)
+                }
+                if (estimate > budget) {
+                    return denied(GlafiraProviderEligibilityReason.PAID_BUDGET_EXCEEDED)
+                }
+            }
             GlafiraProviderCostState.UNKNOWN ->
                 return denied(GlafiraProviderEligibilityReason.COST_UNKNOWN)
         }
