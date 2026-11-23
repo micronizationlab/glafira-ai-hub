@@ -86,12 +86,13 @@ The current Desktop Bridge task worker can poll owner-authorized tasks and run r
 - Keep credentials, tokens, private keys, invitation JSON and one-time credential bundles out of commits, logs and this document.
 - Owner approval is required for sensitive actions, external effects, privileged scopes and production release.
 
-## 6. Key handoff documents
+## 6. Key project documents
 
-- `docs/GLAFIRA_KOSTYA_HANDOFF.md` — central engineering handoff and parallel PR index.
-- `docs/GLAFIRA_DESKTOP_SHUTDOWN_HANDOFF.md` — Desktop worker shutdown and OS lock safety.
+- `README.md` — repository entry point and current project overview.
+- `docs/GLAFIRA_SHARED_PROJECT_CONTEXT.md` — this versioned, non-secret cross-platform project context.
+- `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md` — owner identity, autonomy and update architecture.
 - `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md` — accepted two-Core ownership/failover contract.
 - `docs/GLAFIRA_PROJECT_DISPATCHER.md` — dispatcher v1 operation and limitations.
 - `docs/MOBILE_PERSONAL_DATA_BRIDGE.md` — proposed Android/iOS OS-mediated personal-data capability layer.
 
-Before changing architecture or resuming work, read the relevant handoff and inspect the current PR/branch head. Do not assume the status table in a historical document is live; query current GitHub state.
+Only reference documents that exist in the current repository. Before changing architecture or resuming work, inspect the relevant current document and the exact PR/branch head. Do not assume the status table in a historical document is live; query current GitHub state.
