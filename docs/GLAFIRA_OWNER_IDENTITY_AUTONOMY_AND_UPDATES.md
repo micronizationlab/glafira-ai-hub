@@ -56,12 +56,12 @@ A user's device group may contain an unknown and changing number of Android, iOS
 Roles:
 - Android Core and Windows Desktop Core are peer task authorities for the tasks each owns.
 - Windows Desktop Hub coordinates its enrolled Windows Agent fleet under Desktop Core policy; it is not a global policy Core.
-- iOS is an owner-facing peer client unless/until a separately approved Core role is implemented.
-- Windows Agent is a subordinate worker and cannot elect itself, grant permissions or transfer task ownership.
+- iOS is an owner-facing peer client and may participate in project coordinator election when its signed-in installation is owner-enrolled, online and supports the shared protocol; this does not make it an independent policy Core.
+- Windows Agent is a subordinate worker by default. It may be election-eligible only when explicitly provisioned and approved as a full GLAFIRA node; ordinary worker enrollment cannot elect itself, grant permissions or transfer task ownership.
 
-The group maintains a signed, versioned membership/health view with stable account/device/Core IDs, capabilities, software versions, heartbeat freshness, revocation and key epoch. Leadership/coordination is a lease-backed role, not a permanent title. If the active Desktop Hub is offline, a pre-authorized eligible peer may take over fleet coordination only after obtaining a higher fencing generation from the ownership mechanism. If no safe quorum/authority can be established, execution pauses rather than permitting split brain.
+The group maintains a signed, versioned membership/health view with stable account/device/Core IDs, capabilities, software versions, heartbeat freshness, revocation and key epoch. Global project leadership is a GitHub-backed lease role, not a permanent title: the first eligible node to win the initial claim becomes coordinator; after authoritative lease expiry, the next eligible online node may win a higher generation. If no safe compare-and-swap authority can be established, shared execution pauses rather than permitting split brain. The Windows Desktop Hub may separately fail over its local Agent-fleet transport role.
 
-Separate concepts must remain explicit: (a) Core task ownership, (b) fleet coordinator/Hub role, and (c) update-source authority. Electing a new Hub does not automatically transfer every task or credential.
+Separate concepts must remain explicit: (a) per-task Core ownership, (b) global project coordinator role, (c) local Windows fleet Hub role, and (d) update-source authority. Electing a project coordinator or new Hub does not automatically transfer every task, approval, credential or private key.
 
 ## 6. Update distribution and trust
 
