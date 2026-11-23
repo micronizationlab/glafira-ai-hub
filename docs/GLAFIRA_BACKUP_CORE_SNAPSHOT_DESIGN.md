@@ -2,105 +2,81 @@
 
 ## Status and priority
 
-This document refines the existing Backup & Recovery design for the persistent GLAFIRA Core task queue. Backup & Recovery is Priority 2, immediately after Core correctness and execution safety. It must not weaken Core authorization, task idempotency, or Bridge pairing controls.
+Backup & Recovery is Priority 2, immediately after Core correctness and execution safety. This document is both an architecture contract and a status correction: the repository already contains a coordinated Core backup/restore path. The requirements below distinguish existing behavior from remaining acceptance work; they are not a claim that every recovery scenario is complete.
 
-This is an implementation plan, not a claim that the described snapshot/restore flow is already implemented.
+## Current implementation verified in main
 
-## Problem found in the current archive
+- `BackupArchive` creates an authenticated AES-GCM archive by walking `Context.filesDir` and collecting explicitly allowed preferences. It does not directly include the Android SQLite database stored by `GlafiraTaskStore` under `Context.getDatabasePath("glafira_core_tasks.db")`.
+- `GlafiraCoreBackupCoordinator.create` supplies the missing Core integration. It acquires `GlafiraCoreMaintenanceGate.withExclusive`, pauses pending delivery, acquires the file-maintenance gate and synchronizes on the task store. It exports a logical portable Core snapshot to `.glafira-core-snapshot/core-portable-v2.json` under `filesDir`, then seals that file inside the encrypted archive.
+- `GlafiraPortableCoreSnapshot` exports a transactionally consistent allow-list of Core tables, validates the complete schema and relationships, and converts encrypted task/result payloads to logical portable data before the outer archive encryption. On restore, payloads are encrypted again for the destination device. Source-device Android Keystore keys are not exported.
+- The portable snapshot intentionally excludes authority/device-local state such as owner approvals, desktop leases/nodes, task ownership and live-run records. Restore does not revive those grants or leases.
+- `GlafiraTaskStore.exportConsistentSnapshot` separately performs a FULL WAL checkpoint, closes the database, verifies the WAL is empty, copies the database and validates it. This is used for the local rollback snapshot, not as the portable archive format.
+- Restore verifies the archive and portable Core snapshot before mutating live state, prepares a safety snapshot, applies the archive and portable Core data, and uses a journaled rollback path on failure. Core table replacement occurs in a database transaction. Non-terminal tasks are moved to `waiting_for_owner`; Dry Run previews return to `PENDING`. Uncertain external effects are not automatically replayed.
+- Instrumentation coverage already exercises wrong passphrases, malformed portable snapshots, task/result restoration, append-only Trace restoration, provider preference isolation and rollback after an injected restore failure.
 
-The current `BackupArchive` implementation collects files only from `Context.filesDir` and separately exports a small allowlist of preferences. Android SQLite databases live under `Context.databasePath` / the app's `databases/` directory, not under `filesDir`. The persistent Core task queue therefore is not guaranteed to be included in the existing archive. A backup that omits the task database cannot claim to preserve queued, waiting, retry-scheduled, completed, and failed task records.
+## Snapshot coverage and invariants
 
-The current restore flow also applies files one at a time and deletes files absent from the archive. Its safety snapshot/rollback is useful protection, but it is not an atomic whole-app restore and must not be treated as one.
+The versioned portable manifest must explicitly classify each data domain as included, excluded or unavailable:
 
-## Snapshot coverage
-
-The versioned manifest must classify each data domain as included, excluded, or unavailable:
-
-- Core task queue SQLite database, including task metadata and encrypted payload ciphertext.
-- SQLite WAL/SHM state or a verified checkpointed database snapshot; never copy a live database file without a consistency protocol.
-- Project metadata, project files, knowledge documents, and approved project memory.
-- Conversation history and attachment metadata/files according to owner policy.
-- Role definitions, task/automation definitions, schedules, and owner policy.
-- Provider/model IDs and non-secret integration configuration.
+- Core tasks, task plans, dependencies, task history and portable task results.
+- Append-only Core Trace events and their safe metadata.
+- Dry Run preview metadata, with review status reset on restore.
+- Project metadata/files, knowledge documents, conversations and attachments according to owner policy.
+- Role definitions, task/automation definitions, schedules and non-secret provider/model configuration.
 - Explicitly selected safe preferences.
-- Audit and recovery metadata needed to explain task state after restore.
 
-Credentials, API keys, OAuth refresh tokens, passwords, Bridge device secrets, and Android Keystore private keys remain excluded by default. The archive must state that device-bound keys are not portable and integrations may require re-pairing or reauthorization on a new device.
+Credentials, API keys, OAuth refresh tokens, passwords, Bridge device secrets, owner approval grants, live leases and Android Keystore private keys remain excluded by default. The owner must be told which integrations require reauthorization or re-pairing after recovery.
 
-## Consistent Core snapshot protocol
+## Consistent snapshot and restore protocol
 
-A snapshot must be coordinated with the single Core execution path:
+1. Use the shared Core maintenance gate so no task handler can run concurrently with snapshot/restore. Pause pending delivery and file maintenance under the same exclusive boundary.
+2. Export only an explicit table/column allow-list in a SQLite transaction. Reject unknown Core tables until the portable schema is deliberately versioned.
+3. Validate row limits, identifiers, project relationships, idempotency uniqueness, Trace references and schema version before sealing the archive.
+4. Encrypt the archive before it leaves the private app sandbox. Keep the temporary logical snapshot in private app storage and remove it in a `finally` path.
+5. Before restore, authenticate the archive and validate the entire portable snapshot without mutating live data.
+6. Create and verify a local safety snapshot. Persist a recovery journal before replacing any state.
+7. Restore Core rows transactionally; reset non-terminal work to owner review and invalidate excluded authority/lease state. Never revive an expired approval from an older archive.
+8. Verify SQLite integrity, schema, task states, idempotency constraints, Trace guards and post-restore Core health before clearing the journal.
+9. On failure, restore the safety snapshot or remain in an explicit recovery-required state. Do not claim rollback succeeded unless the restored database and archive are verified.
+10. Resume dispatch only after successful verification and owner reauthorization where required.
 
-1. Acquire a process-wide backup/snapshot lease shared by interactive execution, foreground runtime, WorkManager, and Bridge dispatch.
-2. Stop claiming new tasks. Let a currently executing operation reach a safe checkpoint or finish within a bounded timeout. Do not kill an operation after an external side effect may have started.
-3. Persist task transitions and the idempotency/operation journal. Any ambiguous external side effect remains in a recoverable/owner-review state; never blindly replay it.
-4. Checkpoint SQLite WAL and obtain a consistent database snapshot under the same queue/database coordination boundary. Include all required SQLite state if a checkpoint cannot be completed.
-5. Freeze the snapshot file set and manifest before streaming into the encrypted archive.
-6. Resume Core claiming only after the snapshot has been sealed or the operation has failed safely.
+## Remaining acceptance work
 
-The snapshot lease must be crash-safe: after process death, Core must be able to determine that no live snapshot owner remains and recover without leaving the queue permanently paused.
-
-## Archive integrity and encryption
-
-- Keep the existing versioned archive envelope but extend the manifest with app version, schema versions, data domains, relative paths, sizes, SHA-256 digests, and explicit exclusions.
-- Compress before authenticated encryption.
-- Authenticate the manifest and every archive payload through the archive's authenticated-encryption boundary; a standalone hash is not authenticity.
-- Enforce archive size, entry count, decompressed-size, path traversal, duplicate path, and symlink limits before applying any data.
-- Verify the entire archive locally before upload and verify a read-back copy before rotating a remote backup.
-- Never place a recovery passphrase beside the archive or in logs. Never export Android Keystore private keys or Bridge credentials as ordinary files.
-
-## Restore and recovery protocol
-
-Restore is an owner-initiated maintenance operation:
-
-1. Pause Core dispatch, Bridge action admission, and scheduled backup/update workers. Keep the owner informed of the paused state.
-2. Verify the archive authentication tag, manifest, every file digest, supported format/schema versions, and required data domains before modifying live state.
-3. Create and verify a fresh safety snapshot of the current state.
-4. Extract to a private staging directory. Reject duplicate paths, path traversal, unexpected files, oversized entries, missing database files, and incompatible schemas.
-5. Validate the staged SQLite database read-only and run integrity checks. Confirm that the queue schema and encrypted payload records can be read without attempting to decrypt task payloads using unavailable device keys.
-6. Apply the staged state using a recoverable commit protocol. Prefer directory/database file swaps with durable journal markers over per-file mutation. Preserve the safety snapshot until post-restore health checks pass.
-7. Run schema migrations only after compatibility checks and only with a verified pre-migration safety snapshot.
-8. Run Core health checks: queue can open, task states parse, idempotency constraints hold, no task is silently converted into an executable state, and owner approval grants remain invalid unless their original trusted storage is available.
-9. Resume Core only after success. On any failure, restore the safety snapshot or remain safely paused with a clear recovery-required state; never claim rollback succeeded unless verified.
-10. Require owner reauthorization/re-pairing for excluded credentials and device-bound secrets.
-
-## Task replay and side-effect safety
-
-- Restore must preserve task states exactly; it must not convert `RUNNING`, `WAITING_FOR_OWNER`, or ambiguous tasks into `QUEUED` automatically.
-- A restored `RUNNING` task requires operation-journal reconciliation before retry.
-- Preserve project-scoped idempotency keys and uniqueness constraints.
-- Expired owner approval grants must not be revived by restoring an older archive. Approval storage needs trusted expiry/revocation checks independent of archive time.
-- External writes, payments, publishing, destructive actions, and Bridge dispatch remain blocked until owner authorization is re-established.
+- Add explicit tests for process death at every temporary-snapshot, archive, journal and database-swap boundary; verify stale temporary snapshots are safely detected and removed.
+- Verify clean-profile and new-device recovery using only the archive passphrase and owner reauthorization; confirm payloads are re-encrypted with the destination Keystore key.
+- Add tests for unknown/new Core tables, unsupported portable schema versions, oversized snapshots, corrupt Trace relationships and idempotency collisions.
+- Verify every non-portable table is deliberately excluded and cannot restore approval, ownership, lease or live-run authority.
+- Exercise recovery on physical Android devices and document Keystore/vendor-specific behavior. WorkManager remains best-effort and must not be described as exact-time or 24/7 execution.
+- Reconcile the portable snapshot schema with future Core memory/Trace stores before adding those stores to the archive; do not assume that a raw SQLite copy is a portable backup.
 
 ## Implementation sequence
 
-### BR-1 — Inventory and snapshot boundary
-- Identify every persistent data root and database used by the current app and Core.
-- Introduce a Core-owned snapshot lease and a queue pause/checkpoint interface.
-- Add manifest coverage tests that fail if a required data root is omitted.
+### BR-1 — Inventory and portable schema
+- Maintain a complete inventory of Core tables and file roots.
+- Require an explicit portable allow-list and fail closed when an unknown Core table appears.
+- Add schema migration and compatibility fixtures.
 
 ### BR-2 — Consistent archive creation
-- Add the Core SQLite database to the archive through the snapshot boundary, not by an uncoordinated file copy.
-- Include required WAL/SHM or produce a verified checkpointed snapshot.
-- Add archive round-trip tests for queued, waiting, retry, succeeded, and failed tasks.
+- Keep the Core maintenance gate and pending-delivery pause around the whole snapshot.
+- Verify portable payload export, archive authentication and temporary-file cleanup.
+- Test concurrent execution attempts are blocked until the archive is sealed.
 
 ### BR-3 — Staged restore and rollback
-- Validate database integrity and schema compatibility before mutation.
-- Implement journaled restore activation and verified rollback.
-- Test interrupted restore at every mutation boundary.
+- Verify the archive and portable snapshot before mutation.
+- Test every journal/rollback boundary, including process interruption.
+- Confirm task states, idempotency keys, Trace and non-portable authority are restored or invalidated exactly as specified.
 
 ### BR-4 — New-device recovery and operations
-- Test restore into a clean app profile/device using only the documented recovery secret and owner sign-ins.
-- Verify that missing Keystore credentials do not result in silent task execution or false success.
-- Add owner-facing status, restore preview, reauthorization, and recovery-required states.
+- Test restore to a clean profile/device with destination-key re-encryption.
+- Add owner-facing restore preview, exclusions, reauthorization and recovery-required status.
+- Preserve truthful Android background-execution limitations.
 
 ## Acceptance criteria
 
-- A verified backup includes the Core task database and reports this explicitly in its manifest.
-- A backup taken during task activity is a consistent snapshot; no partial SQLite state is accepted.
-- Restore preserves task states and idempotency keys and does not replay uncertain external side effects.
-- Wrong passphrase, corrupt archive, missing database, incompatible schema, and path traversal are rejected before live data changes.
+- The archive manifest explicitly identifies the portable Core snapshot and its schema version.
+- A backup taken during task activity is consistent; no partial SQLite state is accepted.
+- Restore preserves portable task history and idempotency while placing non-terminal work into owner review.
+- Credentials, approvals, leases and device-bound secrets are not silently transferred or revived.
+- Wrong passphrase, corrupt archive, malformed snapshot, missing required data, incompatible schema and path traversal are rejected before live data changes.
 - Interrupted restore either completes or returns to a verified safety snapshot; no partial restore is reported as successful.
-- A clean-profile restore can open the queue and pass SQLite integrity and Core health checks.
-- Device-bound credentials remain excluded and are reauthorized/re-paired after recovery.
-- Background backup remains best-effort under Android WorkManager constraints; no exact-time or 24/7 guarantee is claimed.
+- A clean-profile restore passes SQLite integrity and Core health checks.
