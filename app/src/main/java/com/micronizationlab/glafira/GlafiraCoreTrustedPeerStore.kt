@@ -64,4 +64,9 @@ class GlafiraCoreTrustedPeerStore(
         }
     }
 
+    companion object {
+        private const val DATABASE_NAME = "glafira_trusted_peers.db"
+        private const val DATABASE_VERSION = 1
+        private const val TABLE_NAME = "trusted_core_peers"
+    }
 }
