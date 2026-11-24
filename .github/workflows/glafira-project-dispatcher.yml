@@ -76,7 +76,7 @@ jobs:
           repo="$1"
           if prs="$(gh pr list --repo "$repo" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup 2>/dev/null)"; then
             jq -e 'type == "array"' >/dev/null <<< "$prs"
-            printf '%s\\n' "$prs"
+            printf '%s\n' "$prs"
             exit 0
           fi
           # GraphQL can fail independently of REST. Recover the PR inventory with REST,
