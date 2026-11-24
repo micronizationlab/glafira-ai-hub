@@ -14,6 +14,23 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
     private val safetyDatabase get() = File(journal, "database.enc")
     private val safetyArchive get() = File(journal, "files.glb")
 
+    init {
+        // A process can die between exporting SQLite and encrypting it. Scrub those
+        // fixed-name plaintext staging files whenever the coordinator is re-created.
+        cleanupPlaintextStaging()
+    }
+
+    private fun cleanupPlaintextStaging() {
+        listOf(
+            File(app.cacheDir, "glafira-rollback-source.db"),
+            File(app.cacheDir, "glafira-rollback-recovery.db")
+        ).forEach { file ->
+            if (file.exists()) check(file.delete()) {
+                "Не удалось удалить оставшуюся временную копию базы Core."
+            }
+        }
+    }
+
     suspend fun create(passphrase: CharArray): File = GlafiraCoreMaintenanceGate.withExclusive {
         PendingDeliveryRuntime.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
