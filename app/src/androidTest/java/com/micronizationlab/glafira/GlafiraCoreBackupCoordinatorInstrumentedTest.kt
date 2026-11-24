@@ -7,6 +7,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
 import java.io.RandomAccessFile
+import java.security.KeyStore
+import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -315,6 +317,51 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             passphrase.fill('\u0000')
         }
         Unit
+    }
+
+    @Test
+    fun portableRestoreOnCleanInstallationCreatesFreshCoreIdentity() = runBlocking {
+        val suffix = UUID.randomUUID().toString().replace("-", "")
+        val identityFile = File(
+            context.noBackupFilesDir,
+            "glafira_test_restore_identity_$suffix.properties"
+        )
+        val keyAliasPrefix = "glafira.test.backup.restore.$suffix."
+        val identityStore = AndroidCoreInstallationIdentityStore(
+            context,
+            identityFile,
+            keyAliasPrefix
+        )
+        val sourceIdentity = identityStore.loadOrCreate()
+        val passphrase = "GLAFIRA-clean-install-restore-test-2026".toCharArray()
+        val archive = GlafiraCoreBackupCoordinator(context, store).create(passphrase)
+        try {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            val sourceAlias = "$keyAliasPrefix${sourceIdentity.keyEpoch}"
+            assertTrue(keyStore.containsAlias(sourceAlias))
+
+            // A replacement installation has neither the noBackup metadata nor the
+            // non-exportable Keystore key from the source installation.
+            assertTrue(identityFile.delete())
+            keyStore.deleteEntry(sourceAlias)
+
+            GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
+
+            val restoredIdentity = identityStore.loadOrCreate()
+            assertNotEquals(sourceIdentity.coreId, restoredIdentity.coreId)
+            assertNotEquals(sourceIdentity.publicKeyBase64, restoredIdentity.publicKeyBase64)
+            assertEquals(1L, restoredIdentity.keyEpoch)
+            assertTrue(identityFile.isFile)
+            assertTrue(keyStore.containsAlias("$keyAliasPrefix${restoredIdentity.keyEpoch}"))
+        } finally {
+            archive.delete()
+            identityFile.delete()
+            File(identityFile.parentFile, identityFile.name + ".tmp").delete()
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            keyStore.aliases().toList().filter { it.startsWith(keyAliasPrefix) }
+                .forEach(keyStore::deleteEntry)
+            passphrase.fill('\\u0000')
+        }
     }
 
     @Test
