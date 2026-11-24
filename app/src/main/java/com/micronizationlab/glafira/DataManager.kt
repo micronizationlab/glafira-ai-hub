@@ -67,3 +67,29 @@ fun loadProjects(context: Context): List<Project> = GlafiraFileMaintenance.withE
 
 fun updateProjects(context: Context, transform: (List<Project>) -> List<Project>): List<Project> =
     projectStore(context.filesDir).update(::defaultProjects) { transform(it).ifEmpty { defaultProjects() } }
+
+
+/**
+ * Creates a workspace only when its normalized display name is not already in use.
+ * Returning the existing stable-ID workspace prevents a user-created duplicate of
+ * built-in projects such as "Личное" and "ВодородАктив".
+ */
+fun createOrSelectProject(context: Context, name: String): Project {
+    val normalizedName = name.trim()
+    require(normalizedName.isNotBlank()) { "Укажите название проекта." }
+    var selected: Project? = null
+    updateProjects(context) { current ->
+        val existing = current.firstOrNull {
+            it.name.trim().equals(normalizedName, ignoreCase = true)
+        }
+        if (existing != null) {
+            selected = existing
+            current
+        } else {
+            Project(java.util.UUID.randomUUID().toString(), normalizedName).also {
+                selected = it
+            }.let { current + it }
+        }
+    }
+    return checkNotNull(selected) { "Не удалось создать или выбрать проект." }
+}
