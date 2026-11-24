@@ -3,6 +3,7 @@ package com.micronizationlab.glafira
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.io.File
+import java.io.DataInputStream
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.KeyStore
@@ -34,13 +35,12 @@ internal object GlafiraRollbackSnapshotCipher {
 
     fun decrypt(source: File, destination: File) {
         try {
-            FileInputStream(source).use { raw ->
+            DataInputStream(FileInputStream(source)).use { raw ->
                 val magic = ByteArray(MAGIC.size)
-                require(raw.read(magic) == magic.size && magic.contentEquals(MAGIC)) {
-                    "Core rollback snapshot format is invalid."
-                }
+                raw.readFully(magic)
+                require(magic.contentEquals(MAGIC)) { "Core rollback snapshot format is invalid." }
                 val iv = ByteArray(IV_BYTES)
-                require(raw.read(iv) == iv.size) { "Core rollback snapshot IV is truncated." }
+                raw.readFully(iv)
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                 cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
                 CipherInputStream(raw, cipher).use { decrypted ->
