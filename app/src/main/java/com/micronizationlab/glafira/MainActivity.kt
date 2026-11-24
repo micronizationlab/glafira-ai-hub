@@ -880,15 +880,16 @@ fun ChatScreen(
                     )
                     Text("✕", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
                 } else {
-                    Box(Modifier.weight(1f)) {
+                    Box(
+                        Modifier.weight(1f)
+                            .clickable { showProjectSelector = true }
+                            .semantics { contentDescription = "Выбрать проект: ${project.name}" }
+                    ) {
                         Text(
                             "▣ ${project.name}  ▾",
                             color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.fillMaxWidth()
-                                .semantics { contentDescription = "Выбрать проект: ${project.name}" }
-                                .clickable { showProjectSelector = true }
-                                .padding(vertical = 5.dp)
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
                         )
                         DropdownMenu(expanded = showProjectSelector, onDismissRequest = { showProjectSelector = false }) {
                             projects.forEach { item ->
