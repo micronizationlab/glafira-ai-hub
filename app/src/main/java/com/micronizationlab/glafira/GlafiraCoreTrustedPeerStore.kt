@@ -6,8 +6,11 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.util.Base64
 import java.io.File
+import java.security.AlgorithmParameters
 import java.security.KeyFactory
 import java.security.interfaces.ECPublicKey
+import java.security.spec.ECGenParameterSpec
+import java.security.spec.ECParameterSpec
 import java.security.spec.X509EncodedKeySpec
 
 /** Candidate public identity received from the peer; it is untrusted until owner-approved. */
@@ -52,7 +55,6 @@ enum class GlafiraPeerTrustMutation {
  */
 class GlafiraCoreTrustedPeerStore(
     context: Context,
-    private val localCoreId: String,
     databaseFile: File = File(context.noBackupFilesDir, DATABASE_NAME)
 ) : SQLiteOpenHelper(
     context.applicationContext,
@@ -60,7 +62,13 @@ class GlafiraCoreTrustedPeerStore(
     null,
     DATABASE_VERSION
 ) {
+    private val localCoreId = AndroidCoreInstallationIdentityStore(context).loadOrCreate().coreId
+
     init {
+        val noBackupRoot = context.noBackupFilesDir.canonicalFile
+        require(databaseFile.canonicalFile.parentFile == noBackupRoot) {
+            "TRUSTED_PEER_STORE_MUST_BE_NO_BACKUP"
+        }
         require(isIdentifier(localCoreId)) { "LOCAL_CORE_ID_INVALID" }
     }
 
@@ -221,7 +229,13 @@ class GlafiraCoreTrustedPeerStore(
             val encoded = Base64.decode(candidate.publicKeySpkiBase64, Base64.NO_WRAP)
             require(encoded.size in 1..512)
             val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(encoded)) as ECPublicKey
-            require(key.params.curve.field.fieldSize == 256)
+            val parameters = AlgorithmParameters.getInstance("EC").apply {
+                init(ECGenParameterSpec("secp256r1"))
+            }.getParameterSpec(ECParameterSpec::class.java)
+            require(key.params.curve == parameters.curve &&
+                key.params.generator == parameters.generator &&
+                key.params.order == parameters.order &&
+                key.params.cofactor == parameters.cofactor)
             require(key.encoded.contentEquals(encoded))
             key
         }.getOrNull()
