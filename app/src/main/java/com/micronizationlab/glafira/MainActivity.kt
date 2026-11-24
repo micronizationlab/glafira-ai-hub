@@ -952,16 +952,18 @@ fun ChatScreen(
                     Text("ⓘ", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { showProfile = true }.padding(start = 6.dp))
                     Text(
                         "☷", color = Gr, fontSize = 16.sp,
-                        modifier = Modifier.size(26.dp)
-                            .clickable { onOpenTaskQueue() }
-                            .semantics(mergeDescendants = true) { contentDescription = "Открыть очередь задач" },
+                        modifier = Modifier.size(26.dp).semantics {
+                            contentDescription = "Открыть очередь задач"
+                            onClick(label = "Открыть очередь задач") { onOpenTaskQueue(); true }
+                        },
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                     Text(
                         "🏛", fontSize = 12.sp,
-                        modifier = Modifier.size(26.dp)
-                            .clickable { onOpenCouncil() }
-                            .semantics(mergeDescendants = true) { contentDescription = "Открыть совет директоров" },
+                        modifier = Modifier.size(26.dp).semantics {
+                            contentDescription = "Открыть совет директоров"
+                            onClick(label = "Открыть совет директоров") { onOpenCouncil(); true }
+                        },
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
@@ -1107,9 +1109,10 @@ fun ChatScreen(
                     Text(
                         "⋮",
                         color = Gr, fontSize = 22.sp,
-                        modifier = Modifier.semantics { contentDescription = "Открыть действия чата" }
-                            .clickable { showChatActionsMenu = true }
-                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp).semantics {
+                            contentDescription = "Открыть действия чата"
+                            onClick(label = "Открыть действия чата") { showChatActionsMenu = true; true }
+                        }
                     )
                     DropdownMenu(expanded = showChatActionsMenu, onDismissRequest = { showChatActionsMenu = false }) {
                         DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { showChatActionsMenu = false; isSearching = true })
