@@ -79,8 +79,7 @@ jobs:
             printf '%s\n' "$prs"
             exit 0
           fi
-          # GraphQL can fail independently of REST. Recover the PR inventory with REST,
-          # then let the exact-head Actions fallback render checks; never turn API failure into pass.
+          # Recover the PR inventory with REST if GraphQL fails; API failure never means pass.
           rest_prs="$(gh api "repos/$repo/pulls?state=open&per_page=100")"
           jq -e 'type == "array"' >/dev/null <<< "$rest_prs"
           jq '[.[] | {
@@ -93,7 +92,6 @@ jobs:
             statusCheckRollup: []
           }]' <<< "$rest_prs"
           FETCH
-
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -136,7 +134,6 @@ jobs:
           grep -q 'Desktop CI: IN_PROGRESS' <<< "$output"
           grep -q 'Windows CI: COMPLETED/cancelled' <<< "$output"
           grep -q 'Agent CI: COMPLETED/failure' <<< "$output"
-
           # Simulate GraphQL failure and confirm the PR inventory falls back to REST.
           mkdir -p "$tmp/fake-bin"
           cat > "$tmp/fake-bin/gh" <<'GH'
@@ -157,7 +154,6 @@ jobs:
           chmod +x "$tmp/fake-bin/gh"
           rest_output="$(PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/fetch-open-prs.sh" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 1 and .[0].headRefOid == "sha-rest" and .[0].statusCheckRollup == []' <<< "$rest_output" >/dev/null
-
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           echo "all PR inventory APIs unavailable" >&2
@@ -168,16 +164,13 @@ jobs:
             echo "expected PR inventory fallback to fail closed" >&2
             exit 1
           fi
-
           unknown_output="$(bash "$renderer" "$tmp/prs.json" <(printf 'null'))"
           grep -q 'UNKNOWN / ACTIONS API UNAVAILABLE' <<< "$unknown_output"
           empty_output="$(bash "$renderer" <(printf '[]') "$tmp/runs.json")"
           [[ -z "$empty_output" ]]
           echo "dispatcher status renderer fixtures: PASS"
           TEST
-          bash "$RUNNER_TEMP/test-renderer.sh"
-
-      - name: Build cross-workstream status report
+          bash "$RUNNER_TEMP/test-renderer.sh"      - name: Build cross-workstream status report
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
