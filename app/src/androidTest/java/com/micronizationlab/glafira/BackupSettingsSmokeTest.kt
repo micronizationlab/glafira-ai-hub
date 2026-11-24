@@ -19,6 +19,8 @@ class BackupSettingsSmokeTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         resetRecoveryJournalForUiSmokeTest(context)
+        deletedProjectStore(context.filesDir).write(emptySet())
+        saveProjects(context, defaultProjects())
         assertTrue(
             "Could not disable biometric lock for the home-screen smoke test",
             context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
@@ -40,9 +42,14 @@ class BackupSettingsSmokeTest {
             val device = UiDevice.getInstance(instrumentation)
             assertTrue(
                 "GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
+                device.wait(Until.hasObject(By.textContains("ГЛАФИРА")), 20_000)
             )
-            val settingsButton = device.findObject(By.descContains("Открыть настройки"))
+            val actionsButton = device.findObject(By.descContains("Открыть действия чата"))
+            assertTrue("Chat actions menu is not visible", actionsButton.visibleBounds.width() > 0)
+            actionsButton.click()
+            assertTrue("Settings action is missing from the chat actions menu",
+                device.wait(Until.hasObject(By.text("Настройки")), 5_000))
+            val settingsButton = device.findObject(By.text("Настройки"))
             assertTrue(
                 "Settings action is not visible",
                 settingsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
