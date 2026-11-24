@@ -102,12 +102,12 @@ fun App() {
 
 @Composable
 private fun WorkspaceApp() {
-    var currentAgent by remember { mutableStateOf<A?>(null) }
+    val context = LocalContext.current
+    var currentAgent by remember(context) { mutableStateOf(buildAgentCatalog(context).firstOrNull()) }
     var showSettings by remember { mutableStateOf(false) }
     var showCouncil by remember { mutableStateOf(false) }
     var showTaskQueue by remember { mutableStateOf(false) }
     var statusRefresh by remember { mutableStateOf(0) }
-    val context = LocalContext.current
     var projects by remember { mutableStateOf(loadProjects(context)) }
     var currentProject by remember { mutableStateOf(projects.firstOrNull() ?: defaultProjects().first()) }
     val scope = rememberCoroutineScope()
@@ -189,9 +189,16 @@ private fun WorkspaceApp() {
                 refreshKey = statusRefresh,
                 onProjectSelect = { currentProject = it },
                 onProjectAdd = { name ->
-                    val newProj = Project(UUID.randomUUID().toString(), name)
-                    projects = updateProjects(context) { it + newProj }
-                    currentProject = newProj
+                    val normalizedName = name.trim()
+                    val existing = projects.firstOrNull { it.name.trim().equals(normalizedName, ignoreCase = true) }
+                    if (existing != null) {
+                        currentProject = existing
+                        ToastHelper.short(context, "Проект «${existing.name}» уже существует. Переключил на него.")
+                    } else {
+                        val newProj = Project(UUID.randomUUID().toString(), normalizedName)
+                        projects = updateProjects(context) { current -> current + newProj }
+                        currentProject = newProj
+                    }
                 },
                 onProjectDelete = { project ->
                     scope.launch {
@@ -213,6 +220,10 @@ private fun WorkspaceApp() {
             else -> ChatScreen(
                 agent = currentAgent!!,
                 project = currentProject,
+                projects = projects,
+                agents = buildAgentCatalog(context),
+                onProjectSelect = { currentProject = it },
+                onAgentSelect = { currentAgent = it },
                 onBack = { currentAgent = null },
                 onOpenSettings = { showSettings = true }
             )
@@ -283,42 +294,7 @@ fun AgentRow(a: A, onClick: () -> Unit) {
     Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 }
 
-@Composable
-fun ContactList(
-    projects: List<Project>,
-    currentProject: Project,
-    refreshKey: Int,
-    onProjectSelect: (Project) -> Unit,
-    onProjectAdd: (String) -> Unit,
-    onProjectDelete: (Project) -> Unit,
-    onAgentClick: (A) -> Unit,
-    onSettingsClick: () -> Unit,
-    onCouncilClick: () -> Unit,
-    onTaskQueueClick: () -> Unit
-) {
-    val context = LocalContext.current
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showProjectMenu by remember { mutableStateOf(false) }
-    var newProjectName by remember { mutableStateOf("") }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-    var notConfiguredAgent by remember { mutableStateOf<A?>(null) }
-    var iaExpanded by remember { mutableStateOf(true) }
-    var aiExpanded by remember { mutableStateOf(true) }
-
-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-    var isOnline by remember { mutableStateOf(cm.activeNetwork != null) }
-    var previousOnline by remember { mutableStateOf(isOnline) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            isOnline = cm.activeNetwork != null
-            if (isOnline && !previousOnline) SoundHelper.playOnline()
-            previousOnline = isOnline
-            delay(2000)
-        }
-    }
-
-    val list = remember(context, refreshKey) {
-        listOf(
+private fun buildAgentCatalog(context: Context): List<A> = listOf(
             A("ГЛАФИРА", "Главный координатор", hasAnyGlafiraProvider(context), "🤖",
                 "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
                 "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением.",
@@ -360,7 +336,54 @@ fun ContactList(
                 "Маршрутизатор бесплатных моделей разных разработчиков. Доступность моделей и лимиты меняются; политики обработки данных зависят от выбранного провайдера.",
                 ProviderId.OPENROUTER, AgentGroup.AI)
         )
+
+private fun buildModuleCatalog(context: Context): List<A> {
+    val provider = loadGlafiraPrimaryProvider(context)
+    val ready = hasAnyGlafiraProvider(context)
+    return listOf(
+        A("МОДУЛЬ · ПЛАНИРОВАНИЕ", "Планы и последовательность действий", ready, "🗓️", "Ты — модуль планирования Глафиры. Помогай превращать цели в реалистичные планы, сроки и следующие действия. Учитывай текущий проект и его историю.", "Планирование проекта и контроль последовательности задач.", provider, AgentGroup.IA),
+        A("МОДУЛЬ · ИССЛЕДОВАНИЯ", "Поиск и анализ информации", ready, "🔎", "Ты — исследовательский модуль Глафиры. Разделяй факты и гипотезы, показывай источники и пробелы в данных. Учитывай текущий проект.", "Исследование, сравнение и структурирование информации.", provider, AgentGroup.IA),
+        A("МОДУЛЬ · ДОКУМЕНТЫ", "Подготовка рабочих материалов", ready, "📄", "Ты — модуль документов Глафиры. Помогай готовить письма, инструкции, технические задания и деловые документы с учетом текущего проекта.", "Работа с текстами, письмами и документами.", provider, AgentGroup.IA),
+        A("МОДУЛЬ · КОНТРОЛЬ", "Задачи и исполнение", ready, "☑️", "Ты — модуль контроля Глафиры. Помогай отслеживать задачи, фиксировать решения, выявлять блокеры и предлагать следующие проверяемые действия. Не утверждай, что действие выполнено без подтверждения.", "Контроль выполнения и фиксация результатов.", provider, AgentGroup.IA)
+    )
+}
+
+@Composable
+fun ContactList(
+    projects: List<Project>,
+    currentProject: Project,
+    refreshKey: Int,
+    onProjectSelect: (Project) -> Unit,
+    onProjectAdd: (String) -> Unit,
+    onProjectDelete: (Project) -> Unit,
+    onAgentClick: (A) -> Unit,
+    onSettingsClick: () -> Unit,
+    onCouncilClick: () -> Unit,
+    onTaskQueueClick: () -> Unit
+) {
+    val context = LocalContext.current
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showProjectMenu by remember { mutableStateOf(false) }
+    var newProjectName by remember { mutableStateOf("") }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var projectToDelete by remember { mutableStateOf<Project?>(null) }
+    var notConfiguredAgent by remember { mutableStateOf<A?>(null) }
+    var iaExpanded by remember { mutableStateOf(true) }
+    var aiExpanded by remember { mutableStateOf(true) }
+
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    var isOnline by remember { mutableStateOf(cm.activeNetwork != null) }
+    var previousOnline by remember { mutableStateOf(isOnline) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            isOnline = cm.activeNetwork != null
+            if (isOnline && !previousOnline) SoundHelper.playOnline()
+            previousOnline = isOnline
+            delay(2000)
+        }
     }
+
+    val list = remember(context, refreshKey) { buildAgentCatalog(context) }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
@@ -386,13 +409,14 @@ fun ContactList(
                     projects.forEach { proj ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             DropdownMenuItem(
-                                text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Bg) },
+                                text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Color(0xFF202020)) },
                                 onClick = { onProjectSelect(proj); showProjectMenu = false },
                                 modifier = Modifier.weight(1f)
                             )
                             if (projects.size > 1) {
                                 Text("✕", color = Red, modifier = Modifier.clickable {
-                                    if (proj.id == currentProject.id) showDeleteConfirm = true
+                                    projectToDelete = proj
+                                    showDeleteConfirm = true
                                 }.padding(8.dp))
                             }
                         }
@@ -445,14 +469,19 @@ fun ContactList(
             AlertDialog(
                 onDismissRequest = { showDeleteConfirm = false },
                 title = { Text("Удалить проект?", color = Color(0xFF202020)) },
-                text = { Text("Все чаты в этом проекте будут безвозвратно удалены.") },
+                text = { Text("Все чаты проекта «${projectToDelete?.name.orEmpty()}» будут безвозвратно удалены.") },
                 confirmButton = {
-                    TextButton(onClick = { onProjectDelete(currentProject); showDeleteConfirm = false; showProjectMenu = false }) {
+                    TextButton(onClick = {
+                        projectToDelete?.let(onProjectDelete)
+                        projectToDelete = null
+                        showDeleteConfirm = false
+                        showProjectMenu = false
+                    }) {
                         Text("Удалить", color = Red)
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showDeleteConfirm = false }) { Text("Отмена", color = Tx) }
+                    TextButton(onClick = { projectToDelete = null; showDeleteConfirm = false }) { Text("Отмена", color = Tx) }
                 }
             )
         }
@@ -551,11 +580,15 @@ fun ContactList(
 fun ChatScreen(
     agent: A,
     project: Project,
+    projects: List<Project>,
+    agents: List<A>,
+    onProjectSelect: (Project) -> Unit,
+    onAgentSelect: (A) -> Unit,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.n)) }
+    var inputText by remember("${project.id}_${agent.n}") { mutableStateOf(loadDraft(context, project.id, agent.n)) }
     val historyKey = "${project.id}_${agent.n}"
     var selectedPhotoUri by remember(historyKey) { mutableStateOf<Uri?>(null) }
     val photoPickerLauncher = rememberLauncherForActivityResult(
