@@ -79,9 +79,15 @@ class MainActivitySmokeTest {
 
         device.findObject(By.desc("Выбрать проект: ВодородАктив")).click()
         device.findObject(By.desc("Удалить проект: ВодородАктив")).click()
-        assertTrue("Project delete icon did not open the correct confirmation",
-            device.wait(Until.hasObject(By.textContains("ВодородАктив")), 5_000))
+        assertTrue("Project delete icon did not open the confirmation dialog",
+            device.wait(Until.hasObject(By.text("Удалить проект?")), 5_000))
+        assertTrue("Delete confirmation does not identify the selected project",
+            device.hasObject(By.text("Все чаты проекта «ВодородАктив» и его закрепления будут безвозвратно удалены.")))
         device.findObject(By.text("Отмена")).click()
+        device.findObject(By.desc("Выбрать проект: ВодородАктив")).click()
+        assertTrue("Cancelling deletion must keep the selected project",
+            device.wait(Until.hasObject(By.text("ВодородАктив")), 5_000))
+        device.pressBack()
 
         device.findObject(By.desc("Выбрать агента: ГЛАФИРА")).click()
         assertTrue("Agent picker did not expose the Analyst agent",
