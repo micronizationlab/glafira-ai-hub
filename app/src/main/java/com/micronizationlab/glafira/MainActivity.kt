@@ -246,6 +246,8 @@ private fun WorkspaceApp() {
                     }
                 },
                 onAgentSelect = { currentAgent = it },
+                onOpenTaskQueue = { showTaskQueue = true },
+                onOpenCouncil = { showCouncil = true },
                 onBack = { currentAgent = null },
                 onOpenSettings = { showSettings = true }
             )
@@ -608,6 +610,8 @@ fun ChatScreen(
     onProjectAdd: (String) -> Unit,
     onProjectDelete: (Project) -> Unit,
     onAgentSelect: (A) -> Unit,
+    onOpenTaskQueue: () -> Unit,
+    onOpenCouncil: () -> Unit,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit = {}
 ) {
@@ -933,6 +937,22 @@ fun ChatScreen(
                         }
                     }
                     Text("ⓘ", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { showProfile = true }.padding(start = 6.dp))
+                    Box(
+                        Modifier.size(26.dp).clickable { onOpenTaskQueue() }
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "Открыть очередь задач"
+                                onClick(label = "Открыть очередь задач") { onOpenTaskQueue(); true }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) { Text("☷", color = Gr, fontSize = 16.sp) }
+                    Box(
+                        Modifier.size(26.dp).clickable { onOpenCouncil() }
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "Открыть совет директоров"
+                                onClick(label = "Открыть совет директоров") { onOpenCouncil(); true }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) { Text("🏛", fontSize = 12.sp) }
                 }
             }
 
@@ -1097,6 +1117,18 @@ fun ChatScreen(
                             showChatActionsMenu = false
                             TtsHelper.stop()
                             speakingIndex = null
+                        })
+                        DropdownMenuItem(text = { Text("Очередь задач") }, onClick = {
+                            showChatActionsMenu = false
+                            onOpenTaskQueue()
+                        })
+                        DropdownMenuItem(text = { Text("Совет директоров") }, onClick = {
+                            showChatActionsMenu = false
+                            onOpenCouncil()
+                        })
+                        DropdownMenuItem(text = { Text("Настройки") }, onClick = {
+                            showChatActionsMenu = false
+                            onOpenSettings()
                         })
                         DropdownMenuItem(text = { Text("Очистить чат", color = Red) }, onClick = {
                             showChatActionsMenu = false
