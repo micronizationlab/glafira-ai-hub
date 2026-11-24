@@ -23,17 +23,17 @@ cat > "$tmp/runs.json" <<'JSON'
 ]
 JSON
 
-output="$("$renderer" "$tmp/prs.json" "$tmp/runs.json")"
+output="$(bash "$renderer" "$tmp/prs.json" "$tmp/runs.json")"
 grep -q 'Android CI: COMPLETED/success' <<< "$output"
 grep -q 'Dispatcher: COMPLETED/success' <<< "$output"
 ! grep -q 'COMPLETED/failure' <<< "$output"
 grep -q 'NO MATCHING RUN FOR EXACT HEAD' <<< "$output"
 grep -q 'required: COMPLETED/SUCCESS' <<< "$output"
 
-unknown_output="$("$renderer" "$tmp/prs.json" <(printf 'null'))"
+unknown_output="$(bash "$renderer" "$tmp/prs.json" <(printf 'null'))"
 grep -q 'UNKNOWN / ACTIONS API UNAVAILABLE' <<< "$unknown_output"
 
-empty_output="$("$renderer" <(printf '[]') "$tmp/runs.json")"
+empty_output="$(bash "$renderer" <(printf '[]') "$tmp/runs.json")"
 [[ -z "$empty_output" ]]
 
 echo "dispatcher status renderer fixtures: PASS"
