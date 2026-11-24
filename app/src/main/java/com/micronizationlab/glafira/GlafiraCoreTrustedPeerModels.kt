@@ -1,3 +1,5 @@
+package com.micronizationlab.glafira
+
 /** Candidate public identity received from the peer; it is untrusted until owner-approved. */
 data class GlafiraPeerEnrollmentCandidate(
     val coreId: String,
