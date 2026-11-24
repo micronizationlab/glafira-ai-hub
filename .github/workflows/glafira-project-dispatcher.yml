@@ -82,7 +82,10 @@ jobs:
             {"number":554,"title":"stale only","headRefName":"feature/stale","headRefOid":"sha-new","isDraft":true,"url":"https://example.test/pr/554","statusCheckRollup":[]},
             {"number":555,"title":"rollup preferred","headRefName":"feature/rollup","headRefOid":"sha-rollup","isDraft":false,"url":"https://example.test/pr/555","statusCheckRollup":[{"name":"required","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]},
             {"number":556,"title":"queued exact head","headRefName":"feature/queued","headRefOid":"sha-queued","isDraft":false,"url":"https://example.test/pr/556","statusCheckRollup":[]},
-            {"number":557,"title":"skipped exact head","headRefName":"feature/skipped","headRefOid":"sha-skipped","isDraft":false,"url":"https://example.test/pr/557","statusCheckRollup":[]}
+            {"number":557,"title":"skipped exact head","headRefName":"feature/skipped","headRefOid":"sha-skipped","isDraft":false,"url":"https://example.test/pr/557","statusCheckRollup":[]},
+            {"number":558,"title":"in progress exact head","headRefName":"feature/in-progress","headRefOid":"sha-progress","isDraft":false,"url":"https://example.test/pr/558","statusCheckRollup":[]},
+            {"number":559,"title":"cancelled exact head","headRefName":"feature/cancelled","headRefOid":"sha-cancelled","isDraft":false,"url":"https://example.test/pr/559","statusCheckRollup":[]},
+            {"number":560,"title":"failed exact head","headRefName":"feature/failed","headRefOid":"sha-failed","isDraft":false,"url":"https://example.test/pr/560","statusCheckRollup":[]}
           ]
           JSON
           cat > "$tmp/runs.json" <<'JSON'
@@ -92,7 +95,10 @@ jobs:
             {"headSha":"sha-current","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T11:00:00Z","url":"https://example.test/run/old"},
             {"headSha":"sha-other","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:02:00Z","url":"https://example.test/run/stale"},
             {"headSha":"sha-queued","workflowName":"Desktop CI","name":"Desktop CI","status":"queued","conclusion":null,"createdAt":"2026-11-24T12:03:00Z","url":"https://example.test/run/queued"},
-            {"headSha":"sha-skipped","workflowName":"iOS CI","name":"iOS CI","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:04:00Z","url":"https://example.test/run/skipped"}
+            {"headSha":"sha-skipped","workflowName":"iOS CI","name":"iOS CI","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:04:00Z","url":"https://example.test/run/skipped"},
+            {"headSha":"sha-progress","workflowName":"Desktop CI","name":"Desktop CI","status":"in_progress","conclusion":null,"createdAt":"2026-11-24T12:05:00Z","url":"https://example.test/run/progress"},
+            {"headSha":"sha-cancelled","workflowName":"Windows CI","name":"Windows CI","status":"completed","conclusion":"cancelled","createdAt":"2026-11-24T12:06:00Z","url":"https://example.test/run/cancelled"},
+            {"headSha":"sha-failed","workflowName":"Agent CI","name":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed"}
           ]
           JSON
           output="$(bash "$renderer" "$tmp/prs.json" "$tmp/runs.json")"
@@ -103,6 +109,9 @@ jobs:
           grep -q 'required: COMPLETED/SUCCESS' <<< "$output"
           grep -q 'Desktop CI: QUEUED' <<< "$output"
           grep -q 'iOS CI: COMPLETED/skipped' <<< "$output"
+          grep -q 'Desktop CI: IN_PROGRESS' <<< "$output"
+          grep -q 'Windows CI: COMPLETED/cancelled' <<< "$output"
+          grep -q 'Agent CI: COMPLETED/failure' <<< "$output"
           unknown_output="$(bash "$renderer" "$tmp/prs.json" <(printf 'null'))"
           grep -q 'UNKNOWN / ACTIONS API UNAVAILABLE' <<< "$unknown_output"
           empty_output="$(bash "$renderer" <(printf '[]') "$tmp/runs.json")"
