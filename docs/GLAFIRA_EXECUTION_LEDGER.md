@@ -2,7 +2,7 @@
 
 This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CONTROL.md`. It records reservations, code changes, builds, merges and evidence. The numbered acceptance plan remains in `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md`.
 
-> **Authoritative reconciliation checkpoint — 2026-11-24.** This projection supersedes older “active” CI and PR snapshots below. Exact current `main` is `148b427bab6e98cb59d68327f4c220d29bbd12c7` (compare to `main`: identical). The original baseline block and earlier run tables are historical evidence, not current status. Live PR search returned 52 open PRs, including PR #553 itself. Tracked current delivery: #550 open/ready-for-review (not merged); #551 open/Draft; #552 open/Draft; #553 open/ready-for-review (not Draft). The recorded tracked CI runs are completed for PR #550/#551/#552 and for the last fully validated PR #553 evidence-map head; lane outcomes are recorded below. The 27/150 checkbox count is unchanged and is not a verified acceptance-completion count. No checkboxes were added.
+> **Authoritative reconciliation checkpoint — 2026-11-24.** This projection supersedes older “active” CI and PR snapshots below. Exact current `main` is `148b427bab6e98cb59d68327f4c220d29bbd12c7` (compare to `main`: identical). The original baseline block and earlier run tables are historical evidence, not current status. Live PR API refresh at 2026-11-24 17:33Z returned 56 open PRs, including #553 and #562; the earlier 52-PR list below is a dated historical snapshot. Tracked current delivery: #550 open/ready-for-review (not merged); #551 open/Draft; #552 open/Draft; #553 open/ready-for-review (not Draft). The recorded tracked CI runs are completed for PR #550/#551/#552 and for the last fully validated PR #553 evidence-map head; lane outcomes are recorded below. The 27/150 checkbox count is unchanged and is not a verified acceptance-completion count. No checkboxes were added.
 
 ## Baseline checkpoint — 2026-11-24
 
@@ -122,7 +122,7 @@ This audit maps existing marks to surviving Main evidence. It does not add check
 - #547: open Draft; fresh-base ChatScreen routing regression and tests remain required.
 - #510 → #511 → #512: all open Draft and mergeable at metadata refresh; earlier native jobs were cancelled, not passed. No fresh native success is claimed; maintain dependency order.
 - #550/#551/#552 are detailed above. #550 is no longer Draft; it is ready for review.
-- Live open-PR inventory count: 52, including PR #553 itself and long-lived historical Draft PRs; this is not a count of active CI runs. Exact open PR numbers at this refresh: #3, #4, #7, #9, #10, #14, #18, #27, #28, #33, #36, #41, #43, #46, #48, #72, #98, #156, #178, #183, #187, #356, #362, #364, #365, #368, #379, #385, #386, #388, #390, #396, #403, #406, #421, #422, #447, #461, #467, #469, #470, #500, #510, #511, #512, #520, #545, #547, #550, #551, #552, #553. This is a point-in-time GitHub Search snapshot; each item still requires its own current disposition.
+- Historical open-PR inventory snapshot before #558/#559/#560/#562: 52 PRs, including #553 and long-lived historical Draft PRs; it is not a count of active CI runs and must not be used as the current inventory. Exact open PR numbers in that earlier snapshot: #3, #4, #7, #9, #10, #14, #18, #27, #28, #33, #36, #41, #43, #46, #48, #72, #98, #156, #178, #183, #187, #356, #362, #364, #365, #368, #379, #385, #386, #388, #390, #396, #403, #406, #421, #422, #447, #461, #467, #469, #470, #500, #510, #511, #512, #520, #545, #547, #550, #551, #552, #553. This is a point-in-time GitHub Search snapshot; each item still requires its own current disposition.
 
 ### Work-item status projection
 | Work Item | Updated status | Evidence / next action |
@@ -152,7 +152,7 @@ This audit maps existing marks to surviving Main evidence. It does not add check
 ### Append-only event — GLAFIRA-GOV-W02
 - Scope: synchronize plan, ledger and control metadata with live GitHub state; no application source change.
 - Parent Main SHA: `148b427bab6e98cb59d68327f4c220d29bbd12c7`.
-- Confirmed: current Main identical to that SHA; 52 open PRs (including #553) at the live inventory refresh; #550/#551/#552/#553 states and exact-head CI as above; PR #549 merged; #410 remains historical closed/unmerged.
+- Historical checkpoint: Main was identical to `148b427...`; the inventory at that earlier refresh was 52 open PRs. Current open-PR count and additions/closures are in the 2026-11-24 17:33Z delta checkpoint below; PR #549 merged; #410 remains historical closed/unmerged.
 - Checkbox count preserved at 27/150 and 0/50 extensions. No completion count was increased.
 - Branch: `governance/reconcile-execution-ledger-2026-11-24`.
 - Status: documentation change prepared for review; not merged; post-merge checks not yet run. Latest fully validated PR #553 head before this final plan wording correction: `24e4a68471ff4c0a3c1b6d821df67d28d67afa60`; Dispatcher `45416617128` success; change-aware docs-only CI `45416616896` success with platform lanes skipped; no review submitted. This final wording correction creates a new head whose exact-head validation is tracked on the PR and issue #548.
