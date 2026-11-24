@@ -885,7 +885,10 @@ fun ChatScreen(
                             "▣ ${project.name}  ▾",
                             color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.fillMaxWidth().clickable { showProjectSelector = true }.padding(vertical = 5.dp)
+                            modifier = Modifier.fillMaxWidth()
+                                .semantics { contentDescription = "Выбрать проект: ${project.name}" }
+                                .clickable { showProjectSelector = true }
+                                .padding(vertical = 5.dp)
                         )
                         DropdownMenu(expanded = showProjectSelector, onDismissRequest = { showProjectSelector = false }) {
                             projects.forEach { item ->
@@ -948,19 +951,15 @@ fun ChatScreen(
                     }
                     Text("ⓘ", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { showProfile = true }.padding(start = 6.dp))
                     Box(
-                        Modifier.size(26.dp).clickable { onOpenTaskQueue() }
-                            .semantics(mergeDescendants = true) {
-                                contentDescription = "Открыть очередь задач"
-                                onClick(label = "Открыть очередь задач") { onOpenTaskQueue(); true }
-                            },
+                        Modifier.size(26.dp)
+                            .semantics { contentDescription = "Открыть очередь задач" }
+                            .clickable { onOpenTaskQueue() },
                         contentAlignment = Alignment.Center
                     ) { Text("☷", color = Gr, fontSize = 16.sp) }
                     Box(
-                        Modifier.size(26.dp).clickable { onOpenCouncil() }
-                            .semantics(mergeDescendants = true) {
-                                contentDescription = "Открыть совет директоров"
-                                onClick(label = "Открыть совет директоров") { onOpenCouncil(); true }
-                            },
+                        Modifier.size(26.dp)
+                            .semantics { contentDescription = "Открыть совет директоров" }
+                            .clickable { onOpenCouncil() },
                         contentAlignment = Alignment.Center
                     ) { Text("🏛", fontSize = 12.sp) }
                 }
@@ -1106,7 +1105,9 @@ fun ChatScreen(
                     Text(
                         "⋮",
                         color = Gr, fontSize = 22.sp,
-                        modifier = Modifier.clickable { showChatActionsMenu = true }.padding(horizontal = 10.dp, vertical = 3.dp)
+                        modifier = Modifier.semantics { contentDescription = "Открыть действия чата" }
+                            .clickable { showChatActionsMenu = true }
+                            .padding(horizontal = 10.dp, vertical = 3.dp)
                     )
                     DropdownMenu(expanded = showChatActionsMenu, onDismissRequest = { showChatActionsMenu = false }) {
                         DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { showChatActionsMenu = false; isSearching = true })
