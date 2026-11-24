@@ -8,7 +8,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.KeyStore
 import javax.crypto.Cipher
-import javax.crypto.CipherInputStream
 import javax.crypto.CipherOutputStream
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -43,8 +42,17 @@ internal object GlafiraRollbackSnapshotCipher {
                 raw.readFully(iv)
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                 cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
-                CipherInputStream(raw, cipher).use { decrypted ->
-                    FileOutputStream(destination).use { decrypted.copyTo(it) }
+                FileOutputStream(destination).use { output ->
+                    val buffer = ByteArray(32 * 1024)
+                    while (true) {
+                        val count = raw.read(buffer)
+                        if (count < 0) break
+                        val clear = cipher.update(buffer, 0, count)
+                        if (clear != null && clear.isNotEmpty()) output.write(clear)
+                    }
+                    // GCM authenticates the complete ciphertext here. Never accept a partial file.
+                    output.write(cipher.doFinal())
+                    output.fd.sync()
                 }
             }
         } catch (error: Exception) {
