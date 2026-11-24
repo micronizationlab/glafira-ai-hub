@@ -15,6 +15,25 @@ import org.junit.runner.RunWith
 class DataManagerProjectMigrationInstrumentedTest {
 
     @Test
+    fun accidentalRenameOfPersonalToBuiltInNameRestoresPersonalLabelWithoutChangingId() =
+        withIsolatedContext { context, _ ->
+            saveProjects(
+                context,
+                listOf(
+                    Project("default", "ВодородАктив"),
+                    Project("custom-notes", "Мои заметки")
+                )
+            )
+
+            val migrated = loadProjects(context)
+
+            assertEquals("Личное", migrated.first { it.id == "default" }.name)
+            assertEquals("ВодородАктив", migrated.first { it.id == "vodorodaktiv" }.name)
+            assertEquals("Мои заметки", migrated.first { it.id == "custom-notes" }.name)
+            assertEquals(migrated.size, migrated.map { it.id }.distinct().size)
+        }
+
+    @Test
     fun creatingBuiltInNamesSelectsStableWorkspaceInsteadOfCreatingDuplicate() =
         withIsolatedContext { context, _ ->
             val personal = createOrSelectProject(context, "Личное")
