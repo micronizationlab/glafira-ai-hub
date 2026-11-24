@@ -70,7 +70,10 @@ class MainActivitySmokeTest {
         assertTrue("GLAFIRA chat is not the default workspace",
             device.wait(Until.hasObject(By.descContains("Выбрать агента: ГЛАФИРА")), 5_000))
 
-        device.findObject(By.descContains("Выбрать проект: Личное")).click()
+        val projectSelector = device.findObject(By.descContains("Выбрать проект: Личное"))
+        assertTrue("Project selector is not clickable", projectSelector.isClickable)
+        assertTrue("Project selector hit target is not visible", projectSelector.visibleBounds.height() > 0)
+        projectSelector.click()
         assertTrue("Built-in VodorodAktiv project is missing from the picker",
             device.wait(Until.hasObject(By.text("ВодородАктив")), 5_000))
         device.findObject(By.text("ВодородАктив")).click()
