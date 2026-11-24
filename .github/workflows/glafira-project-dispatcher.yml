@@ -43,8 +43,8 @@ jobs:
           echo ""
           echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo ""
-          echo "| PR | Workstream | Branch | Head SHA | Latest matching CI | Draft |"
-          echo "|---:|---|---|---|---|:---:|"
+          echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
+          echo "|---:|---|---|---|:---:|"
 
           prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup)"
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
