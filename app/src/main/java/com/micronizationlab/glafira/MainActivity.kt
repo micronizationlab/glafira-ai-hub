@@ -898,15 +898,15 @@ fun ChatScreen(
                                         if (projects.size > 1) {
                                             Text(
                                                 "✕", color = Red,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).semantics {
-                                                    contentDescription = "Удалить проект: ${item.name}"
-                                                    onClick(label = "Удалить проект") {
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    .clickable {
                                                         projectToDelete = item
                                                         showDeleteProjectDialog = true
                                                         showProjectSelector = false
-                                                        true
                                                     }
-                                                }
+                                                    .semantics {
+                                                        contentDescription = "Удалить проект: ${item.name}"
+                                                    }
                                             )
                                         }
                                     },
@@ -923,10 +923,11 @@ fun ChatScreen(
                     Spacer(Modifier.width(8.dp))
                     Box(Modifier.weight(1f)) {
                         Row(
-                            Modifier.fillMaxWidth().padding(vertical = 5.dp).semantics {
-                                contentDescription = "Выбрать агента: ${agent.n}"
-                                onClick(label = "Выбрать агента") { showAgentSelector = true; true }
-                            },
+                            Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                                .clickable { showAgentSelector = true }
+                                .semantics {
+                                    contentDescription = "Выбрать агента: ${agent.n}"
+                                },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(agent.emoji, fontSize = 14.sp)
@@ -959,18 +960,16 @@ fun ChatScreen(
                     Text("ⓘ", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { showProfile = true }.padding(start = 6.dp))
                     Text(
                         "☷", color = Gr, fontSize = 16.sp,
-                        modifier = Modifier.size(26.dp).semantics {
-                            contentDescription = "Открыть очередь задач"
-                            onClick(label = "Открыть очередь задач") { onOpenTaskQueue(); true }
-                        },
+                        modifier = Modifier.size(26.dp)
+                            .clickable { onOpenTaskQueue() }
+                            .semantics { contentDescription = "Открыть очередь задач" },
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                     Text(
                         "🏛", fontSize = 12.sp,
-                        modifier = Modifier.size(26.dp).semantics {
-                            contentDescription = "Открыть совет директоров"
-                            onClick(label = "Открыть совет директоров") { onOpenCouncil(); true }
-                        },
+                        modifier = Modifier.size(26.dp)
+                            .clickable { onOpenCouncil() }
+                            .semantics { contentDescription = "Открыть совет директоров" },
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
@@ -1116,10 +1115,9 @@ fun ChatScreen(
                     Text(
                         "⋮",
                         color = Gr, fontSize = 22.sp,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp).semantics {
-                            contentDescription = "Открыть действия чата"
-                            onClick(label = "Открыть действия чата") { showChatActionsMenu = true; true }
-                        }
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                            .clickable { showChatActionsMenu = true }
+                            .semantics { contentDescription = "Открыть действия чата" }
                     )
                     DropdownMenu(expanded = showChatActionsMenu, onDismissRequest = { showChatActionsMenu = false }) {
                         DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { showChatActionsMenu = false; isSearching = true })
