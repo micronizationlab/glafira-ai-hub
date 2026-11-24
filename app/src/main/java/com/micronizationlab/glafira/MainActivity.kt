@@ -949,13 +949,11 @@ fun ChatScreen(
                                         }
                                     },
                                     onClick = {
-                                        if (item.on) {
-                                            onAgentSelect(item)
-                                        } else {
-                                            ToastHelper.short(context, "Агент «${item.n}» не настроен. Подключите его провайдера в настройках.")
-                                            onOpenSettings()
-                                        }
+                                        onAgentSelect(item)
                                         showAgentSelector = false
+                                        if (!item.on) {
+                                            ToastHelper.short(context, "Агент «${item.n}» выбран, но не настроен. Подключите его провайдера в настройках.")
+                                        }
                                     }
                                 )
                             }
