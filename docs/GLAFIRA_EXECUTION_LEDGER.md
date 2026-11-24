@@ -2,7 +2,7 @@
 
 This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CONTROL.md`. It records reservations, code changes, builds, merges and evidence. The numbered acceptance plan remains in `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md`.
 
-> **Authoritative reconciliation checkpoint — 2026-11-24.** This projection supersedes older “active” CI and PR snapshots below. Exact current `main` is `148b427bab6e98cb59d68327f4c220d29bbd12c7` (compare to `main`: identical). The original baseline block and earlier run tables are historical evidence, not current status. Live PR search returned 51 open PRs. Tracked current delivery: #550 open/ready-for-review (not merged); #551 open/Draft; #552 open/Draft. Their tracked CI runs are completed; lane outcomes are recorded below. The 27/150 checkbox count is unchanged and is not a verified acceptance-completion count. No checkboxes were added.
+> **Authoritative reconciliation checkpoint — 2026-11-24.** This projection supersedes older “active” CI and PR snapshots below. Exact current `main` is `148b427bab6e98cb59d68327f4c220d29bbd12c7` (compare to `main`: identical). The original baseline block and earlier run tables are historical evidence, not current status. Live PR search returned 52 open PRs, including PR #553 itself. Tracked current delivery: #550 open/ready-for-review (not merged); #551 open/Draft; #552 open/Draft; #553 open/Draft. The recorded tracked CI runs are completed for the listed pre-final synchronization heads; lane outcomes are recorded below. The 27/150 checkbox count is unchanged and is not a verified acceptance-completion count. No checkboxes were added.
 
 ## Baseline checkpoint — 2026-11-24
 
@@ -79,10 +79,10 @@ Record each build as `repository|commit SHA|workflow|job/lane|configuration`. Re
 | #550 | Open, ready for review, not merged | head `c749880303232ca7f48f0c6e9cf237fd246ea2b6`; CI `45398172987` completed success | Android JVM, emulator, APK, shared contracts and exact-head summary success; emulator JUnit 131 tests, 0 failures/errors/skips. Windows/iOS/Agent/workflow lint skipped. Step 16 partial slice only. |
 | #551 | Open, Draft, not merged | head `0e1d65446bdc9e67c058d07087e6e0627293d7eb`; CI `45400645023` completed success | Documentation/design-only. Change detection and exact-head summary success; all platform lanes skipped. Proposed durable CI queue is not implemented. |
 | #552 | Open, Draft, not merged | head `c6f2e105a1724a219685d488ae9ac5eaf3daf6a9`; CI `45401400137` completed success | Android JVM 306 tests, emulator 130 tests, both zero failures/errors/skips; shared contracts, APK and exact-head summary success. iOS, Windows, Agent and workflow lint skipped. Step 17 adapter slice only. |
-| #553 | Open, Draft, not merged | head `063cddc05167244fb4749a243130bfbf2ae384d2`; Dispatcher `45413249890` success; change-aware CI `45413250069` success | Documentation-only. Change detection and exact-head summary success; Android JVM, emulator, APK, contracts, iOS, Windows Agent/Desktop and workflow lint all skipped. No platform pass claimed; no application build warranted. Review not yet submitted. |
+| #553 | Open, Draft, not merged | pre-correction head `063cddc05167244fb4749a243130bfbf2ae384d2`: Dispatcher `45413249890` success, change-aware CI `45413250069` success; inventory correction head `ce03bec55272120b98e6913525b829e75dc2db79`: Dispatcher `45414226781` success, change-aware CI `45414226613` success | Both are documentation-only validations: change detection and exact-head summary success; Android JVM, emulator, APK, contracts, iOS, Windows Agent/Desktop and workflow lint skipped. No platform pass claimed; no application build warranted. The current ledger correction itself will trigger a fresh docs-only validation on its new head; follow that exact-head run in PR #553. Review not yet submitted. |
 - Dispatcher runs: #550 `45398173011` and `45399931427` success; #551 `45400645128` success; #552 `45401399991` success; #553 `45413249890` success.
 - All tracked runs above are completed. This does not assert a repository-wide zero-active-run state because the available run lookup is commit-scoped.
-- No PR #550/#551/#552 merge is recorded. CI success is not merge or acceptance completion.
+- No PR #550/#551/#552/#553 merge is recorded. CI success is not merge or acceptance completion.
 
 ### Other open PRs requiring separate disposition
 - #41: open Draft, non-mergeable; old emulator failure was runner/emulator startup failure (device missing / boot timeout), not a proven source assertion failure. No fresh pass is claimed.
@@ -108,6 +108,10 @@ Record each build as `repository|commit SHA|workflow|job/lane|configuration`. Re
 | GLAFIRA-S020-W01 | BLOCKED | Persistent owner grants and approval binding still require fresh inventory |
 | GLAFIRA-S028-W01 | BLOCKED | TaskPlan instrumentation acceptance still requires inventory |
 | GLAFIRA-S044-W01 | OWNER_ACCEPTANCE | Real-device/private-LAN acceptance requires owner devices |
+
+### Helper intake checkpoint — Workstream 11
+- Issue #473 was refreshed before this reconciliation. Berestovkon's requested one-time GLAFIRA → Token → Кадровик report is still not present; the latest entries are owner reminders/instructions, not a deliverable. Status remains WAITING_FOR_HELPER_DELIVERABLE. Do not repeat the strategic analysis or implement proposals on the helper's behalf.
+- This is a helper-intake result, not an excuse to defer future cycles: workstream 11 remains the mandatory first operation at every session start and throughout each cycle.
 
 ### Reconciliation rules going forward
 1. Treat the current snapshot above as authoritative; earlier baseline/CI/PR tables remain historical evidence only.
