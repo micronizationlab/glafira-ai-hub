@@ -60,3 +60,30 @@ Record each build as `repository|commit SHA|workflow|job/lane|configuration`. Re
 - Confirmed plan has 200 numbered checklist entries; 27 checked at last literal audit. The original 150 denominator remains separate from extension items 151–200.
 - Created control issue #548 and governance branch from the observed main SHA.
 - No application source code, runtime behavior, APK or installer changed in this governance task.
+
+
+## 2026-11-24 — execution checkpoint after governance merge and Core Step 16 regression
+
+- Main baseline remains `148b427bab6e98cb59d68327f4c220d29bbd12c7`, the PR #549 governance merge. Its post-merge Dispatcher succeeded; documentation-only platform jobs were skipped and are not platform passes.
+- PR #410 rechecked: closed, unmerged, frozen head `088df9a4db49d30a3ec203a07f0fb37cc40a220a`. Never reopen or push to it.
+- Historical checkbox count remains 27/150 (27/200 including extensions); this is not a verified completion count.
+- `GLAFIRA-S016-W01`: PR #550, head `c749880303232ca7f48f0c6e9cf237fd246ea2b6`, status `READY_FOR_REVIEW`. Exact-head run `45398172987` succeeded: Android JVM, emulator, APK, shared contracts and exact-head summary all passed. Emulator JUnit XML confirms 131 tests, 0 failures, 0 errors, 0 skipped; the new uncertain-external-write regression is present and passed. Diagnostic artifact SHA-256: `aea6976602e2a7e93c1d81d60aed7ff742b434dbd34d71884f0a262d42d055e3`. Windows, iOS, Agent and workflow-lint were skipped by change selection, not passed. PR #550 is not merged; Step 16 remains incomplete.
+- `GLAFIRA-S017-W01`: typed `AiProviderResult` / `AiRequestOutcome` already exist, but `GlafiraAiLocalTaskPort` and `GlafiraAiProviderTaskPlanDecomposer` still call the legacy String API and flatten provider errors. Next bounded task: preserve typed outcome at adapter boundary and test UNKNOWN is never replayed; do not duplicate existing classification primitives.
+- `GLAFIRA-S018-W01`: Core result persistence exists, but a single canonical durable Core outbox/ACK path is not yet proven. Compare Core, Bridge and Agent authority boundaries before introducing any shared schema.
+- `GLAFIRA-CI-W01`: `DESIGN_READY_FOR_REVIEW`; design file `docs/GLAFIRA_CI_BUILD_QUEUE_DESIGN.md` proposes durable PR labels plus one non-cancelling worker, exact base/head verification, sequential lanes and stale-worker recovery. No workflow implementation or build was started in this design change.
+- Latest Actions queue snapshot was empty after PR #550 completed. Refresh before any retry or implementation.
+
+### Eleven-workstream status at this checkpoint
+
+1. **Core:** #550 exact-head regression passed; review/merge pending; continue Steps 16–18.
+2. **Backup & Recovery:** backup coordinator, portable snapshot and restore tests exist; next gap is clean-device/corruption/migration acceptance, not duplicate backup implementation.
+3. **Bridge:** #500 and #520 overlap on source/test files and diverge from Main; reconcile one logical-operation identity implementation from fresh Main.
+4. **Windows Desktop/Hub:** Hub tests overlap between Hub and UI workflows; choose one canonical owner before trigger changes.
+5. **Android:** #547 passed prior exact-head checks but its base was stale; refresh and port only after current review/queue plan.
+6. **iOS:** #510–#512 are dependent; previous runs were cancelled, not passed; no blind reruns.
+7. **CI/CD/security:** durable queue design drafted; implementation waits for review and controlled migration.
+8. **Windows Agent:** inspect existing outbox/ACK and read-only handler contracts; do not claim a general-purpose executor is complete.
+9. **Token/economics:** #183 remains a non-issuing calculator and #470 documentation; no issuance/payment implementation.
+10. **Multi-model/specialists:** typed provider classification exists, but adapter flattening and production policy call-site enforcement remain gaps; specialist projects remain separate.
+11. **Helper intake/integration:** #500/#520 overlap; #510–#512 are dependent; #545/#547 have stale bases; #98 remains separate HR project. Inspect diffs and helper reports before integration; no blind merges.
+
