@@ -40,7 +40,7 @@ class BackupSettingsSmokeTest {
             val device = UiDevice.getInstance(instrumentation)
             assertTrue(
                 "GLAFIRA chat workspace did not open",
-                device.wait(Until.hasObject(By.descContains("Открыть очередь задач")), 20_000)
+                device.wait(Until.hasObject(By.descContains("Выбрать агента: ГЛАФИРА")), 20_000)
             )
             val actionsButton = device.findObject(By.descContains("Открыть действия чата"))
             assertTrue(
