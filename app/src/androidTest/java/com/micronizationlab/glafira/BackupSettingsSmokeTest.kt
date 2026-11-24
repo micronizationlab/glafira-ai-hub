@@ -42,7 +42,7 @@ class BackupSettingsSmokeTest {
             val device = UiDevice.getInstance(instrumentation)
             assertTrue(
                 "GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.textContains("ГЛАФИРА")), 20_000)
+                device.wait(Until.hasObject(By.descContains("Выбрать агента: ГЛАФИРА")), 20_000)
             )
             val actionsButton = device.findObject(By.descContains("Открыть действия чата"))
             assertTrue("Chat actions menu is not visible", actionsButton.visibleBounds.width() > 0)
