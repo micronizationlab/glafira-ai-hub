@@ -11,7 +11,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
     private val portable = GlafiraPortableCoreSnapshot(taskStore)
     private val journal get() = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
     private val marker get() = File(journal, JOURNAL_MARKER)
-    private val safetyDatabase get() = File(journal, "database.db")
+    private val safetyDatabase get() = File(journal, "database.enc")
     private val safetyArchive get() = File(journal, "files.glb")
 
     suspend fun create(passphrase: CharArray): File = GlafiraCoreMaintenanceGate.withExclusive {
@@ -88,9 +88,15 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         check(!marker.exists())
         if (journal.exists()) check(journal.deleteRecursively())
         check(journal.mkdirs())
+        val plaintext = File(app.cacheDir, "glafira-rollback-source.db")
         try {
-            taskStore.exportConsistentSnapshot(safetyDatabase)
+            GlafiraRollbackSnapshotCipher.deleteKey()
+            plaintext.delete()
+            taskStore.exportConsistentSnapshot(plaintext)
+            sync(plaintext)
+            GlafiraRollbackSnapshotCipher.encrypt(plaintext, safetyDatabase)
             sync(safetyDatabase)
+            check(plaintext.delete()) { "Не удалось удалить временную копию базы Core." }
             val archive = BackupArchive.create(app, passphrase)
             try { archive.copyTo(safetyArchive, overwrite = false); sync(safetyArchive) }
             finally { archive.delete() }
@@ -102,8 +108,14 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
             syncDirectory(journal)
             syncDirectory(app.noBackupFilesDir)
         } catch (error: Exception) {
-            if (!marker.exists()) journal.deleteRecursively()
+            if (!marker.exists()) {
+                journal.deleteRecursively()
+                GlafiraRollbackSnapshotCipher.deleteKey()
+                plaintext.delete()
+            }
             throw error
+        } finally {
+            if (plaintext.exists()) plaintext.delete()
         }
     }
 
@@ -113,7 +125,16 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         try {
             BackupArchive.verify(app, safetyArchive, passphrase)
             BackupArchive.restore(app, safetyArchive, passphrase)
-            taskStore.restoreConsistentSnapshot(safetyDatabase)
+            val plaintext = File(app.cacheDir, "glafira-rollback-recovery.db")
+            try {
+                plaintext.delete()
+                GlafiraRollbackSnapshotCipher.decrypt(safetyDatabase, plaintext)
+                taskStore.restoreConsistentSnapshot(plaintext)
+            } finally {
+                if (plaintext.exists()) check(plaintext.delete()) {
+                    "Не удалось удалить временную копию базы Core после восстановления."
+                }
+            }
             GlafiraCoreRuntimeOwner.pauseForRestore(app)
             checkpointDatabase()
             clearJournal()
@@ -125,7 +146,8 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
     private fun clearJournal() {
         check(marker.delete()) { "Не удалось завершить журнал восстановления." }
         syncDirectory(journal)
-        journal.deleteRecursively()
+        check(journal.deleteRecursively()) { "Не удалось удалить журнал восстановления." }
+        GlafiraRollbackSnapshotCipher.deleteKey()
     }
 
     private fun checkpointDatabase() {
