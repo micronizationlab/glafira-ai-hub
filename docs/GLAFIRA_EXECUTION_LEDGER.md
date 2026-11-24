@@ -22,7 +22,7 @@ This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CO
 | GLAFIRA-GOV-W01 | Governance | GLAFIRA | Establish this control, update helper instructions and reconcile plan baseline | DONE | PR #549 merged as `148b427bab6e98cb59d68327f4c220d29bbd12c7`; post-merge Dispatcher run `45396354247` success; change-aware docs-only run `45396303797` success with platform lanes skipped |
 | GLAFIRA-S016-W01 | 16 | GLAFIRA | Core failure-injection matrix | TESTED_PENDING_REVIEW | PR #550 open, ready for review, head `c749880303232ca7f48f0c6e9cf237fd246ea2b6`; run `45398172987` success; Android JVM, emulator, APK and shared contracts passed; 131 emulator tests 0 failures/errors/skips; not merged, step incomplete |
 | GLAFIRA-S017-W01 | 17 | GLAFIRA | Provider outcome classification and no blind replay | TESTED_DRAFT_PENDING_REVIEW | PR #552 open Draft, head `c6f2e105a1724a219685d488ae9ac5eaf3daf6a9`; run `45401400137` success; Android JVM 306 tests and emulator 130 tests, zero failures/errors/skips; shared contracts and APK success; platform lanes skipped by change selection; not merged, step incomplete |
-| GLAFIRA-S018-W01 | 18 | GLAFIRA | Durable result outbox + explicit ACK | AUDIT_PARTIAL_CONTRACT_GAP | Existing Android Core local atomic result+Trace, Desktop durable result queue/ACK, and Windows Agent artifact outbox/ACK inspected. Cross-Core ownership/handoff ACK contract remains unspecified; do not add duplicate outbox. Issue #548 comment `7133127850` |
+| GLAFIRA-S018-W01 | 18 | GLAFIRA | Durable result outbox + explicit ACK | AUDIT_PARTIAL_CONTRACT_GAP | Normative cross-Core ownership/handoff ACK contract is specified in `docs/contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md` and the task-state/Bridge v1 contracts. Runtime implementation remains missing: trusted recipient resolution, durable owner-Core outbound event, receiver idempotent inbox receipt, owner-generation/lease/fencing/digest-bound ACK and restart/replay reconciliation. #266 is blocked by #366; do not add a duplicate local outbox. |
 | GLAFIRA-S020-W01 | 20 | GLAFIRA | Persistent owner grants and approval binding | BLOCKED | Inspect current grants, owner session and approval stores |
 | GLAFIRA-S028-W01 | 28 | GLAFIRA | Preserve TaskPlan instrumentation acceptance | BLOCKED | Inventory existing instrumented tests before adding any |
 | GLAFIRA-S044-W01 | 44 | Owner + GLAFIRA | Private-LAN real-device pairing acceptance | OWNER_ACCEPTANCE | Requires actual owner devices; emulator is not equivalent |
@@ -117,7 +117,7 @@ This audit maps existing marks to surviving Main evidence. It does not add check
 - #98: open Draft, non-mergeable; HR implementation remains separate/deferred by owner direction.
 - #183: open Draft, mergeable; non-issuing calculator only.
 - #470: open Draft, non-mergeable; business requirements only, not issuance/payment authorization.
-- #500 and #520: open Draft; overlapping/divergent Bridge changes. Authenticated receiver-side atomic replay claim remains a blocker; do not merge either as client-only idempotency.
+- #500 and #520: closed unmerged as superseded after their client-side logical-operation-ID changes were ported and exact-head tested in #560. The receiver-side durable Core commit/ACK remains a separate blocker.
 - #545: open Draft; provider-context policy kernel only, not production enforcement.
 - #547: open Draft; fresh-base ChatScreen routing regression and tests remain required.
 - #510 → #511 → #512: all open Draft and mergeable at metadata refresh; earlier native jobs were cancelled, not passed. No fresh native success is claimed; maintain dependency order.
@@ -132,7 +132,7 @@ This audit maps existing marks to surviving Main evidence. It does not add check
 | GLAFIRA-CI-W01 | DESIGN_ONLY / DRAFT | PR #551; no queue implementation yet |
 | GLAFIRA-S016-W01 | TESTED_PENDING_REVIEW | PR #550; partial failure-matrix case, not full Step 16 |
 | GLAFIRA-S017-W01 | TESTED_DRAFT_PENDING_REVIEW | PR #552; bounded adapter slice, not full Step 17 |
-| GLAFIRA-S018-W01 | AUDIT_PARTIAL_CONTRACT_GAP | Existing per-authority outboxes verified; cross-Core handoff contract not yet specified/tested |
+| GLAFIRA-S018-W01 | AUDIT_PARTIAL_CONTRACT_GAP | Contract specified; trusted recipient, cross-Core inbox/outbox runtime, owner-generation CAS, exact ACK and restart/replay acceptance not implemented. #561/#562 starts the peer-trust prerequisite for #366; #266 remains blocked. |
 | GLAFIRA-S020-W01 | BLOCKED | Persistent owner grants and approval binding still require fresh inventory |
 | GLAFIRA-S028-W01 | BLOCKED | TaskPlan instrumentation acceptance still requires inventory |
 | GLAFIRA-S044-W01 | OWNER_ACCEPTANCE | Real-device/private-LAN acceptance requires owner devices |
@@ -227,3 +227,16 @@ This audit maps existing marks to surviving Main evidence. It does not add check
 - PR #551 reviewed: 4 commits ahead / 0 behind Main, documentation-only proposal for a durable PR-label queue and one non-cancelling validation worker. It overlaps the ledger and 150-step plan changed by #553; keep Draft and rebase docs only after #553 disposition.
 - Current `.github/workflows/android.yml` concurrency group is keyed by PR number/ref, not a single global group. Therefore it cannot explain cross-PR cancellation. The iOS jobs in #555/#556 were cancelled before runner/steps; no runner assignment is visible, and root cause remains unproven. Do not claim the queue design is the proven fix.
 - Queue proposal is not implemented. It requires owner review and a one-PR pilot; do not bulk-enqueue the backlog or change workflow concurrency without approval.
+
+## Current delta checkpoint — 2026-11-24 17:33Z
+
+- Live GitHub open-PR API returned **56 open PRs** at this checkpoint (not the earlier 52-PR snapshot). The earlier exact number list remains a historical inventory only. #500 and #520 are closed unmerged as superseded; #558, #559, #560 and #562 are among the newly tracked open PRs.
+- Main remains `148b427bab6e98cb59d68327f4c220d29bbd12c7`; no application PR has been merged in this checkpoint.
+- **#553 governance reconciliation:** latest head `0154ba629e96c6c3c27aa3db9ed73c5c9aafc5ac`; docs-only exact-head CI `45449521748` and Dispatcher `45449521276` succeeded. PR is ready for review, unmerged. The Step 18 wording is corrected here: the normative contract exists; runtime implementation/acceptance is the gap.
+- **#558 Android workspace:** latest head `31695cbdb69e2e6f72391e5515c211c48a567c10`; CI `45448612838`: change detection, shared contracts, Android JVM and debug APK succeeded; managed emulator acceptance is still running. The previous run on head `a49140e...` failed its UI smoke selectors; tests were updated to target the chat's actual accessibility controls and bottom Settings menu. Do not claim emulator acceptance until the current run completes.
+- **#559 Backup & Recovery:** exact head `245e86b1e6d7f4f9f758e8a3f6023c295230e3b4`; run `45446494649` succeeded. Android JVM, shared contracts, APK and managed emulator passed; 131 tests, 0 failures/errors/skips. New clean-install identity test passed. This is a simulation/instrumentation slice only; physical replacement-device restore and fresh pairing remain open; Step 148 stays unchecked.
+- **#560 Bridge client logical identity:** exact head `542636ee22d389a5e0bbee6b6c3a76854cfcc62b`; run `45446833956` succeeded. Android/desktop-bridge Gradle JVM suite, shared contracts, APK and emulator passed; exact log confirms `:desktop-bridge:test` executed. PR is Draft and client-only; no receiver inbox/atomic canonical commit/owner ACK is claimed. #500/#520 closed as superseded by this port.
+- **#562 Core trusted-peer registry:** exact head `ddb43a8f8ec1ae6d4f9e7c26abc63fd6582a1808`; run `45449479137` has shared contracts passed and Android JVM in progress. New no-backup trust registry uses actual installation Core ID, one-use biometric session, exact fingerprint match, P-256 key validation, revocation and monotonic key epochs. No transfer/outbox is implemented.
+- **#555/#556 CI retry:** failed-job reruns were requested only for the previously cancelled iOS lane and dependent exact-head summary. At this checkpoint iOS jobs are queued; all other platform lanes in those reruns are successful. No overall success is claimed until iOS and summary complete.
+- **Workstream 11:** reviewed #553 docs correction, #559 clean-install test, #560 Bridge consolidation and the #558 helper test contribution before proceeding. Issue #473 still has no Berestovkon acknowledgement/report; the #558 test commit was not misattributed to that helper.
+- **No Main merge, no APK release, no Program 150 checkbox change.**
