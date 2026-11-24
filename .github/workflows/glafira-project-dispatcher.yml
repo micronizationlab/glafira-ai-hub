@@ -170,7 +170,8 @@ jobs:
           [[ -z "$empty_output" ]]
           echo "dispatcher status renderer fixtures: PASS"
           TEST
-          bash "$RUNNER_TEMP/test-renderer.sh"      - name: Build cross-workstream status report
+          bash "$RUNNER_TEMP/test-renderer.sh"
+      - name: Build cross-workstream status report
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -187,7 +188,6 @@ jobs:
           fi
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
           # One batched Actions API query is the fallback when GraphQL statusCheckRollup is empty.
-          # A failed/rate-limited query is represented as null and rendered UNKNOWN, never as success.
           if runs="$(gh run list --repo "$GH_REPO" --limit 1000 --json headSha,name,workflowName,status,conclusion,url,createdAt 2>/dev/null)"; then
             printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           else
