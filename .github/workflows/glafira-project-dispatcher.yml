@@ -37,6 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash scripts/ci/tests/test-render-dispatcher-pr-status.sh
           {
           echo "# GLAFIRA Project Dispatcher"
           echo ""
