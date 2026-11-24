@@ -189,15 +189,16 @@ private fun WorkspaceApp() {
                 refreshKey = statusRefresh,
                 onProjectSelect = { currentProject = it },
                 onProjectAdd = { name ->
-                    val normalizedName = name.trim()
-                    val existing = projects.firstOrNull { it.name.trim().equals(normalizedName, ignoreCase = true) }
-                    if (existing != null) {
-                        currentProject = existing
-                        ToastHelper.short(context, "Проект «${existing.name}» уже существует. Переключил на него.")
-                    } else {
-                        val newProj = Project(UUID.randomUUID().toString(), normalizedName)
-                        projects = updateProjects(context) { current -> current + newProj }
-                        currentProject = newProj
+                    try {
+                        val selected = createOrSelectProject(context, name)
+                        projects = loadProjects(context)
+                        currentProject = selected
+                        if (selected.name.trim().equals(name.trim(), ignoreCase = true) &&
+                            selected.id in builtInProjects.map { it.id }) {
+                            ToastHelper.short(context, "Выбран существующий проект «${selected.name}».")
+                        }
+                    } catch (error: Exception) {
+                        ToastHelper.short(context, error.message ?: "Не удалось создать проект.")
                     }
                 },
                 onProjectDelete = { project ->
