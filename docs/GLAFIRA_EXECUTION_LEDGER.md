@@ -192,3 +192,9 @@ This audit maps existing marks to surviving Main evidence. It does not add check
 - Acceptance: exact-head Android JVM, managed-emulator test, APK and shared contract lanes; verify fresh Core ID/public key differs after restore; cleanup test-only Keystore alias and temporary metadata.
 - Physical acceptance still required: restore a real archive onto a clean/replacement Android device, re-pair it, verify cloud provider round-trip and permission expiry. This test cannot claim physical restore completion.
 - Status: RESERVED / NOT STARTED. No step checkbox changed.
+### Reservation progress — GLAFIRA-S148-W01
+- Created issue #559 and Draft PR #559: `https://github.com/micronizationlab/glafira-ai-hub/pull/559`.
+- Branch `test/backup-restore-fresh-core-identity`, exact head `245e86b1e6d7f4f9f758e8a3f6023c295230e3b4`, base Main `148b427bab6e98cb59d68327f4c220d29bbd12c7`.
+- Scope remains one instrumentation test in `GlafiraCoreBackupCoordinatorInstrumentedTest.kt`; diff is +48 lines in one file, no production code changes.
+- Test simulates clean-install loss of a test-scoped `noBackupFilesDir` identity file and Android Keystore alias, restores the encrypted portable archive, then asserts a different Core ID/public key and a newly generated key at epoch 1. Test alias and metadata are cleaned up in `finally`.
+- Exact-head CI #45446494649 and Dispatcher #45446494484 are running. No test result or Step 148 completion is claimed.
