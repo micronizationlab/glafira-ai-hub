@@ -17,6 +17,10 @@ import org.junit.runner.RunWith
 class MainActivitySmokeTest {
     private fun prepareUnlockedHome(context: Context) {
         resetRecoveryJournalForUiSmokeTest(context)
+        // UI smoke tests run against an isolated emulator app install. Restore the
+        // canonical built-ins so earlier UI cases cannot leave deleted-project state.
+        deletedProjectStore(context.filesDir).write(emptySet())
+        saveProjects(context, defaultProjects())
         assertTrue(
             "Could not disable biometric lock for the home-screen smoke test",
             context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
@@ -33,8 +37,8 @@ class MainActivitySmokeTest {
         )
         context.startActivity(intent)
         return UiDevice.getInstance(instrumentation).also {
-            assertTrue("GLAFIRA home screen did not open",
-                it.wait(Until.hasObject(By.descContains("Открыть очередь задач")), 20_000))
+            assertTrue("GLAFIRA chat workspace did not open",
+                it.wait(Until.hasObject(By.textContains("ГЛАФИРА")), 20_000))
         }
     }
 
@@ -64,7 +68,7 @@ class MainActivitySmokeTest {
         assertTrue("GLAFIRA chat is not the default workspace",
             device.wait(Until.hasObject(By.textContains("ГЛАФИРА")), 5_000))
 
-        device.findObject(By.textContains("Личное")).click()
+        device.findObject(By.descContains("Выбрать проект: Личное")).click()
         assertTrue("Built-in VodorodAktiv project is missing from the picker",
             device.wait(Until.hasObject(By.text("ВодородАктив")), 5_000))
         device.findObject(By.text("ВодородАктив")).click()
@@ -76,7 +80,7 @@ class MainActivitySmokeTest {
             device.wait(Until.hasObject(By.text("МОДУЛЬ · ПЛАНИРОВАНИЕ")), 5_000))
 
         device.pressBack()
-        device.findObject(By.text("⋮")).click()
+        device.findObject(By.descContains("Открыть действия чата")).click()
         assertTrue("Bottom action menu did not expose agent transfer",
             device.wait(Until.hasObject(By.text("Передать агенту")), 5_000))
         assertTrue("Bottom action menu did not expose chat deletion",
