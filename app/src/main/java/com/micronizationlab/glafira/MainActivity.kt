@@ -883,9 +883,6 @@ fun ChatScreen(
                     Box(Modifier.weight(1f)) {
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 5.dp)
-                                .semantics(mergeDescendants = true) {
-                                    contentDescription = "Выбрать проект: ${project.name}"
-                                }
                                 .clickable { showProjectSelector = true },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -893,7 +890,10 @@ fun ChatScreen(
                                 "▣ ${project.name}  ▾",
                                 color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                maxLines = 1
+                                maxLines = 1,
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Выбрать проект: ${project.name}"
+                                }
                             )
                         }
                         DropdownMenu(expanded = showProjectSelector, onDismissRequest = { showProjectSelector = false }) {
