@@ -15,6 +15,20 @@ import org.junit.runner.RunWith
 class DataManagerProjectMigrationInstrumentedTest {
 
     @Test
+    fun creatingBuiltInNamesSelectsStableWorkspaceInsteadOfCreatingDuplicate() =
+        withIsolatedContext { context, _ ->
+            val personal = createOrSelectProject(context, "Личное")
+            val business = createOrSelectProject(context, " ВодородАктив ")
+
+            assertEquals("default", personal.id)
+            assertEquals("Личное", personal.name)
+            assertEquals("vodorodaktiv", business.id)
+            assertEquals("ВодородАктив", business.name)
+            assertEquals(4, loadProjects(context).size)
+            assertEquals(4, loadProjects(context).map { it.name.lowercase() }.distinct().size)
+        }
+
+    @Test
     fun freshInstallCreatesAllBuiltInWorkspaces() = withIsolatedContext { context, _ ->
         val projects = loadProjects(context)
 
