@@ -758,6 +758,11 @@ fun ChatScreen(
 
     fun sendMessage(text: String) {
         if (text.isBlank() || isLoading) return
+        if (!agent.on) {
+            ToastHelper.short(context, "Агент «${agent.n}» не настроен. Подключите его провайдера в настройках.")
+            onOpenSettings()
+            return
+        }
         if (agent.n == "ГЛАФИРА" && isGitHubConnectCommand(text)) {
             clearDraft(context, project.id, agent.n)
             if (inputText == text) inputText = ""
@@ -929,7 +934,12 @@ fun ChatScreen(
                                         }
                                     },
                                     onClick = {
-                                        onAgentSelect(item)
+                                        if (item.on) {
+                                            onAgentSelect(item)
+                                        } else {
+                                            ToastHelper.short(context, "Агент «${item.n}» не настроен. Подключите его провайдера в настройках.")
+                                            onOpenSettings()
+                                        }
                                         showAgentSelector = false
                                     }
                                 )
