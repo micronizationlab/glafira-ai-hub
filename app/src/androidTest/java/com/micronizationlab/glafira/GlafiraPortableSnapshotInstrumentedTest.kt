@@ -87,20 +87,28 @@ class GlafiraPortableSnapshotInstrumentedTest {
     @Test fun interruptedRestoreRequiresCorrectPasswordAndRecoversLocalRollback() = runBlocking {
         store.enqueue(task("preserved"))
         check(journal.mkdirs())
-        store.exportConsistentSnapshot(File(journal, "database.db"))
+        val plaintext = File(context.cacheDir, "rollback-recovery-test.db")
         val passphrase = "portable-recovery-passphrase".toCharArray()
-        val safety = BackupArchive.create(context, passphrase)
-        safety.copyTo(File(journal, "files.glb")); safety.delete()
-        File(journal, "restore.pending").writeText("GLAFIRA_RESTORE_ROLLBACK_V2")
-        store.writableDatabase.delete("core_tasks", null, null)
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
-        assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-        assertThrows(Exception::class.java) { runBlocking { coordinator.recover("wrong-password-123".toCharArray()) } }
-        assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-        coordinator.recover(passphrase)
-        assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-        assertNotNull(store.getTask("preserved"))
-        passphrase.fill('\u0000')
+        try {
+            store.exportConsistentSnapshot(plaintext)
+            GlafiraRollbackSnapshotCipher.encrypt(plaintext, File(journal, "database.enc"))
+            check(plaintext.delete())
+            val safety = BackupArchive.create(context, passphrase)
+            safety.copyTo(File(journal, "files.glb")); safety.delete()
+            File(journal, "restore.pending").writeText("GLAFIRA_RESTORE_ROLLBACK_V2")
+            store.writableDatabase.delete("core_tasks", null, null)
+            val coordinator = GlafiraCoreBackupCoordinator(context, store)
+            assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertThrows(Exception::class.java) { runBlocking { coordinator.recover("wrong-password-123".toCharArray()) } }
+            assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            coordinator.recover(passphrase)
+            assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertNotNull(store.getTask("preserved"))
+        } finally {
+            plaintext.delete()
+            passphrase.fill('\u0000')
+            GlafiraRollbackSnapshotCipher.deleteKey()
+        }
     }
 
     @Test fun missingTablesAreRejectedBeforeAnyReplacement() {
