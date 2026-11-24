@@ -58,6 +58,32 @@ class MainActivitySmokeTest {
     }
 
     @Test
+    fun chatWorkspaceExposesProjectAgentModuleAndActionSelectors() {
+        val device = launch()
+
+        assertTrue("GLAFIRA chat is not the default workspace",
+            device.wait(Until.hasObject(By.textContains("ГЛАФИРА")), 5_000))
+
+        device.findObject(By.textContains("Личное")).click()
+        assertTrue("Built-in VodorodAktiv project is missing from the picker",
+            device.wait(Until.hasObject(By.text("ВодородАктив")), 5_000))
+        device.findObject(By.text("ВодородАктив")).click()
+        assertTrue("Project selector did not switch to VodorodAktiv",
+            device.wait(Until.hasObject(By.textContains("ВодородАктив")), 5_000))
+
+        device.findObject(By.text("Открыть модуль")).click()
+        assertTrue("Module picker did not expose the planning module",
+            device.wait(Until.hasObject(By.text("МОДУЛЬ · ПЛАНИРОВАНИЕ")), 5_000))
+
+        device.pressBack()
+        device.findObject(By.text("⋮")).click()
+        assertTrue("Bottom action menu did not expose agent transfer",
+            device.wait(Until.hasObject(By.text("Передать агенту")), 5_000))
+        assertTrue("Bottom action menu did not expose chat deletion",
+            device.hasObject(By.text("Очистить чат")))
+    }
+
+    @Test
     fun taskQueueEntryOpensAndShowsAddTaskDialog() {
         val device = launch()
         device.findObject(By.descContains("Открыть очередь задач")).click()
