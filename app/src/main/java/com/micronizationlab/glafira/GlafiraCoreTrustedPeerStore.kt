@@ -30,14 +30,11 @@ class GlafiraCoreTrustedPeerStore(
     null,
     DATABASE_VERSION
 ) {
-    private val localCoreId = AndroidCoreInstallationIdentityStore(context).loadOrCreate().coreId
-
     init {
         val noBackupRoot = context.noBackupFilesDir.canonicalFile
         require(databaseFile.canonicalFile.parentFile == noBackupRoot) {
             "TRUSTED_PEER_STORE_MUST_BE_NO_BACKUP"
         }
-        require(isIdentifier(localCoreId)) { "LOCAL_CORE_ID_INVALID" }
     }
 
     override fun onCreate(db: SQLiteDatabase) {
