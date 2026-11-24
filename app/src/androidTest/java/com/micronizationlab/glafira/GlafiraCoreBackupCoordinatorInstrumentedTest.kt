@@ -12,6 +12,7 @@ import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -360,7 +361,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             keyStore.aliases().toList().filter { it.startsWith(keyAliasPrefix) }
                 .forEach(keyStore::deleteEntry)
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
         }
     }
 
