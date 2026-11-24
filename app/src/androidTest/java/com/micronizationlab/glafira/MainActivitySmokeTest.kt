@@ -21,6 +21,8 @@ class MainActivitySmokeTest {
         // canonical built-ins so earlier UI cases cannot leave deleted-project state.
         deletedProjectStore(context.filesDir).write(emptySet())
         saveProjects(context, defaultProjects())
+        assertTrue("Built-in VodorodAktiv workspace was not seeded for UI tests",
+            loadProjects(context).any { it.id == "vodorodaktiv" && it.name == "ВодородАктив" })
         assertTrue(
             "Could not disable biometric lock for the home-screen smoke test",
             context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
@@ -70,8 +72,8 @@ class MainActivitySmokeTest {
 
         device.findObject(By.descContains("Выбрать проект: Личное")).click()
         assertTrue("Built-in VodorodAktiv project is missing from the picker",
-            device.wait(Until.hasObject(By.text("ВодородАктив")), 5_000))
-        device.findObject(By.text("ВодородАктив")).click()
+            device.wait(Until.hasObject(By.desc("Проект ВодородАктив")), 5_000))
+        device.findObject(By.desc("Проект ВодородАктив")).click()
         assertTrue("Project selector did not switch to VodorodAktiv",
             device.wait(Until.hasObject(By.textContains("ВодородАктив")), 5_000))
 
