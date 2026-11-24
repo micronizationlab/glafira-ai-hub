@@ -18,6 +18,7 @@ This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CO
 | Work Item ID | Step | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|
 | GLAFIRA-GOV-W01 | Governance | GLAFIRA | Establish this control, update helper instructions and reconcile plan baseline | IN_PROGRESS | Branch `governance/program-150-single-source-of-truth`; PR to be opened after doc consistency check |
+| GLAFIRA-GOV-W02 | Governance | GLAFIRA | Add mandatory autonomous defect-repair cycle and helper instruction reference | READY_FOR_REVIEW | Branch `governance/autonomous-repair-cycle`; protocol + Copilot instruction + ledger; no application code changed |
 | GLAFIRA-S016-W01 | 16 | GLAFIRA | Core failure-injection matrix | BLOCKED | First refresh exact current-main tests/PRs; do not duplicate already merged failure-injection coverage |
 | GLAFIRA-S017-W01 | 17 | GLAFIRA | Provider outcome classification and no blind replay | BLOCKED | Inspect current AiProviderClient/outbox and existing merged PRs before editing |
 | GLAFIRA-S018-W01 | 18 | GLAFIRA | Durable result outbox + explicit ACK | BLOCKED | Compare Core, Desktop Bridge and Agent outboxes; one canonical contract per authority |
@@ -60,3 +61,12 @@ Record each build as `repository|commit SHA|workflow|job/lane|configuration`. Re
 - Confirmed plan has 200 numbered checklist entries; 27 checked at last literal audit. The original 150 denominator remains separate from extension items 151–200.
 - Created control issue #548 and governance branch from the observed main SHA.
 - No application source code, runtime behavior, APK or installer changed in this governance task.
+
+
+### 2026-11-24 — GLAFIRA-GOV-W02
+- Reconciled the requested acceleration rules with existing execution control, eleventh-workstream policy and PR-size policy; did not create a competing plan or alter the 11 workstreams.
+- Added `docs/engineering/AUTONOMOUS_REPAIR_CYCLE.md` defining evidence → ownership/deduplication → in-scope fix → regression test → log inspection → repeat-until-pass-or-blocked → evidence-based handoff.
+- Added a mandatory reference and concise enforcement rule to `.github/copilot-instructions.md`.
+- Branch: `governance/autonomous-repair-cycle`, based on main SHA `148b427bab6e98cb59d68327f4c220d29bbd12c7`.
+- Protocol file commit: `c517ac35e3619412c7d977abf34d7d5e45774033`.
+- Validation: documentation-only change; no application build is applicable. PR review and GitHub diff/CI remain pending; no merge or Program 150 completion is claimed.
