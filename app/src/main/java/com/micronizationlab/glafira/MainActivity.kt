@@ -224,6 +224,27 @@ private fun WorkspaceApp() {
                 projects = projects,
                 agents = buildAgentCatalog(context),
                 onProjectSelect = { currentProject = it },
+                onProjectAdd = { name ->
+                    try {
+                        val selected = createOrSelectProject(context, name)
+                        projects = loadProjects(context)
+                        currentProject = selected
+                    } catch (error: Exception) {
+                        ToastHelper.short(context, error.message ?: "Не удалось создать проект.")
+                    }
+                },
+                onProjectDelete = { project ->
+                    scope.launch {
+                        try {
+                            projects = withContext(Dispatchers.IO) { deleteProject(context, project) }
+                            if (currentProject.id == project.id) {
+                                currentProject = projects.firstOrNull() ?: defaultProjects().first()
+                            }
+                        } catch (error: Exception) {
+                            ToastHelper.short(context, error.message ?: "Не удалось удалить проект.")
+                        }
+                    }
+                },
                 onAgentSelect = { currentAgent = it },
                 onBack = { currentAgent = null },
                 onOpenSettings = { showSettings = true }
@@ -584,6 +605,8 @@ fun ChatScreen(
     projects: List<Project>,
     agents: List<A>,
     onProjectSelect: (Project) -> Unit,
+    onProjectAdd: (String) -> Unit,
+    onProjectDelete: (Project) -> Unit,
     onAgentSelect: (A) -> Unit,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit = {}
@@ -632,6 +655,10 @@ fun ChatScreen(
     var isListening by remember { mutableStateOf(false) }
     var speakingIndex by remember { mutableStateOf<Int?>(null) }
     var showProjectSelector by remember { mutableStateOf(false) }
+    var showAddProjectDialog by remember { mutableStateOf(false) }
+    var newProjectName by remember { mutableStateOf("") }
+    var projectToDelete by remember { mutableStateOf<Project?>(null) }
+    var showDeleteProjectDialog by remember { mutableStateOf(false) }
     var showAgentSelector by remember { mutableStateOf(false) }
     var showModulesSelector by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
@@ -778,6 +805,55 @@ fun ChatScreen(
         )
     }
 
+    if (showAddProjectDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddProjectDialog = false },
+            title = { Text("Новый проект", color = Color(0xFF202020)) },
+            text = {
+                TextField(
+                    value = newProjectName,
+                    onValueChange = { newProjectName = it },
+                    singleLine = true,
+                    placeholder = { Text("Название проекта…") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newProjectName.isNotBlank()) {
+                        onProjectAdd(newProjectName)
+                        newProjectName = ""
+                        showAddProjectDialog = false
+                    }
+                }) { Text("Создать", color = Gr) }
+            },
+            dismissButton = {
+                TextButton(onClick = { newProjectName = ""; showAddProjectDialog = false }) {
+                    Text("Отмена", color = Tx)
+                }
+            }
+        )
+    }
+    if (showDeleteProjectDialog && projectToDelete != null) {
+        val target = projectToDelete!!
+        AlertDialog(
+            onDismissRequest = { projectToDelete = null; showDeleteProjectDialog = false },
+            title = { Text("Удалить проект?", color = Color(0xFF202020)) },
+            text = { Text("Все чаты проекта «${target.name}» и его закрепления будут безвозвратно удалены.", color = Tx) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onProjectDelete(target)
+                    projectToDelete = null
+                    showDeleteProjectDialog = false
+                }) { Text("Удалить", color = Red) }
+            },
+            dismissButton = {
+                TextButton(onClick = { projectToDelete = null; showDeleteProjectDialog = false }) {
+                    Text("Отмена", color = Tx)
+                }
+            }
+        )
+    }
+
     if (showProfile) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
@@ -804,11 +880,28 @@ fun ChatScreen(
                         )
                         DropdownMenu(expanded = showProjectSelector, onDismissRequest = { showProjectSelector = false }) {
                             projects.forEach { item ->
-                                DropdownMenuItem(
-                                    text = { Text(item.name, color = if (item.id == project.id) Gr else Color(0xFF202020)) },
-                                    onClick = { onProjectSelect(item); showProjectSelector = false }
-                                )
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    DropdownMenuItem(
+                                        text = { Text(item.name, color = if (item.id == project.id) Gr else Color(0xFF202020)) },
+                                        onClick = { onProjectSelect(item); showProjectSelector = false },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (projects.size > 1) {
+                                        Text(
+                                            "✕", color = Red,
+                                            modifier = Modifier.clickable {
+                                                projectToDelete = item
+                                                showDeleteProjectDialog = true
+                                                showProjectSelector = false
+                                            }.padding(horizontal = 12.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                }
                             }
+                            DropdownMenuItem(
+                                text = { Text("+ Новый проект", color = Gr, fontWeight = FontWeight.Bold) },
+                                onClick = { showProjectSelector = false; showAddProjectDialog = true }
+                            )
                         }
                     }
                     Spacer(Modifier.width(8.dp))
