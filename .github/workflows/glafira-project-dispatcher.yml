@@ -30,6 +30,87 @@ jobs:
     name: Reconcile all active GLAFIRA workstreams
     runs-on: ubuntu-latest
     steps:
+      - name: Prepare and test exact-head renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/render-dispatcher-status.sh" <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          prs_file="$1"
+          runs_file="$2"
+          prs="$(cat "$prs_file")"
+          runs="$(cat "$runs_file")"
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$prs"; then
+            echo "pull request input must be a JSON array" >&2
+            exit 2
+          fi
+          while IFS= read -r pr; do
+            number="$(jq -r '.number' <<< "$pr")"
+            title="$(jq -r '.title // ""' <<< "$pr" | tr '|' '/')"
+            branch="$(jq -r '.headRefName // ""' <<< "$pr")"
+            sha="$(jq -r '.headRefOid // ""' <<< "$pr")"
+            draft="$(jq -r '.isDraft // false' <<< "$pr")"
+            url="$(jq -r '.url // ""' <<< "$pr")"
+            checks="$(jq -c '.statusCheckRollup // []' <<< "$pr")"
+            if [[ "$(jq 'length' <<< "$checks")" -gt 0 ]]; then
+              ci="$(jq -r 'map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")' <<< "$checks")"
+            elif ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$runs"; then
+              ci="UNKNOWN / ACTIONS API UNAVAILABLE"
+            else
+              matching="$(jq -c --arg sha "$sha" '[.[] | select(.headSha == $sha)] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])' <<< "$runs")"
+              if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
+                ci="NO MATCHING RUN FOR EXACT HEAD"
+              else
+                ci="$(jq -r 'map((.workflowName // .name // "workflow") + ": " + (if .status == "queued" then "QUEUED" elif .status == "in_progress" then "IN_PROGRESS" elif .status == "completed" then ("COMPLETED/" + (.conclusion // "UNKNOWN")) else "UNKNOWN/" + (.status // "missing") end) + " ([run](\(.url // "")))") | join("<br>")' <<< "$matching")"
+              fi
+            fi
+            short_sha="${sha:0:12}"
+            echo "| [#$number]($url) $title | $branch | <code>$short_sha</code> | $ci | $draft |"
+          done < <(jq -c '.[]' <<< "$prs")
+          SCRIPT
+
+          cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          cat > "$tmp/prs.json" <<'JSON'
+          [
+            {"number":553,"title":"current exact head","headRefName":"docs/reconcile","headRefOid":"sha-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
+            {"number":554,"title":"stale only","headRefName":"feature/stale","headRefOid":"sha-new","isDraft":true,"url":"https://example.test/pr/554","statusCheckRollup":[]},
+            {"number":555,"title":"rollup preferred","headRefName":"feature/rollup","headRefOid":"sha-rollup","isDraft":false,"url":"https://example.test/pr/555","statusCheckRollup":[{"name":"required","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]},
+            {"number":556,"title":"queued exact head","headRefName":"feature/queued","headRefOid":"sha-queued","isDraft":false,"url":"https://example.test/pr/556","statusCheckRollup":[]},
+            {"number":557,"title":"skipped exact head","headRefName":"feature/skipped","headRefOid":"sha-skipped","isDraft":false,"url":"https://example.test/pr/557","statusCheckRollup":[]}
+          ]
+          JSON
+          cat > "$tmp/runs.json" <<'JSON'
+          [
+            {"headSha":"sha-current","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:00:00Z","url":"https://example.test/run/1"},
+            {"headSha":"sha-current","workflowName":"Dispatcher","name":"Dispatcher","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:01:00Z","url":"https://example.test/run/2"},
+            {"headSha":"sha-current","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T11:00:00Z","url":"https://example.test/run/old"},
+            {"headSha":"sha-other","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:02:00Z","url":"https://example.test/run/stale"},
+            {"headSha":"sha-queued","workflowName":"Desktop CI","name":"Desktop CI","status":"queued","conclusion":null,"createdAt":"2026-11-24T12:03:00Z","url":"https://example.test/run/queued"},
+            {"headSha":"sha-skipped","workflowName":"iOS CI","name":"iOS CI","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:04:00Z","url":"https://example.test/run/skipped"}
+          ]
+          JSON
+          output="$(bash "$renderer" "$tmp/prs.json" "$tmp/runs.json")"
+          grep -q 'Android CI: COMPLETED/success' <<< "$output"
+          grep -q 'Dispatcher: COMPLETED/success' <<< "$output"
+          ! grep -q 'COMPLETED/failure' <<< "$output"
+          grep -q 'NO MATCHING RUN FOR EXACT HEAD' <<< "$output"
+          grep -q 'required: COMPLETED/SUCCESS' <<< "$output"
+          grep -q 'Desktop CI: QUEUED' <<< "$output"
+          grep -q 'iOS CI: COMPLETED/skipped' <<< "$output"
+          unknown_output="$(bash "$renderer" "$tmp/prs.json" <(printf 'null'))"
+          grep -q 'UNKNOWN / ACTIONS API UNAVAILABLE' <<< "$unknown_output"
+          empty_output="$(bash "$renderer" <(printf '[]') "$tmp/runs.json")"
+          [[ -z "$empty_output" ]]
+          echo "dispatcher status renderer fixtures: PASS"
+          TEST
+          bash "$RUNNER_TEMP/test-renderer.sh"
+
       - name: Build cross-workstream status report
         env:
           GH_TOKEN: ${{ github.token }}
@@ -37,37 +118,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/ci/tests/test-render-dispatcher-pr-status.sh
-          {
-          echo "# GLAFIRA Project Dispatcher"
-          echo ""
-          echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo ""
-          echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
-          echo "|---:|---|---|---|:---:|"
-
           prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup)"
-          printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
-
+          printf '%s\\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
           # One batched Actions API query is the fallback when GraphQL statusCheckRollup is empty.
           # A failed/rate-limited query is represented as null and rendered UNKNOWN, never as success.
           if runs="$(gh run list --repo "$GH_REPO" --limit 1000 --json headSha,name,workflowName,status,conclusion,url,createdAt 2>/dev/null)"; then
-            printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
+            printf '%s\\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           else
-            printf 'null\n' > "$RUNNER_TEMP/glafira-workflow-runs.json"
+            printf 'null\\n' > "$RUNNER_TEMP/glafira-workflow-runs.json"
           fi
-
           count="$(jq 'length' <<< "$prs")"
           if [[ "$count" -eq 0 ]]; then
-            echo "No open pull requests."
+            {
+              echo "# GLAFIRA Project Dispatcher"
+              echo ""
+              echo "No open pull requests."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-
-          bash scripts/ci/render-dispatcher-pr-status.sh \
-            "$RUNNER_TEMP/glafira-open-prs.json" \
-            "$RUNNER_TEMP/glafira-workflow-runs.json" >> "$GITHUB_STEP_SUMMARY"
-
-
-          echo ""
-          echo "Policy: evaluate every open PR on its exact current head SHA; a successful run for an older SHA is not acceptance for the current branch."
+          {
+            echo "# GLAFIRA Project Dispatcher"
+            echo ""
+            echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo ""
+            echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
+            echo "|---:|---|---|---|:---:|"
+            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
+            echo ""
+            echo "Policy: match workflow runs only to the exact current PR head SHA. Older-head runs are not acceptance evidence. Skipped, cancelled, queued, partial or unknown states are not passes."
           } >> "$GITHUB_STEP_SUMMARY"
