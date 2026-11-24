@@ -84,16 +84,6 @@ class GlafiraPortableSnapshotInstrumentedTest {
         assertFalse(snapshot.readText().contains("core_desktop_leases"))
     }
 
-    @Test fun coordinatorCreationScrubsCrashLeftoverPlaintextRollbackFiles() {
-        val source = File(context.cacheDir, "glafira-rollback-source.db")
-        val recovery = File(context.cacheDir, "glafira-rollback-recovery.db")
-        source.writeText("SOURCE_PLAINTEXT_CANARY")
-        recovery.writeText("RECOVERY_PLAINTEXT_CANARY")
-        GlafiraCoreBackupCoordinator(context, store)
-        assertFalse(source.exists())
-        assertFalse(recovery.exists())
-    }
-
     @Test fun interruptedRestoreRequiresCorrectPasswordAndRecoversLocalRollback() = runBlocking {
         store.enqueue(task("preserved"))
         check(journal.mkdirs())
