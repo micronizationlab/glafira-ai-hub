@@ -240,3 +240,18 @@ This audit maps existing marks to surviving Main evidence. It does not add check
 - **#555/#556 CI retry:** failed-job reruns were requested only for the previously cancelled iOS lane and dependent exact-head summary. At this checkpoint iOS jobs are queued; all other platform lanes in those reruns are successful. No overall success is claimed until iOS and summary complete.
 - **Workstream 11:** reviewed #553 docs correction, #559 clean-install test, #560 Bridge consolidation and the #558 helper test contribution before proceeding. Issue #473 still has no Berestovkon acknowledgement/report; the #558 test commit was not misattributed to that helper.
 - **No Main merge, no APK release, no Program 150 checkbox change.**
+
+
+## Current delta checkpoint — 2026-11-24 17:42Z
+
+- Live open-PR count remains 56. #500/#520 are closed unmerged as superseded; #558/#559/#560/#562 remain open. Main is unchanged at `148b427bab6e98cb59d68327f4c220d29bbd12c7`.
+- **#553 governance:** latest ledger head before this append was `da4d2feee9c099de415072d533dc57674660231f`, docs-only CI `45449937047` and Dispatcher `45449937144` passed. This append records the latest run deltas; PR remains ready for review and unmerged.
+- **#558 Android workspace:** latest head `83f5fb4d9082716d5876c2cc37a72c01366753ce`; run `45450371892`: Android JVM, shared contracts and debug APK passed; managed emulator acceptance is still running. Final text-based GLAFIRA assertion was replaced with the agent selector accessibility description. No emulator pass claimed yet.
+- **#562 Core trusted-peer prerequisite:** run `45449479137` completed success on head `ddb43a8f8ec1ae6d4f9e7c26abc63fd6582a1808`: Android JVM, shared contracts, APK and emulator; 136 tests, 0 failures/errors/skips. Registry remains Draft and separate noBackup DB; #366 must serialize revocation with transfer verification/CAS or move trust into the same Core transaction before use. No transfer/outbox.
+- **#555 Dispatcher:** exact-head fixture run `45430871077` passed. CI `45430871102` has Android JVM/contracts/workflow lint/Windows Agent/Windows Hub/emulator/APK success, but iOS was cancelled again before execution; exact-head summary failed closed. No overall success.
+- **#556 CI summary SHA:** run `45430676322` verifies PR_HEAD_SHA fix and all non-iOS lanes passed; iOS was cancelled again and exact-head summary failed closed. No overall success.
+- **#559 Backup:** exact-head run `45446494649` passed 131/131 emulator tests and Android JVM/contracts/APK. Replacement-device physical restore and fresh pairing remain open.
+- **#560 Bridge client:** exact-head run `45446833956` passed `:desktop-bridge:test`, shared contracts, APK and emulator. #500/#520 closed unmerged as superseded. Receiver-side durable idempotency/ACK remains open.
+- **Step 18 remains partial:** contract specified; trusted peer store is a tested Draft prerequisite only; signed transfer, nonce/receipt CAS, Trace, receiver inbox, exact ACK and restart/replay acceptance are not implemented. #266 remains blocked by #366. No Program 150 checkbox changed.
+- **Workstream 11:** helper outputs were reviewed before integration; issue #473 still has no Berestovkon acknowledgement/report. The separate #558 test-only commit is not attributed to Berestovkon.
+- No Main merge and no release APK issued.
