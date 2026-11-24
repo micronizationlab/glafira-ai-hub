@@ -96,7 +96,6 @@ class AiProviderOutcomeTest {
     @Test fun successfulResponsesRemainSuccessful() {
         assertEquals("answer", (classifyLegacyProviderResponse("answer") as AiProviderResult.Success).text)
     }
-}
 
     @Test fun distributedTaskAdapterPreservesProviderOutcomeAndRetryAfterWithoutReplaying() {
         val unknown = AiProviderResult.Failure(AiProviderError(
@@ -157,3 +156,4 @@ class AiProviderOutcomeTest {
             runCatching { AiProviderResult.Success(" ").requirePlanText() }.exceptionOrNull()?.message
         )
     }
+}
