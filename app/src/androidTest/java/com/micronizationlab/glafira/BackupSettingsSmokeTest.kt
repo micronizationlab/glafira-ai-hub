@@ -19,8 +19,6 @@ class BackupSettingsSmokeTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         resetRecoveryJournalForUiSmokeTest(context)
-        deletedProjectStore(context.filesDir).write(emptySet())
-        saveProjects(context, defaultProjects())
         assertTrue(
             "Could not disable biometric lock for the home-screen smoke test",
             context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
@@ -41,20 +39,18 @@ class BackupSettingsSmokeTest {
         try {
             val device = UiDevice.getInstance(instrumentation)
             assertTrue(
-                "GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.descContains("Выбрать агента: ГЛАФИРА")), 20_000)
+                "GLAFIRA chat workspace did not open",
+                device.wait(Until.hasObject(By.descContains("Открыть очередь задач")), 20_000)
             )
             val actionsButton = device.findObject(By.descContains("Открыть действия чата"))
-            assertTrue("Chat actions menu is not visible", actionsButton.visibleBounds.width() > 0)
-            actionsButton.click()
-            assertTrue("Settings action is missing from the chat actions menu",
-                device.wait(Until.hasObject(By.text("Настройки")), 5_000))
-            val settingsButton = device.findObject(By.text("Настройки"))
             assertTrue(
-                "Settings action is not visible",
-                settingsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
+                "Chat actions menu is not visible",
+                actionsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
             )
-            settingsButton.click()
+            actionsButton.click()
+            val settingsButton = device.wait(Until.findObject(By.text("Настройки")), 5_000)
+            assertNotNull("Settings action is missing from the bottom chat menu", settingsButton)
+            requireNotNull(settingsButton).click()
             assertTrue(
                 "Settings screen did not open",
                 device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
