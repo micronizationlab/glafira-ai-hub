@@ -39,15 +39,18 @@ class BackupSettingsSmokeTest {
         try {
             val device = UiDevice.getInstance(instrumentation)
             assertTrue(
-                "GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
+                "GLAFIRA chat workspace did not open",
+                device.wait(Until.hasObject(By.descContains("Выбрать агента: ГЛАФИРА")), 20_000)
             )
-            val settingsButton = device.findObject(By.descContains("Открыть настройки"))
+            val actionsButton = device.findObject(By.descContains("Открыть действия чата"))
             assertTrue(
-                "Settings action is not visible",
-                settingsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
+                "Chat actions menu is not visible",
+                actionsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
             )
-            settingsButton.click()
+            actionsButton.click()
+            val settingsButton = device.wait(Until.findObject(By.text("Настройки")), 5_000)
+            assertNotNull("Settings action is missing from the bottom chat menu", settingsButton)
+            requireNotNull(settingsButton).click()
             assertTrue(
                 "Settings screen did not open",
                 device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)

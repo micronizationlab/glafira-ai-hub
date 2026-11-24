@@ -102,12 +102,12 @@ fun App() {
 
 @Composable
 private fun WorkspaceApp() {
-    var currentAgent by remember { mutableStateOf<A?>(null) }
+    val context = LocalContext.current
+    var currentAgent by remember(context) { mutableStateOf(buildAgentCatalog(context).firstOrNull()) }
     var showSettings by remember { mutableStateOf(false) }
     var showCouncil by remember { mutableStateOf(false) }
     var showTaskQueue by remember { mutableStateOf(false) }
     var statusRefresh by remember { mutableStateOf(0) }
-    val context = LocalContext.current
     var projects by remember { mutableStateOf(loadProjects(context)) }
     var currentProject by remember { mutableStateOf(projects.firstOrNull() ?: defaultProjects().first()) }
     val scope = rememberCoroutineScope()
@@ -189,9 +189,17 @@ private fun WorkspaceApp() {
                 refreshKey = statusRefresh,
                 onProjectSelect = { currentProject = it },
                 onProjectAdd = { name ->
-                    val newProj = Project(UUID.randomUUID().toString(), name)
-                    projects = updateProjects(context) { it + newProj }
-                    currentProject = newProj
+                    try {
+                        val selected = createOrSelectProject(context, name)
+                        projects = loadProjects(context)
+                        currentProject = selected
+                        if (selected.name.trim().equals(name.trim(), ignoreCase = true) &&
+                            selected.id in builtInProjects.map { it.id }) {
+                            ToastHelper.short(context, "Выбран существующий проект «${selected.name}».")
+                        }
+                    } catch (error: Exception) {
+                        ToastHelper.short(context, error.message ?: "Не удалось создать проект.")
+                    }
                 },
                 onProjectDelete = { project ->
                     scope.launch {
@@ -213,6 +221,33 @@ private fun WorkspaceApp() {
             else -> ChatScreen(
                 agent = currentAgent!!,
                 project = currentProject,
+                projects = projects,
+                agents = buildAgentCatalog(context),
+                onProjectSelect = { currentProject = it },
+                onProjectAdd = { name ->
+                    try {
+                        val selected = createOrSelectProject(context, name)
+                        projects = loadProjects(context)
+                        currentProject = selected
+                    } catch (error: Exception) {
+                        ToastHelper.short(context, error.message ?: "Не удалось создать проект.")
+                    }
+                },
+                onProjectDelete = { project ->
+                    scope.launch {
+                        try {
+                            projects = withContext(Dispatchers.IO) { deleteProject(context, project) }
+                            if (currentProject.id == project.id) {
+                                currentProject = projects.firstOrNull() ?: defaultProjects().first()
+                            }
+                        } catch (error: Exception) {
+                            ToastHelper.short(context, error.message ?: "Не удалось удалить проект.")
+                        }
+                    }
+                },
+                onAgentSelect = { currentAgent = it },
+                onOpenTaskQueue = { showTaskQueue = true },
+                onOpenCouncil = { showCouncil = true },
                 onBack = { currentAgent = null },
                 onOpenSettings = { showSettings = true }
             )
@@ -283,42 +318,7 @@ fun AgentRow(a: A, onClick: () -> Unit) {
     Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 }
 
-@Composable
-fun ContactList(
-    projects: List<Project>,
-    currentProject: Project,
-    refreshKey: Int,
-    onProjectSelect: (Project) -> Unit,
-    onProjectAdd: (String) -> Unit,
-    onProjectDelete: (Project) -> Unit,
-    onAgentClick: (A) -> Unit,
-    onSettingsClick: () -> Unit,
-    onCouncilClick: () -> Unit,
-    onTaskQueueClick: () -> Unit
-) {
-    val context = LocalContext.current
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showProjectMenu by remember { mutableStateOf(false) }
-    var newProjectName by remember { mutableStateOf("") }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-    var notConfiguredAgent by remember { mutableStateOf<A?>(null) }
-    var iaExpanded by remember { mutableStateOf(true) }
-    var aiExpanded by remember { mutableStateOf(true) }
-
-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-    var isOnline by remember { mutableStateOf(cm.activeNetwork != null) }
-    var previousOnline by remember { mutableStateOf(isOnline) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            isOnline = cm.activeNetwork != null
-            if (isOnline && !previousOnline) SoundHelper.playOnline()
-            previousOnline = isOnline
-            delay(2000)
-        }
-    }
-
-    val list = remember(context, refreshKey) {
-        listOf(
+private fun buildAgentCatalog(context: Context): List<A> = listOf(
             A("ГЛАФИРА", "Главный координатор", hasAnyGlafiraProvider(context), "🤖",
                 "Ты — Глафира, главный координатор проектов. Ты помогаешь пользователю структурировать задачи, планировать и управлять проектами. Отвечай четко и по делу.",
                 "Главный управляющий интеллект. Она не просто отвечает на вопросы, а помогает доводить дела до результата. Умеет разбивать сложные задачи на шаги, распределять их между другими агентами и следить за выполнением.",
@@ -360,7 +360,54 @@ fun ContactList(
                 "Маршрутизатор бесплатных моделей разных разработчиков. Доступность моделей и лимиты меняются; политики обработки данных зависят от выбранного провайдера.",
                 ProviderId.OPENROUTER, AgentGroup.AI)
         )
+
+private fun buildModuleCatalog(context: Context): List<A> {
+    val provider = loadGlafiraPrimaryProvider(context)
+    val ready = hasAnyGlafiraProvider(context)
+    return listOf(
+        A("МОДУЛЬ · ПЛАНИРОВАНИЕ", "Планы и последовательность действий", ready, "🗓️", "Ты — модуль планирования Глафиры. Помогай превращать цели в реалистичные планы, сроки и следующие действия. Учитывай текущий проект и его историю.", "Планирование проекта и контроль последовательности задач.", provider, AgentGroup.IA),
+        A("МОДУЛЬ · ИССЛЕДОВАНИЯ", "Поиск и анализ информации", ready, "🔎", "Ты — исследовательский модуль Глафиры. Разделяй факты и гипотезы, показывай источники и пробелы в данных. Учитывай текущий проект.", "Исследование, сравнение и структурирование информации.", provider, AgentGroup.IA),
+        A("МОДУЛЬ · ДОКУМЕНТЫ", "Подготовка рабочих материалов", ready, "📄", "Ты — модуль документов Глафиры. Помогай готовить письма, инструкции, технические задания и деловые документы с учетом текущего проекта.", "Работа с текстами, письмами и документами.", provider, AgentGroup.IA),
+        A("МОДУЛЬ · КОНТРОЛЬ", "Задачи и исполнение", ready, "☑️", "Ты — модуль контроля Глафиры. Помогай отслеживать задачи, фиксировать решения, выявлять блокеры и предлагать следующие проверяемые действия. Не утверждай, что действие выполнено без подтверждения.", "Контроль выполнения и фиксация результатов.", provider, AgentGroup.IA)
+    )
+}
+
+@Composable
+fun ContactList(
+    projects: List<Project>,
+    currentProject: Project,
+    refreshKey: Int,
+    onProjectSelect: (Project) -> Unit,
+    onProjectAdd: (String) -> Unit,
+    onProjectDelete: (Project) -> Unit,
+    onAgentClick: (A) -> Unit,
+    onSettingsClick: () -> Unit,
+    onCouncilClick: () -> Unit,
+    onTaskQueueClick: () -> Unit
+) {
+    val context = LocalContext.current
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showProjectMenu by remember { mutableStateOf(false) }
+    var newProjectName by remember { mutableStateOf("") }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var projectToDelete by remember { mutableStateOf<Project?>(null) }
+    var notConfiguredAgent by remember { mutableStateOf<A?>(null) }
+    var iaExpanded by remember { mutableStateOf(true) }
+    var aiExpanded by remember { mutableStateOf(true) }
+
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    var isOnline by remember { mutableStateOf(cm.activeNetwork != null) }
+    var previousOnline by remember { mutableStateOf(isOnline) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            isOnline = cm.activeNetwork != null
+            if (isOnline && !previousOnline) SoundHelper.playOnline()
+            previousOnline = isOnline
+            delay(2000)
+        }
     }
+
+    val list = remember(context, refreshKey) { buildAgentCatalog(context) }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
@@ -386,13 +433,14 @@ fun ContactList(
                     projects.forEach { proj ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             DropdownMenuItem(
-                                text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Bg) },
+                                text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Color(0xFF202020)) },
                                 onClick = { onProjectSelect(proj); showProjectMenu = false },
                                 modifier = Modifier.weight(1f)
                             )
                             if (projects.size > 1) {
                                 Text("✕", color = Red, modifier = Modifier.clickable {
-                                    if (proj.id == currentProject.id) showDeleteConfirm = true
+                                    projectToDelete = proj
+                                    showDeleteConfirm = true
                                 }.padding(8.dp))
                             }
                         }
@@ -445,14 +493,19 @@ fun ContactList(
             AlertDialog(
                 onDismissRequest = { showDeleteConfirm = false },
                 title = { Text("Удалить проект?", color = Color(0xFF202020)) },
-                text = { Text("Все чаты в этом проекте будут безвозвратно удалены.") },
+                text = { Text("Все чаты проекта «${projectToDelete?.name.orEmpty()}» будут безвозвратно удалены.") },
                 confirmButton = {
-                    TextButton(onClick = { onProjectDelete(currentProject); showDeleteConfirm = false; showProjectMenu = false }) {
+                    TextButton(onClick = {
+                        projectToDelete?.let(onProjectDelete)
+                        projectToDelete = null
+                        showDeleteConfirm = false
+                        showProjectMenu = false
+                    }) {
                         Text("Удалить", color = Red)
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showDeleteConfirm = false }) { Text("Отмена", color = Tx) }
+                    TextButton(onClick = { projectToDelete = null; showDeleteConfirm = false }) { Text("Отмена", color = Tx) }
                 }
             )
         }
@@ -551,11 +604,19 @@ fun ContactList(
 fun ChatScreen(
     agent: A,
     project: Project,
+    projects: List<Project>,
+    agents: List<A>,
+    onProjectSelect: (Project) -> Unit,
+    onProjectAdd: (String) -> Unit,
+    onProjectDelete: (Project) -> Unit,
+    onAgentSelect: (A) -> Unit,
+    onOpenTaskQueue: () -> Unit,
+    onOpenCouncil: () -> Unit,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.n)) }
+    var inputText by remember("${project.id}_${agent.n}") { mutableStateOf(loadDraft(context, project.id, agent.n)) }
     val historyKey = "${project.id}_${agent.n}"
     var selectedPhotoUri by remember(historyKey) { mutableStateOf<Uri?>(null) }
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -597,6 +658,15 @@ fun ChatScreen(
     var expandedMessages by remember { mutableStateOf(setOf<Int>()) }
     var isListening by remember { mutableStateOf(false) }
     var speakingIndex by remember { mutableStateOf<Int?>(null) }
+    var showProjectSelector by remember { mutableStateOf(false) }
+    var showAddProjectDialog by remember { mutableStateOf(false) }
+    var newProjectName by remember { mutableStateOf("") }
+    var projectToDelete by remember { mutableStateOf<Project?>(null) }
+    var showDeleteProjectDialog by remember { mutableStateOf(false) }
+    var showAgentSelector by remember { mutableStateOf(false) }
+    var showModulesSelector by remember { mutableStateOf(false) }
+    var showChatActionsMenu by remember { mutableStateOf(false) }
+    val modules = remember(context) { buildModuleCatalog(context) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -688,6 +758,11 @@ fun ChatScreen(
 
     fun sendMessage(text: String) {
         if (text.isBlank() || isLoading) return
+        if (!agent.on) {
+            ToastHelper.short(context, "Агент «${agent.n}» не настроен. Подключите его провайдера в настройках.")
+            onOpenSettings()
+            return
+        }
         if (agent.n == "ГЛАФИРА" && isGitHubConnectCommand(text)) {
             clearDraft(context, project.id, agent.n)
             if (inputText == text) inputText = ""
@@ -739,45 +814,157 @@ fun ChatScreen(
         )
     }
 
+    if (showAddProjectDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddProjectDialog = false },
+            title = { Text("Новый проект", color = Color(0xFF202020)) },
+            text = {
+                TextField(
+                    value = newProjectName,
+                    onValueChange = { newProjectName = it },
+                    singleLine = true,
+                    placeholder = { Text("Название проекта…") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newProjectName.isNotBlank()) {
+                        onProjectAdd(newProjectName)
+                        newProjectName = ""
+                        showAddProjectDialog = false
+                    }
+                }) { Text("Создать", color = Gr) }
+            },
+            dismissButton = {
+                TextButton(onClick = { newProjectName = ""; showAddProjectDialog = false }) {
+                    Text("Отмена", color = Tx)
+                }
+            }
+        )
+    }
+    if (showDeleteProjectDialog && projectToDelete != null) {
+        val target = projectToDelete!!
+        AlertDialog(
+            onDismissRequest = { projectToDelete = null; showDeleteProjectDialog = false },
+            title = { Text("Удалить проект?", color = Color(0xFF202020)) },
+            text = { Text("Все чаты проекта «${target.name}» и его закрепления будут безвозвратно удалены.", color = Tx) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onProjectDelete(target)
+                    projectToDelete = null
+                    showDeleteProjectDialog = false
+                }) { Text("Удалить", color = Red) }
+            },
+            dismissButton = {
+                TextButton(onClick = { projectToDelete = null; showDeleteProjectDialog = false }) {
+                    Text("Отмена", color = Tx)
+                }
+            }
+        )
+    }
+
     if (showProfile) {
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (isSearching) {
                     TextField(
                         value = searchQuery, onValueChange = { searchQuery = it },
-                        placeholder = { Text("Поиск...", color = Tx, fontSize = 12.sp) },
+                        placeholder = { Text("Поиск по чату...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f),
                         colors = TextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020), focusedIndicatorColor = Gr)
                     )
                     Text("✕", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
                 } else {
-                    Text("←", color = Gr, fontSize = 18.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
-                    Row(Modifier.weight(1f).clickable { showProfile = true }, verticalAlignment = Alignment.CenterVertically) {
-                        Text(agent.emoji, fontSize = 16.sp)
-                        Spacer(Modifier.width(6.dp))
-                        Column {
-                            Text(agent.n, color = Gr, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Box(Modifier.weight(1f)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                                .clickable { showProjectSelector = true }
+                                .semantics { contentDescription = "Выбрать проект: ${project.name}" },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                if (agent.on) "Online · ${agent.providerId.displayName} · ${messages.size} сообщ." else "Offline",
-                                color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace
+                                "▣ ${project.name}  ▾",
+                                color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1
+                            )
+                        }
+                        DropdownMenu(expanded = showProjectSelector, onDismissRequest = { showProjectSelector = false }) {
+                            projects.forEach { item ->
+                                DropdownMenuItem(
+                                    text = { Text(item.name, color = if (item.id == project.id) Gr else Color(0xFF202020)) },
+                                    trailingIcon = {
+                                        if (projects.size > 1) {
+                                            Text(
+                                                "✕", color = Red,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    .clickable {
+                                                        projectToDelete = item
+                                                        showDeleteProjectDialog = true
+                                                        showProjectSelector = false
+                                                    }
+                                                    .semantics {
+                                                        contentDescription = "Удалить проект: ${item.name}"
+                                                    }
+                                            )
+                                        }
+                                    },
+                                    onClick = { onProjectSelect(item); showProjectSelector = false },
+                                    modifier = Modifier
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("+ Новый проект", color = Gr, fontWeight = FontWeight.Bold) },
+                                onClick = { showProjectSelector = false; showAddProjectDialog = true }
                             )
                         }
                     }
-                    Text("⬆", fontSize = 14.sp, color = Gr, modifier = Modifier.clickable { scope.launch { listState.animateScrollToItem(0) } }.padding(end = 8.dp))
-                    Text("📌", fontSize = 14.sp, modifier = Modifier.clickable { showPinnedPanel = !showPinnedPanel }.padding(end = 8.dp))
-                    Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 8.dp))
-                    Text("↗", fontSize = 16.sp, color = Gr, modifier = Modifier.clickable { showTransferDialog = true }.padding(end = 8.dp))
-                    Text("🔇", fontSize = 14.sp, modifier = Modifier.clickable {
-                        TtsHelper.stop()
-                        speakingIndex = null
-                    }.padding(end = 8.dp))
-                    Text("📋", fontSize = 14.sp, modifier = Modifier.clickable {
-                        copyToClipboard(context, messages.joinToString("\n") { m -> val who = if (m.isUser) "Вы" else agent.n; "[${m.date} ${m.time}] $who: ${m.text}" })
-                    }.padding(end = 8.dp))
-                    Text("📤", fontSize = 14.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 8.dp))
-                    Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { showClearConfirm = true })
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.weight(1f)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                                .clickable { showAgentSelector = true }
+                                .semantics {
+                                    contentDescription = "Выбрать агента: ${agent.n}"
+                                },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(agent.emoji, fontSize = 14.sp)
+                            Spacer(Modifier.width(5.dp))
+                            Text(agent.n, color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, maxLines = 1)
+                            Text(" ▾", color = Gr, fontSize = 9.sp)
+                        }
+                        DropdownMenu(expanded = showAgentSelector, onDismissRequest = { showAgentSelector = false }) {
+                            agents.forEach { item ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(item.n, color = Color(0xFF202020))
+                                            Text(if (item.on) item.providerId.displayName else "Не настроен", color = Tx, fontSize = 10.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        onAgentSelect(item)
+                                        showAgentSelector = false
+                                        if (!item.on) {
+                                            ToastHelper.short(context, "Агент «${item.n}» выбран, но не настроен. Подключите его провайдера в настройках.")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        "ⓘ", color = Gr, fontSize = 16.sp,
+                        modifier = Modifier.clickable { showProfile = true }
+                            .semantics { contentDescription = "Открыть профиль агента" }
+                            .padding(start = 6.dp)
+                    )
                 }
             }
 
@@ -910,6 +1097,97 @@ fun ChatScreen(
                 if (isSearching && displayedMessages.isEmpty()) { item { Text("Ничего не найдено", color = Tx, modifier = Modifier.padding(12.dp), fontSize = 12.sp) } }
                 if (!isLoading && displayedMessages.isNotEmpty() && !displayedMessages.last().isUser && searchQuery.isBlank()) {
                     item { QuickActionsRow(onAction = { sendMessage(it) }) }
+                }
+            }
+
+            Row(
+                Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box {
+                    Text(
+                        "⋮",
+                        color = Gr, fontSize = 22.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                            .clickable { showChatActionsMenu = true }
+                            .semantics { contentDescription = "Открыть действия чата" }
+                    )
+                    DropdownMenu(expanded = showChatActionsMenu, onDismissRequest = { showChatActionsMenu = false }) {
+                        DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { showChatActionsMenu = false; isSearching = true })
+                        DropdownMenuItem(text = { Text("Закреплённые сообщения") }, onClick = { showChatActionsMenu = false; showPinnedPanel = !showPinnedPanel })
+                        DropdownMenuItem(text = { Text("Передать агенту") }, onClick = { showChatActionsMenu = false; showTransferDialog = true })
+                        DropdownMenuItem(text = { Text("Копировать переписку") }, onClick = {
+                            showChatActionsMenu = false
+                            copyToClipboard(context, messages.joinToString("\n") { m ->
+                                val who = if (m.isUser) "Вы" else agent.n
+                                "[${m.date} ${m.time}] $who: ${m.text}"
+                            })
+                        })
+                        DropdownMenuItem(text = { Text("Экспортировать чат") }, onClick = {
+                            showChatActionsMenu = false
+                            exportChatToFile(context, project.name, agent.n, messages)
+                        })
+                        DropdownMenuItem(text = { Text("Остановить озвучивание") }, onClick = {
+                            showChatActionsMenu = false
+                            TtsHelper.stop()
+                            speakingIndex = null
+                        })
+                        DropdownMenuItem(
+                            text = { Text("Очередь задач") },
+                            modifier = Modifier.semantics { contentDescription = "Открыть очередь задач" },
+                            onClick = {
+                                showChatActionsMenu = false
+                                onOpenTaskQueue()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Совет директоров") },
+                            modifier = Modifier.semantics { contentDescription = "Открыть совет директоров" },
+                            onClick = {
+                                showChatActionsMenu = false
+                                onOpenCouncil()
+                            }
+                        )
+                        DropdownMenuItem(text = { Text("Настройки") }, onClick = {
+                            showChatActionsMenu = false
+                            onOpenSettings()
+                        })
+                        DropdownMenuItem(text = { Text("Очистить чат", color = Red) }, onClick = {
+                            showChatActionsMenu = false
+                            showClearConfirm = true
+                        })
+                    }
+                }
+                Text("МОДУЛИ", color = Tx, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.weight(1f))
+                Box {
+                    Row(
+                        Modifier.clickable { showModulesSelector = true }.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Открыть модуль", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("  ▾", color = Gr, fontSize = 9.sp)
+                    }
+                    DropdownMenu(expanded = showModulesSelector, onDismissRequest = { showModulesSelector = false }) {
+                        modules.forEach { module ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(module.n, color = Color(0xFF202020), fontSize = 12.sp)
+                                        Text(module.d, color = Tx, fontSize = 10.sp)
+                                    }
+                                },
+                                onClick = {
+                                    showModulesSelector = false
+                                    if (module.on) onAgentSelect(module)
+                                    else {
+                                        ToastHelper.short(context, "Для модулей сначала подключите основной провайдер Глафиры.")
+                                        onOpenSettings()
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
