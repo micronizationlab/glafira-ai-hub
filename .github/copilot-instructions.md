@@ -105,3 +105,12 @@ When reviewing or reporting work, use:
 6. **Next action:** the smallest safe follow-up.
 
 Use Russian when communicating with Валерий unless he asks for another language. Keep technical identifiers and code in their original form.
+
+
+## Mandatory single-source execution control (owner decision, 2026-11-24)
+
+Before accepting or starting any task, every coordinator and helper MUST read `docs/GLAFIRA_EXECUTION_CONTROL.md`, `docs/GLAFIRA_EXECUTION_LEDGER.md`, and `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md`, then refresh live GitHub state. Reserve a unique Work Item ID, Program Step ID, one accountable executor, and exclusive file/behavior scope in the ledger before editing. Search main, open PRs, branches and helper work for equivalent behavior and overlapping files; reuse existing implementation or PR instead of duplicating it. Do not create a second branch/PR/build for the same logical change.
+
+Builds are serialized: identify a build by repository + commit SHA + workflow + lane + configuration. Reuse queued/running/completed evidence for the same identity. Do not launch parallel builds or rerun without a documented log-based reason. A new source SHA requires fresh exact-head validation. Read actual job logs; skipped/cancelled/queued/in-progress checks are not passes.
+
+A numbered Program 150 step becomes DONE only after its full acceptance criterion is implemented, required tests and exact-head checks pass, review/dependencies are resolved, it is merged by an authorized maintainer, post-merge checks pass for the resulting main SHA, and evidence is recorded. A PR, green partial CI or APK alone is not completion. No direct pushes to main, no blind merges, and no reopening frozen PR #410. Workstream 11 owns helper intake/deduplication before integration. These rules are mandatory and supersede any informal or older workflow wording.
