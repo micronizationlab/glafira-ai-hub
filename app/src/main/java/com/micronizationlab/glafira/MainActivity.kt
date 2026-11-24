@@ -630,6 +630,11 @@ fun ChatScreen(
     var expandedMessages by remember { mutableStateOf(setOf<Int>()) }
     var isListening by remember { mutableStateOf(false) }
     var speakingIndex by remember { mutableStateOf<Int?>(null) }
+    var showProjectSelector by remember { mutableStateOf(false) }
+    var showAgentSelector by remember { mutableStateOf(false) }
+    var showModulesSelector by remember { mutableStateOf(false) }
+    var showChatActionsMenu by remember { mutableStateOf(false) }
+    val modules = remember(context) { buildModuleCatalog(context) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -776,41 +781,64 @@ fun ChatScreen(
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (isSearching) {
                     TextField(
                         value = searchQuery, onValueChange = { searchQuery = it },
-                        placeholder = { Text("Поиск...", color = Tx, fontSize = 12.sp) },
+                        placeholder = { Text("Поиск по чату...", color = Tx, fontSize = 12.sp) },
                         modifier = Modifier.weight(1f),
                         colors = TextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White, focusedTextColor = Color(0xFF202020), unfocusedTextColor = Color(0xFF202020), focusedIndicatorColor = Gr)
                     )
                     Text("✕", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
                 } else {
-                    Text("←", color = Gr, fontSize = 18.sp, modifier = Modifier.clickable { onBack() }.padding(end = 10.dp))
-                    Row(Modifier.weight(1f).clickable { showProfile = true }, verticalAlignment = Alignment.CenterVertically) {
-                        Text(agent.emoji, fontSize = 16.sp)
-                        Spacer(Modifier.width(6.dp))
-                        Column {
-                            Text(agent.n, color = Gr, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                            Text(
-                                if (agent.on) "Online · ${agent.providerId.displayName} · ${messages.size} сообщ." else "Offline",
-                                color = Tx, fontSize = 8.sp, fontFamily = FontFamily.Monospace
-                            )
+                    Box(Modifier.weight(1f)) {
+                        Text(
+                            "▣ ${project.name}  ▾",
+                            color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.fillMaxWidth().clickable { showProjectSelector = true }.padding(vertical = 5.dp)
+                        )
+                        DropdownMenu(expanded = showProjectSelector, onDismissRequest = { showProjectSelector = false }) {
+                            projects.forEach { item ->
+                                DropdownMenuItem(
+                                    text = { Text(item.name, color = if (item.id == project.id) Gr else Color(0xFF202020)) },
+                                    onClick = { onProjectSelect(item); showProjectSelector = false }
+                                )
+                            }
                         }
                     }
-                    Text("⬆", fontSize = 14.sp, color = Gr, modifier = Modifier.clickable { scope.launch { listState.animateScrollToItem(0) } }.padding(end = 8.dp))
-                    Text("📌", fontSize = 14.sp, modifier = Modifier.clickable { showPinnedPanel = !showPinnedPanel }.padding(end = 8.dp))
-                    Text("🔍", fontSize = 14.sp, modifier = Modifier.clickable { isSearching = true }.padding(end = 8.dp))
-                    Text("↗", fontSize = 16.sp, color = Gr, modifier = Modifier.clickable { showTransferDialog = true }.padding(end = 8.dp))
-                    Text("🔇", fontSize = 14.sp, modifier = Modifier.clickable {
-                        TtsHelper.stop()
-                        speakingIndex = null
-                    }.padding(end = 8.dp))
-                    Text("📋", fontSize = 14.sp, modifier = Modifier.clickable {
-                        copyToClipboard(context, messages.joinToString("\n") { m -> val who = if (m.isUser) "Вы" else agent.n; "[${m.date} ${m.time}] $who: ${m.text}" })
-                    }.padding(end = 8.dp))
-                    Text("📤", fontSize = 14.sp, modifier = Modifier.clickable { exportChatToFile(context, project.name, agent.n, messages) }.padding(end = 8.dp))
-                    Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { showClearConfirm = true })
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.weight(1f)) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable { showAgentSelector = true }.padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(agent.emoji, fontSize = 14.sp)
+                            Spacer(Modifier.width(5.dp))
+                            Text(agent.n, color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, maxLines = 1)
+                            Text(" ▾", color = Gr, fontSize = 9.sp)
+                        }
+                        DropdownMenu(expanded = showAgentSelector, onDismissRequest = { showAgentSelector = false }) {
+                            agents.forEach { item ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(item.n, color = Color(0xFF202020))
+                                            Text(if (item.on) item.providerId.displayName else "Не настроен", color = Tx, fontSize = 10.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        onAgentSelect(item)
+                                        showAgentSelector = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Text("ⓘ", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { showProfile = true }.padding(start = 6.dp))
                 }
             }
 
@@ -943,6 +971,75 @@ fun ChatScreen(
                 if (isSearching && displayedMessages.isEmpty()) { item { Text("Ничего не найдено", color = Tx, modifier = Modifier.padding(12.dp), fontSize = 12.sp) } }
                 if (!isLoading && displayedMessages.isNotEmpty() && !displayedMessages.last().isUser && searchQuery.isBlank()) {
                     item { QuickActionsRow(onAction = { sendMessage(it) }) }
+                }
+            }
+
+            Row(
+                Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box {
+                    Text(
+                        "⋮",
+                        color = Gr, fontSize = 22.sp,
+                        modifier = Modifier.clickable { showChatActionsMenu = true }.padding(horizontal = 10.dp, vertical = 3.dp)
+                    )
+                    DropdownMenu(expanded = showChatActionsMenu, onDismissRequest = { showChatActionsMenu = false }) {
+                        DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { showChatActionsMenu = false; isSearching = true })
+                        DropdownMenuItem(text = { Text("Закреплённые сообщения") }, onClick = { showChatActionsMenu = false; showPinnedPanel = !showPinnedPanel })
+                        DropdownMenuItem(text = { Text("Передать агенту") }, onClick = { showChatActionsMenu = false; showTransferDialog = true })
+                        DropdownMenuItem(text = { Text("Копировать переписку") }, onClick = {
+                            showChatActionsMenu = false
+                            copyToClipboard(context, messages.joinToString("\n") { m ->
+                                val who = if (m.isUser) "Вы" else agent.n
+                                "[${m.date} ${m.time}] $who: ${m.text}"
+                            })
+                        })
+                        DropdownMenuItem(text = { Text("Экспортировать чат") }, onClick = {
+                            showChatActionsMenu = false
+                            exportChatToFile(context, project.name, agent.n, messages)
+                        })
+                        DropdownMenuItem(text = { Text("Остановить озвучивание") }, onClick = {
+                            showChatActionsMenu = false
+                            TtsHelper.stop()
+                            speakingIndex = null
+                        })
+                        DropdownMenuItem(text = { Text("Очистить чат", color = Red) }, onClick = {
+                            showChatActionsMenu = false
+                            showClearConfirm = true
+                        })
+                    }
+                }
+                Text("МОДУЛИ", color = Tx, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.weight(1f))
+                Box {
+                    Row(
+                        Modifier.clickable { showModulesSelector = true }.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Открыть модуль", color = Gr, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("  ▾", color = Gr, fontSize = 9.sp)
+                    }
+                    DropdownMenu(expanded = showModulesSelector, onDismissRequest = { showModulesSelector = false }) {
+                        modules.forEach { module ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(module.n, color = Color(0xFF202020), fontSize = 12.sp)
+                                        Text(module.d, color = Tx, fontSize = 10.sp)
+                                    }
+                                },
+                                onClick = {
+                                    showModulesSelector = false
+                                    if (module.on) onAgentSelect(module)
+                                    else {
+                                        ToastHelper.short(context, "Для модулей сначала подключите основной провайдер Глафиры.")
+                                        onOpenSettings()
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
