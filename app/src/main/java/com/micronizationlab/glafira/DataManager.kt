@@ -55,11 +55,27 @@ fun loadProjects(context: Context): List<Project> = GlafiraFileMaintenance.withE
         listOf(Project("recovered-${java.util.UUID.randomUUID()}", "Восстановленный проект"))
     }
     val stored = store.read { fallback }
-    val projects = stored.filterNot { it.id in deleted }.ifEmpty { fallback }
+    // If a built-in workspace was accidentally renamed to another built-in's name,
+    // restore its canonical label while retaining its stable ID and all chat files.
+    val normalizedStored = stored.map { project ->
+        val canonical = builtInProjects.firstOrNull { it.id == project.id }
+        val collidesWithAnotherBuiltIn = builtInProjects.any { candidate ->
+            candidate.id != project.id && candidate.name.equals(project.name, ignoreCase = true)
+        }
+        if (canonical != null && collidesWithAnotherBuiltIn) project.copy(name = canonical.name) else project
+    }
+    val projects = normalizedStored.filterNot { it.id in deleted }.ifEmpty { fallback }
     val missing = builtInProjects.filter { candidate -> candidate.id !in deleted && projects.none { it.id == candidate.id } }
-    if (missing.isNotEmpty() || projects != stored || !File(context.filesDir, "projects.json").exists()) {
+    if (normalizedStored != stored || missing.isNotEmpty() || projects != normalizedStored || !File(context.filesDir, "projects.json").exists()) {
         store.update({ fallback }) { current ->
-            val kept = current.filterNot { it.id in deleted }.ifEmpty { fallback }
+            val repaired = current.map { project ->
+                val canonical = builtInProjects.firstOrNull { it.id == project.id }
+                val collidesWithAnotherBuiltIn = builtInProjects.any { candidate ->
+                    candidate.id != project.id && candidate.name.equals(project.name, ignoreCase = true)
+                }
+                if (canonical != null && collidesWithAnotherBuiltIn) project.copy(name = canonical.name) else project
+            }
+            val kept = repaired.filterNot { it.id in deleted }.ifEmpty { fallback }
             kept + missing.filter { candidate -> kept.none { it.id == candidate.id } }
         }
     } else projects
@@ -79,7 +95,10 @@ fun createOrSelectProject(context: Context, name: String): Project {
     require(normalizedName.isNotBlank()) { "Укажите название проекта." }
     var selected: Project? = null
     updateProjects(context) { current ->
-        val existing = current.firstOrNull {
+        val existing = current.firstOrNull { project ->
+            project.id in builtInProjects.map { it.id } &&
+                project.name.trim().equals(normalizedName, ignoreCase = true)
+        } ?: current.firstOrNull {
             it.name.trim().equals(normalizedName, ignoreCase = true)
         }
         if (existing != null) {
