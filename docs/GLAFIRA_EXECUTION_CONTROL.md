@@ -98,7 +98,7 @@ Respect current owner priorities: P1 Core; P2 Backup & Recovery; P3 Bridge and W
 
 ## 9. Current baseline and reconciliation
 
-At creation of this control branch, `main` was `f2b5e4b087d4f2357e0354ec0cc56c228c0ed1ec`. The plan file still carried an older baseline SHA `b34c831c024b9db6157f3dea7fdfa9d9b650d337`; therefore the first task is a live reconciliation audit. The plan contains 200 numbered entries: original steps 1–150 and extension items 151–200. The prior literal checkbox count was 27/200, with 27 checked in the first 150, but that count must be revalidated against current main before it is used as a progress claim.
+Historical governance baseline was `f2b5e4b087d4f2357e0354ec0cc56c228c0ed1ec`. The latest verified main after PR #549 is `148b427bab6e98cb59d68327f4c220d29bbd12c7` (2026-11-24; compare to `main` returned identical). The plan contains 200 numbered entries: original steps 1–150 and extension items 151–200. Literal checkbox count remains 27 checked in 1–150 and 0 checked in 151–200. These are legacy marks, not a verified completion count; each checked criterion must be re-evidenced against current main, tests, merged PR/commit, exact required CI and owner/physical acceptance. The current authoritative PR/CI/work-item snapshot is in `docs/GLAFIRA_EXECUTION_LEDGER.md`; historical snapshots must not be used as current state.
 
 PR #410 is closed without merge and frozen as source-only. Do not reopen, push to it, or merge its aggregate branch. Any useful missing change must be uniquely mapped to a numbered step and extracted as a small PR.
 
