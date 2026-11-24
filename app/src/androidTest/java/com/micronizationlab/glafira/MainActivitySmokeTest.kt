@@ -93,9 +93,13 @@ class MainActivitySmokeTest {
         device.pressBack()
 
         device.findObject(By.desc("Выбрать агента: ГЛАФИРА")).click()
-        assertTrue("Agent picker did not expose the Analyst agent",
-            device.wait(Until.hasObject(By.text("АНАЛИТИК")), 5_000))
-        device.pressBack()
+        val analyst = device.wait(Until.findObject(By.text("АНАЛИТИК")), 5_000)
+        assertNotNull("Agent picker did not expose the Analyst agent", analyst)
+        requireNotNull(analyst).click()
+        assertTrue("An unconfigured agent must still be selectable",
+            device.wait(Until.hasObject(By.desc("Выбрать агента: АНАЛИТИК")), 5_000))
+        device.findObject(By.desc("Выбрать агента: АНАЛИТИК")).click()
+        device.findObject(By.text("ГЛАФИРА")).click()
 
         device.findObject(By.text("Открыть модуль")).click()
         assertTrue("Module picker did not expose the planning module",
