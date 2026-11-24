@@ -72,10 +72,10 @@ class MainActivitySmokeTest {
 
         device.findObject(By.descContains("Выбрать проект: Личное")).click()
         assertTrue("Built-in VodorodAktiv project is missing from the picker",
-            device.wait(Until.hasObject(By.text("ВодородАктив")), 5_000))
-        device.findObject(By.text("ВодородАктив")).click()
+            device.wait(Until.hasObject(By.desc("Проект ВодородАктив")), 5_000))
+        device.findObject(By.desc("Проект ВодородАктив")).click()
         assertTrue("Project selector did not switch to VodorodAktiv",
-            device.wait(Until.hasObject(By.textContains("ВодородАктив")), 5_000))
+            device.wait(Until.hasObject(By.desc("Выбрать проект: ВодородАктив")), 5_000))
 
         device.findObject(By.desc("Выбрать проект: ВодородАктив")).click()
         device.findObject(By.desc("Удалить проект: ВодородАктив")).click()
