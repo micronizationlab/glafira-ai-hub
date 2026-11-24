@@ -77,6 +77,12 @@ class MainActivitySmokeTest {
         assertTrue("Project selector did not switch to VodorodAktiv",
             device.wait(Until.hasObject(By.textContains("ВодородАктив")), 5_000))
 
+        device.findObject(By.desc("Выбрать проект: ВодородАктив")).click()
+        device.findObject(By.desc("Удалить проект: ВодородАктив")).click()
+        assertTrue("Project delete icon did not open the correct confirmation",
+            device.wait(Until.hasObject(By.textContains("ВодородАктив")), 5_000))
+        device.findObject(By.text("Отмена")).click()
+
         device.findObject(By.desc("Выбрать агента: ГЛАФИРА")).click()
         assertTrue("Agent picker did not expose the Analyst agent",
             device.wait(Until.hasObject(By.text("АНАЛИТИК")), 5_000))
