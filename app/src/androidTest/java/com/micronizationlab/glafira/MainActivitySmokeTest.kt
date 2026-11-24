@@ -40,7 +40,7 @@ class MainActivitySmokeTest {
         context.startActivity(intent)
         return UiDevice.getInstance(instrumentation).also {
             assertTrue("GLAFIRA chat workspace did not open",
-                it.wait(Until.hasObject(By.textContains("ГЛАФИРА")), 20_000))
+                it.wait(Until.hasObject(By.descContains("Выбрать агента: ГЛАФИРА")), 20_000))
         }
     }
 
