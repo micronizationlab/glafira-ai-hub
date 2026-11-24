@@ -72,8 +72,8 @@ class MainActivitySmokeTest {
 
         device.findObject(By.descContains("Выбрать проект: Личное")).click()
         assertTrue("Built-in VodorodAktiv project is missing from the picker",
-            device.wait(Until.hasObject(By.desc("Проект ВодородАктив")), 5_000))
-        device.findObject(By.desc("Проект ВодородАктив")).click()
+            device.wait(Until.hasObject(By.text("ВодородАктив")), 5_000))
+        device.findObject(By.text("ВодородАктив")).click()
         assertTrue("Project selector did not switch to VodorodAktiv",
             device.wait(Until.hasObject(By.desc("Выбрать проект: ВодородАктив")), 5_000))
 
@@ -109,7 +109,10 @@ class MainActivitySmokeTest {
     @Test
     fun taskQueueEntryOpensAndShowsAddTaskDialog() {
         val device = launch()
-        device.findObject(By.descContains("Открыть очередь задач")).click()
+        device.findObject(By.descContains("Открыть действия чата")).click()
+        val queueAction = device.wait(Until.findObject(By.desc("Открыть очередь задач")), 5_000)
+        assertNotNull("Task queue action is missing from the chat menu", queueAction)
+        requireNotNull(queueAction).click()
         assertTrue("Task queue screen did not open",
             device.wait(Until.hasObject(By.text("ОЧЕРЕДЬ ЗАДАЧ")), 10_000))
         device.findObject(By.text("＋ ЗАДАЧА")).click()
@@ -120,9 +123,12 @@ class MainActivitySmokeTest {
     @Test
     fun councilEntryOpensAndItsActionButtonIsEnabled() {
         val device = launch()
-        device.findObject(By.descContains("Открыть совет директоров")).click()
+        device.findObject(By.descContains("Открыть действия чата")).click()
+        val councilAction = device.wait(Until.findObject(By.desc("Открыть совет директоров")), 5_000)
+        assertNotNull("Council action is missing from the chat menu", councilAction)
+        requireNotNull(councilAction).click()
         assertTrue("Council screen did not open",
-            device.wait(Until.hasObject(By.text("СОБРАТЬ СОВЕТ")), 10_000))
+            device.wait(Until.hasObject(By.text("СОВЕТ ДИРЕКТОРОВ")), 10_000))
         val button = device.findObject(By.text("СОБРАТЬ СОВЕТ"))
         assertNotNull(button)
         assertTrue("Council action button is disabled", button.isEnabled)
