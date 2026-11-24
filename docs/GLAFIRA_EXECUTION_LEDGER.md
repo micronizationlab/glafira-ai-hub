@@ -182,3 +182,13 @@ This audit maps existing marks to surviving Main evidence. It does not add check
 - Local encrypted Core result + terminal state + Trace are already committed atomically. The missing #266 capability is a recipient-bound delivery envelope, persisted backoff and exact receiver-commit ACK; Agent/Hub outboxes are not substitutes.
 - The CI iOS cancellation has no runner assignment and no step logs. It is classified as infrastructure/runner scheduling, not an iOS code failure and not a pass. Rerun attempt 2 is in progress/queued; do not start a duplicate.
 - PR #553 itself: head `c81a7b1ba970c9fa6d7ad10bdcc72e99a4d69cdd`; exact-head docs-only CI run #45421984763 and Dispatcher #45421984591 succeeded. PR remains unmerged and has no approving review. This append creates a new PR head requiring its own exact-head validation.
+
+### Work reservation — GLAFIRA-S148-W01 (Backup / clean-install identity restore)
+- Program step: 148 — clean-device Backup & Recovery drill (testable automation slice; physical owner acceptance remains separate).
+- Owner/executor: GLAFIRA coordinator.
+- Scope: one Android instrumentation regression in `GlafiraCoreBackupCoordinatorInstrumentedTest.kt` proving a portable restore does not import `noBackupFilesDir` Core identity metadata or Android Keystore private key; after simulated identity loss, a fresh Core ID/key epoch is created.
+- Dependencies: existing `GlafiraCoreBackupCoordinator`, `AndroidCoreInstallationIdentityStore`, and encrypted portable snapshot; no production backup schema change.
+- Intended PR: new focused test-only PR; do not overlap #550 or #558.
+- Acceptance: exact-head Android JVM, managed-emulator test, APK and shared contract lanes; verify fresh Core ID/public key differs after restore; cleanup test-only Keystore alias and temporary metadata.
+- Physical acceptance still required: restore a real archive onto a clean/replacement Android device, re-pair it, verify cloud provider round-trip and permission expiry. This test cannot claim physical restore completion.
+- Status: RESERVED / NOT STARTED. No step checkbox changed.
