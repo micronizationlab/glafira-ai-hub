@@ -23,16 +23,6 @@ internal class GlafiraAiLocalTaskPort(
             GlafiraTaskExecutor.RESEARCHER ->
                 "Ты — исследователь GLAFIRA. Не выдумывай источники и явно отмечай отсутствие веб-поиска."
         }
-        if (!isProviderConfigured(appContext, providerId)) {
-            return GlafiraDistributedTaskResult(
-                taskId = task.taskId,
-                node = GlafiraExecutionNode.ANDROID,
-                succeeded = false,
-                errorCode = "LOCAL_AI_PROVIDER_REQUEST_FAILED",
-                providerOutcome = AiRequestOutcome.NOT_SENT,
-                providerErrorCategory = AiProviderErrorCategory.NOT_CONFIGURED
-            )
-        }
         return callAiProviderResult(
             context = appContext,
             providerId = providerId,
