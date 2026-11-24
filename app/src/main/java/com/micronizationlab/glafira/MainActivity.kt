@@ -886,6 +886,10 @@ fun ChatScreen(
                                 .clickable { showProjectSelector = true }
                                 .semantics(mergeDescendants = true) {
                                     contentDescription = "Выбрать проект: ${project.name}"
+                                    onClick(label = "Выбрать проект") {
+                                        showProjectSelector = true
+                                        true
+                                    }
                                 },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
