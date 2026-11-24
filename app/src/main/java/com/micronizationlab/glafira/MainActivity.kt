@@ -898,11 +898,15 @@ fun ChatScreen(
                                         if (projects.size > 1) {
                                             Text(
                                                 "✕", color = Red,
-                                                modifier = Modifier.clickable {
-                                                    projectToDelete = item
-                                                    showDeleteProjectDialog = true
-                                                    showProjectSelector = false
-                                                }.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).semantics {
+                                                    contentDescription = "Удалить проект: ${item.name}"
+                                                    onClick(label = "Удалить проект") {
+                                                        projectToDelete = item
+                                                        showDeleteProjectDialog = true
+                                                        showProjectSelector = false
+                                                        true
+                                                    }
+                                                }
                                             )
                                         }
                                     },
