@@ -77,6 +77,11 @@ class MainActivitySmokeTest {
         assertTrue("Project selector did not switch to VodorodAktiv",
             device.wait(Until.hasObject(By.textContains("ВодородАктив")), 5_000))
 
+        device.findObject(By.desc("Выбрать агента: ГЛАФИРА")).click()
+        assertTrue("Agent picker did not expose the Analyst agent",
+            device.wait(Until.hasObject(By.text("АНАЛИТИК")), 5_000))
+        device.pressBack()
+
         device.findObject(By.text("Открыть модуль")).click()
         assertTrue("Module picker did not expose the planning module",
             device.wait(Until.hasObject(By.text("МОДУЛЬ · ПЛАНИРОВАНИЕ")), 5_000))
