@@ -957,20 +957,11 @@ fun ChatScreen(
                             }
                         }
                     }
-                    Text("ⓘ", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { showProfile = true }.padding(start = 6.dp))
                     Text(
-                        "☷", color = Gr, fontSize = 16.sp,
-                        modifier = Modifier.size(26.dp)
-                            .clickable { onOpenTaskQueue() }
-                            .semantics { contentDescription = "Открыть очередь задач" },
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    Text(
-                        "🏛", fontSize = 12.sp,
-                        modifier = Modifier.size(26.dp)
-                            .clickable { onOpenCouncil() }
-                            .semantics { contentDescription = "Открыть совет директоров" },
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        "ⓘ", color = Gr, fontSize = 16.sp,
+                        modifier = Modifier.clickable { showProfile = true }
+                            .semantics { contentDescription = "Открыть профиль агента" }
+                            .padding(start = 6.dp)
                     )
                 }
             }
@@ -1139,14 +1130,22 @@ fun ChatScreen(
                             TtsHelper.stop()
                             speakingIndex = null
                         })
-                        DropdownMenuItem(text = { Text("Очередь задач") }, onClick = {
-                            showChatActionsMenu = false
-                            onOpenTaskQueue()
-                        })
-                        DropdownMenuItem(text = { Text("Совет директоров") }, onClick = {
-                            showChatActionsMenu = false
-                            onOpenCouncil()
-                        })
+                        DropdownMenuItem(
+                            text = { Text("Очередь задач") },
+                            modifier = Modifier.semantics { contentDescription = "Открыть очередь задач" },
+                            onClick = {
+                                showChatActionsMenu = false
+                                onOpenTaskQueue()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Совет директоров") },
+                            modifier = Modifier.semantics { contentDescription = "Открыть совет директоров" },
+                            onClick = {
+                                showChatActionsMenu = false
+                                onOpenCouncil()
+                            }
+                        )
                         DropdownMenuItem(text = { Text("Настройки") }, onClick = {
                             showChatActionsMenu = false
                             onOpenSettings()
