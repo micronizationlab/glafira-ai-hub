@@ -70,6 +70,30 @@ jobs:
           done < <(jq -c '.[]' <<< "$prs")
           SCRIPT
 
+          cat > "$RUNNER_TEMP/fetch-open-prs.sh" <<'FETCH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          repo="$1"
+          if prs="$(gh pr list --repo "$repo" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup 2>/dev/null)"; then
+            jq -e 'type == "array"' >/dev/null <<< "$prs"
+            printf '%s\\n' "$prs"
+            exit 0
+          fi
+          # GraphQL can fail independently of REST. Recover the PR inventory with REST,
+          # then let the exact-head Actions fallback render checks; never turn API failure into pass.
+          rest_prs="$(gh api "repos/$repo/pulls?state=open&per_page=100")"
+          jq -e 'type == "array"' >/dev/null <<< "$rest_prs"
+          jq '[.[] | {
+            number: .number,
+            title: .title,
+            headRefName: .head.ref,
+            headRefOid: .head.sha,
+            isDraft: .draft,
+            url: .html_url,
+            statusCheckRollup: []
+          }]' <<< "$rest_prs"
+          FETCH
+
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -112,6 +136,39 @@ jobs:
           grep -q 'Desktop CI: IN_PROGRESS' <<< "$output"
           grep -q 'Windows CI: COMPLETED/cancelled' <<< "$output"
           grep -q 'Agent CI: COMPLETED/failure' <<< "$output"
+
+          # Simulate GraphQL failure and confirm the PR inventory falls back to REST.
+          mkdir -p "$tmp/fake-bin"
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "pr" ]]; then
+            echo "GraphQL unavailable" >&2
+            exit 1
+          fi
+          if [[ "$1" == "api" ]]; then
+            cat <<'JSON'
+          [{"number":561,"title":"REST fallback","draft":true,"html_url":"https://example.test/pr/561","head":{"ref":"rest/fallback","sha":"sha-rest"}}]
+          JSON
+            exit 0
+          fi
+          exit 2
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          rest_output="$(PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/fetch-open-prs.sh" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 1 and .[0].headRefOid == "sha-rest" and .[0].statusCheckRollup == []' <<< "$rest_output" >/dev/null
+
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          echo "all PR inventory APIs unavailable" >&2
+          exit 1
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          if PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/fetch-open-prs.sh" micronizationlab/glafira-ai-hub >/dev/null 2>&1; then
+            echo "expected PR inventory fallback to fail closed" >&2
+            exit 1
+          fi
+
           unknown_output="$(bash "$renderer" "$tmp/prs.json" <(printf 'null'))"
           grep -q 'UNKNOWN / ACTIONS API UNAVAILABLE' <<< "$unknown_output"
           empty_output="$(bash "$renderer" <(printf '[]') "$tmp/runs.json")"
@@ -127,7 +184,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup)"
+          if ! prs="$(bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO")"; then
+            {
+              echo "# GLAFIRA Project Dispatcher"
+              echo ""
+              echo "ERROR: GraphQL and REST open-PR inventory are unavailable; no status is reported as passing."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
           # One batched Actions API query is the fallback when GraphQL statusCheckRollup is empty.
           # A failed/rate-limited query is represented as null and rendered UNKNOWN, never as success.
