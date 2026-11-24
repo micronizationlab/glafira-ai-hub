@@ -892,23 +892,23 @@ fun ChatScreen(
                         )
                         DropdownMenu(expanded = showProjectSelector, onDismissRequest = { showProjectSelector = false }) {
                             projects.forEach { item ->
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    DropdownMenuItem(
-                                        text = { Text(item.name, color = if (item.id == project.id) Gr else Color(0xFF202020)) },
-                                        onClick = { onProjectSelect(item); showProjectSelector = false },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    if (projects.size > 1) {
-                                        Text(
-                                            "✕", color = Red,
-                                            modifier = Modifier.clickable {
-                                                projectToDelete = item
-                                                showDeleteProjectDialog = true
-                                                showProjectSelector = false
-                                            }.padding(horizontal = 12.dp, vertical = 8.dp)
-                                        )
-                                    }
-                                }
+                                DropdownMenuItem(
+                                    text = { Text(item.name, color = if (item.id == project.id) Gr else Color(0xFF202020)) },
+                                    trailingIcon = {
+                                        if (projects.size > 1) {
+                                            Text(
+                                                "✕", color = Red,
+                                                modifier = Modifier.clickable {
+                                                    projectToDelete = item
+                                                    showDeleteProjectDialog = true
+                                                    showProjectSelector = false
+                                                }.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    },
+                                    onClick = { onProjectSelect(item); showProjectSelector = false },
+                                    modifier = Modifier.semantics { contentDescription = "Проект ${item.name}" }
+                                )
                             }
                             DropdownMenuItem(
                                 text = { Text("+ Новый проект", color = Gr, fontWeight = FontWeight.Bold) },
@@ -950,18 +950,20 @@ fun ChatScreen(
                         }
                     }
                     Text("ⓘ", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { showProfile = true }.padding(start = 6.dp))
-                    Box(
-                        Modifier.size(26.dp)
-                            .semantics { contentDescription = "Открыть очередь задач" }
-                            .clickable { onOpenTaskQueue() },
-                        contentAlignment = Alignment.Center
-                    ) { Text("☷", color = Gr, fontSize = 16.sp) }
-                    Box(
-                        Modifier.size(26.dp)
-                            .semantics { contentDescription = "Открыть совет директоров" }
-                            .clickable { onOpenCouncil() },
-                        contentAlignment = Alignment.Center
-                    ) { Text("🏛", fontSize = 12.sp) }
+                    Text(
+                        "☷", color = Gr, fontSize = 16.sp,
+                        modifier = Modifier.size(26.dp)
+                            .clickable { onOpenTaskQueue() }
+                            .semantics(mergeDescendants = true) { contentDescription = "Открыть очередь задач" },
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Text(
+                        "🏛", fontSize = 12.sp,
+                        modifier = Modifier.size(26.dp)
+                            .clickable { onOpenCouncil() }
+                            .semantics(mergeDescendants = true) { contentDescription = "Открыть совет директоров" },
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                 }
             }
 
