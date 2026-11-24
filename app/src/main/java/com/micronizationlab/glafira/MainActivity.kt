@@ -919,7 +919,10 @@ fun ChatScreen(
                     Spacer(Modifier.width(8.dp))
                     Box(Modifier.weight(1f)) {
                         Row(
-                            Modifier.fillMaxWidth().clickable { showAgentSelector = true }.padding(vertical = 5.dp),
+                            Modifier.fillMaxWidth().padding(vertical = 5.dp).semantics {
+                                contentDescription = "Выбрать агента: ${agent.n}"
+                                onClick(label = "Выбрать агента") { showAgentSelector = true; true }
+                            },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(agent.emoji, fontSize = 14.sp)
