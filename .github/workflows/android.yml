@@ -267,7 +267,8 @@ jobs:
     steps:
       - name: Publish exact SHA and honest component status
         env:
-          SHA: ${{ github.sha }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
           CHANGES: ${{ needs.changes.result }}
           WORKFLOW_LINT: ${{ needs.workflow-lint.result }}
           ANDROID: ${{ needs.android-tests.result }}
@@ -278,6 +279,10 @@ jobs:
           DESKTOP_HUB: ${{ needs.windows-desktop-tests.result }}
           CONTRACTS: ${{ needs.contract-conformance.result }}
         run: |
+          if [[ -n "$PR_HEAD_SHA" && "$SHA" != "$PR_HEAD_SHA" ]]; then
+            echo "CI summary SHA does not match the pull request head: $SHA != $PR_HEAD_SHA" >&2
+            exit 1
+          fi
           {
             echo "## GLAFIRA CI — exact-head report"
             echo
