@@ -119,13 +119,13 @@ jobs:
         run: |
           set -euo pipefail
           prs="$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup)"
-          printf '%s\\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
+          printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
           # One batched Actions API query is the fallback when GraphQL statusCheckRollup is empty.
           # A failed/rate-limited query is represented as null and rendered UNKNOWN, never as success.
           if runs="$(gh run list --repo "$GH_REPO" --limit 1000 --json headSha,name,workflowName,status,conclusion,url,createdAt 2>/dev/null)"; then
-            printf '%s\\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
+            printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           else
-            printf 'null\\n' > "$RUNNER_TEMP/glafira-workflow-runs.json"
+            printf 'null\n' > "$RUNNER_TEMP/glafira-workflow-runs.json"
           fi
           count="$(jq 'length' <<< "$prs")"
           if [[ "$count" -eq 0 ]]; then
