@@ -96,3 +96,63 @@ class AiProviderOutcomeTest {
         assertEquals("answer", (classifyLegacyProviderResponse("answer") as AiProviderResult.Success).text)
     }
 }
+
+    @Test fun distributedTaskAdapterPreservesProviderOutcomeAndRetryAfterWithoutReplaying() {
+        val unknown = AiProviderResult.Failure(AiProviderError(
+            category = AiProviderErrorCategory.TIMEOUT,
+            message = "provider timed out after dispatch",
+            outcome = AiRequestOutcome.UNKNOWN,
+            retryAfterMillis = 30_000L
+        )).toDistributedTaskResult("task-unknown")
+
+        assertFalse(unknown.succeeded)
+        assertEquals("LOCAL_AI_PROVIDER_REQUEST_FAILED", unknown.errorCode)
+        assertEquals(AiRequestOutcome.UNKNOWN, unknown.providerOutcome)
+        assertEquals(AiProviderErrorCategory.TIMEOUT, unknown.providerErrorCategory)
+        assertEquals(30_000L, unknown.providerRetryAfterMillis)
+        assertNull(unknown.output)
+    }
+
+    @Test fun distributedTaskAdapterPreservesDefinitelyNotSentAndRejectedOutcomes() {
+        val notSent = AiProviderResult.Failure(AiProviderError(
+            category = AiProviderErrorCategory.NOT_CONFIGURED,
+            message = "missing key",
+            outcome = AiRequestOutcome.NOT_SENT
+        )).toDistributedTaskResult("task-not-sent")
+        val rejected = AiProviderResult.Failure(AiProviderError(
+            category = AiProviderErrorCategory.RATE_LIMIT,
+            message = "quota",
+            outcome = AiRequestOutcome.REJECTED,
+            httpStatus = 429,
+            retryAfterMillis = 60_000L
+        )).toDistributedTaskResult("task-rejected")
+
+        assertEquals(AiRequestOutcome.NOT_SENT, notSent.providerOutcome)
+        assertEquals(AiProviderErrorCategory.NOT_CONFIGURED, notSent.providerErrorCategory)
+        assertEquals(AiRequestOutcome.REJECTED, rejected.providerOutcome)
+        assertEquals(AiProviderErrorCategory.RATE_LIMIT, rejected.providerErrorCategory)
+        assertEquals(60_000L, rejected.providerRetryAfterMillis)
+    }
+
+    @Test fun plannerAdapterPropagatesUnknownOutcomeInsteadOfFlatteningToString() {
+        val error = AiProviderError(
+            category = AiProviderErrorCategory.NETWORK,
+            message = "connection reset after dispatch",
+            outcome = AiRequestOutcome.UNKNOWN
+        )
+        val failure = runCatching {
+            AiProviderResult.Failure(error).requirePlanText()
+        }.exceptionOrNull()
+
+        assertTrue(failure is AiProviderTaskPlanException)
+        assertEquals(error, (failure as AiProviderTaskPlanException).providerError)
+        assertEquals(AiRequestOutcome.UNKNOWN, failure.providerError.outcome)
+    }
+
+    @Test fun plannerAdapterAcceptsOnlyNonBlankTypedSuccess() {
+        assertEquals("validated plan json", AiProviderResult.Success("validated plan json").requirePlanText())
+        assertEquals(
+            "TASK_PLANNER_PROVIDER_EMPTY_RESPONSE",
+            runCatching { AiProviderResult.Success(" ").requirePlanText() }.exceptionOrNull()?.message
+        )
+    }
