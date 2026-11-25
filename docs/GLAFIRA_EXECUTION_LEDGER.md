@@ -636,3 +636,12 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - Transfer preserves branch/PR history and exact WBS/dependency/file ownership; no overlapping edits, no skipped acceptance gates, and no automatic merge.
 - The rule distinguishes non-response from genuine owner-only, permission, dependency or infrastructure blockers. Design fallback remains separate and never substitutes for implementation acceptance.
 - This is the initial owner-directed handoff checkpoint. Follow-up work begins with #703 and then the remaining P1/P2 blockers.
+
+### 2026-11-25 — GLAFIRA-GOV-BATCH-W01 (owner-approved 11-lane batch cadence)
+- Reservation: WBS `1.11.1.1.1` — document and enforce dependency-aware sequential batch cycles across the eleven workstreams; Work Item `GLAFIRA-GOV-BATCH-W01`; executor GLAFIRA; branch `${branch}`; base Main `${mainSha}`.
+- Owner approved a multi-step package cadence for all eleven permanent lanes. Planning target: 3–5 genuine executable leaf steps per lane when the live backlog/dependencies permit; never invent work, duplicate an item, or bypass predecessors to meet a count.
+- Preserve one active bounded work item per helper. The coordinator pre-plans the package and assigns the next leaf immediately after verified completion/release; helpers do not self-select or switch lanes.
+- Independent tasks may run concurrently only with separate WBS IDs and exclusive file/behavior ownership. Build/release lanes remain serialized. Workstream 11 continuously handles intake, deduplication, review and safe integration.
+- Blocked lane first consumes eligible equal/higher-priority ready implementation, validation, intake, review, merge or post-merge work; only then receives a distinct GLAFIRA DESIGN item from #672. Return to the main package when unblocked. Design never substitutes for required acceptance.
+- Architecture direction is an enhancement to the existing Core Development Orchestrator (#446): reuse durable Core queue, owner generation/fencing, grants, Trace, ACK and recovery; do not add a competing queue or use GitHub as runtime coordination.
+- This reservation covers governance/instruction alignment only. No application source, scheduler implementation, provider dispatch, build or merge is claimed by this entry.
