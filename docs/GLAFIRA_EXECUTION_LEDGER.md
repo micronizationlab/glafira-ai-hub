@@ -562,3 +562,16 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Manual acceptance evidence:** (1) review semantic-token mapping for Android/iOS/Windows Desktop/Agent; (2) record light/dark text contrast and ≥3:1 non-text boundary calculations; (3) verify active/offline/waiting/quota/error and recoveryRequired state mappings; (4) record visible text/icon plus accessible label for each critical state; (5) distinguish Needs owner approval from Reconciliation required and prohibit generic retry for unknown outcomes; (6) verify Android 48dp, iOS 44pt and Windows 40px touch targets, keyboard focus, screen-reader labels and reduced motion; (7) capture owner approve/request-changes decision. Record a checklist/table in the PR; CI is separate and cannot prove visual acceptance.
 - **Changed-file inventory for PR #681:** `docs/design/DESIGN_TOKENS.md`; `docs/GLAFIRA_EXECUTION_LEDGER.md`.
 - **Status:** IN_REVIEW on design PR #681, current design-file head `5523dceb4a371521b219f7e2765afa71785a1a8c`; exact-head docs CI, Security Scan and Dispatcher are pending/being rechecked. This design deliverable does not complete any implementation or platform acceptance step.
+
+
+## WBS reservation — cross-platform design implementation handoff — 2026-11-25
+
+- **Work Item / WBS / parent / tracker:** `GLAFIRA-DESIGN-HANDOFF-W01` / `1.11.1.1.5` / parent `1.11.1.1 — Shared design foundation` / issue #686 / umbrella #672.
+- **Executor / reviewer:** GLAFIRA coordinator; owner review by Валерий Корчагин; platform contributors consume the approved handoff after exact-head validation.
+- **Reservation branch / base:** `wbs/design-handoff-20261125`, Main `007575058fc4f8b458785e99c1a228973e2e3d17`. This reservation commit is created before the replacement implementation branch and edits.
+- **Exclusive paths:** `docs/design/PLATFORM_IMPLEMENTATION_HANDOFF.md`, `docs/design/ICON_ASSET_SPEC.md` only. Shared token baseline remains owned by WBS `1.11.1.1.1`; Android/iOS/Windows token adapters remain separate platform slices.
+- **Predecessors:** merged shared-token foundation PR #681; related designer asset handoff is tracked separately by issue #686 and PR #689. No duplicate ownership of their paths.
+- **Objective:** document verified Android Compose, iOS SwiftUI and Windows WPF implementation locations, safe migration sequence, accessibility acceptance, native icon delivery paths, and recovery/reconciliation semantics.
+- **Guardrails:** documentation only; no runtime, Core, Backup, Bridge, permission, cryptography, schema or task-state changes. Windows Agent remains a worker service; no separate UI is invented. SVG masters are converted to native platform resources without adding an unapproved renderer dependency.
+- **Acceptance:** source paths verified; native delivery outputs specified; light/dark contrast and component-level checks required; owner approval/reconciliation states remain distinct; no generic retry for unknown outcomes; exact-head CI, independent review and owner-controlled merge.
+- **Status:** RESERVED. No implementation completion or Program 150 step completion is claimed.
