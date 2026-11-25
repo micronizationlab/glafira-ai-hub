@@ -640,7 +640,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         dependencyTaskIds: Set<String>,
         nowMillis: Long = System.currentTimeMillis()
     ): Boolean {
-        require(taskId.isNotBlank() && projectId.isNotBlank() && nowMillis > 0L)
+        require(taskId.isNotBlank() && nowMillis > 0L)
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -1178,7 +1178,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
      */
     @Synchronized
     internal fun cancelUnclaimedTask(taskId: String, projectId: String, nowMillis: Long): Boolean {
-        require(taskId.isNotBlank() && nowMillis > 0L)
+        require(taskId.isNotBlank() && projectId.isNotBlank() && nowMillis > 0L)
         val db = writableDatabase
         db.beginTransaction()
         try {
