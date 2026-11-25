@@ -128,7 +128,6 @@ Owner-approved scope is tracked in [Plugin Ecosystem Issue #101](https://github.
 4. Hold out test data and compare against a fixed baseline.
 5. Require owner approval before deployment. No automatic training on raw chat history.
 
-
 ## Priority 11 — GLAFIRA Self-Monitor and Safe Self-Improvement
 
 1. Add GLAFIRA SELF-MONITOR: health checks for Core, queue, runtime, backups, Bridge, providers, agents and integrations.
@@ -165,6 +164,8 @@ These are roadmap capabilities, not a claim that they are already implemented. E
 
 ## Owner-requested specialist agent — Кадровик (GLAFIRA HR Intelligence)
 
+**Queue assignment: Queue 4 — deferred specialist project.** This is a separate owner-prioritized execution queue, not a change to the global P0–P5 dependency order. Documentation and specification refinement are allowed now; implementation, real HR data ingestion, connector activation and OSINT tool installation remain blocked until the owner explicitly starts Queue 4 after the higher-priority Core, Bridge/Windows Desktop and Backup & Recovery work.
+
 Add a dedicated `hr-intelligence` role to the in-app agent catalog. Its purpose is to maintain source-grounded personal and business contact cards, relationship context, interaction timelines, commitments and owner-only summaries.
 
 The versioned role and training contract is [HR Intelligence Agent — Role, Training and Acceptance Contract](HR_INTELLIGENCE_AGENT_TRAINING.md). It defines:
@@ -174,8 +175,12 @@ The versioned role and training contract is [HR Intelligence Agent — Role, Tra
 - The owner's requested all-agent memory review gate: every eligible enabled agent is consulted; unavailable or unauthorized agents are marked NOT_REVIEWED; policy checks and owner approval apply before promotion.
 - A staged training curriculum, synthetic/approved examples, role-specific evaluation suite and versioned promotion/rollback.
 - In-app catalog status for enablement, source permissions, schedule, last refresh, pending reviews and training version.
+- The additional sensitive HR/recruitment requirements: fact/inference separation, field-level PolicyEngine authorization, project/vacancy isolation, evidence-cited RAG, controlled resume import, interaction timeline, commitment proposals, encrypted artifact storage, audited access, deletion/retention lifecycle and explicit human approval for consequential actions.
+- Advanced candidate-to-vacancy comparison is restricted to explainable job-related criteria and human review; automated hiring decisions, opaque suitability scores and worker mood/burnout profiling are excluded or disabled.
+- PostgreSQL/pgvector are optional evaluation choices, not new mandatory infrastructure; graph storage is deferred until justified. Token-based licensing and marketplace ideas are future-only and require separate approval.
+- Jurisdiction-specific legal review (including 152-FZ and GDPR where applicable) is a precondition to real-data processing; this specification is not legal advice or a substitute for a lawful basis.
 
-Implementation is not complete merely because this roadmap and training contract exist. Follow the contract's implementation sequence and acceptance checklist; do not enable the agent or claim successful contact ingestion until source connectors, catalog UI, review coordinator, scheduled processing and tests are implemented.
+Implementation is not complete merely because this roadmap and training contract exist. Follow the contract's implementation sequence and acceptance checklist; do not enable the agent or claim successful contact ingestion until source connectors, catalog UI, review coordinator, scheduled processing and tests are implemented. Queue 4 must not pre-empt active Core/Bridge/Desktop/Backup work.
 
 ## Continuous requirements across all priorities
 

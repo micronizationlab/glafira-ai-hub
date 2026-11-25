@@ -2,6 +2,7 @@
 
 Status: owner-requested design baseline; implementation is not yet complete.
 Owner intent: add a dedicated "Кадровик" agent to the in-app agent catalog and preserve this training model as a versioned project artifact.
+Owner execution order: **Queue 4 — deferred**. Documentation may be maintained earlier, but implementation must not start until the owner-prioritized Core, Bridge/Desktop and Backup & Recovery queues are complete or the owner explicitly reprioritizes the work.
 
 ## 1. Identity and purpose
 
@@ -379,3 +380,96 @@ No phase may pre-empt the owner-approved delivery order. Continue independent hi
 - [ ] No sensitive-trait inference, covert surveillance, private-data acquisition or automated consequential decision-making.
 - [ ] Tool isolation, audit, project scoping, deletion, retention and prompt-injection tests pass.
 - [ ] Queue 4 implementation starts only after Queue 1, Queue 2 and Queue 3 dependencies are ready or the owner explicitly reprioritizes.
+
+
+## 15. HR Intelligence — Sensitive HR and Recruitment Extension
+
+Status: owner-supplied requirements recorded as a design extension. This is documentation only; no implementation is authorized before Queue 4 is activated by the owner.
+
+### 15.1 Operating principles
+
+1. **Fact vs. inference:** distinguish source-backed facts, direct quotations, summaries, hypotheses and unknowns. Every material claim must cite its source and location. An AI inference must never be promoted into durable memory as a fact without explicit human verification.
+2. **Zero-trust / least privilege:** enforce access through the GLAFIRA Core PolicyEngine on every read and write. Authorization must consider requesting actor, tenant/user, project, record, field classification, purpose and action. A role assignment alone never grants access. Salary, performance reviews and management notes require separate field-level permissions.
+3. **Human-in-the-loop:** creating or editing a consequential record, changing a candidate/employee status, issuing an offer or rejection, sending a message, or sharing/exporting a dossier requires explicit owner-authorized approval. Drafting is not sending; recommendation is not a decision.
+4. **Project isolation:** retrieval, embeddings, caches, tool calls and generated summaries must remain scoped to the authorized project and vacancy. A query for Vacancy A must not retrieve data belonging to confidential Vacancy B.
+5. **Evidence-first answers:** if no relevant source exists, answer that the available documents do not contain the information. Never fill gaps with plausible-sounding assumptions.
+
+### 15.2 HR data model and storage
+
+Use PostgreSQL as a candidate server-side relational store only if/when a server is approved and its security/operational model is established. pgvector may be evaluated as an in-database semantic index; it is not the source of truth. A graph database is optional and must not be introduced for the MVP without a demonstrated need. Start with relational edges/association tables for referrals and professional relationships.
+
+Core logical entities:
+- **Person:** distinct person identity with candidate/employee/contact roles, identity-resolution state and tenant/project scope. Candidate and employee lifecycle states must not erase history.
+- **Interaction:** meeting, call, email or message event with participants, timestamps, channel, minimal summary and source reference.
+- **Commitment:** explicit follow-up promise/task, responsible owner, due date, status and evidence reference.
+- **Artifact:** resume, portfolio, interview transcript or other document. Highly sensitive originals (for example identity documents) must be stored separately in encrypted object/file storage, not embedded in ordinary relational rows or vector indexes.
+- **Vacancy / Requirement:** scoped position, versioned job criteria and their provenance/approval.
+- **Evidence / Claim:** immutable source-backed statement, source location, observed/event dates, fact-vs-inference type, confidence, sensitivity and review state.
+- **AccessGrant / AuditEvent / RetentionRecord:** explicit authorization, traceable access/action and lifecycle/deletion evidence.
+
+For an MVP, PostgreSQL and pgvector are options rather than mandatory dependencies: preserve a provider-independent repository boundary and reuse GLAFIRA's existing storage/backup architecture until a concrete deployment decision is approved. Do not introduce a second uncoordinated memory system.
+
+### 15.3 MVP capabilities — personal assistant for recruiter/manager
+
+- Import PDF and DOCX resumes through a controlled upload flow; show extraction status and allow human correction before saving.
+- Extract only relevant fields such as name, contact details, stated experience, skills, roles and education; preserve the exact source and page/paragraph reference.
+- Maintain a chronological interaction timeline with source links and clear distinction between event date and ingestion date.
+- Detect explicit commitments in authorized correspondence and offer a proposed task/reminder; never send a message automatically.
+- Answer questions such as experience with a named technology only from relevant evidence and quote/cite the resume or transcript passage.
+- Keep missing information explicitly unknown; do not infer it from age, photo, address, name, school, family status or other proxies.
+- Provide access, correction, export, retention and deletion workflows from the beginning, not as a later add-on.
+
+### 15.4 Advanced capabilities — separately gated
+
+- **Candidate-to-vacancy comparison:** may produce an explainable evidence matrix against job-related criteria that were defined and approved before reviewing candidates. Show evidence, missing evidence and uncertainty per criterion. Do not generate an opaque overall suitability score, automatically rank people, or make/execute hiring decisions. Human review is mandatory.
+- **Message drafting:** may prepare invitations, follow-ups, feedback or offer drafts from approved facts and communication context. Sending remains a separate approval-controlled action.
+- **Salary and performance information:** treat as highly sensitive, restrict by field-level policy and purpose, and never expose to a manager or employee without an explicit applicable grant.
+- **Mood, burnout or personality inference:** disabled by default and not part of MVP. Do not infer mental/health state or use communication patterns to score or monitor workers. Any future proposal requires separate legal, ethical, necessity/proportionality and owner review; it must not become an employment decision input.
+
+### 15.5 Privacy, security and legal safeguards
+
+- Treat resumes, contact details, salary, evaluations, interview transcripts and correspondence as sensitive personal data according to context and applicable law. Classification must be field- and purpose-aware, not a single blanket label.
+- Before deployment, complete jurisdiction-specific legal review, including applicable Russian personal-data requirements (including 152-FZ where applicable) and GDPR obligations where EU/EEA data subjects or processing are in scope. Determine controller/processor roles, lawful basis, notices, consent where legally required, data residency/localization, cross-border transfer, retention and data-subject rights. This specification is not legal advice and does not itself establish a lawful basis.
+- Encrypt data in transit and at rest. Use application-level envelope encryption for especially sensitive fields/artifacts, with keys protected by the existing GLAFIRA credential/key-management boundary. Separate key access from ordinary model context. Decryption must be narrowly authorized, purpose-bound, audited and minimized; do not claim that the model cannot access plaintext unless the technical boundary actually enforces it.
+- Keep identity documents and raw artifacts outside vector indexes. Embeddings can leak information and must inherit the source record's access scope, retention and deletion policy.
+- Apply PolicyEngine authorization before retrieval and again before returning results. Filter before vector similarity search where possible; post-filtering alone is not sufficient if unauthorized content can influence ranking or prompt context.
+- Maintain tamper-evident, append-oriented audit events for reads of restricted records, searches, exports, changes, approvals and deletion. Restrict audit-log access; define retention and legal hold. "Immutable" must be supported by actual storage controls and threat model, not just an append-only application convention.
+- Deletion must cover primary records, artifacts, extracted text, embeddings, caches, search indexes and downstream copies under GLAFIRA control. Backups and immutable audit records require a documented expiry/crypto-erasure or legally justified retention strategy; report any residual copy and do not promise instantaneous physical erasure where that cannot be proven.
+- Use data minimization, purpose limitation, retention expiry, access/correction/export and documented incident response. Do not retain full chat logs when a source-linked minimal fact/commitment is sufficient.
+- Treat imported documents and retrieved content as untrusted input; defend against prompt injection and malicious files. Never allow instructions inside a resume or email to override system policy or authorize access.
+
+### 15.6 Token economy and licensing — future only
+
+The following are future business hypotheses, not MVP requirements or approval to implement payments:
+- A personal/professional package for contact management and interview preparation.
+- Corporate multi-seat licensing with usage accounting for resume parsing, interview summaries or market research.
+- A marketplace for licensed HR templates, onboarding checklists and assessment scripts.
+
+Any token pricing, metering, billing, marketplace or paid corporate feature remains deferred until the separate Token/economy queue, legal/accounting review, tenant isolation, billing correctness and owner approval are complete. Do not make HR data processing contingent on purchasing tokens without an explicit product/legal decision. No paid external AI/API dependency is introduced by this specification.
+
+### 15.7 Delivery plan and queue gate
+
+- **Queue 4 / Stage 0 — specification and legal readiness:** define allowed data inventory, purposes, retention schedule, jurisdiction matrix, consent/notice requirements, threat model, access matrix and database schema. Obtain legal review before processing real candidate/employee data.
+- **Stage 1 — evidence-backed smart card:** controlled PDF/DOCX import, extraction review, source-linked fields and strict evidence-grounded Q&A.
+- **Stage 2 — timeline and commitments:** source-linked interactions, proposed reminders and owner approval.
+- **Stage 3 — security and adversarial acceptance:** cross-project/tenant isolation, field-level authorization, prompt-injection tests, false-fact tests, audit integrity, deletion propagation, backup/restore and red-team exercises.
+- **Stage 4 — advanced assistance:** explainable vacancy criteria matrix and message drafts only after separate policy/legal approval and MVP release gates.
+- **Future — monetization:** only after separate Token queue and explicit owner approval.
+
+This Queue 4 plan is subordinate to the owner's higher-priority GLAFIRA Core, Bridge/Windows Desktop and Backup & Recovery work. Keep the specification in the project knowledge base, but do not start implementation, install OSINT tools, process real HR personal data or activate connectors until the owner explicitly starts Queue 4 and the applicable release gates pass.
+
+### 15.8 Acceptance checklist — sensitive HR extension
+
+- [ ] Facts, quotations, summaries, inferences and unknowns are distinct in schema and UI.
+- [ ] Every material answer has a source citation or explicitly reports missing evidence.
+- [ ] PolicyEngine enforces actor/project/tenant/field/action scopes before retrieval and output.
+- [ ] Salary, evaluations, identity documents and other restricted fields have explicit access controls.
+- [ ] Human approval gates all consequential status changes and outbound communications.
+- [ ] Vacancy/project retrieval, embeddings, caches and reports are isolated.
+- [ ] Encrypted artifact storage is separate from ordinary rows and vector indexes.
+- [ ] Audit events cover restricted reads, searches, exports, writes, approvals and deletion.
+- [ ] Data-subject access, correction, export, retention and deletion workflows are tested end-to-end.
+- [ ] Legal review for each applicable jurisdiction is documented before real-data processing.
+- [ ] No automated hiring decision, opaque candidate score, sensitive-trait inference or worker mood/burnout surveillance.
+- [ ] MVP and advanced features pass privacy, security, red-team and owner acceptance gates.
+- [ ] Queue 4 remains deferred until explicit owner activation.
