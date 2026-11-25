@@ -31,7 +31,8 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     }
     val projectTasks = tasks.filter { it.projectId == currentProject.id }
     var showAddDialog by remember { mutableStateOf(false) }
-    var cancelTaskId by remember { mutableStateOf<String?>(null) }
+    var cancelTaskTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    LaunchedEffect(currentProject.id) { cancelTaskTarget = null }
     var title by remember { mutableStateOf("") }
     var instruction by remember { mutableStateOf("") }
     var priority by remember { mutableIntStateOf(5) }
@@ -177,7 +178,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                             task.lastError?.let { Text("Причина/результат: $it", color = Red, fontSize = 10.sp) }
                             if (GlafiraTaskPolicy.ownerCanCancel(task.state)) {
                                 OutlinedButton(
-                                    onClick = { cancelTaskId = task.taskId },
+                                    onClick = { cancelTaskTarget = currentProject.id to task.taskId },
                                     modifier = Modifier.fillMaxWidth()
                                 ) { Text("ОТМЕНИТЬ") }
                             }
@@ -188,21 +189,25 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         }
     }
 
-    cancelTaskId?.let { taskId ->
+    cancelTaskTarget?.let { (projectId, taskId) ->
         AlertDialog(
-            onDismissRequest = { cancelTaskId = null },
+            onDismissRequest = { cancelTaskTarget = null },
             title = { Text("Отменить задачу?") },
             text = { Text("Задача не будет выполнена. Отменить?") },
             confirmButton = {
                 TextButton(onClick = {
-                    val cancelled = runCatching { owner.cancelTask(taskId) }.getOrDefault(false)
-                    message = if (cancelled) "Задача отменена." else "Задача уже выполняется или больше не доступна для отмены."
-                    cancelTaskId = null
+                    val result = runCatching { owner.cancelTask(taskId, projectId) }
+                    message = when {
+                        result.isFailure -> result.exceptionOrNull()?.message ?: "Не удалось отменить задачу."
+                        result.getOrDefault(false) -> "Задача отменена."
+                        else -> "Задача уже выполняется или больше не доступна для отмены."
+                    }
+                    cancelTaskTarget = null
                     refresh()
                 }) { Text("ДА, ОТМЕНИТЬ") }
             },
             dismissButton = {
-                TextButton(onClick = { cancelTaskId = null }) { Text("НЕТ") }
+                TextButton(onClick = { cancelTaskTarget = null }) { Text("НЕТ") }
             }
         )
     }
