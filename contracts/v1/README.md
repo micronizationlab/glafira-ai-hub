@@ -17,7 +17,7 @@ This schema is the shared language-neutral source for task dispatch and particip
 ## Security rules
 1. Never place passwords, API keys, private keys, cookies, bearer tokens or reusable credentials in these payloads.
 2. Payloads are references to separately authorized, integrity-checked data, not arbitrary executable commands.
-3. The elected project coordinator may schedule and arbitrate task claims but cannot grant Core permissions or bypass owner approval; the Windows Desktop Hub may separately coordinate its local Agent transport fleet.
+3. No global project coordinator is active. The Windows Desktop Hub may coordinate its local Agent transport fleet but cannot grant Core permissions or bypass owner approval.
 4. Agent capabilities are allowlisted typed handlers; no generic shell, arbitrary code execution or unrestricted filesystem access.
 5. External side effects require Core policy admission and owner approval where applicable.
 6. Lease expiry does not prove that a side effect did not occur. Use `OUTCOME_UNKNOWN` and reconciliation; do not blindly retry.
@@ -159,6 +159,6 @@ Historical note: the following schema remains for compatibility and design trace
 - `CoordinatorClaimRequest`: signed compare-and-swap claim against the generation and lease observed by the candidate.
 - `ProjectTaskClaimRecord`: task claim bound to coordinator generation, task state version, idempotency key and fencing token.
 
-The fixtures and validator are part of the same v1 conformance gate. A subordinate `WORKER_AGENT` is schema-ineligible to elect itself. A Windows Agent may participate in election only after explicit provisioning as a full GLAFIRA node. This project-level coordinator role never replaces per-task Core ownership, owner approval or the Windows Hub's local Agent-fleet role.
+The fixtures and validator preserve the historical message shape only. The prior proposal's rule that a subordinate `WORKER_AGENT` could not elect itself is not an active runtime feature; no Android, Windows, iOS or Agent installation participates in GitHub-backed global election. Per-task Core ownership and the Windows Hub's local Agent-fleet role remain separate.
 
 The schema describes historical message shape only. The prior GitHub ref compare-and-swap algorithm is superseded by ADR-0001. The model generator's DTOs may remain for compatibility but must not be wired to runtime coordination without a new owner-approved ADR.
