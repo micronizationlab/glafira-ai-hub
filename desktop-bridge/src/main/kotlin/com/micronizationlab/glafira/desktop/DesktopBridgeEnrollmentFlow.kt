@@ -44,15 +44,10 @@ class DesktopBridgeEnrollmentFlow(
         payload: Map<String, String>,
         logicalOperationId: String? = null
     ): DesktopBridgeResponse {
-        val entry = DesktopBridgeCredentialVault.load(vaultPath, vaultPassphrase)
-        val credentials = entry.toCredentials()
-        return try {
+        return DesktopBridgeCredentialVault.loadAndUseVault(vaultPath, vaultPassphrase) { origin, credentials ->
             DesktopBridgeHttpsClient().post(
-                entry.origin, credentials, projectId, operation, payload, logicalOperationId
+                origin, credentials, projectId, operation, payload, logicalOperationId
             )
-        } finally {
-            credentials.hmacSecret.fill(0)
-            entry.hmacSecret.fill(0)
         }
     }
 }
