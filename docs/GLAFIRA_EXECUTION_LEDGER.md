@@ -562,3 +562,17 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Manual acceptance evidence:** (1) review semantic-token mapping for Android/iOS/Windows Desktop/Agent; (2) record light/dark text contrast and ≥3:1 non-text boundary calculations; (3) verify active/offline/waiting/quota/error and recoveryRequired state mappings; (4) record visible text/icon plus accessible label for each critical state; (5) distinguish Needs owner approval from Reconciliation required and prohibit generic retry for unknown outcomes; (6) verify Android 48dp, iOS 44pt and Windows 40px touch targets, keyboard focus, screen-reader labels and reduced motion; (7) capture owner approve/request-changes decision. Record a checklist/table in the PR; CI is separate and cannot prove visual acceptance.
 - **Changed-file inventory for PR #681:** `docs/design/DESIGN_TOKENS.md`; `docs/GLAFIRA_EXECUTION_LEDGER.md`.
 - **Status:** IN_REVIEW on design PR #681, current design-file head `5523dceb4a371521b219f7e2765afa71785a1a8c`; exact-head docs CI, Security Scan and Dispatcher are pending/being rechecked. This design deliverable does not complete any implementation or platform acceptance step.
+
+
+## WBS reservation — Android Compose design tokens — 2026-11-25
+
+- **WBS leaf:** `1.11.1.1.2` — Add the shared semantic token values to the existing Android application as a standalone Compose token source.
+- **Work item / tracker:** `GLAFIRA-DESIGN-ANDROID-W01` / issue #686; umbrella #672; foundation proposal #681 is merged in Main.
+- **Parent / predecessor:** `1.11.1.1` shared design foundation; predecessor leaf `1.11.1.1.1` is merged as PR #681. Owner explicitly requested insertion of the supplied design package on 2026-11-25. This leaf does not claim iOS/Windows build acceptance.
+- **Executor / reviewer:** GLAFIRA coordinator / independent CodeRabbit and GLAFIRA review; owner controls merge.
+- **Branch / base:** `design/android-compose-tokens-20261125`, based on Main `007575058fc4f8b458785e99c1a228973e2e3d17`.
+- **Exclusive file reservation:** `app/src/main/java/com/micronizationlab/glafira/design/GlafiraDesignTokens.kt` only. No other active assignment may edit this path.
+- **Scope:** implement semantic colors (light/dark), spacing, corner radii and 48dp minimum touch-target constant using the repository's actual namespace and Compose dependencies. Keep token values centralized and do not wire or redesign existing screens in this leaf.
+- **Out of scope:** no UI screen changes, no Core/Backup/Bridge/runtime/security changes, no iOS/Windows production integration, no generated flower asset and no claim of full WCAG acceptance without contrast review.
+- **Acceptance:** Kotlin compilation / Android JVM / Debug APK exact-head CI; source review confirms no duplicate token source, correct package path, no accidental public behavior changes, and all values map to `docs/design/DESIGN_TOKENS.md`. Owner-controlled merge and post-merge validation required.
+- **Status:** `RESERVED` before implementation. No Program 150 item is marked complete by this reservation.
