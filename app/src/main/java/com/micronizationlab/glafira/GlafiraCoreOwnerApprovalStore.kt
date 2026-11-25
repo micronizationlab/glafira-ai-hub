@@ -456,10 +456,12 @@ class GlafiraCoreOwnerApprovalStore(
         nowMillis: Long = System.currentTimeMillis()
     ): GlafiraCoreOwnerApprovalMutation {
         if (!ownerSession.consume()) return GlafiraCoreOwnerApprovalMutation.OWNER_AUTHENTICATION_REQUIRED
+        // Resolve the task before opening the SQLite write transaction. Cancellation acquires
+        // the task-store monitor before the same database writer; this lock order avoids inversion.
+        val task = taskStore.getTask(taskId)
         var result = GlafiraCoreOwnerApprovalMutation.STORAGE_ERROR
         db.beginTransaction()
         try {
-            val task = taskStore.getTask(taskId)
             if (task == null) {
                 result = GlafiraCoreOwnerApprovalMutation.NOT_FOUND
             } else if (task.state != GlafiraTaskState.WAITING_FOR_OWNER ||
@@ -539,11 +541,13 @@ class GlafiraCoreOwnerApprovalStore(
         nowMillis: Long = System.currentTimeMillis()
     ): GlafiraCoreOwnerApprovalMutation {
         if (!ownerSession.consume()) return GlafiraCoreOwnerApprovalMutation.OWNER_AUTHENTICATION_REQUIRED
+        // Read the task and ownership before opening the SQLite write transaction so all
+        // approval mutations follow the task-store -> database lock order used by cancellation.
+        val currentTask = taskStore.getTask(taskId)
+        val ownership = currentTask?.let { taskStore.taskOwnership(taskId, it.projectId) }
         var result = GlafiraCoreOwnerApprovalMutation.NOT_FOUND
         db.beginTransaction()
         try {
-            val currentTask = taskStore.getTask(taskId)
-            val ownership = currentTask?.let { taskStore.taskOwnership(taskId, it.projectId) }
             if (currentTask == null || currentTask.state != GlafiraTaskState.WAITING_FOR_OWNER ||
                 ownership == null || ownership.ownerCoreId.isBlank() || ownership.ownerGeneration <= 0L
             ) {
