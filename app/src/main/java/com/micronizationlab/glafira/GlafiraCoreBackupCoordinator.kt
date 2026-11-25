@@ -18,6 +18,12 @@ class GlafiraCoreBackupCoordinator(
     private val safetyDatabase get() = File(journal, "database.db")
     private val safetyArchive get() = File(journal, "files.glb")
 
+    init {
+        require(recoveryTempPrefix.matches(Regex("[A-Za-z0-9_-]{1,80}"))) {
+            "Invalid rollback recovery temp prefix."
+        }
+    }
+
     suspend fun create(passphrase: CharArray): File = GlafiraCoreMaintenanceGate.withExclusive {
         PendingDeliveryRuntime.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
