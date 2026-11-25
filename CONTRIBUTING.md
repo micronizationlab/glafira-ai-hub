@@ -13,7 +13,7 @@ This repository contains a multi-platform, owner-controlled system. Correctness,
 
 - One PR must represent one independently reviewable task.
 - Branch from the latest `main`; use a descriptive name such as `fix/core-durable-ack` or `docs/architecture-map`.
-- Keep changes focused. The normal target is at most 400 changed lines; split larger work into dependency-ordered PRs.
+- Keep changes focused. Target 50–150 changed lines and no more than 5 files. Up to 200 changed lines is allowed only for one coherent, independently testable task. Changes of 201–300 lines require written justification and explicit owner/integrator approval before implementation. More than 300 changed lines is prohibited for an ordinary PR and must be split. Follow `docs/engineering/PR_SIZE_AND_MERGE_POLICY.md`; this guide does not create a separate exception.
 - Do not edit the same shared contract or source file concurrently from multiple workstreams. Assign one owner and integrate dependent changes in sequence.
 - Do not commit directly to `main`, force-push shared branches or rewrite another contributor's history.
 
