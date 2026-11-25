@@ -21,14 +21,21 @@ The values below are **provisional proposals** for review. Components should con
 
 | Token | Light proposal | Dark proposal | Use |
 |---|---|---|---|
-| brand.primary | #78B83A | #9AD45A | GLAFIRA/ICQ green accent, primary action |
-| brand.onPrimary | #14220A | #14220A | Text/icons on brand surfaces |
+| brand.primary | #78B83A | #9AD45A | GLAFIRA/ICQ identity accent only; not a control boundary |
+| brand.action | #3E6F20 | #9AD45A | Primary action fill/boundary; at least 3:1 against canvas |
+| brand.onAction | #FFFFFF | #14220A | Text/icons on primary action; verify text contrast |
+| brand.onPrimary | #14220A | #14220A | Text/icons on identity-brand surfaces |
 | surface.canvas | #F3F6F0 | #151A17 | Main app background |
 | surface.panel | #FFFFFF | #202722 | Cards and panels |
 | surface.raised | #FFFFFF | #29332C | Dialogs, menus, popovers |
 | text.primary | #182019 | #F1F5F0 | Main text |
 | text.secondary | #59645B | #B5C0B6 | Metadata and helper text |
-| border.subtle | #DCE4DA | #3A473D | Dividers and control outlines |
+| border.subtle | #DCE4DA | #3A473D | Decorative dividers only; not an interactive control outline |
+| control.outline | #657365 | #7E8D80 | Functional control boundary; 3:1 minimum against adjacent surface |
+| focus.ring | #245EAA | #8DBDFF | Visible keyboard/input focus indicator |
+| control.disabled | #A8B0A8 | #56625A | Disabled control surface/boundary; pair with text.disabled |
+| text.disabled | #6B746C | #A0AAA1 | Disabled labels and values |
+| status.neutral | #66736A | #A5B0A7 | Offline/inactive/unknown neutral state |
 | status.success | #238343 | #62C77E | Completed/healthy |
 | status.warning | #A96708 | #F0B34D | Waiting/attention |
 | status.danger | #B4232C | #FF747C | Error/quota exhausted/destructive |
@@ -39,6 +46,8 @@ The values below are **provisional proposals** for review. Components should con
 - Status must include text or an icon plus accessible label; never communicate status by hue alone.
 - Quota exhausted and destructive actions use danger semantics; offline/inactive uses neutral semantics, not danger.
 - Do not use brand green for success if it would make product identity and operational state ambiguous; use a distinct success tone.
+- The provisional action, control.outline and focus.ring pairs above exceed 3:1 against their listed light/dark adjacent surfaces; verify again against actual component surfaces before owner approval.
+- Keep border.subtle for decorative dividers only. Interactive outlines use control.outline; focus uses focus.ring; disabled uses control.disabled and text.disabled.
 - Verify WCAG 2.2 AA contrast for every text/background pairing and non-text control boundary before approving exact values.
 
 ## 3. Typography
@@ -56,7 +65,7 @@ Shared roles: display, title, section, body, bodyStrong, label, caption, micro, 
 ## 4. Spacing, shape and depth
 
 - Base spacing unit: 4dp/pt; preferred scale: 4, 8, 12, 16, 20, 24, 32, 40, 48.
-- Compact control height: 40–44dp; primary touch target: at least 44×44pt/dp where platform conventions permit.
+- Android touch targets: at least 48×48dp. iOS: at least 44×44pt. Windows Desktop: at least 40×40 effective pixels, with 44px preferred for primary touch controls.
 - Corner roles: control 10, card 14, panel 18, dialog 20 (provisional).
 - Use one subtle border and one restrained elevation layer before adding stronger shadow.
 - Gloss is a small top-edge highlight or surface gradient, not a full-screen glass effect.
@@ -75,7 +84,7 @@ Shared roles: display, title, section, body, bodyStrong, label, caption, micro, 
 
 ## 6. Shared state vocabulary
 
-Every interactive screen documents: loading, empty, ready, disabled, waiting, offline, stale, error, success, confirmationRequired and recoveryRequired where applicable.
+Every interactive screen documents: loading, empty, ready, disabled, waiting, offline, stale, error, success, confirmationRequired and recoveryRequired where applicable. Disabled and focus states use the shared semantic tokens above or a documented native equivalent.
 
 Model/provider availability is distinct from connection state and quota:
 - Active/ready — green semantic state plus text.
