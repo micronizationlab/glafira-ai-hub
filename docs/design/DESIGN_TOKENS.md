@@ -17,7 +17,7 @@ This file is the semantic source of truth for design proposals across Android, i
 
 ## 2. Semantic color tokens
 
-The values below are **provisional proposals** for review. Components should consume semantic names, not hard-coded color literals. Keep status meaning consistent in light and dark themes.
+The values below are the **owner-approved baseline values** for implementation. Components should consume semantic names, not hard-coded color literals. Keep status meaning consistent in light and dark themes.
 
 | Token | Light proposal | Dark proposal | Use |
 |---|---|---|---|
@@ -46,7 +46,7 @@ The values below are **provisional proposals** for review. Components should con
 - Status must include text or an icon plus accessible label; never communicate status by hue alone.
 - Quota exhausted and destructive actions use danger semantics; offline/inactive uses neutral semantics, not danger.
 - Do not use brand green for success if it would make product identity and operational state ambiguous; use a distinct success tone.
-- The provisional action, control.outline and focus.ring pairs above exceed 3:1 against their listed light/dark adjacent surfaces; verify again against actual component surfaces before owner approval.
+- Baseline contrast spot-checks (WCAG relative luminance, rounded to two decimals): `brand.action` / `surface.canvas` — 5.50:1 light and 10.02:1 dark; `control.outline` / `surface.panel` — 5.01:1 light and 4.37:1 dark; `focus.ring` / `surface.panel` — 6.45:1 light and 7.90:1 dark. These are token-pair checks, not a substitute for measuring each rendered component against its actual adjacent surface. Status accents against `surface.panel`: success 4.77:1 / 7.27:1, warning 4.54:1 / 8.19:1, danger 6.53:1 / 5.85:1, info 5.66:1 / 7.15:1 (light / dark).
 - Keep border.subtle for decorative dividers only. Interactive outlines use control.outline; focus uses focus.ring; disabled uses control.disabled and text.disabled.
 - Verify WCAG 2.2 AA contrast for every text/background pairing and non-text control boundary before approving exact values.
 
@@ -86,7 +86,7 @@ Shared roles: display, title, section, body, bodyStrong, label, caption, micro, 
 
 Every interactive screen documents: loading, empty, ready, disabled, waiting, offline, stale, error, success, confirmationRequired and recoveryRequired where applicable. Disabled and focus states use the shared semantic tokens above or a documented native equivalent.
 
-Model/provider availability is distinct from connection state and quota. Task state is also reason-aware: WAITING_FOR_OWNER due to a pending approval is labelled “Needs owner approval”; CORE_EXECUTION_OUTCOME_UNKNOWN is labelled “Reconciliation required” with a distinct icon and must not offer generic retry. Do not collapse both into one generic waiting chip.
+Model/provider availability is distinct from connection state and quota. Task state is also reason-aware: WAITING_FOR_OWNER due to a pending approval is labelled “Needs owner approval”; CORE_EXECUTION_OUTCOME_UNKNOWN is labelled “Reconciliation required”, uses `ic_status_recovery.svg`, and must not offer generic retry. Do not collapse both into one generic waiting chip.
 
 Model/provider availability is distinct from connection state and quota:
 - Active/ready — green semantic state plus text.
@@ -122,7 +122,7 @@ Model/provider availability is distinct from connection state and quota:
 
 ## 10. Approval and implementation gate
 
-The owner approved this baseline token set and visual direction on 2026-11-25. These semantic roles and listed palette values are the implementation baseline. Platform UX packages #674–#678 and #680 may now consume them. Contrast was independently checked for the listed primary action, control outline, focus and status accent pairs against the specified adjacent surfaces; consuming components must still verify their actual text/background and boundary pairings. Any later palette change requires a documented rationale and owner approval. This document changes no runtime code, Core authority, permissions, cryptography, Bridge protocol, database schema or backup behavior.
+The owner approved this baseline token set and visual direction on 2026-11-25. These semantic roles and listed palette values are the implementation baseline. Platform UX packages #674–#678 and #680 may now consume them without seeking a second palette approval. Contrast was independently checked for the listed primary action, control outline, focus and status accent pairs against the specified adjacent surfaces; consuming components must still verify their actual text/background and boundary pairings. Any later palette change requires a documented rationale and owner approval. This document changes no runtime code, Core authority, permissions, cryptography, Bridge protocol, database schema or backup behavior.
 
 
 ## 11. Implementation handoff and assets
