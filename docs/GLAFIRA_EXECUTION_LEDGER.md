@@ -251,3 +251,43 @@ This section supersedes earlier *current-state* statements above where they conf
 4. Integrate #607 through the real provider dispatch path with durable owner grants and Trace-before-dispatch.
 5. Implement Core Outbox in the correct order: separate peer key agreement and envelope encryption; atomic enqueue/sequence; receiver Inbox idempotency; signature/ACK verification; retry/recovery. No cross-Core send before these gates pass.
 6. Reconcile stale PRs #596–#599 only after replacements are validated; close each duplicate with an explicit superseding link.
+
+## Integration checkpoint — 2026-11-25 05:21 UTC
+
+This checkpoint supersedes prior live-state descriptions above where they conflict; prior entries remain as historical snapshots.
+
+- Current Main observed: `4ab42bd587719276f563fcc33d5b39b9a225b402`.
+- PR #605 merged as `c9a27fc0bf9c0d9d98ebdc3caa2bafb3919682e7`. Exact-head Android JVM/APK/shared contracts/emulator and summary passed. Emulator JUnit: 136 test cases, 0 failures, 0 errors, 0 skipped. It adds an installation-local AES-GCM rollback snapshot primitive and missing-key fail-closed behavior; production Backup/Restore wiring is still not claimed.
+- PR #607 merged as `ffd729f8febf3f299da2e6e09b5e622154f7a662`. Exact-head Android JVM/APK/shared contracts/emulator and summary passed. Emulator JUnit: 134 test cases, 0 failures, 0 errors, 0 skipped. It adds a pure provider-context policy kernel; production dispatch enforcement and durable grants/Trace remain open.
+- PR #608 merged as `c44e73335e53e4dc0d8161fd5f9fd159364248db`. Exact-head Android JVM/APK/shared contracts/emulator and summary passed. Emulator JUnit: 134 test cases, 0 failures, 0 errors, 0 skipped. Android JVM reports included 54 `desktop-bridge` test cases and 257 app test cases (311 total, 0 failures/errors/skips). It adds client logical-operation identity only; no automatic retry or server Inbox/ACK is claimed.
+- PR #606 merged as `4ab42bd587719276f563fcc33d5b39b9a225b402`. Exact-head Android JVM/APK/shared contracts/emulator and summary passed. Emulator JUnit: 139 test cases, 0 failures, 0 errors, 0 skipped. It repairs built-in project labels without changing stable IDs, prevents duplicate creation by canonical name, and wires the production project-create callback through `createOrSelectProject`.
+- PR #596, #597, #598 and #599 are closed as superseded by merged #605, #607, #606 and #608 respectively. PR #594/#601/#602 are also closed as superseded. Do not reopen stale-base duplicates.
+- PR #600 CI fix, #603 selector UI, #604/#610 ledger updates and #609 Core key-separation contract are merged as recorded in prior entries.
+- The repository's post-merge push CI after #606 must still be checked independently; exact-head PR CI above is the evidence for the respective merges.
+
+### Eleven workstreams — updated state
+
+1. **Core / Outbox:** schema v12 is in Main; the signing-vs-encryption prerequisite is documented. No cross-Core payload sender/receiver is enabled. Next: separate owner-approved key-agreement identity and authenticated envelope encryption, then atomic enqueue/sequence, Inbox idempotency, signature/ACK verification and crash recovery.
+2. **Backup & Recovery:** local rollback snapshot cipher now fails closed if its key is missing and removes partial decrypted output. Next: wire it into the actual restore staging/maintenance-gate path and test crash recovery; primitive alone is not full Backup completion.
+3. **Android projects:** selector UI is merged and tested; canonical ID/name repair and duplicate prevention are merged and wired into project creation.
+4. **Bridge:** client logical operation ID is merged and tested. Next: durable server Inbox keyed by sender+operation, authenticated receipt, idempotent append, signed ACK bound to event and owner generation, and restart recovery.
+5. **Windows Desktop:** #600 Windows Desktop CI lane passed. End-to-end shared Core/Bridge handoff remains unverified.
+6. **Windows Agent:** #600 Windows Agent CI lane passed. Production task execution, durable reconciliation and restart recovery remain open.
+7. **iOS:** #600 iOS CI lane passed. Keep shared contracts aligned; no iOS-first expansion.
+8. **CI/CD:** #600 corrected required status-context names and exact PR-head SHA summary; #600 merged after all nine required contexts passed. #603/#605/#606/#607/#608 exact-head summaries also verified their own PR head SHA.
+9. **Provider security:** pure fail-closed context policy kernel merged. Next: durable owner grant storage, owner authentication/revocation, classification of actual context sources, Trace-before-dispatch, and enforcement in the real `AiProviderClient` send path.
+10. **Token/GCU:** remain parked below Core/Backup/Bridge/Desktop.
+11. **Helpers/agents:** remain below foundation work; no role expansion until safe task dispatch and recovery are implemented.
+
+### Open integration risks (not marked DONE)
+- Current Android/Windows installation identities expose signing keys; they do not provide a separate recipient encryption key. The Android task AES key is local-only. Cross-Core payload delivery must remain disabled until key agreement/envelope encryption is implemented.
+- Outbox schema has no receiver Inbox implementation or runtime ACK verifier. A database row marked ACKNOWLEDGED must not be treated as cryptographic proof until sender/recipient identity, key epoch, event digest, owner generation and signature are verified in code.
+- Provider policy is a pure kernel, not yet a dispatch guard. Never pass project/private context to providers based on a test-only grant or hardcoded approval.
+- Backup cipher is a primitive; ensure actual rollback/restore path uses it and does not regenerate missing keys.
+
+### Next work order
+1. Verify the post-merge CI run for Main `4ab42bd587719276f563fcc33d5b39b9a225b402` to completion and retain its logs/artifacts.
+2. Wire and test rollback cipher in production Backup/Restore.
+3. Implement receiver Inbox + ACK verifier and distinct peer key agreement before Outbox sender/retry.
+4. Wire provider-context policy into actual dispatch with durable owner grants and Trace.
+5. Keep Windows Desktop/Agent/iOS on shared contracts and avoid expanding Token/agents until the foundation is reliable.
