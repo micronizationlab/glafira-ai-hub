@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.io.File
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -242,6 +243,46 @@ class GlafiraTaskCancellationInstrumentedTest {
             assertEquals(2_500L, it.getLong(1))
             assertTrue(it.isNull(2))
             assertEquals("owner-session-audit", it.getString(3))
+        }
+    }
+
+    @Test fun restoreMarkerWinsOverAStaleCancellationPrecheck() {
+        store.enqueue(task("restore-guard"))
+        val markerDir = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val marker = File(markerDir, "restore.pending")
+        val enteredRestoreLock = CountDownLatch(1)
+        val releaseRestoreLock = CountDownLatch(1)
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            val stalePrecheck = !GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
+            assertTrue(stalePrecheck)
+            val restore = pool.submit {
+                synchronized(store) {
+                    markerDir.mkdirs()
+                    assertTrue(marker.createNewFile())
+                    enteredRestoreLock.countDown()
+                    assertTrue(releaseRestoreLock.await(10, TimeUnit.SECONDS))
+                }
+            }
+            assertTrue(enteredRestoreLock.await(10, TimeUnit.SECONDS))
+            releaseRestoreLock.countDown()
+            restore.get(10, TimeUnit.SECONDS)
+            val result = runCatching {
+                synchronized(store) {
+                    check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
+                        "RESTORE_RECOVERY_REQUIRED"
+                    }
+                    store.cancelUnclaimedTask("restore-guard", "cancel-project", 3_000L)
+                }
+            }
+            assertTrue(result.isFailure)
+            assertEquals(GlafiraTaskState.QUEUED, store.getTask("restore-guard")?.state)
+        } finally {
+            releaseRestoreLock.countDown()
+            pool.shutdownNow()
+            marker.delete()
+            markerDir.delete()
         }
     }
 
