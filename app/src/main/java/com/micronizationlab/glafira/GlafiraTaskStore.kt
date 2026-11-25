@@ -111,6 +111,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         createCoreTaskOwnershipSchema(db)
         GlafiraCoreLiveRunStore.createSchema(db)
         GlafiraCoreTraceStore.createSchema(db)
+        GlafiraCoreOutboxSchema.create(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -124,7 +125,8 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         if (oldVersion < 9) GlafiraCoreLiveRunStore.createSchema(db)
         if (oldVersion < 10) GlafiraCoreTraceStore.createSchema(db)
         if (oldVersion < 11) migrateCoreTaskOwnership(db)
-        if (newVersion > 11) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
+        if (oldVersion < 12) GlafiraCoreOutboxSchema.create(db)
+        if (newVersion > 12) throw IllegalStateException("A reviewed GLAFIRA task-queue migration is required.")
     }
 
     private fun createTaskDependenciesSchema(db: SQLiteDatabase) {
@@ -1874,7 +1876,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
 
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
-        private const val DATABASE_VERSION = 11
+        private const val DATABASE_VERSION = 12
         private const val DESKTOP_LEASE_MS = 10 * 60_000L
         const val DESKTOP_TASK_TYPE = "desktop.execute"
         private const val TABLE_TASKS = "core_tasks"
