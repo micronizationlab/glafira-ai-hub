@@ -1771,10 +1771,6 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
 
 
     /**
-     * Checkpoints SQLite and exports the closed, consistent database file.
-     * The caller must hold GlafiraCoreMaintenanceGate for the whole snapshot operation.
-     */
-    /**
      * Checkpoints, closes and validates the live database before returning it for immediate encryption.
      * The caller must hold the Core maintenance gate and keep this store monitor until the source is consumed.
      */
