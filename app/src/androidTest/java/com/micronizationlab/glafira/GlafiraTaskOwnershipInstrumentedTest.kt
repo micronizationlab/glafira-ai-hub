@@ -325,6 +325,8 @@ class GlafiraTaskOwnershipInstrumentedTest {
         assertEquals(firstClaim.ownershipToken.ownerCoreId, secondClaim.ownershipToken.ownerCoreId)
         assertEquals(firstClaim.ownershipToken.ownerGeneration, secondClaim.ownershipToken.ownerGeneration)
         assertTrue(secondClaim.ownershipToken.stateVersion > firstClaim.ownershipToken.stateVersion)
+        val historyBeforeStaleAttempts = core.taskHistory(item.taskId, item.projectId).size
+        val stateVersionBeforeStaleAttempts = ownership(core, item.taskId)?.get("state_version")
 
         assertFalse(core.transitionOwned(
             firstClaim.ownershipToken,
@@ -339,6 +341,15 @@ class GlafiraTaskOwnershipInstrumentedTest {
             "late-result-from-first-claim",
             4_000L
         ))
+        assertEquals(GlafiraTaskState.RUNNING, core.getTask(item.taskId)?.state)
+        assertEquals(stateVersionBeforeStaleAttempts, ownership(core, item.taskId)?.get("state_version"))
+        assertEquals(historyBeforeStaleAttempts, core.taskHistory(item.taskId, item.projectId).size)
+        val staleResultRowExists = core.readableDatabase.rawQuery(
+            "SELECT 1 FROM core_task_results WHERE task_id = ?",
+            arrayOf(item.taskId)
+        ).use { it.moveToFirst() }
+        assertFalse("Stale claim must not create a result row", staleResultRowExists)
+
         assertTrue(core.persistCoreTaskResultOwned(
             secondClaim.ownershipToken,
             setOf(GlafiraTaskState.RUNNING),
