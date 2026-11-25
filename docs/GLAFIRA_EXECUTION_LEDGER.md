@@ -549,3 +549,17 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Review / integration:** CodeRabbit review and GLAFIRA source review were recorded; owner merged the implementation and WBS registration. The bounded leaf acceptance is therefore complete.
 - **Boundary:** DONE applies only to the rollback-journal plaintext-canary leaf. It does not close issue #566 or claim OS process-death, ENOSPC, missing-key/tamper, provider round-trip or clean-device restore acceptance.
 - **Sequencing:** leaf `1.2.1.2.1` remains a separate reservation and may proceed only after its own WBS reservation PR is merged.
+
+
+## WBS reservation — GLAFIRA DESIGN shared visual tokens — 2026-11-25
+
+- **Work Item / WBS / parent / Program:** `GLAFIRA-S131-D01` / `1.11.1.1.1` / parent `1.11.1.1 — Shared cross-platform design system` under `1.11.1 — GLAFIRA DESIGN foundation` / tracker issue #679 / Program Step 131 (partial: cross-platform feature parity foundation).
+- **Hierarchy:** `1.11` Helper intake, review and integration → `1.11.1` GLAFIRA DESIGN foundation → `1.11.1.1` Shared cross-platform design system → `1.11.1.1.1` Define semantic visual tokens and shared components.
+- **Executor:** Amazon Q Developer (single active design assignment after release from #670). **Independent review:** CodeRabbit and Proofline; owner approval required before implementation adopts values.
+- **Branch / base:** `design/shared-visual-tokens-20261125`, based on Main `155b5dd117b97579983d3aa9df6a9e8a69c30e1e`.
+- **Exclusive files:** `docs/design/DESIGN_TOKENS.md` and this ledger entry only.
+- **Dependencies:** None; this is the design foundation. Dependent platform visual specs must mark tokens pending until this leaf is reviewed and owner-approved.
+- **Objective:** Propose semantic light/dark roles, typography, spacing, radius/elevation, surfaces, iconography, buttons/inputs/cards/dialogs, loading/empty/error/model-status/quota states, motion/reduced-motion and Android/iOS/Windows adaptation notes.
+- **Safety boundary:** Documentation/proposal only. No runtime code, assets, database, Core, Bridge, permission, crypto, billing or security changes. Values are proposals until owner approval.
+- **Acceptance / tests:** Complete token and component proposal with semantic naming, usage/do-not-use guidance, platform mapping, accessibility and reduced-motion behavior; Markdown lint and link checks; independent review; owner approval.
+- **Status:** RESERVED before design document edits. No platform implementation or Program 150 completion is claimed.
