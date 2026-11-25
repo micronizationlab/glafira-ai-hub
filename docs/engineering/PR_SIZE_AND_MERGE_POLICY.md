@@ -12,12 +12,12 @@ Measure handwritten change size as GitHub's total changed lines: additions + del
 | Tiny | 1–50 | 1–3 preferred | Preferred for isolated fixes |
 | Standard | 51–150 | Up to 5 | Normal target for one focused task |
 | Upper limit | 151–200 | Up to 5 | Allowed only when the change is still one coherent, independently testable unit |
-| Exception | 201–300 | Up to 10 | Requires written justification and explicit owner/integrator approval before implementation or PR submission |
+| Exception | 201–300 | Up to 10 | Requires written justification and explicit owner/integrator approval recorded before implementation begins |
 | Oversized | More than 300 | Any | Prohibited as a single ordinary PR; split into smaller PRs |
 
-**Default target: 50–150 changed lines and no more than 5 files. Absolute normal limit: 200 changed lines.** A PR must not exceed 200 lines merely because its author believes the change is convenient. If it does, split it. An exception from 201 to 300 lines is not automatic and must be agreed in advance; a retrospective explanation is not approval.
+**Default target: 50–150 changed lines and no more than 5 files. Absolute normal limit: 200 changed lines.** A PR must not exceed 200 lines merely because its author believes the change is convenient. If it does, split it. An exception from 201 to 300 lines is not automatic and must be agreed before implementation begins; a retrospective explanation is not approval. The integrator verifies the written approval record during PR review.
 
-The file limit is independent of the line limit: a 100-line PR touching 15 unrelated files is still too broad. If a task genuinely needs more than 5 files, split it by dependency or obtain prior approval under the exception rule.
+The file limit is independent of the line limit: a 100-line PR touching 15 unrelated files is still too broad. If a task genuinely needs more than 5 files, split it by dependency or obtain prior approval under the exception rule before implementation begins.
 
 ### What counts
 
