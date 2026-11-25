@@ -519,3 +519,33 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Dependencies:** existing schema v12 and current Outbox store/tests on Main; no change to recipient-trust requirements.
 - **Acceptance:** exact-head Android JVM, Debug APK, Shared Contracts and managed-emulator tests; CodeRabbit, Security Scan, Dispatcher and GLAFIRA review; owner-controlled merge and post-merge validation.
 - **Status:** `RESERVED` before implementation. No Program 150 step is marked complete by this reservation.
+
+
+
+## WBS reservation — Backup recovery re-entry from persisted rollback journal — 2026-11-25
+
+- **WBS parent:** `1.2.1.2` — Interrupted restore recovery and restart re-entry.
+- **WBS leaf:** `1.2.1.2.1` — Verify V3 rollback recovery re-entry after coordinator reconstruction.
+- **Hierarchy:** `1.2` Backup and Recovery → `1.2.1` Local rollback-journal confidentiality and integrity → `1.2.1.2` Interrupted restore recovery and restart re-entry → `1.2.1.2.1` Re-enter recovery from a persisted V3 journal using a newly constructed coordinator.
+- **Tracker:** issue #566. Legacy Program 150 steps 25 / 136 / 158 remain related acceptance references only; this leaf completes none of them.
+- **Predecessor:** `1.2.1.1.1` bounded rollback-journal plaintext-canary acceptance result is PASS; its WBS lifecycle status is DONE, supported by successful post-merge Main validation below. This leaf may start only after this reservation is merged; do not alter predecessor source/test ownership.
+- **Executor:** GLAFIRA coordinator. **Independent reviewer:** CodeRabbit plus GLAFIRA exact-head review; owner controls merge.
+- **Branch / base:** `backup/recovery-reentry-wbs-20261125`, based on Main `5be41d316791a4ac89cf4be24d043e7a2ea04dbe`.
+- **Exclusive file reservation:** `app/src/androidTest/java/com/micronizationlab/glafira/GlafiraCoreBackupCoordinatorInstrumentedTest.kt`. Test-only slice; no production source file is authorized unless a separately registered finding requires it.
+- **Objective:** create a durable V3 rollback journal with `prepareRollback()`, reconstruct a new `GlafiraCoreBackupCoordinator` instance, and invoke the existing recovery entry point. Prove the known-good snapshot is restored, the pending marker/journal and installation-local rollback key are cleared, and no decrypted recovery temp remains.
+- **Important limitation:** this is deterministic restart/re-entry coverage using a newly constructed coordinator in the same instrumentation process. It is not represented as an OS process-kill test. Actual process-death injection at every durable boundary remains a separate acceptance item.
+- **Out of scope:** no archive-format/schema change, no production recovery algorithm change, no missing-key/tamper/ENOSPC claims, no provider or clean-device restore claim, and no Program 150 completion.
+- **Acceptance:** exact-head Android JVM, Debug APK, Shared Contracts and managed-emulator instrumentation; verify the test actually executed with a non-empty JUnit report; Security Scan, Project Dispatcher, CodeRabbit and GLAFIRA review; merge and post-merge Main validation. Preserve current fail-closed behavior.
+- **Implementation sequence:** (1) seed known-good task state; (2) prepare V3 rollback journal; (3) mutate live state after marker durability; (4) construct a fresh coordinator and call recovery; (5) assert original state restored and journal/key/temp cleanup; (6) run the complete applicable suite and inspect logs.
+- **Status:** `RESERVED` before implementation. No source or test changes are authorized until this reservation is merged to Main.
+
+
+## Append-only WBS status correction — 2026-11-25
+
+- **Corrected predecessor status:** WBS leaf `1.2.1.1.1` is **DONE**. The earlier `PASS` wording in the reservation records the bounded canary test result; it did not express the final WBS lifecycle status.
+- **Implementation / registration:** PR #661 merged as `c2e980612bc0dc5f6856340c704adf2892498715`; WBS registration PR #662 merged as `d52c1a46e345346dfbc0150b260b540561ec723f`.
+- **Exact-head evidence:** PR #661 run `45613626092` completed successfully with 164 emulator JUnit cases, 0 failures, 0 errors and 0 skipped; the JUnit report was verified.
+- **Post-merge evidence:** Main run `45614983384`, attempt 4, completed successfully on the merge SHA. Android JVM (321 tests), Debug APK, Shared Contracts, managed emulator (164 tests; 0 failures, 0 errors, 0 skipped) and exact-head summary passed. Earlier cancelled attempts are superseded by this successful attempt.
+- **Review / integration:** CodeRabbit review and GLAFIRA source review were recorded; owner merged the implementation and WBS registration. The bounded leaf acceptance is therefore complete.
+- **Boundary:** DONE applies only to the rollback-journal plaintext-canary leaf. It does not close issue #566 or claim OS process-death, ENOSPC, missing-key/tamper, provider round-trip or clean-device restore acceptance.
+- **Sequencing:** leaf `1.2.1.2.1` remains a separate reservation and may proceed only after its own WBS reservation PR is merged.
