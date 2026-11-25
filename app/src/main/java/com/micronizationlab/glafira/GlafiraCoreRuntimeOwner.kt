@@ -205,8 +205,8 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
             check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
             taskStore.cancelUnclaimedTask(taskId, projectId, System.currentTimeMillis())
         }
-        if (cancelled && isEnabled) runCatching {
-            GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+        if (cancelled) runCatching {
+            if (isEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
         }.onFailure {
             android.util.Log.w("GlafiraCoreRuntimeOwner", "Unable to wake Core after committed task cancellation.", it)
         }
