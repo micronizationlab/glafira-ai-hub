@@ -35,18 +35,20 @@ class DesktopBridgeEnrollmentFlow(
         )
     }
 
+    @JvmOverloads
     fun postFromVault(
         vaultPath: Path,
         vaultPassphrase: CharArray,
         projectId: String,
         operation: DesktopBridgeOperation,
-        payload: Map<String, String>
+        payload: Map<String, String>,
+        logicalOperationId: String? = null
     ): DesktopBridgeResponse {
         val entry = DesktopBridgeCredentialVault.load(vaultPath, vaultPassphrase)
         val credentials = entry.toCredentials()
         return try {
             DesktopBridgeHttpsClient().post(
-                entry.origin, credentials, projectId, operation, payload
+                entry.origin, credentials, projectId, operation, payload, logicalOperationId
             )
         } finally {
             credentials.hmacSecret.fill(0)
