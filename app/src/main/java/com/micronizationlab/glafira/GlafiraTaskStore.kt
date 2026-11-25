@@ -1194,11 +1194,20 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
      * Cancels only work that has not been claimed by a Core executor.
      * The state change, history trigger and dependency propagation share one SQLite transaction.
      */
-    internal fun cancelUnclaimedTask(taskId: String, projectId: String, nowMillis: Long): Boolean {
-        require(taskId.isNotBlank() && projectId.isNotBlank() && nowMillis > 0L)
+    internal fun cancelUnclaimedTask(
+        taskId: String,
+        projectId: String,
+        expectedOwnerCoreId: String,
+        expectedOwnerGeneration: Long,
+        expectedStateVersion: Long,
+        nowMillis: Long
+    ): Boolean {
+        require(taskId.isNotBlank() && projectId.isNotBlank() && expectedOwnerCoreId.isNotBlank())
+        require(expectedOwnerGeneration > 0L && expectedStateVersion >= 0L && nowMillis > 0L)
         // Legacy/unbound stores are not cancellation authorities. A project match alone
         // must never let a peer Core mutate another Core's canonical task.
         val actingCoreId = ownerCoreId ?: return false
+        if (actingCoreId != expectedOwnerCoreId) return false
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -1210,7 +1219,9 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     cursor.getString(0), cursor.getLong(1), cursor.getLong(2)
                 )
             } ?: return false
-            if (ownership.first != actingCoreId || ownership.second <= 0L) return false
+            if (ownership.first != expectedOwnerCoreId || ownership.second != expectedOwnerGeneration ||
+                ownership.third != expectedStateVersion
+            ) return false
             val task = queryTask(db, taskId, projectId) ?: return false
             if (!GlafiraTaskPolicy.ownerCanCancel(task)) return false
             val changed = transitionInternal(
