@@ -551,7 +551,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
 
-
     @Test
     fun rollbackJournalAndCacheNeverExposePlaintextMetadataCanary() {
         val taskId = "rollback-journal-canary"
@@ -586,7 +585,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             )
         } finally {
             journal.deleteRecursively()
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
             GlafiraRollbackSnapshotCipher.deleteKey()
         }
     }
