@@ -7,6 +7,14 @@ internal object GlafiraCoreOutboxSchema {
     const val TABLE = "core_outbox"
 
     fun create(db: SQLiteDatabase) {
+        // Sequence state survives project deletion so a source Core never reuses an event number.
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS core_outbox_sequences (
+                source_core_id TEXT PRIMARY KEY NOT NULL CHECK(length(source_core_id) BETWEEN 8 AND 128),
+                last_sequence INTEGER NOT NULL CHECK(last_sequence >= 0),
+                updated_at INTEGER NOT NULL CHECK(updated_at > 0)
+            )
+        """.trimIndent())
         db.execSQL("""
             CREATE TABLE IF NOT EXISTS $TABLE (
                 event_id TEXT PRIMARY KEY NOT NULL,
