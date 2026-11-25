@@ -18,7 +18,7 @@ The Android UI currently defines legacy palette values directly in `MainActivity
 
 Target package: `com.micronizationlab.glafira` (do not use the unrelated `ru.glafira.design` namespace).
 
-Proposed implementation sequence after owner approval:
+Implementation sequence using the owner-approved baseline tokens:
 
 1. Add a dedicated design-token source file under the existing app namespace or a dedicated design package within it.
 2. Expose semantic light/dark color roles, spacing, corner radii and minimum touch target as typed Kotlin values.
@@ -38,7 +38,7 @@ Minimum requirements:
 
 The repository already has a SwiftUI UI package at `ios/GlafiraBridgeKit/Sources/GlafiraIOSUI`.
 
-After owner approval:
+Using the owner-approved baseline tokens:
 1. Add a dedicated design-token source in the existing Swift package, using unambiguous names such as `GlafiraPalette` and `GlafiraSpacing`; avoid nesting a type named `Color` that shadows `SwiftUI.Color`.
 2. Use SwiftUI `Color` with explicit light/dark asset or dynamic-provider implementation. Import UIKit only if the implementation actually uses `UIColor`.
 3. Add reusable `StatusChip` with SF Symbols/custom SVG fallback, text label and accessibility label/value.
@@ -73,7 +73,7 @@ After owner approval:
 
 ## 6. Change control and rollout
 
-This is a cross-platform design foundation, not permission to redesign all screens at once. The token values and visual direction remain proposals until the owner explicitly approves them. Implementation should be split into small platform PRs, each with screenshots/previews and tests. No design change may alter Core authority, permissions, Bridge protocol, encryption, backup/restore or owner-approval behavior.
+This is an approved cross-platform design foundation, not permission to redesign all screens at once. Use the approved tokens as the baseline and migrate screens in small, reviewable slices. Implementation should be split into small platform PRs, each with screenshots/previews and tests. No design change may alter Core authority, permissions, Bridge protocol, encryption, backup/restore or owner-approval behavior.
 
 Recommended order:
 1. Approve shared semantic tokens and icon direction.
