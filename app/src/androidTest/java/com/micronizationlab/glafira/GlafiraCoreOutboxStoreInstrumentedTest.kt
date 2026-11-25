@@ -87,7 +87,6 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
             assertEquals("Rollback must not consume a source sequence", 1L, committed.sourceSequence)
         } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
     }
-
     @Test fun callerTransactionCommitPersistsOutboxAndSequenceTogether() {
         val store = openStore()
         try {
@@ -111,7 +110,6 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
             assertFalse(outbox.append(draft("event-caller-commit")).inserted)
         } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
     }
-
     @Test fun callerTransactionReplayIsIdempotentAndPayloadConflictIsRejected() {
         val store = openStore()
         try {
