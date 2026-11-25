@@ -60,3 +60,11 @@ Record each build as `repository|commit SHA|workflow|job/lane|configuration`. Re
 - Confirmed plan has 200 numbered checklist entries; 27 checked at last literal audit. The original 150 denominator remains separate from extension items 151–200.
 - Created control issue #548 and governance branch from the observed main SHA.
 - No application source code, runtime behavior, APK or installer changed in this governance task.
+
+### 2026-11-25 — GLAFIRA-S016-W02
+- Scope: one bounded Core recovery regression for the uncertain external-write/result-commit boundary; no production behavior changed.
+- Integrated PR #550 (squash merge) as main commit `1aa7a1adab9296c1845d3fcc9268d5a886e59e9e`; source PR head `c749880303232ca7f48f0c6e9cf237fd246ea2b6`.
+- Exact-head validation: CI run `45398172987` success; Project Dispatcher run `45399931427` success. Managed emulator report: 131 tests, 0 failures, 0 errors, 0 skipped; the injected result-commit failure test passed.
+- Verified behavior: after simulated external write and failed encrypted result persistence, Core moves the task to WAITING_FOR_OWNER; reopening the database does not requeue or replay the operation.
+- This is one Step 16 acceptance slice only. It does not complete Step 16, does not implement Step 18 durable outbox/ACK, and does not claim post-merge validation. No further build was started because no workflow run was returned for the merge SHA.
+- Next: continue with a separate bounded Core work item; do not repeat this failure-injection case. Preserve #550 as merged evidence.
