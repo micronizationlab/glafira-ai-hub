@@ -108,7 +108,7 @@ class GlafiraCoreOwnershipTransferStoreInstrumentedTest {
                 assertEquals(localReceipt, transferStore.receipt(transfer.payload.transferId))
             } finally {
                 archive.delete()
-                passphrase.fill('\\u0000')
+                passphrase.fill('\u0000')
             }
         }
 
