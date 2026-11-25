@@ -161,6 +161,33 @@ class GlafiraPortableSnapshotInstrumentedTest {
         passphrase.fill('\u0000')
     }
 
+    @Test fun tamperedRollbackDatabaseIsRejectedBeforeSafetyArchiveChangesLiveFiles() = runBlocking {
+        val guard = File(context.filesDir, "rollback-order-guard.txt").apply { writeText("before") }
+        store.enqueue(task("preserved-tampered"))
+        val passphrase = "encrypted-local-rollback-passphrase".toCharArray()
+        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        try {
+            coordinator.prepareRollback(passphrase)
+            guard.writeText("after")
+            val encrypted = File(journal, "database.db")
+            val bytes = encrypted.readBytes()
+            bytes[bytes.lastIndex] = (bytes.last().toInt() xor 0x01).toByte()
+            encrypted.writeBytes(bytes)
+            store.writableDatabase.delete("core_tasks", null, null)
+
+            val error = assertThrows(IllegalStateException::class.java) {
+                runBlocking { coordinator.recover(passphrase) }
+            }
+            assertTrue(error.message.orEmpty().contains("Core остаётся заблокирован"))
+            assertEquals("after", guard.readText())
+            assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertNull(store.getTask("preserved-tampered"))
+        } finally {
+            guard.delete()
+            passphrase.fill('\u0000')
+        }
+    }
+
     @Test fun hasInterruptedRestoreCleansOrphanedDecryptedRollbackTemporary() {
         val stale = File(context.cacheDir, "glafira-rollback-recovery-orphan.tmp")
         stale.writeText("sensitive plaintext")
