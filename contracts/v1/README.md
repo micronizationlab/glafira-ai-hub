@@ -1,9 +1,9 @@
 # GLAFIRA Task and Agent Contracts v1
 
-Status: initial cross-platform contract draft; requires review before platform adoption.
+Status: cross-platform message-shape draft; project-coordinator election/claims are INACTIVE per ADR-0001 and must not be used for runtime coordination.
 
 ## Scope
-This schema is the shared language-neutral source for task dispatch and participating-node lifecycle. Android, iOS and Windows Desktop full GLAFIRA installations may participate in the GitHub-backed project coordinator election when owner-enrolled and eligible. A Windows Agent remains a subordinate worker unless explicitly provisioned as a full eligible GLAFIRA node. Project coordination does not replace the owning Core's policy and approval authority.
+This schema is the shared language-neutral source for task dispatch and participating-node lifecycle. Android and Windows Desktop Core installations retain independent task authority; Windows Hub may coordinate its local Agent fleet. A Windows Agent remains a subordinate worker unless explicitly provisioned as a full GLAFIRA node. The legacy project-coordinator message family is not active for runtime election, task claims or heartbeats. See ADR-0001.
 
 ## Message families
 - `TaskEnvelope`: immutable task intent, project scope, idempotency key, typed task kind, payload reference and hash, dependencies, risk/approval metadata and resource budget.
@@ -17,7 +17,7 @@ This schema is the shared language-neutral source for task dispatch and particip
 ## Security rules
 1. Never place passwords, API keys, private keys, cookies, bearer tokens or reusable credentials in these payloads.
 2. Payloads are references to separately authorized, integrity-checked data, not arbitrary executable commands.
-3. The elected project coordinator may schedule and arbitrate task claims but cannot grant Core permissions or bypass owner approval; the Windows Desktop Hub may separately coordinate its local Agent transport fleet.
+3. No global project coordinator is active. The Windows Desktop Hub may coordinate its local Agent transport fleet but cannot grant Core permissions or bypass owner approval.
 4. Agent capabilities are allowlisted typed handlers; no generic shell, arbitrary code execution or unrestricted filesystem access.
 5. External side effects require Core policy admission and owner approval where applicable.
 6. Lease expiry does not prove that a side effect did not occur. Use `OUTCOME_UNKNOWN` and reconciliation; do not blindly retry.
@@ -151,14 +151,14 @@ The signature covers every transfer field except `signature`, in the exact field
 Android and iOS owner clients may maintain a non-authoritative ownership projection. They must resolve the old Core's public key by the authenticated Core ID, key epoch and SHA-256 fingerprint; verify the fixed-width P-256 signature; require the current time to be inside the signed validity window; and advance only from the exact recorded old owner/generation and state binding to the signed next generation. An exact transfer retry is idempotent, while a reused transfer ID, stale generation, divergent state or untrusted key fails closed without replacing the projection. This projection does not issue leases, authorize execution or make a mobile client a Hub; Windows Hub remains authoritative.
 
 
-## Project coordinator and multi-node participation v1
+## Project coordinator and multi-node participation v1 (LEGACY / INACTIVE)
 
-The separate `project-coordinator.schema.json` defines four versioned messages:
+Historical note: the following schema remains for compatibility and design traceability only. It is not a production runtime contract and must not be used for GitHub-backed leader election or task claims. The separate `project-coordinator.schema.json` defines four versioned messages:
 - `ProjectNodeRecord`: enrolled Android, Windows Desktop, iOS or Windows Agent installation, with platform, capabilities, enrollment/credential epochs, liveness sequence and explicit coordinator eligibility.
 - `CoordinatorLeaseRecord`: project coordinator identity, monotonic generation, lease, heartbeat sequence and node signature.
 - `CoordinatorClaimRequest`: signed compare-and-swap claim against the generation and lease observed by the candidate.
 - `ProjectTaskClaimRecord`: task claim bound to coordinator generation, task state version, idempotency key and fencing token.
 
-The fixtures and validator are part of the same v1 conformance gate. A subordinate `WORKER_AGENT` is schema-ineligible to elect itself. A Windows Agent may participate in election only after explicit provisioning as a full GLAFIRA node. This project-level coordinator role never replaces per-task Core ownership, owner approval or the Windows Hub's local Agent-fleet role.
+The fixtures and validator preserve the historical message shape only. The prior proposal's rule that a subordinate `WORKER_AGENT` could not elect itself is not an active runtime feature; no Android, Windows, iOS or Agent installation participates in GitHub-backed global election. Per-task Core ownership and the Windows Hub's local Agent-fleet role remain separate.
 
-The schema describes message shape, not storage atomicity. The exact GitHub ref compare-and-swap algorithm, lease timing, outage behavior and concurrency acceptance are specified in `docs/contracts/GITHUB_PROJECT_COORDINATOR_GITHUB_REF_CAS.md`. The model generator also emits Kotlin, Swift and C# DTOs for these four coordinator messages. A read-then-write sequence without CAS is not an election protocol.
+The schema describes historical message shape only. The prior GitHub ref compare-and-swap algorithm is superseded by ADR-0001. The model generator's DTOs may remain for compatibility but must not be wired to runtime coordination without a new owner-approved ADR.
