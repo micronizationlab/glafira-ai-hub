@@ -8,7 +8,7 @@
 
 ## 1. Session start — do this before any work
 
-1. Read this file, the full 150-step plan, execution ledger, collaborator handoff, engineering dispatcher rule and `.github/copilot-instructions.md`.
+1. Read this file, `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`, the full 150-step plan, execution ledger, collaborator handoff, engineering dispatcher rule, root `AGENTS.md` and `.github/copilot-instructions.md`.
 2. Read issue #548 and refresh GitHub facts live: `main` SHA, open/closed PRs, branches, changed-file lists, commit ancestry, reviews, workflow runs, jobs, logs and artifacts relevant to active work.
 3. Reconcile the ledger with the actual repository. Never trust a remembered SHA, an earlier chat summary, an old PR base or an old green CI run.
 4. Search the plan and ledger for the exact step/acceptance criterion. Search current `main`, all open PR diffs and helper branches for the same behavior and files.
@@ -16,7 +16,16 @@
 6. Reserve one unique Work Item ID, one Program Step ID (or explicitly approved cross-step task), one accountable executor, exact files, dependencies, tests and intended PR. Record reservation in the ledger before editing.
 7. If another active item touches the same behavior, API, schema, migration or files, stop and reconcile ownership before work begins.
 
-## 2. Work item identity and ownership
+## 2. Mandatory hierarchical WBS and strict sequence
+
+- `1` is the GLAFIRA project; `1.1` is a subproject; `1.1.1` is a chapter; each deeper level appends one numeric component down to an individual executable step.
+- The canonical rules, stable eleven-subproject map, legacy 150-step mapping and mandatory step-by-step procedure are defined in `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`.
+- Every issue, branch, PR, commit, test report and ledger entry must carry its hierarchical WBS ID(s). Existing Program 150 IDs remain compatibility references and must be mapped, not renumbered.
+- No participant may start a dependent step before all predecessor steps are accepted and recorded DONE. A blocked predecessor blocks dependent work; skipping requires explicit owner approval and a recorded decision.
+- Parallel execution is permitted only for independent sibling tasks with separate WBS IDs, executors, branches and exclusive file ownership. The coordinator must reserve ownership before implementation.
+- Every participant must implement and report one executable leaf step at a time, including exact acceptance evidence and the next eligible step.
+
+## 3. Work item identity and ownership
 
 Every task has a stable ID: `GLAFIRA-S<step>-W<sequence>` (example: `GLAFIRA-S016-W01`). A task record must include:
 - Step ID(s), short objective and acceptance criteria;
@@ -29,7 +38,7 @@ Every task has a stable ID: `GLAFIRA-S<step>-W<sequence>` (example: `GLAFIRA-S01
 
 One logical behavior has one active implementation owner. Helpers may independently review or research, but must not implement overlapping changes. The eleventh workstream collects helper work first and reconciles it before new implementation.
 
-## 3. The mandatory implementation cycle
+## 4. The mandatory implementation cycle
 
 1. **Inventory:** refresh main, PRs, branches, changed files and prior work.
 2. **Define:** write hypothesis, source evidence, smallest change, risks, dependencies and tests.
@@ -44,7 +53,7 @@ One logical behavior has one active implementation owner. Helpers may independen
 11. **Merge and verify:** authorized maintainer merges; record merge commit; run/reuse post-merge checks for that exact main SHA; inspect logs.
 12. **Close the loop:** only then mark acceptance criterion DONE, update plan checkbox if the whole numbered step is satisfied, append evidence to ledger, release file ownership and notify helpers.
 
-## 4. Build and duplicate-work rules
+## 5. Build and duplicate-work rules
 
 - A build is identified by `(repository, commit SHA, workflow, job/lane, configuration)`, not by its display name or APK filename.
 - Same identity + completed success: reuse the evidence; do not rebuild without a reason.
@@ -56,7 +65,7 @@ One logical behavior has one active implementation owner. Helpers may independen
 - CI concurrency is serialized globally for release/build lanes; work on non-overlapping code may proceed independently, but builds do not run in parallel.
 - Never call a cancelled, skipped, queued, in-progress or partial workflow a pass.
 
-## 5. PR and branch rules
+## 6. PR and branch rules
 
 - Before creating a branch, search existing branches and PRs by feature, changed paths and patch/commit equivalence.
 - Before creating a PR, search open and recently closed PRs. Reuse/update the existing work item if it is the same logical change.
@@ -65,7 +74,7 @@ One logical behavior has one active implementation owner. Helpers may independen
 - A merged PR is not automatically a completed Program step; the step may require other slices and acceptance tests.
 - Closed/superseded PRs remain historical evidence. Do not reopen merely to continue work; extract only missing unique changes into a new bounded PR.
 
-## 6. Definition of DONE
+## 7. Definition of DONE
 
 A numbered step is DONE only when:
 1. its complete acceptance criterion is satisfied in code/configuration;
@@ -78,7 +87,7 @@ A numbered step is DONE only when:
 
 A physical-device, two-PC, cloud-provider or owner-approval requirement cannot be replaced by unit tests or an emulator. Record it as BLOCKED/OWNER_ACCEPTANCE until actually performed.
 
-## 7. Eleven workstreams (parallel analysis, exclusive implementation ownership)
+## 8. Eleven workstreams (parallel analysis, exclusive implementation ownership)
 
 1. **Core:** queue, owner identity/generation, grants, authorization, Trace, dispatcher, result outbox/ACK, recovery.
 2. **Backup & Recovery:** encrypted archive, migrations, interruption/corruption recovery, cloud/SAF, clean restore.
@@ -92,17 +101,17 @@ A physical-device, two-PC, cloud-provider or owner-approval requirement cannot b
 10. **Multi-model & specialist architecture:** provider grants/data classification, cost attribution, role projects, no bypass of Core.
 11. **Helper intake/integration:** inspect helper output first, deduplicate, reserve files, review exact diff, split bounded slices, validate, merge in dependency order, notify helper.
 
-## 8. Priority and sequencing
+## 9. Priority and sequencing
 
 Respect current owner priorities: P1 Core; P2 Backup & Recovery; P3 Bridge and Windows Desktop. Android and Desktop are the main runtime surfaces. iOS and specialist-agent feature work follow the foundation. All eleven streams remain active for non-conflicting analysis and documentation, but no stream may bypass dependency order or claim shared file ownership.
 
-## 9. Current baseline and reconciliation
+## 10. Current baseline and reconciliation
 
 At creation of this control branch, `main` was `f2b5e4b087d4f2357e0354ec0cc56c228c0ed1ec`. The plan file still carried an older baseline SHA `b34c831c024b9db6157f3dea7fdfa9d9b650d337`; therefore the first task is a live reconciliation audit. The plan contains 200 numbered entries: original steps 1–150 and extension items 151–200. The prior literal checkbox count was 27/200, with 27 checked in the first 150, but that count must be revalidated against current main before it is used as a progress claim.
 
 PR #410 is closed without merge and frozen as source-only. Do not reopen, push to it, or merge its aggregate branch. Any useful missing change must be uniquely mapped to a numbered step and extracted as a small PR.
 
-## 10. Required reporting format
+## 11. Required reporting format
 
 At the end of each work cycle report:
 - Current main SHA;
