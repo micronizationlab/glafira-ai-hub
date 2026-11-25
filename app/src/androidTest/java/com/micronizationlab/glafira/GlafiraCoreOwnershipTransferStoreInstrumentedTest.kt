@@ -83,6 +83,36 @@ class GlafiraCoreOwnershipTransferStoreInstrumentedTest {
     }
 
     @Test
+    fun ownershipTransferReceiptRemainsLocalAcrossPortableBackupRestore() =
+        kotlinx.coroutines.runBlocking {
+            val task = enqueueRemoteOwnedTask("transfer-task-backup-compatibility")
+            val passphrase = "GLAFIRA-transfer-backup-passphrase".toCharArray()
+            val coordinator = GlafiraCoreBackupCoordinator(context, taskStore)
+            val archive = coordinator.create(passphrase)
+            try {
+                // The transfer-receipt table already exists before export and must be explicitly
+                // classified as device-local rather than rejected as an unknown Core table.
+                val transfer = envelope(
+                    task, "transfer-backup-0001", "nonce-backup-0001", nowMillis
+                )
+                assertEquals(
+                    GlafiraOwnershipTransferApplyResult.APPLIED,
+                    transferStore.applyIncoming(transfer, ownerSession(), nowMillis)
+                )
+                val localReceipt = requireNotNull(transferStore.receipt(transfer.payload.transferId))
+
+                // Restore an older portable snapshot. Anti-replay receipts are not portable and
+                // must remain in the destination database rather than being copied from archive.
+                coordinator.restore(archive, passphrase)
+
+                assertEquals(localReceipt, transferStore.receipt(transfer.payload.transferId))
+            } finally {
+                archive.delete()
+                passphrase.fill('\\u0000')
+            }
+        }
+
+    @Test
     fun appliesTransferAtomicallyAndDuplicateSurvivesTaskStoreRestart() {
         val task = enqueueRemoteOwnedTask("transfer-task-success")
         val transfer = envelope(task, "transfer-00000001", "nonce-00000001", nowMillis)
