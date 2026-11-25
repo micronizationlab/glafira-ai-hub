@@ -24,7 +24,7 @@ internal object GlafiraRollbackSnapshotCipher {
     private const val MAX_ENCRYPTED_BYTES = MAX_SNAPSHOT_BYTES + MAGIC.size + IV_BYTES + GCM_TAG_BYTES
 
     fun encrypt(source: File, destination: File) {
-        require(source.isFile && source.length() in 1..MAX_SNAPSHOT_BYTES) {
+        require(source.isFile && source.length() in 1L..MAX_SNAPSHOT_BYTES) {
             "Core rollback snapshot is missing or exceeds the size limit."
         }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
