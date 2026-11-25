@@ -82,4 +82,45 @@ class GlafiraTaskPolicyTest {
             )
         )
     }
+    @Test
+    fun ownerCanCancelOnlyNeverClaimedTaskStates() {
+        listOf(
+            GlafiraTaskState.QUEUED,
+            GlafiraTaskState.WAITING_FOR_NETWORK,
+            GlafiraTaskState.WAITING_FOR_OWNER
+        ).forEach { state ->
+            val task = GlafiraTask(
+                taskId = "cancel-$state", projectId = "project-1", taskType = "project.read",
+                payload = "{}", origin = "owner", state = state, createdAtMillis = 10L,
+                updatedAtMillis = 10L, idempotencyKey = "project-1:cancel-$state"
+            )
+            assertTrue(GlafiraTaskPolicy.ownerCanCancel(task))
+        }
+        val retried = GlafiraTask(
+            taskId = "retried", projectId = "project-1", taskType = "project.read",
+            payload = "{}", origin = "owner", state = GlafiraTaskState.RETRY_SCHEDULED,
+            createdAtMillis = 10L, updatedAtMillis = 20L, attemptCount = 1,
+            idempotencyKey = "project-1:retried"
+        )
+        assertFalse(GlafiraTaskPolicy.ownerCanCancel(retried))
+    }
+
+    @Test
+    fun ownerCannotCancelTasksWithUnresolvedExecutionOutcomes() {
+        listOf(
+            "CORE_EXECUTION_OUTCOME_UNKNOWN",
+            "DESKTOP_EXECUTION_OUTCOME_UNKNOWN",
+            "EXECUTION_OUTCOME_UNCERTAIN",
+            "CORE_RESULT_PERSIST_FAILED:CORE_EXECUTION_OUTCOME_UNKNOWN"
+        ).forEachIndexed { index, marker ->
+            val task = GlafiraTask(
+                taskId = "unknown-$index", projectId = "project-1", taskType = "project.write",
+                payload = "{}", origin = "owner", state = GlafiraTaskState.WAITING_FOR_OWNER,
+                createdAtMillis = 10L, updatedAtMillis = 20L, lastError = marker,
+                idempotencyKey = "project-1:unknown-$index"
+            )
+            assertFalse(GlafiraTaskPolicy.ownerCanCancel(task))
+        }
+    }
+
 }
