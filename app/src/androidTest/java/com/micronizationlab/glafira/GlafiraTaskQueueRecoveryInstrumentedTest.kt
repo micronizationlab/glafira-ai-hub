@@ -977,4 +977,53 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
     }
 
 
+    @Test fun injectedResultCommitFailureAfterExternalWriteQuarantinesWithoutReplayAfterRestart() = runBlocking {
+        val operation = task("external-write-result-commit-failure", type = "message.send")
+        store.enqueue(operation)
+        var handlerCalls = 0
+
+        store.writableDatabase.execSQL("""
+            CREATE TRIGGER inject_external_write_result_failure
+            BEFORE INSERT ON core_task_results
+            BEGIN
+                SELECT RAISE(ABORT, 'injected-external-write-result-failure');
+            END
+        """.trimIndent())
+
+        val executor = GlafiraCoreTaskExecutor(
+            queue = store,
+            authorizer = GlafiraTaskAuthorizer { _, _ ->
+                GlafiraTaskAuthorizationResult(GlafiraTaskAuthorizationStatus.AUTHORIZED)
+            },
+            handlers = listOf("message.send" to GlafiraTaskHandler {
+                // Simulate an external write completing before Core can persist its result.
+                handlerCalls++
+                GlafiraTaskExecutionOutcome.Succeeded("remote write completed")
+            }),
+            dispatcher = Dispatchers.IO,
+            clock = { 2_000L },
+            runtimeBudget = { GlafiraRuntimeBudget(maxConcurrentTasks = 1) },
+            executionMode = { GlafiraExecutionMode.LIVE }
+        )
+
+        val execution = executor.executeNext()
+
+        assertEquals(GlafiraTaskExecutionStatus.WAITING_FOR_OWNER, execution.status)
+        assertEquals(1, handlerCalls)
+        val quarantined = requireNotNull(store.getTask(operation.taskId))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, quarantined.state)
+        assertTrue(quarantined.lastError.orEmpty().contains("CORE_EXECUTION_OUTCOME_UNKNOWN"))
+        assertNull(store.coreTaskResult(operation.taskId, operation.projectId))
+
+        store.writableDatabase.execSQL("DROP TRIGGER inject_external_write_result_failure")
+        store.close()
+        store = GlafiraTaskStore(context, TEST_CORE_ID)
+
+        assertEquals(0, store.recoverInterruptedCoreTasks(3_000L, 5))
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask(operation.taskId)?.state)
+        assertEquals(1, handlerCalls)
+        assertNull(store.coreTaskResult(operation.taskId, operation.projectId))
+    }
+
+
 }
