@@ -188,6 +188,7 @@ private fun WorkspaceApp() {
                 currentProject = currentProject,
                 refreshKey = statusRefresh,
                 onProjectSelect = { currentProject = it },
+                onProjectPickerOpen = { projects = loadProjects(context) },
                 onProjectAdd = { name ->
                     val newProj = Project(UUID.randomUUID().toString(), name)
                     projects = updateProjects(context) { it + newProj }
@@ -213,9 +214,6 @@ private fun WorkspaceApp() {
             else -> ChatScreen(
                 agent = currentAgent!!,
                 project = currentProject,
-                projects = projects,
-                onProjectSelect = { currentProject = it },
-                onRefreshProjects = { projects = loadProjects(context) },
                 onBack = { currentAgent = null },
                 onOpenSettings = { showSettings = true }
             )
@@ -292,6 +290,7 @@ fun ContactList(
     currentProject: Project,
     refreshKey: Int,
     onProjectSelect: (Project) -> Unit,
+    onProjectPickerOpen: () -> Unit,
     onProjectAdd: (String) -> Unit,
     onProjectDelete: (Project) -> Unit,
     onAgentClick: (A) -> Unit,
@@ -381,7 +380,17 @@ fun ContactList(
         Row(Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Проект: ", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
             Box {
-                Row(modifier = Modifier.clickable { showProjectMenu = true }, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "Выбрать проект: ${currentProject.name}"
+                        }
+                        .clickable {
+                            onProjectPickerOpen()
+                            showProjectMenu = true
+                        },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(currentProject.name, color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     Text(" ▼", color = Gr, fontSize = 8.sp)
                 }
@@ -389,7 +398,7 @@ fun ContactList(
                     projects.forEach { proj ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             DropdownMenuItem(
-                                text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Bg) },
+                                text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Color(0xFF202020)) },
                                 onClick = { onProjectSelect(proj); showProjectMenu = false },
                                 modifier = Modifier.weight(1f)
                             )
@@ -554,14 +563,10 @@ fun ContactList(
 fun ChatScreen(
     agent: A,
     project: Project,
-    projects: List<Project>,
-    onProjectSelect: (Project) -> Unit,
-    onRefreshProjects: () -> Unit,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    var showProjectSelector by remember { mutableStateOf(false) }
     var inputText by remember { mutableStateOf(loadDraft(context, project.id, agent.n)) }
     val historyKey = "${project.id}_${agent.n}"
     var selectedPhotoUri by remember(historyKey) { mutableStateOf<Uri?>(null) }
@@ -750,43 +755,6 @@ fun ChatScreen(
         ProfileScreen(agent = agent, onBack = { showProfile = false })
     } else {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line)
-                    .padding(horizontal = 8.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box {
-                    Text(
-                        "▣ ${project.name}  ▾",
-                        color = Gr,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .semantics(mergeDescendants = true) {
-                                contentDescription = "Выбрать проект: ${project.name}"
-                            }
-                            .clickable {
-                                onRefreshProjects()
-                                showProjectSelector = true
-                            }
-                    )
-                    DropdownMenu(
-                        expanded = showProjectSelector,
-                        onDismissRequest = { showProjectSelector = false }
-                    ) {
-                        projects.forEach { item ->
-                            DropdownMenuItem(
-                                text = { Text(item.name) },
-                                onClick = {
-                                    onProjectSelect(item)
-                                    showProjectSelector = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
             Row(Modifier.fillMaxWidth().background(Color(0xFFDCE8F4)).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (isSearching) {
                     TextField(
