@@ -208,7 +208,7 @@ Do not enable cross-Core LIVE execution based only on unit tests or a successful
 
 Until the relevant gates pass, keep the feature disabled or in DRY_RUN and report the remaining limitation plainly.
 
-## 15. Source-of-truth documents
+## 17. Source-of-truth documents
 
 - [Core foundation specification](GLAFIRA_CORE_FOUNDATION_SPEC.md)
 - [Dual-Core ownership and failover contract](contracts/DUAL_CORE_OWNERSHIP_AND_FAILOVER.md)
