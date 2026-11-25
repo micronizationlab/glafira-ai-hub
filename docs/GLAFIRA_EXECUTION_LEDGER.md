@@ -417,3 +417,31 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Audit follow-up issue #629:** created with 31 evidence-based questions, mandatory source/commit/test proof and a KEEP/SIMPLIFY/ADOPT/REWRITE/REMOVE/NEEDS-MORE-EVIDENCE matrix. It authorizes assessment only, not automatic architecture changes.
 - **Current next Core gate:** the normative Dual-Core contract states that signing trust does not provide payload encryption. Separate key agreement, authenticated envelope encryption, durable receiver Inbox, exact ACK and sender/receiver workers are still required. Keep cross-Core payload delivery disabled until these are implemented and accepted.
 - **Post-merge CI visibility:** the connected workflow lookup returns PR-triggered runs only. No post-merge run was returned for the ledger merge SHA at capture time; this is not recorded as a pass.
+
+
+## Work item execution checkpoint — 2026-11-25 08:10 UTC
+
+- **WBS:** 1.1 Core / 1.1.1 ownership and peer trust / 1.1.1.1 Android receiver apply; supporting streams 1.5 Android, 1.7 CI/CD & Security, 1.11 Integration. Parent issue #366 remains open.
+- **Work item:** `CORE-OWNERSHIP-02`; replacement branch `core/android-ownership-transfer-transaction-main-20261125` is based on current Main `5baf5d617d454c1f283cef82ff9a2cfd701df254`.
+- **Implementation:** trusted-peer registry wiring in the application-scoped runtime; synchronized active-peer trust lease; P-256/P1363 signature, fingerprint/epoch, recipient, validity, payload, idempotency, effect-risk, approval, generation and state-version validation; queued/no-live-lease requirement; one-use owner session; atomic owner CAS, approval/live-run-grant/expired-lease invalidation, durable replay receipt and redacted Trace append in canonical TaskStore DB.
+- **Tests:** apply/duplicate/restart; invalid signature; wrong recipient; expiry; revoked peer; nonce replay; stale generation; live/expired lease; grant and approval invalidation; rollback; concurrent delivery. Prior exact-head run `45570418926` passed Android JVM (320), emulator (161), shared contracts and Debug APK; Dispatcher `45570419011` passed. Windows Desktop, Windows Agent, iOS and Workflow lint were skipped.
+- **Reconciliation:** the original PR #627 could not merge because its base was three commits behind current Main and GitHub reported merge conflicts. The replacement branch copies the six runtime/test files onto current Main; newer WBS and ledger entries are preserved. The owner explicitly waived the 200-line size preference for this PR only; correctness and CI gates remain mandatory.
+- **Status:** awaiting exact-head CI after reconciliation. No merge or acceptance is claimed. Payload delivery remains disabled; authenticated encryption, durable Inbox/ACK, sender and full Android↔Windows E2E remain separate gates. Physical-device acceptance remains outstanding.
+
+## Core ownership-transfer backup compatibility correction — 2026-11-25 09:22 UTC
+
+- **Work item:** CORE-OWNERSHIP-02 / issue #366; cross-stream blocker #644; backup acceptance #25.
+- **Finding:** the new device-local table `core_ownership_transfer_receipts` was absent from `GlafiraPortableCoreSnapshot.NON_PORTABLE`, causing the unknown `core_%` table guard to reject backup export after transfer-store initialization.
+- **Correction:** commit `b6f153dceb80b2c6e4f6f8487a3afbbdcdc2d228` adds the table to the explicit NON_PORTABLE list. This preserves the anti-replay receipt locally and excludes it from portable snapshots; the unknown-table guard remains strict.
+- **Regression test:** commit `1be9b8da94c0f372d4998a7756190308723b24d8` adds a managed instrumentation scenario: create archive with receipt table initialized, apply transfer, restore the earlier archive, and assert the device-local receipt survives. Commit `67f7f28fbe2cd8312b0510b6fb7da7b39e2da9f1` corrects the passphrase buffer clear literal.
+- **Branch reconciliation:** the three commits were fast-forwarded from `core/android-ownership-transfer-transaction-main-20261125` onto the actual PR head branch `core/android-ownership-transfer-transaction-20261125` using expected old head `08edface22f5f8013b8cb1ca5c6dec5d367a6166`; update_ref succeeded without force. The PR diff now includes the snapshot allowlist and regression test.
+- **Validation:** the previous CI/Dispatcher success on `08edface...` does not validate these changes. No new exact-head run has yet been returned for `67f7f28...`; do not claim a pass. #644 remains open until current-head CI and review pass.
+- **Safety:** cross-Core payload delivery remains disabled; no physical-device acceptance is claimed.
+
+## Backup restore regression correction and exact-head failure — 2026-11-25
+
+- **Run:** PR #627 exact-head CI #45583369599 on head 54e9f21efbb589eb011bb6d0a4fa86ce5d5efbd0. Android JVM, Debug APK and Shared contracts passed; managed emulator completed 162 tests with 1 failure, 0 errors, 0 skipped. Exact-head summary failed. Artifact #15008301072 contains diagnostics.
+- **Failure:** new test initially expected the device-local transfer receipt to survive restore. Source inspection proved the restore contract intentionally deletes all NON_PORTABLE tables, including ownership rows, leases, approvals, outbox and receipts, and marks restored nonterminal tasks WAITING_FOR_OWNER. The test expectation was wrong; this is not an emulator timeout.
+- **Correct invariant:** after restore, the receipt and ownership row are absent, the task is WAITING_FOR_OWNER, and replay of the old signed transfer is rejected as TASK_NOT_FOUND. This proves the restore owner-reset boundary prevents transfer replay until fresh owner authority is established.
+- **Correction:** commit `16c591abb4ab4e37aebc7c9862d7eed2ca2110d9` replaces the incorrect receipt-survival assertion with the complete owner-reset/replay-rejection test. Issue #644 now records this correct acceptance condition.
+- **Validation:** new exact-head CI must run against the updated branch. Do not report PR #627 as green until emulator, JVM, APK, shared contracts and exact-head summary pass. Prior run failure remains recorded.
