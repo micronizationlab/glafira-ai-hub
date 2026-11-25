@@ -66,6 +66,9 @@ class MainActivitySmokeTest {
             device.findObject(By.text("Отмена")).click()
             assertTrue("Cancelling deletion must preserve the selected project",
                 device.wait(Until.hasObject(By.desc("Выбрать проект: ВодородАктив")), 5_000))
+            device.findObject(By.text("←")).click()
+            assertTrue("Chat back action did not return to the home screen",
+                device.wait(Until.hasObject(By.descContains("Открыть очередь задач")), 5_000))
         } finally {
             saveProviderKey(context, ProviderId.OPENAI, "")
         }
