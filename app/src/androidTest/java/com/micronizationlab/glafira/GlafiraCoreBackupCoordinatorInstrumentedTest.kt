@@ -629,8 +629,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val marker = File(journal, "restore.pending")
         val rollbackDatabase = File(journal, "database.db")
         val rollbackArchive = File(journal, "files.glb")
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val keyAlias = "glafira_core_rollback_v1"
+        fun rollbackKeyExists(): Boolean = KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
         val passphrase = "GLAFIRA-v3-reentry-test-2026".toCharArray()
         assertFalse("Test requires an isolated, clean rollback journal", marker.exists())
         assertFalse("Test requires no pre-existing restore journal", journal.exists())
@@ -644,7 +644,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertEquals("GLAFIRA_RESTORE_ROLLBACK_V3", marker.readText(Charsets.UTF_8))
             assertTrue(rollbackDatabase.isFile && rollbackDatabase.length() > 0L)
             assertTrue(rollbackArchive.isFile && rollbackArchive.length() > 0L)
-            assertTrue(keyStore.containsAlias(keyAlias))
+            assertTrue(rollbackKeyExists())
 
             store.enqueue(task("mutated-after-marker"))
             assertEquals("mutated-after-marker", store.getTask("mutated-after-marker")?.taskId)
@@ -656,7 +656,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertNull(store.getTask("mutated-after-marker"))
             assertFalse("Successful recovery must clear the pending marker", marker.exists())
             assertFalse("Successful recovery must remove the rollback journal", journal.exists())
-            assertFalse("Successful recovery must delete its installation-local key", keyStore.containsAlias(keyAlias))
+            assertFalse("Successful recovery must delete its installation-local key", rollbackKeyExists())
             assertTrue(
                 "No decrypted rollback recovery temp may remain",
                 context.cacheDir.listFiles { file ->
@@ -665,7 +665,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             )
         } finally {
             passphrase.fill('\u0000')
-            if (journal.exists() && !marker.exists()) journal.deleteRecursively()
+            // The journal was required to be absent before this test, so any remaining journal is test-owned.
+            journal.deleteRecursively()
+            context.cacheDir.listFiles { file ->
+                file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+            }.orEmpty().forEach { it.delete() }
             GlafiraRollbackSnapshotCipher.deleteKey()
         }
     }
