@@ -1173,6 +1173,34 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
     }
 
     /**
+     * Cancels only work that has not been claimed by a Core executor.
+     * The state change, history trigger and dependency propagation share one SQLite transaction.
+     */
+    @Synchronized
+    internal fun cancelUnclaimedTask(taskId: String, nowMillis: Long): Boolean {
+        require(taskId.isNotBlank() && nowMillis > 0L)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val changed = transitionInternal(
+                token = null,
+                taskId = taskId,
+                expectedStates = GlafiraTaskPolicy.ownerCancellableStates,
+                nextState = GlafiraTaskState.CANCELLED,
+                nowMillis = nowMillis,
+                retryAtMillis = null,
+                lastError = "OWNER_CANCELLED"
+            )
+            if (!changed) return false
+            failTasksWithFailedDependencies(db, nowMillis)
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
      * Compare-and-set transition. Callers must supply the states they observed;
      * illegal state transitions are rejected before SQLite is modified.
      */
