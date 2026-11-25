@@ -87,6 +87,33 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
             assertEquals("Rollback must not consume a source sequence", 1L, committed.sourceSequence)
         } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
     }
+    @Test fun callerTransactionInsertFailureRequiresRollbackAndDoesNotConsumeSequence() {
+        val store = openStore()
+        try {
+            val db = store.writableDatabase
+            val outbox = GlafiraCoreOutboxStore(db, source)
+            db.execSQL("CREATE TRIGGER fail_caller_outbox BEFORE INSERT ON core_outbox BEGIN SELECT RAISE(ABORT,'injected'); END")
+            db.beginTransaction()
+            try {
+                assertThrows(SQLiteException::class.java) {
+                    outbox.appendInTransaction(draft("event-caller-insert-fails"))
+                }
+                assertTrue("Caller transaction remains active after statement-level ABORT", db.inTransaction())
+                // The caller must roll back the whole transaction after any append failure.
+            } finally {
+                db.endTransaction()
+            }
+            assertEquals(0, db.rawQuery("SELECT COUNT(*) FROM core_outbox", null)
+                .use { it.moveToFirst(); it.getInt(0) })
+            assertEquals(0, db.rawQuery("SELECT COUNT(*) FROM core_outbox_sequences", null)
+                .use { it.moveToFirst(); it.getInt(0) })
+            db.execSQL("DROP TRIGGER fail_caller_outbox")
+            val committed = outbox.append(draft("event-after-caller-insert-failure"))
+            assertTrue(committed.inserted)
+            assertEquals("Rollback must not consume a source sequence", 1L, committed.sourceSequence)
+        } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
+    }
+
     @Test fun callerTransactionCommitPersistsOutboxAndSequenceTogether() {
         val store = openStore()
         try {
