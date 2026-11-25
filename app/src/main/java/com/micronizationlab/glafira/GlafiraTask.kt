@@ -68,18 +68,24 @@ internal object GlafiraTaskPolicy {
 
     val ownerCancellableStates: Set<GlafiraTaskState> = setOf(
         GlafiraTaskState.QUEUED,
-        GlafiraTaskState.RETRY_SCHEDULED,
         GlafiraTaskState.WAITING_FOR_NETWORK,
         GlafiraTaskState.WAITING_FOR_OWNER
     )
 
     fun ownerCanCancel(state: GlafiraTaskState): Boolean = state in ownerCancellableStates
 
-    fun ownerCanCancel(task: GlafiraTask): Boolean =
-        ownerCanCancel(task.state) && task.lastError !in setOf(
+    fun hasUnresolvedExecutionOutcome(task: GlafiraTask): Boolean {
+        val error = task.lastError ?: return false
+        return error in setOf(
             "CORE_EXECUTION_OUTCOME_UNKNOWN",
-            "DESKTOP_EXECUTION_OUTCOME_UNKNOWN"
-        )
+            "DESKTOP_EXECUTION_OUTCOME_UNKNOWN",
+            "EXECUTION_OUTCOME_UNCERTAIN"
+        ) || error.startsWith("CORE_RESULT_PERSIST_FAILED:")
+    }
+
+    fun ownerCanCancel(task: GlafiraTask): Boolean =
+        ownerCanCancel(task.state) && task.attemptCount == 0 &&
+            !hasUnresolvedExecutionOutcome(task)
 
     fun canTransition(from: GlafiraTaskState, to: GlafiraTaskState): Boolean =
         when (from) {
