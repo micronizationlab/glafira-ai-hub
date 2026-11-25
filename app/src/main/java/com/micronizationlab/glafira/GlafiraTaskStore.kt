@@ -502,8 +502,18 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         includeReviewed: Boolean = true
     ): List<GlafiraDryRunPreviewRecord> {
         require(limit in 1..500)
-        val selection = if (includeReviewed) null else "review_status = ?"
-        val args = if (includeReviewed) null else arrayOf(GlafiraDryRunReviewStatus.PENDING.name)
+        // Failed/cancelled tasks are no longer actionable review items. Filter them in
+        // SQL before LIMIT so stale previews cannot crowd out valid pending approvals.
+        val selection = if (includeReviewed) null else
+            "review_status = ? AND EXISTS (SELECT 1 FROM $TABLE_TASKS task " +
+                "WHERE task.task_id = ${GlafiraDryRunPreviewSchema.TABLE}.task_id " +
+                "AND task.project_id = ${GlafiraDryRunPreviewSchema.TABLE}.project_id " +
+                "AND task.state NOT IN (?, ?))"
+        val args = if (includeReviewed) null else arrayOf(
+            GlafiraDryRunReviewStatus.PENDING.name,
+            GlafiraTaskState.FAILED.databaseValue,
+            GlafiraTaskState.CANCELLED.databaseValue
+        )
         return readableDatabase.query(
             GlafiraDryRunPreviewSchema.TABLE, null, selection, args, null, null,
             "created_at DESC", limit.toString()
