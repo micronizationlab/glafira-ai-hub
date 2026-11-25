@@ -629,3 +629,10 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Status:** PARENT WBS RESERVATION ONLY; implementation is BLOCKED until this PR merges and the follow-on leaf-reservation PR merges. PRs #671 and #682 are CLOSED UNMERGED, historical/source-only, and MUST NOT be merged or revived. Parent reservation PR #696 → follow-on leaf-reservation PR → fresh implementation PRs for `.1` → `.2` → `.3` and `.4` (with `.4` independently accepted). Staging PRs #697–#700 are CLOSED UNMERGED and must not be merged or reused. No Program 150 completion is claimed.
 
 - **Exact-head validation on prior reservation commit `352f1d46753660db0e2a65385f375fa60e48e08f`:** Docs CI `45673413573` SUCCESS; Security Scan `45673413587` SUCCESS; Project Dispatcher `45673413671` CANCELLED. Cancellation is not a pass. The next head must independently pass all three; publish final run IDs in PR #696's body after completion without another ledger edit.
+
+### 2026-11-25 — GLAFIRA-GOV-W05 (three-pass escalation rule)
+- Recorded the owner-directed rule in docs/GLAFIRA_EXECUTION_CONTROL.md: after three consecutive coordinator passes without substantive, verifiable progress, transfer the task to GLAFIRA/another qualified executor and reassign the non-responsive helper a distinct GLAFIRA DESIGN package.
+- A substantive response requires a code/document change, resolving review response, inspectable completed check, or evidence-backed blocker; reactions, promises and unchanged heads do not count.
+- Transfer preserves branch/PR history and exact WBS/dependency/file ownership; no overlapping edits, no skipped acceptance gates, and no automatic merge.
+- The rule distinguishes non-response from genuine owner-only, permission, dependency or infrastructure blockers. Design fallback remains separate and never substitutes for implementation acceptance.
+- This is the initial owner-directed handoff checkpoint. Follow-up work begins with #703 and then the remaining P1/P2 blockers.
