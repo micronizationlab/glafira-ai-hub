@@ -5,10 +5,12 @@ import android.content.ContextWrapper
 import android.database.sqlite.SQLiteException
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.WorkManager
 import java.io.File
 import java.io.RandomAccessFile
 import java.security.KeyStore
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -643,7 +645,38 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
 
             try {
+                assertEquals(
+                    GlafiraCoreRuntimeEnablementMutation.PAUSED,
+                    GlafiraCoreRuntimeOwner.get(context).setEnabled(false)
+                )
+                val workManager = WorkManager.getInstance(context)
+                listOf("glafira-core-queue-drain", "glafira-core-queue-retry", "glafira-core-queue-network")
+                    .forEach { name ->
+                        workManager.cancelUniqueWork(name).result.get(10, TimeUnit.SECONDS)
+                        val remaining = workManager.getWorkInfosForUniqueWork(name).get(10, TimeUnit.SECONDS)
+                        assertTrue("Core worker $name must be stopped before recovery fixture mutation",
+                            remaining.all { it.state.isFinished })
+                    }
+
                 GlafiraCoreMaintenanceGate.withExclusive {
+                    if (ownerMarker.exists()) {
+                        val previousRunId = ownerMarker.readText(Charsets.UTF_8)
+                        if (journal.exists()) {
+                            check(journalOwnerMarker.isFile &&
+                                journalOwnerMarker.readText(Charsets.UTF_8) == previousRunId) {
+                                "Refusing to clean a journal not proven to belong to the previous test generation."
+                            }
+                            check(journal.deleteRecursively()) { "Could not clean the previous test-owned journal." }
+                            if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                        } else {
+                            check(!rollbackKeyExists()) {
+                                "An orphaned rollback key remains without its journal; preserve it for diagnosis."
+                            }
+                        }
+                        check(!knownGoodFile.exists() || knownGoodFile.delete())
+                        check(!createdAfterMarkerFile.exists() || createdAfterMarkerFile.delete())
+                        check(ownerMarker.delete()) { "Could not clear the previous test owner marker." }
+                    }
                     assertFalse("Refuse to overwrite an unowned restore journal", journal.exists())
                     assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
                     assertFalse("Refuse to overwrite an existing test owner marker", ownerMarker.exists())
