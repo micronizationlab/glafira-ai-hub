@@ -551,7 +551,7 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Sequencing:** leaf `1.2.1.2.1` remains a separate reservation and may proceed only after its own WBS reservation PR is merged.
 ## WBS reservation — Core owner cancellation before dispatch — 2026-11-25
 
-- **Work Item / WBS / parent / Program:** `GLAFIRA-S093-W01` / `1.1.3.1.1` / issue #669 / Program Step 93 (partial task-queue UI cancellation); predecessors: none; dependencies: none.
+- **Work Item / WBS / parent / Program:** `GLAFIRA-S093-W01` / `1.1.3.1.1` / parent `1.1.3.1 — Core task queue lifecycle` / tracker issue #669 / Program Step 93 (partial task-queue UI cancellation); predecessors: none; dependencies: none.
 - **Tracker:** issue #669. Prior Orbi run `809501cb` stopped after its steering limit; its private uncommitted worktree was not published and is not imported.
 - **Executor:** GLAFIRA coordinator. **Independent review:** CodeRabbit / GLAFIRA review; final merge remains owner-controlled.
 - **Branch / base:** `fix/core-owner-task-cancel-20261125`, based on Main `155b5dd117b97579983d3aa9df6a9e8a69c30e1e`.
