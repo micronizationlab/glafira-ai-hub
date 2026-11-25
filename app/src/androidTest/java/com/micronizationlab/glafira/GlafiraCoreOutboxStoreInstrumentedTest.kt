@@ -116,4 +116,36 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
             assertFalse(outbox.append(draft("event-caller-commit")).inserted)
         } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
     }
+
+    @Test fun callerTransactionReplayIsIdempotentAndPayloadConflictIsRejected() {
+        val store = openStore()
+        try {
+            val db = store.writableDatabase
+            val outbox = GlafiraCoreOutboxStore(db, source)
+            db.beginTransaction()
+            val results = try {
+                val first = outbox.appendInTransaction(draft("event-caller-replay"))
+                val replay = outbox.appendInTransaction(draft("event-caller-replay"))
+                assertTrue(first.inserted)
+                assertFalse(replay.inserted)
+                assertEquals(first.sourceSequence, replay.sourceSequence)
+                assertThrows(IllegalArgumentException::class.java) {
+                    outbox.appendInTransaction(draft("event-caller-replay", cipher = "changed-cipher"))
+                }
+                db.setTransactionSuccessful()
+                first to replay
+            } finally {
+                db.endTransaction()
+            }
+
+            assertEquals(1L, results.first.sourceSequence)
+            assertEquals(results.first.sourceSequence, results.second.sourceSequence)
+            assertEquals(1, db.rawQuery("SELECT COUNT(*) FROM core_outbox", null)
+                .use { it.moveToFirst(); it.getInt(0) })
+            assertEquals(1L, db.rawQuery(
+                "SELECT last_sequence FROM core_outbox_sequences WHERE source_core_id=?", arrayOf(source)
+            ).use { it.moveToFirst(); it.getLong(0) })
+        } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
+    }
+
 }
