@@ -670,13 +670,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
             try {
                 GlafiraCoreMaintenanceGate.withExclusive {
-                    val preexistingTemps = checkNotNull(context.cacheDir.listFiles { file ->
-                        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                    }) { "Could not inspect recovery temp files under the maintenance gate." }
-                    check(preexistingTemps.isEmpty()) {
-                        "Unrelated stale recovery temp files exist; refusing to delete them."
-                    }
-
                     // Recover only a journal whose generation matches the persistent owner marker.
                     if (ownerMarker.exists()) {
                         val previousRunId = ownerMarker.readText(Charsets.UTF_8)
@@ -698,6 +691,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         check(ownerMarker.delete()) { "Could not clear previous test ownership marker." }
                     }
 
+                    // Do this after stale fixture cleanup so a cache inspection failure cannot
+                    // strand the previous run's journal, key or files.
+                    val preexistingTemps = checkNotNull(context.cacheDir.listFiles { file ->
+                        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                    }) { "Could not inspect recovery temp files under the maintenance gate." }
+                    check(preexistingTemps.isEmpty()) {
+                        "Unrelated stale recovery temp files exist; refusing to delete them."
+                    }
                     assertFalse("Test refuses to delete an unowned pending restore journal", journal.exists())
                     assertFalse("Test requires no pre-existing rollback key", rollbackKeyExists())
                     assertFalse("Test-owned file must start absent", knownGoodFile.exists())
@@ -731,6 +732,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         if (journal.exists() && !ownsJournal) {
                             // prepareRollback may fail after creating files but before returning.
                             // The gate is still held and the journal was absent before this call.
+                            ownsJournal = true
                             check(journal.deleteRecursively()) {
                                 "Could not clean this invocation's partial journal; preserve the key."
                             }
