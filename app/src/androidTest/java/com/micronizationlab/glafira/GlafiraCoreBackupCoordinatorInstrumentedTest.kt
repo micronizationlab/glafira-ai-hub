@@ -44,7 +44,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @After
-    fun tearDown() = runBlocking {
+    fun tearDown(): Unit = runBlocking<Unit> {
         if (::store.isInitialized) store.close()
         cancelAndAwaitCoreWorkers()
         val runtime = GlafiraCoreRuntimeOwner.get(context)
@@ -591,7 +591,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
 
     @Test
-    fun rollbackJournalAndCacheNeverExposePlaintextMetadataCanary() {
+    fun rollbackJournalAndCacheNeverExposePlaintextMetadataCanary() = runBlocking<Unit> {
         val taskId = "rollback-journal-canary"
         val canary = "GLAFIRA_ROLLBACK_METADATA_CANARY_91C7"
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
