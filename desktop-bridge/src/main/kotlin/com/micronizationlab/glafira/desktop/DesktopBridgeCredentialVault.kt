@@ -153,7 +153,34 @@ object DesktopBridgeCredentialVault {
         )
     }
 
-    fun load(path: Path, passphrase: CharArray): DesktopBridgeVaultEntry {
+    /**
+     * Loads credentials for one synchronous operation and wipes every buffer owned here.
+     *
+     * The passphrase is consumed and cleared even when loading or the action fails.
+     * Do not use this for a worker that outlives the callback: long-running workers must
+     * retain credentials until their executor has actually terminated.
+     */
+    fun <T> loadAndUseVault(
+        path: Path,
+        passphrase: CharArray,
+        action: (origin: String, credentials: DesktopBridgeCredentials) -> T
+    ): T {
+        var entry: DesktopBridgeVaultEntry? = null
+        var credentials: DesktopBridgeCredentials? = null
+        try {
+            val loaded = load(path, passphrase)
+            entry = loaded
+            val scopedCredentials = loaded.toCredentials()
+            credentials = scopedCredentials
+            return action(loaded.origin, scopedCredentials)
+        } finally {
+            credentials?.hmacSecret?.fill(0)
+            entry?.hmacSecret?.fill(0)
+            passphrase.fill('\u0000')
+        }
+    }
+
+    internal fun load(path: Path, passphrase: CharArray): DesktopBridgeVaultEntry {
         require(passphrase.size >= 12)
         val fileSize = Files.size(path)
         require(fileSize in 1..MAX_FILE_BYTES) { "Credential vault file size is invalid." }
