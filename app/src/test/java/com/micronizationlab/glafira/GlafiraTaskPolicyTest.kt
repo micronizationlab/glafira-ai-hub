@@ -121,6 +121,24 @@ class GlafiraTaskPolicyTest {
     }
 
     @Test
+    fun persistenceFailureIsUncertainOnlyForPotentialExternalEffects() {
+        val readOnly = GlafiraTask(
+            taskId = "read-only-persist-failure", projectId = "project-1", taskType = "project.read",
+            payload = "{}", origin = "owner", state = GlafiraTaskState.WAITING_FOR_OWNER,
+            createdAtMillis = 10L, updatedAtMillis = 20L,
+            lastError = "CORE_RESULT_PERSIST_FAILED:read-only-result",
+            idempotencyKey = "project-1:read-only-persist-failure"
+        )
+        val externalWrite = readOnly.copy(
+            taskId = "write-persist-failure",
+            taskType = "unregistered.external.write",
+            idempotencyKey = "project-1:write-persist-failure"
+        )
+        assertFalse(GlafiraTaskPolicy.hasUnresolvedExecutionOutcome(readOnly))
+        assertTrue(GlafiraTaskPolicy.hasUnresolvedExecutionOutcome(externalWrite))
+    }
+
+    @Test
     fun ownerCannotCancelTasksWithUnresolvedExecutionOutcomes() {
         listOf(
             "CORE_EXECUTION_OUTCOME_UNKNOWN",
