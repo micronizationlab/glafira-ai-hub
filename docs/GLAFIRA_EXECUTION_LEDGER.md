@@ -566,11 +566,13 @@ This checkpoint updates the live integration state after the previous Outbox/res
 
 ## WBS reservation — coordinator-owned fallback governance — 2026-11-25
 
-- **Work Item / WBS / parent / Program mapping:** `GLAFIRA-GOV-D01` / `1.11.2.1.1` / `1.11.2 — Coordinator execution governance` / issue #685; owner-approved cross-step governance task, no Program 150 completion claim.
-- **Executor / reviewer:** GLAFIRA coordinator / owner review.
-- **Branch / base:** `docs/coordinator-fallback-governance-20261125`, Main `007575058fc4f8b458785e99c1a228973e2e3d17`.
-- **Exclusive files:** `docs/GLAFIRA_EXECUTION_CONTROL.md`, this ledger entry only.
-- **Predecessors / dependencies:** PR #673 merged; no code dependency. This is a governance correction to the merged fallback rule.
-- **Procedure:** (1) make coordinator sole decision-maker for ready-work selection; (2) define dispatcher output as PR/CI evidence only; (3) require manual inspection of non-PR helper intake and ready issues/branches; (4) reconcile default 200-line limit with the narrowly approved 201–300-line exception and >300 split rule; (5) run docs-only exact-head checks and independent review.
-- **Acceptance:** original lane outcome preserved; no skipped lane disguised as PASS; no fallback assignment while higher-priority ready work exists; line/file limits consistent across Sections 4, 6, 12 and PR-size policy; written owner/integrator approval before any 201–300-line exception.
-- **Status:** RESERVED before policy edits. No implementation or Program 150 step is marked complete by this reservation.
+- **Work Item / WBS / parent / Program mapping:** `GLAFIRA-GOV-D01` / executable step `1.11.2.1.1.1.1` / parent subtask `1.11.2.1.1.1` / task `1.11.2.1.1 — Design fallback and ready-work governance` / issue #685; owner-approved cross-step governance task, no Program 150 completion claim.
+- **Executor / reviewer:** GLAFIRA coordinator / independent review and owner review; owner retains final authority over priorities, assignment overrides and exceptions.
+- **Reservation history:** original WBS reservation was committed before policy edits on `docs/coordinator-fallback-governance-20261125`; this WBS-labelled correction branch `docs/glafira-gov-d01-coordinator-fallback-20261125` carries the same scope from Main `007575058fc4f8b458785e99c1a228973e2e3d17`. The old PR #687 is superseded and must not be merged.
+- **Exclusive implementation paths:** `docs/GLAFIRA_EXECUTION_CONTROL.md`, `docs/GLAFIRA_EXECUTION_LEDGER.md`, `docs/engineering/PR_SIZE_AND_MERGE_POLICY.md`, `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md`, `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`.
+- **Changed-file inventory for PR #701:** those five repository-relative paths only. No runtime code, security policy, database or protocol changes.
+- **Predecessors / dependencies:** PR #673 merged; owner explicitly directed the GLAFIRA DESIGN fallback rule. This correction reconciles review findings and canonical WBS ancestry.
+- **Procedure:** (1) coordinator reconciles the complete ready-work queue and selects/assigns within owner-approved priorities; (2) dispatcher is PR/CI evidence only; (3) coordinator inspects issues, branches, helper intake and reservations; (4) reserve each WBS item atomically against the exact ledger SHA before dispatch; (5) serialize concurrent coordinator cycles; (6) recover reserved-but-undelivered assignments; (7) align PR-size limits and require exception approval before implementation.
+- **Acceptance:** equal- or higher-priority ready work blocks design fallback; owner authority and override rights remain explicit; concurrent cycles cannot double-assign; interrupted handoffs are resumed or explicitly released; 201–300-line exception requires written owner/integrator approval before implementation begins, up to 10 files; over 300 lines must split.
+- **Exact CI lanes:** `GLAFIRA CI — change-aware platform validation`, `Security Scan`, `GLAFIRA Project Dispatcher`. Record each exact-head run ID and status separately; no skipped/cancelled job is a pass.
+- **Status:** IN_PROGRESS on the WBS-labelled correction branch. PR #701 pending creation and exact-head CI/review; no policy merge or completion claim.
