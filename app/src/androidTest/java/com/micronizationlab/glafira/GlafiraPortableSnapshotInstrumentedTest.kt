@@ -161,7 +161,7 @@ class GlafiraPortableSnapshotInstrumentedTest {
         passphrase.fill('\u0000')
     }
 
-    @Test fun staleDecryptedRollbackTemporaryBlocksCoreUntilRemoved() {
+    @Test fun hasInterruptedRestoreCleansOrphanedDecryptedRollbackTemporary() {
         val stale = File(context.cacheDir, "glafira-rollback-recovery-orphan.tmp")
         stale.writeText("sensitive plaintext")
         assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
