@@ -69,6 +69,18 @@ class DesktopLogicalOperationIdTest {
         }
     }
 
+
+    @Test
+    fun cliRequiresExplicitUnambiguousOperationIdFlag() {
+        assertNull(parseDesktopOperationId(emptyArray()))
+        assertEquals("message-001", parseDesktopOperationId(arrayOf("--operation-id", "message-001")))
+        assertEquals("message-001", parseDesktopOperationId(arrayOf("--operation-id=message-001")))
+        for (invalid in listOf(arrayOf("--operation-id"), arrayOf("--operation-id="),
+            arrayOf("--operation-id", "first-001", "--operation-id", "second-002"), arrayOf("--unknown", "value"))) {
+            assertThrows(IllegalArgumentException::class.java) { parseDesktopOperationId(invalid) }
+        }
+    }
+
     @Test
     fun existingJvmPostAndVaultFacadeSignaturesRemainAvailable() {
         assertNotNull(DesktopBridgeHttpsClient::class.java.getMethod("post", String::class.java,
