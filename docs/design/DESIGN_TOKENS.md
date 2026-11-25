@@ -75,7 +75,7 @@ Ratios use the WCAG relative-luminance formula and the exact hex values above. T
 | Disabled label · text.disabled | 7.35 | 6.37 | 5.46 | 4.5 · PASS |
 | Primary action label · brand.onAction / brand.action | 9.45 | — | — | 4.5 · PASS |
 | Identity surface label · brand.onPrimary / brand.primary | 9.45 | — | — | 4.5 · PASS |
-| Primary action boundary · brand.action | 10.02 | 9.45 | 8.41 | 3.0 · PASS |
+| Primary action boundary · brand.action | 10.02 | 8.68 | 7.44 | 3.0 · PASS |
 | Interactive control outline · control.outline | 5.04 | 4.37 | 3.75 | 3.0 · PASS |
 | Disabled control boundary · control.disabled | 4.27 | 3.70 | 3.17 | 3.0 · PASS |
 | Exterior keyboard focus ring · focus.ring | 9.11 | 7.90 | 6.77 | 3.0 · PASS |
