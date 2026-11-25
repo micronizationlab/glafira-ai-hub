@@ -167,9 +167,3 @@ Hierarchy: `1.11.2` — Batch-cycle coordination; `1.11.2.1` — Governance and 
 **Executable procedure for `1.11.2.1.1`:** (1) refresh all eleven lane queues and exact Main/PR/CI state; (2) map existing work to permanent WBS leaves and remove duplicates; (3) build each lane's dependency-ready sequential package, targeting 3–5 real leaves only where available; (4) reserve one active leaf per helper and exclusive files/behavior before dispatch; (5) dispatch independent leaves concurrently and hold dependent leaves; (6) retain file ownership until DONE after independent review, exact-head CI, merge and post-merge checks, or release only after recorded terminal CANCELLED/SUPERSEDED; (7) on block, formally suspend/transfer the assignment first, preserve its status/reservation and stop the prior executor from editing; (8) re-evaluate from P0 and dispatch the highest-ranked eligible global-ready item; (9) assign a unique #672 design fallback only if no equal/higher-priority eligible item exists; (10) resume the primary lane through an explicit reservation handoff and record planned/assigned/completed/blocked/review/CI/merged counts with exact evidence. Acceptance: all five governance instruction sources agree, cross-lane queues are views of the existing Core queue, no second assignment authority is introduced, and no one-active-item/dependency/merge rule is weakened.
 
 
-### Registered hierarchy for `GLAFIRA-GOV-BATCH-W01`
-
-- `1.11.2` — Multi-lane batch-cycle coordination.
-- `1.11.2.1` — Governance and assignment cadence.
-- `1.11.2.1.1` — Document and enforce the eleven-lane batch-cycle cadence (Work Item `GLAFIRA-GOV-BATCH-W01`).
-
