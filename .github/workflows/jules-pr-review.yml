@@ -1,0 +1,31 @@
+
+name: GLAFIRA Jules PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: glafira-jules-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  jules-review:
+    name: Google Jules independent review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Advanced Jules PR Reviewer
+        uses: thalesraymond/jules-pr-reviewer@v1.9.0
+        with:
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on: never
+          skip_drafts: true
+          skip_forks: true
+          diff_mode: agentic
+          strictness: chill
