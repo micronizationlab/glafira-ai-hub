@@ -1,8 +1,0 @@
-# The project owner is the default reviewer for repository-wide changes.
-* @micronizationlab
-
-# Security, workflows and architecture contracts always require owner attention.
-.github/ @micronizationlab
-docs/adr/ @micronizationlab
-docs/contracts/ @micronizationlab
-contracts/ @micronizationlab

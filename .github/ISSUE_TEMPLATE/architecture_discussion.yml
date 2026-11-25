@@ -1,0 +1,42 @@
+name: Архитектурное обсуждение (ADR)
+description: Обсудить архитектурное решение до реализации
+title: "[ADR]: "
+labels: ["architecture"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Контекст и проблема
+    validations:
+      required: true
+  - type: textarea
+    id: decision
+    attributes:
+      label: Предлагаемое решение
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Рассмотренные альтернативы
+    validations:
+      required: true
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Последствия, риски и миграция
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Связанные спецификации, PR и тесты
+    validations:
+      required: false
+  - type: checkboxes
+    id: status
+    attributes:
+      label: Статус предложения
+      options:
+        - label: Решение не считается утверждённым до явного подтверждения владельца.
+          required: true
