@@ -57,4 +57,63 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
             assertEquals(1L, outbox.append(draft("event-after-failure")).sourceSequence)
         } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
     }
+
+    @Test fun callerTransactionRollbackRemovesOutboxAndSequenceAllocation() {
+        val store = openStore()
+        try {
+            val db = store.writableDatabase
+            val outbox = GlafiraCoreOutboxStore(db, source)
+
+            assertThrows(IllegalStateException::class.java) {
+                outbox.appendInTransaction(draft("event-outside-transaction"))
+            }
+
+            db.beginTransaction()
+            try {
+                val appended = outbox.appendInTransaction(draft("event-caller-rollback"))
+                assertTrue(appended.inserted)
+                assertEquals(1L, appended.sourceSequence)
+                assertEquals(1, db.rawQuery("SELECT COUNT(*) FROM core_outbox", null)
+                    .use { it.moveToFirst(); it.getInt(0) })
+                // Deliberately omit setTransactionSuccessful(): simulate the enclosing
+                // task-result/Trace transaction aborting after the Outbox append.
+            } finally {
+                db.endTransaction()
+            }
+
+            assertEquals(0, db.rawQuery("SELECT COUNT(*) FROM core_outbox", null)
+                .use { it.moveToFirst(); it.getInt(0) })
+            assertEquals(0, db.rawQuery("SELECT COUNT(*) FROM core_outbox_sequences", null)
+                .use { it.moveToFirst(); it.getInt(0) })
+
+            val committed = outbox.append(draft("event-after-caller-rollback"))
+            assertTrue(committed.inserted)
+            assertEquals("Rollback must not consume a source sequence", 1L, committed.sourceSequence)
+        } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
+    }
+
+    @Test fun callerTransactionCommitPersistsOutboxAndSequenceTogether() {
+        val store = openStore()
+        try {
+            val db = store.writableDatabase
+            val outbox = GlafiraCoreOutboxStore(db, source)
+            db.beginTransaction()
+            val appended = try {
+                outbox.appendInTransaction(draft("event-caller-commit")).also {
+                    db.setTransactionSuccessful()
+                }
+            } finally {
+                db.endTransaction()
+            }
+
+            assertTrue(appended.inserted)
+            assertEquals(1L, appended.sourceSequence)
+            assertEquals(1, db.rawQuery("SELECT COUNT(*) FROM core_outbox", null)
+                .use { it.moveToFirst(); it.getInt(0) })
+            assertEquals(1L, db.rawQuery(
+                "SELECT last_sequence FROM core_outbox_sequences WHERE source_core_id=?", arrayOf(source)
+            ).use { it.moveToFirst(); it.getLong(0) })
+            assertFalse(outbox.append(draft("event-caller-commit")).inserted)
+        } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
+    }
 }
