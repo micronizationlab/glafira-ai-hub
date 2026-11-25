@@ -76,11 +76,19 @@ internal object GlafiraTaskPolicy {
 
     fun hasUnresolvedExecutionOutcome(task: GlafiraTask): Boolean {
         val error = task.lastError ?: return false
-        return error in setOf(
-            "CORE_EXECUTION_OUTCOME_UNKNOWN",
-            "DESKTOP_EXECUTION_OUTCOME_UNKNOWN",
-            "EXECUTION_OUTCOME_UNCERTAIN"
-        ) || error.startsWith("CORE_RESULT_PERSIST_FAILED:")
+        if (error in setOf(
+                "CORE_EXECUTION_OUTCOME_UNKNOWN",
+                "DESKTOP_EXECUTION_OUTCOME_UNKNOWN",
+                "EXECUTION_OUTCOME_UNCERTAIN"
+            )
+        ) return true
+        if (!error.startsWith("CORE_RESULT_PERSIST_FAILED:")) return false
+        // A persistence failure is an uncertain external outcome only for tools that
+        // can create external effects. Read-only and draft retries may expire normally.
+        return when (GlafiraToolRegistry.find(task.taskType)?.risk) {
+            ToolRiskLevel.READ_ONLY, ToolRiskLevel.DRAFT -> false
+            ToolRiskLevel.EXTERNAL_WRITE, ToolRiskLevel.FINANCIAL, ToolRiskLevel.DESTRUCTIVE, null -> true
+        }
     }
 
     fun ownerCanCancel(task: GlafiraTask): Boolean =
