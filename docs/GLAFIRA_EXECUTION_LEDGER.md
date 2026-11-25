@@ -562,3 +562,16 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Manual acceptance evidence:** (1) review semantic-token mapping for Android/iOS/Windows Desktop/Agent; (2) record light/dark text contrast and ≥3:1 non-text boundary calculations; (3) verify active/offline/waiting/quota/error and recoveryRequired state mappings; (4) record visible text/icon plus accessible label for each critical state; (5) distinguish Needs owner approval from Reconciliation required and prohibit generic retry for unknown outcomes; (6) verify Android 48dp, iOS 44pt and Windows 40px touch targets, keyboard focus, screen-reader labels and reduced motion; (7) capture owner approve/request-changes decision. Record a checklist/table in the PR; CI is separate and cannot prove visual acceptance.
 - **Changed-file inventory for PR #681:** `docs/design/DESIGN_TOKENS.md`; `docs/GLAFIRA_EXECUTION_LEDGER.md`.
 - **Status:** IN_REVIEW on design PR #681, current design-file head `5523dceb4a371521b219f7e2765afa71785a1a8c`; exact-head docs CI, Security Scan and Dispatcher are pending/being rechecked. This design deliverable does not complete any implementation or platform acceptance step.
+
+
+## WBS reservation — GLAFIRA designer handoff and issue template — 2026-11-25
+
+- **WBS leaf:** `1.11.1.1.3` — Publish the icon/asset handoff and reusable design-system Issue form.
+- **Work item / tracker:** `GLAFIRA-DESIGN-HANDOFF-W01` / parent issue #686 / umbrella #672.
+- **Predecessor:** shared semantic design foundation `1.11.1.1.1` merged in PR #681. This is a documentation-only handoff; it does not authorize asset fabrication.
+- **Executor / reviewer:** GLAFIRA coordinator / independent review; owner retains approval of final icon artwork.
+- **Branch / base:** `design/icon-handoff-issue-template-20261125`, based on current Main `007575058fc4f8b458785e99c1a228973e2e3d17`.
+- **Exclusive paths:** `docs/design/ICON_ASSET_HANDOFF.md`, `docs/design/README.md`, `.github/ISSUE_TEMPLATE/design_system.yml`.
+- **Repository finding:** the current Main tree has no root `design/` directory and no launcher `mipmap`/drawable icon assets under `app/src/main/res`. The handoff must explicitly request the original flower source from the owner/designer; do not invent or silently replace it.
+- **Acceptance:** all six status icons specified with `currentColor`, 24×24 viewBox, 2px stroke and accessible names; recovery-required visually distinct from ordinary error; export matrix and review checklist present; issue form captures WBS, dependencies, owner, files, tests and accessibility; no binary/icon source fabricated.
+- **Status:** `RESERVED` before edits. No Program 150 item is marked complete.
