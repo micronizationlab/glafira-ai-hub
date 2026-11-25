@@ -127,14 +127,13 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
                 assertTrue(first.inserted)
                 assertFalse(replay.inserted)
                 assertEquals(first.sourceSequence, replay.sourceSequence)
-                assertThrows(IllegalArgumentException::class.java) {
-                    outbox.appendInTransaction(draft("event-caller-replay", cipher = "changed-cipher"))
-                }
                 db.setTransactionSuccessful()
                 first to replay
             } finally {
                 db.endTransaction()
             }
+            db.beginTransaction()
+            try { assertThrows(IllegalArgumentException::class.java) { outbox.appendInTransaction(draft("event-caller-replay", cipher = "changed-cipher")) } } finally { db.endTransaction() }
             assertEquals(1L, results.first.sourceSequence)
             assertEquals(results.first.sourceSequence, results.second.sourceSequence)
             assertEquals(1, db.rawQuery("SELECT COUNT(*) FROM core_outbox", null)
@@ -144,5 +143,4 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
             ).use { it.moveToFirst(); it.getLong(0) })
         } finally { store.close(); context.deleteDatabase("glafira_core_tasks.db") }
     }
-
 }
