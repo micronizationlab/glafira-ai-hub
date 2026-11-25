@@ -21,7 +21,7 @@ class GlafiraCoreOutboxSchemaInstrumentedTest {
                 buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
             }
             assertTrue(columns.containsAll(setOf(
-                "event_id", "source_core_id", "recipient_core_id", "source_sequence",
+                "event_id", "source_core_id", "recipient_core_id", "project_id", "source_sequence",
                 "correlation_id", "causation_id", "source_key_epoch", "protocol_version",
                 "event_type", "task_id", "owner_generation", "state_version",
                 "idempotency_key", "payload_sha256", "payload_ciphertext", "signature_base64",
