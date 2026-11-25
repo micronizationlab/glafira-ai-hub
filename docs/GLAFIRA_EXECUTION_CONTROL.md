@@ -125,3 +125,32 @@ At the end of each work cycle report:
 - active blockers and who owns them.
 
 No vague “done”, no hidden progress, no repeated work, no second build without a reason.
+
+
+## 12. Mandatory fallback project — GLAFIRA DESIGN
+
+Every one of the eleven workstreams must receive one bounded assignment in each coordinator cycle; a lane must not be silently left idle. Before using the design fallback, the coordinator/dispatcher checks the full ready-work queue and assigns the highest-ranked eligible, dependency-ready item available to that lane: implementation, validation, intake, review, merge or post-merge verification. Any ready work at equal or higher owner priority takes precedence over design, including independent work at the same priority; do not leave a merge-ready PR or actionable review/intake task idle merely because the lane's originally assigned item is blocked. Only when no eligible implementation/validation/intake/review/merge/post-merge item at equal or higher owner priority is ready may the coordinator assign the lane one distinct, dependency-ready work package in the separate **GLAFIRA DESIGN** project tracked by issue #672. A skipped CI lane caused by change-aware selection is not itself evidence that the platform is validated; it can trigger design fallback only after the full ready-work check.
+
+The original implementation/test/acceptance outcome is immutable and must be preserved exactly, including **BLOCKED**, **NOT RUN**, **SKIPPED**, **CANCELLED**, **OWNER_ACCEPTANCE**, or any other recorded state. Report design fallback progress separately; never overwrite or reinterpret the original lane outcome. Design work is a separate deliverable and never substitutes for required tests, physical-device acceptance, security review, owner approval or merge gates.
+
+### Design scope and boundaries
+
+- Product identity: ICQ 2003 + Apple/macOS polish, retaining the ICQ flower.
+- One coherent system for Android, iOS, Windows Desktop and Windows Agent.
+- Shared color and typography tokens, spacing, surfaces, iconography, controls, navigation, motion, accessibility, and loading/empty/error/model-status/quota states.
+- Screen specifications for Chat, Projects/Control Center, Agent Network, model/provider status, Task Queue, Settings, pairing and Backup/Recovery.
+- Design may not change Core behavior, owner authority, permissions, cryptography, database schemas, Bridge protocols or security/approval boundaries.
+
+### Assignment rules
+
+- Before assigning a design package, register its canonical hierarchical WBS executable leaf in the execution ledger, map it to a Program 150 step or an explicitly owner-approved cross-step task, and record its issue, executor, exact allowed path, dependencies, base SHA, branch, acceptance and tests. Reservation must precede edits.
+- One helper = one active bounded assignment. A blocked helper does not self-select another task; the coordinator assigns a distinct design package.
+- The design packages in issue #672 have separate platform/component ownership and non-overlapping files or document sections.
+- The design foundation/tokens precede dependent visual specifications. A package may begin only when its declared predecessors are ready; information architecture/wireframes may proceed independently if the issue explicitly marks visual tokens as pending. No duplicated edits or competing source-of-truth files.
+- If no dependency-ready design package exists, or every eligible package is already exclusively reserved, the coordinator records a blocked cycle with the actual blocker (missing predecessor or reservation conflict), its owner and the next unblock action. Do not duplicate an assignment, fabricate a deliverable or violate dependency order.
+- Each package has its own branch and focused PR and must follow `docs/engineering/PR_SIZE_AND_MERGE_POLICY.md`: target 50–150 changed lines, up to 5 files; 151–200 lines only for one coherent independently testable unit and up to 5 files; 201–300 only with written justification and explicit owner/integrator approval before implementation or submission and up to 10 files; over 300 must be split. The file limit is independent of the line limit. Tests and required documentation count toward the limits.
+- When the original lane becomes actionable again (for example, review requests a code correction), the coordinator pauses or hands off the active design package before reactivating the original assignment. The helper never holds two active assignments. Preserve the design package's file reservation during pause/handoff; on terminal closure as DONE, CANCELLED or SUPERSEDED, explicitly release its file reservation while retaining its WBS history and recording any replacement ID.
+- Design proposals require owner review before implementation lanes treat them as accepted. A mockup or design document is not implementation completion.
+- The coordinator still owns cross-lane intake, deduplication, review, CI, merge sequencing and post-merge verification.
+
+This rule applies whenever a lane would otherwise be idle for a cycle. It does not authorize parallel work on conflicting files or weaken the dependency order of P1 Core, P2 Backup & Recovery, P3 Bridge/Desktop.
