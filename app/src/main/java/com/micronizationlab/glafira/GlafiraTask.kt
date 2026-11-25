@@ -75,6 +75,12 @@ internal object GlafiraTaskPolicy {
 
     fun ownerCanCancel(state: GlafiraTaskState): Boolean = state in ownerCancellableStates
 
+    fun ownerCanCancel(task: GlafiraTask): Boolean =
+        ownerCanCancel(task.state) && task.lastError !in setOf(
+            "CORE_EXECUTION_OUTCOME_UNKNOWN",
+            "DESKTOP_EXECUTION_OUTCOME_UNKNOWN"
+        )
+
     fun canTransition(from: GlafiraTaskState, to: GlafiraTaskState): Boolean =
         when (from) {
             GlafiraTaskState.QUEUED -> to in setOf(

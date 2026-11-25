@@ -176,7 +176,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                                 color = Tx, fontSize = 9.sp
                             )
                             task.lastError?.let { Text("Причина/результат: $it", color = Red, fontSize = 10.sp) }
-                            if (GlafiraTaskPolicy.ownerCanCancel(task.state)) {
+                            if (GlafiraTaskPolicy.ownerCanCancel(task)) {
                                 OutlinedButton(
                                     onClick = { cancelTaskTarget = currentProject.id to task.taskId },
                                     modifier = Modifier.fillMaxWidth()

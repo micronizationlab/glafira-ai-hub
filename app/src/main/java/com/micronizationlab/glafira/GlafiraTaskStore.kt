@@ -1183,7 +1183,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         db.beginTransaction()
         try {
             val task = queryTask(db, taskId) ?: return false
-            if (task.projectId != projectId) return false
+            if (task.projectId != projectId || !GlafiraTaskPolicy.ownerCanCancel(task)) return false
             val changed = transitionInternal(
                 token = null,
                 taskId = taskId,
@@ -1194,6 +1194,19 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 lastError = "OWNER_CANCELLED"
             )
             if (!changed) return false
+            if (tableExists(db, "core_action_approvals")) {
+                db.update(
+                    "core_action_approvals",
+                    ContentValues().apply {
+                        put("status", "EXPIRED")
+                        putNull("approved_at")
+                        putNull("grant_expires_at")
+                        put("decided_by", "owner-cancelled")
+                    },
+                    "task_id = ? AND status IN ('PENDING','APPROVED')",
+                    arrayOf(taskId)
+                )
+            }
             failTasksWithFailedDependencies(db, nowMillis)
             db.setTransactionSuccessful()
             return true
@@ -1485,18 +1498,32 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         }
         val ownerClause = if (ownerCoreId == null) "" else
             " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
-        val selection = "state IN (?, ?) AND task_id IN (" +
+        val selection = "state IN (?, ?, ?, ?) " +
+            "AND (last_error IS NULL OR last_error NOT IN (?, ?)) AND task_id IN (" +
             "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
             "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
             "WHERE p.state IN (?, ?))$ownerClause"
         val args = arrayOf(
             GlafiraTaskState.QUEUED.databaseValue,
             GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
+            GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue,
+            GlafiraTaskState.WAITING_FOR_OWNER.databaseValue,
+            "CORE_EXECUTION_OUTCOME_UNKNOWN",
+            "DESKTOP_EXECUTION_OUTCOME_UNKNOWN",
             GlafiraTaskState.FAILED.databaseValue,
             GlafiraTaskState.CANCELLED.databaseValue
         ) + if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
         while (db.update(TABLE_TASKS, values, selection, args) > 0) {
             // Iterate so failure propagates to grandchildren in the same transaction.
+        }
+        if (tableExists(db, "core_action_approvals")) {
+            db.execSQL(
+                "UPDATE core_action_approvals SET status = 'EXPIRED', approved_at = NULL, " +
+                    "grant_expires_at = NULL, decided_by = 'dependency-failed' " +
+                    "WHERE status IN ('PENDING','APPROVED') AND task_id IN (" +
+                    "SELECT task_id FROM $TABLE_TASKS WHERE state = ? AND last_error = ?)",
+                arrayOf(GlafiraTaskState.FAILED.databaseValue, "DEPENDENCY_FAILED")
+            )
         }
     }
 

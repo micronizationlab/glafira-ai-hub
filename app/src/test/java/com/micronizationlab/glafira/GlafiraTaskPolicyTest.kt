@@ -7,16 +7,35 @@ import org.junit.Test
 class GlafiraTaskPolicyTest {
     @Test
     fun ownerCanCancelOnlyUnclaimedTaskStates() {
-        assertTrue(GlafiraTaskPolicy.ownerCancellableStates.containsAll(listOf(
+        listOf(
             GlafiraTaskState.QUEUED,
             GlafiraTaskState.RETRY_SCHEDULED,
             GlafiraTaskState.WAITING_FOR_NETWORK,
             GlafiraTaskState.WAITING_FOR_OWNER
-        )))
+        ).forEach { assertTrue(GlafiraTaskPolicy.ownerCanCancel(it)) }
         assertFalse(GlafiraTaskPolicy.ownerCanCancel(GlafiraTaskState.RUNNING))
         assertFalse(GlafiraTaskPolicy.ownerCanCancel(GlafiraTaskState.SUCCEEDED))
         assertFalse(GlafiraTaskPolicy.ownerCanCancel(GlafiraTaskState.FAILED))
         assertFalse(GlafiraTaskPolicy.ownerCanCancel(GlafiraTaskState.CANCELLED))
+    }
+
+
+    @Test
+    fun unknownExternalOutcomesCannotBeCancelled() {
+        val task = GlafiraTask(
+            taskId = "task-unknown",
+            projectId = "project-1",
+            taskType = "desktop.write",
+            payload = "{}",
+            origin = "owner",
+            state = GlafiraTaskState.WAITING_FOR_OWNER,
+            createdAtMillis = 10L,
+            updatedAtMillis = 20L,
+            idempotencyKey = "project-1:task-unknown"
+        )
+        assertFalse(GlafiraTaskPolicy.ownerCanCancel(task.copy(lastError = "CORE_EXECUTION_OUTCOME_UNKNOWN")))
+        assertFalse(GlafiraTaskPolicy.ownerCanCancel(task.copy(lastError = "DESKTOP_EXECUTION_OUTCOME_UNKNOWN")))
+        assertTrue(GlafiraTaskPolicy.ownerCanCancel(task.copy(lastError = "OWNER_APPROVAL_REQUIRED")))
     }
 
     @Test
