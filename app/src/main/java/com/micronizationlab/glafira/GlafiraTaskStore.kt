@@ -1800,6 +1800,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         validateDatabaseSnapshot(destination)
     }
 
+    /** Validates a decrypted local rollback database before any live files are replaced. */
+    @Synchronized
+    internal fun verifyConsistentSnapshot(snapshot: File) {
+        require(snapshot.isFile && snapshot.length() > 0L) { "Core database snapshot is missing." }
+        validateDatabaseSnapshot(snapshot)
+    }
+
     /**
      * Installs a previously verified database snapshot with a same-directory rollback file.
      * The caller must hold GlafiraCoreMaintenanceGate and keep Core dispatch paused.
