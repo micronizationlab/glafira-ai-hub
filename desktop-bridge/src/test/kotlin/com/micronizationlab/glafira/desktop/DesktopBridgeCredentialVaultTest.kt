@@ -102,7 +102,7 @@ class DesktopBridgeCredentialVaultTest {
     @Test fun loadAndUseVaultClearsCredentialAndConsumesPassphraseAfterSuccess() {
         val directory = Files.createTempDirectory("glafira-vault-scoped-success")
         val path = directory.resolve("device.vault")
-        val importPassphrase = "vault-import-passphrase-01".toCharArray()
+        val importPassphrase = "vault-use-passphrase-0001".toCharArray()
         val usePassphrase = "vault-use-passphrase-0001".toCharArray()
         val secret = ByteArray(32) { (it + 17).toByte() }
         try {
@@ -133,7 +133,7 @@ class DesktopBridgeCredentialVaultTest {
     @Test fun loadAndUseVaultClearsCredentialAndPassphraseWhenActionThrows() {
         val directory = Files.createTempDirectory("glafira-vault-scoped-failure")
         val path = directory.resolve("device.vault")
-        val importPassphrase = "vault-import-passphrase-02".toCharArray()
+        val importPassphrase = "vault-use-passphrase-0002".toCharArray()
         val usePassphrase = "vault-use-passphrase-0002".toCharArray()
         val secret = ByteArray(32) { (it + 29).toByte() }
         try {
