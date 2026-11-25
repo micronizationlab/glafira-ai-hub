@@ -38,7 +38,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     var instruction by remember { mutableStateOf("") }
     var priority by remember { mutableIntStateOf(5) }
     var message by remember { mutableStateOf<String?>(null) }
-    var cancelTaskTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var cancelTaskTarget by remember { mutableStateOf<Triple<String, String, GlafiraTaskOwnershipRecord>?>(null) }
     var cancellingTask by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(currentProject.id) { cancelTaskTarget = null }
@@ -182,7 +182,14 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                             )
                             task.lastError?.let { Text("Причина/результат: $it", color = Red, fontSize = 10.sp) }
                             if (GlafiraTaskPolicy.ownerCanCancel(task)) {
-                                TextButton(onClick = { cancelTaskTarget = currentProject.id to task.taskId }) {
+                                TextButton(onClick = {
+                                    val ownership = owner.taskStore.taskOwnership(task.taskId, task.projectId)
+                                    if (ownership == null) {
+                                        message = "Нельзя отменить задачу: Core не подтвердил её владение."
+                                    } else {
+                                        cancelTaskTarget = Triple(currentProject.id, task.taskId, ownership)
+                                    }
+                                }) {
                                     Text("ОТМЕНИТЬ ЗАДАЧУ")
                                 }
                             }
@@ -193,7 +200,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
         }
     }
 
-    cancelTaskTarget?.let { (projectId, taskId) ->
+    cancelTaskTarget?.let { (projectId, taskId, ownership) ->
         AlertDialog(
             onDismissRequest = { if (!cancellingTask) cancelTaskTarget = null },
             title = { Text("Отменить задачу?") },
@@ -215,7 +222,10 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                                 scope.launch {
                                     val result = runCatching {
                                         withContext(Dispatchers.IO) {
-                                            owner.cancelTask(taskId, projectId, session)
+                                            owner.cancelTask(
+                                                taskId, projectId, ownership.ownerCoreId,
+                                                ownership.ownerGeneration, ownership.stateVersion, session
+                                            )
                                         }
                                     }
                                     cancellingTask = false
