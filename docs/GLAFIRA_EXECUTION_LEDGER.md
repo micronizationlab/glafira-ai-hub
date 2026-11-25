@@ -68,3 +68,9 @@ Record each build as `repository|commit SHA|workflow|job/lane|configuration`. Re
 - Verified behavior: after simulated external write and failed encrypted result persistence, Core moves the task to WAITING_FOR_OWNER; reopening the database does not requeue or replay the operation.
 - This is one Step 16 acceptance slice only. It does not complete Step 16, does not implement Step 18 durable outbox/ACK, and does not claim post-merge validation. No further build was started because no workflow run was returned for the merge SHA.
 - Next: continue with a separate bounded Core work item; do not repeat this failure-injection case. Preserve #550 as merged evidence.
+### 2026-11-25 — GLAFIRA-S017-W02
+- Scope: clean-Main adapter slice preserving typed provider dispatch outcomes through local distributed-task and planner adapters.
+- Integrated PR #572 as Main commit `f0ecbccddd3f79de53c30ff4d3b96504dff88c62`; exact PR head `6bec35084fb544cc6db8634c962b2954936194e9`.
+- Exact-head CI run `45534865139`: Android JVM, shared contracts, Debug APK and managed emulator passed; Windows Agent/Desktop, iOS and workflow lint were skipped by change-aware routing. Project Dispatcher run `45534865152` passed.
+- Provider `NOT_SENT`, `REJECTED` and `UNKNOWN` outcomes, error category and Retry-After now survive the two task adapters. No automatic retry or fallback was introduced.
+- This is one Step 17 adapter slice only. Provider coordinator checkpoints, durable reconciliation and full Step 17 acceptance remain open. Older PR #552 remains unmerged and is not the continuation branch.
