@@ -66,10 +66,12 @@ After owner approval:
 - Color is never the sole status signal.
 - Status chips always include an icon or shape cue and a visible text label.
 - Pending approval and unknown execution outcome use distinct labels and icons; `CORE_EXECUTION_OUTCOME_UNKNOWN` maps to `Reconciliation required` / `ic_status_recovery.svg` and never offers generic retry.
+- Pending owner approval and unknown execution outcome use distinct labels and icons; `CORE_EXECUTION_OUTCOME_UNKNOWN` maps to `Reconciliation required` / `ic_status_recovery.svg` and never offers generic retry.
 - Recovery-required is distinct from ordinary danger/error and waiting-for-owner.
 - Focus is clearly visible for keyboard and accessibility navigation.
 - Transitions default to 120–220ms; respect reduced-motion preferences.
 - No new component hard-codes HEX values.
+- For Windows, verify both width and height of every in-scope interactive target are at least 40×40 effective pixels; use 44×44px for primary touch controls.
 - Verify narrow layouts, long localized strings and enlarged text.
 
 ## 6. Change control and rollout
