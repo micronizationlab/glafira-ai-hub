@@ -883,10 +883,10 @@ fun ChatScreen(
                     Box(Modifier.weight(1f)) {
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                                .clickable { showProjectSelector = true }
                                 .semantics(mergeDescendants = true) {
                                     contentDescription = "Выбрать проект: ${project.name}"
-                                }
-                                .clickable { showProjectSelector = true },
+                                },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
