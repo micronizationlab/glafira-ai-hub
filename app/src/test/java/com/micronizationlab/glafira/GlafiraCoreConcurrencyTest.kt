@@ -7,10 +7,14 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import java.lang.management.ManagementFactory
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -207,6 +211,88 @@ class GlafiraCoreConcurrencyTest {
         first.await()
         second.await()
     }
+    @Test
+    fun maintenanceGateSuspendsOneHundredWaitingCoroutinesWithoutBusySpin() {
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        try {
+            runBlocking(dispatcher) {
+                val firstStarted = CompletableDeferred<Unit>()
+                val releaseFirst = CompletableDeferred<Unit>()
+                val maintenanceStarted = CompletableDeferred<Unit>()
+                val releaseMaintenance = CompletableDeferred<Unit>()
+                val waitingEntered = AtomicInteger()
+                val allWaitingEntered = CompletableDeferred<Unit>()
+                val active = AtomicInteger()
+
+                val first = async {
+                    GlafiraCoreMaintenanceGate.withExecution {
+                        active.incrementAndGet()
+                        firstStarted.complete(Unit)
+                        try {
+                            releaseFirst.await()
+                        } finally {
+                            active.decrementAndGet()
+                        }
+                    }
+                }
+                withTimeout(5_000L) { firstStarted.await() }
+
+                val maintenance = async {
+                    GlafiraCoreMaintenanceGate.withExclusive {
+                        assertEquals(0, active.get())
+                        maintenanceStarted.complete(Unit)
+                        releaseMaintenance.await()
+                    }
+                }
+                yield()
+
+                val waiters = (1..100).map {
+                    async {
+                        GlafiraCoreMaintenanceGate.withExecution {
+                            if (waitingEntered.incrementAndGet() == 100) {
+                                allWaitingEntered.complete(Unit)
+                            }
+                        }
+                    }
+                }
+                delay(50L)
+                assertEquals("New execution leases must remain blocked during maintenance", 0, waitingEntered.get())
+
+                val threadBean = ManagementFactory.getThreadMXBean()
+                val threadId = Thread.currentThread().id
+                if (threadBean.isThreadCpuTimeSupported) {
+                    if (!threadBean.isThreadCpuTimeEnabled) threadBean.isThreadCpuTimeEnabled = true
+                    val cpuBefore = threadBean.getThreadCpuTime(threadId)
+                    val wallBefore = System.nanoTime()
+                    delay(250L)
+                    val cpuAfter = threadBean.getThreadCpuTime(threadId)
+                    val wallAfter = System.nanoTime()
+                    if (cpuBefore >= 0L && cpuAfter >= cpuBefore) {
+                        val cpuNanos = cpuAfter - cpuBefore
+                        val wallNanos = wallAfter - wallBefore
+                        assertTrue(
+                            "Suspended waiters consumed excessive CPU: cpu=$cpuNanos wall=$wallNanos",
+                            cpuNanos < wallNanos / 2L
+                        )
+                    }
+                }
+
+                releaseFirst.complete(Unit)
+                withTimeout(5_000L) { maintenanceStarted.await() }
+                assertEquals(0, active.get())
+                assertEquals(0, waitingEntered.get())
+
+                releaseMaintenance.complete(Unit)
+                withTimeout(5_000L) { allWaitingEntered.await() }
+                (waiters + listOf(first, maintenance)).awaitAll()
+                assertEquals(100, waitingEntered.get())
+                assertEquals(0, active.get())
+            }
+        } finally {
+            dispatcher.close()
+        }
+    }
+
     @Test
     fun oneHandlerFailureDoesNotCancelAnotherParallelHandler() = runBlocking {
         val queue = ConcurrentQueue(listOf(task("bad"), task("good")))
