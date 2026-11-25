@@ -22,7 +22,11 @@ internal class GlafiraCoreOutboxStore(private val db: SQLiteDatabase, private va
         }
     }
 
-    /** Appends inside a caller-owned transaction; never begins, commits, or ends it. */
+    /**
+     * Appends inside a caller-owned transaction; never begins, commits, or ends it.
+     * The caller must roll back the entire enclosing transaction if this method throws:
+     * SQLite may abort only the failing statement and leave earlier sequence updates pending.
+     */
     internal fun appendInTransaction(d: GlafiraCoreOutboxDraft): GlafiraCoreOutboxAppendResult {
         check(db.inTransaction()) { "CORE_OUTBOX_CALLER_TRANSACTION_REQUIRED" }
         validate(d)
