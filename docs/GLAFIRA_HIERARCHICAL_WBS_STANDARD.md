@@ -124,3 +124,16 @@ Every cycle report must state the current `main` SHA, WBS ID, legacy step mappin
 ```
 
 The next executable step is not eligible until its predecessor is accepted and recorded. This rule is mandatory for every participant and every workstream.
+
+
+## 8. Coordinator execution governance — fallback and assignment control
+
+The following owner-approved cross-step governance task belongs to the eleventh workstream; it does not claim a Program 150 implementation step complete.
+
+- `1.11.2` — Coordinator execution governance.
+- `1.11.2.1` — Cycle serialization and work assignment.
+- `1.11.2.1.1` — Design fallback and ready-work governance (Work Item `GLAFIRA-GOV-D01`, issue #685).
+- `1.11.2.1.1.1` — Full-queue reconciliation and assignment lifecycle.
+- `1.11.2.1.1.1.1` — Enforce owner-delegated coordinator selection, dispatcher evidence boundaries, PR-size approval timing, atomic reservation and interrupted-handoff recovery.
+
+The owner sets priorities and retains final assignment/override authority. The coordinator performs operational selection and reservation within that authority. Dispatcher output is not a complete work queue. Assignment delivery is tracked independently from task status and must be resumed or explicitly released after an interrupted handoff.
