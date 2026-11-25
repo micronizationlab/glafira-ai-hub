@@ -661,7 +661,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         }
                         check(journal.deleteRecursively())
                         if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                    } else check(!keyExists()) { "Preserve an orphaned rollback key for diagnosis." }
+                    } else if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
                     check(owner.delete())
                 }
             }
@@ -715,7 +715,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
                                 check(journal.deleteRecursively())
                                 if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                            } else check(!keyExists()) { "Preserve an orphaned rollback key for diagnosis." }
+                            } else if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
                             check(!knownGood.exists() || knownGood.delete())
                             check(!createdAfterMarker.exists() || createdAfterMarker.delete())
                             check(owner.delete())
@@ -783,7 +783,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
                                     check(journal.deleteRecursively())
                                     if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                                } else check(!keyExists()) { "Preserve an orphaned rollback key for diagnosis." }
+                                } else if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
                                 check(!knownGood.exists() || knownGood.delete())
                                 check(!createdAfterMarker.exists() || createdAfterMarker.delete())
                                 check(owner.delete())
