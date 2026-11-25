@@ -1,0 +1,33 @@
+name: Сообщить об ошибке
+description: Зафиксировать воспроизводимую проблему
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Что произошло?
+      description: Ожидаемое и фактическое поведение.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Шаги воспроизведения
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Среда
+      description: Устройство, ОС, версия приложения или commit SHA.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Логи и дополнительные материалы
+      description: Удалите токены, пароли и персональные данные перед публикацией.
+    validations:
+      required: false
