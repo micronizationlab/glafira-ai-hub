@@ -565,7 +565,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertFalse("Rollback key must be deleted after the pending journal is cleared", keyStore.containsAlias(keyAlias))
         } finally {
             archive.delete()
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
             GlafiraRollbackSnapshotCipher.deleteKey()
         }
     }
