@@ -515,12 +515,12 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Exclusive implementation files:** `app/src/main/java/com/micronizationlab/glafira/GlafiraCoreOutboxStore.kt` and `app/src/androidTest/java/com/micronizationlab/glafira/GlafiraCoreOutboxStoreInstrumentedTest.kt`. No parallel implementation may edit these files until PR #667 is merged or closed; ledger maintenance remains coordinator-owned.
 - **Implementation branch / base:** `core/outbox-transaction-aware-append-main-20261125`, based on Main SHA `5be41d316791a4ac89cf4be24d043e7a2ea04dbe).
 - **WBS registration:** PR #664 merged as `5be41d316791a4ac89cf4be24d043e7a2ea04dbe`.
-- **Implementation PR:** #667, currently Draft / validation in progress.
+- **Implementation PR:** #667, Ready for review; exact-head validation is running on the current revision.
 - **Scope:** add a transaction-aware internal append path that can participate in a caller-owned SQLite transaction, while retaining the existing standalone append API. Add instrumentation proving caller rollback removes both Outbox row and sequence allocation; preserve idempotency and payload-conflict semantics.
 - **Out of scope:** do not wire production task-result delivery, create a sender/retry worker, accept arbitrary recipient authority, enable Bridge delivery, or claim exact ACK. Those remain blocked on trusted recipient/Core authority in #366.
 - **Dependencies:** existing schema v12 and current Outbox store/tests on Main; no change to recipient-trust requirements.
 - **Acceptance:** exact-head Android JVM, Debug APK, Shared Contracts and managed-emulator tests; CodeRabbit, Security Scan, Dispatcher and GLAFIRA review; owner-controlled merge and post-merge validation.
-- **Status:** `IN_PROGRESS`. No Program 150 step is marked complete by this implementation primitive alone.
+- **Status:** `IN_PROGRESS`. Caller-owned rollback, commit, replay and payload-conflict instrumentation are present. No Program 150 step is marked complete by this implementation primitive alone.
 
 
 ## Review correction — Core Outbox transaction-aware append — 2026-11-25
