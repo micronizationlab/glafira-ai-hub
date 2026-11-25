@@ -5,6 +5,7 @@ import java.util.Base64
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DesktopBridgeCredentialVaultTest {
@@ -29,6 +30,7 @@ class DesktopBridgeCredentialVaultTest {
             assertEquals(setOf("project.read", "conversation.read"), loaded.grantedScopes)
             assertEquals("a".repeat(64), loaded.serverCertificateSha256)
             assertArrayEquals(secret, loaded.hmacSecret)
+            loaded.hmacSecret.fill(0)
             assertFalseContains(Files.readAllBytes(path), secret)
         } finally {
             password.fill(0.toChar())
@@ -56,6 +58,7 @@ class DesktopBridgeCredentialVaultTest {
             assertEquals("device-identifier-02", loaded.deviceId)
             assertEquals(setOf("project.read", "conversation.read"), loaded.grantedScopes)
             assertArrayEquals(secret, loaded.hmacSecret)
+            loaded.hmacSecret.fill(0)
         } finally {
             password.fill(0.toChar())
             Files.deleteIfExists(path)
@@ -91,6 +94,82 @@ class DesktopBridgeCredentialVaultTest {
             }
         } finally {
             password.fill(0.toChar())
+            Files.deleteIfExists(path)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test fun loadAndUseVaultClearsCredentialAndConsumesPassphraseAfterSuccess() {
+        val directory = Files.createTempDirectory("glafira-vault-scoped-success")
+        val path = directory.resolve("device.vault")
+        val importPassphrase = "vault-use-passphrase-0001".toCharArray()
+        val usePassphrase = "vault-use-passphrase-0001".toCharArray()
+        val secret = ByteArray(32) { (it + 17).toByte() }
+        try {
+            DesktopBridgeCredentialVault.import(
+                path, "https://192.168.1.20:47321", "device-identifier-03",
+                Base64.getUrlEncoder().withoutPadding().encodeToString(secret),
+                setOf("project.read"), "d".repeat(64), importPassphrase
+            )
+            var capturedSecret: ByteArray? = null
+            val result = DesktopBridgeCredentialVault.loadAndUseVault(path, usePassphrase) { origin, credentials ->
+                assertEquals("https://192.168.1.20:47321", origin)
+                assertEquals("device-identifier-03", credentials.deviceId)
+                assertArrayEquals(secret, credentials.hmacSecret)
+                capturedSecret = credentials.hmacSecret
+                "completed"
+            }
+            assertEquals("completed", result)
+            assertArrayEquals(ByteArray(32), requireNotNull(capturedSecret))
+            assertTrue(usePassphrase.all { it == '\u0000' })
+        } finally {
+            importPassphrase.fill(0.toChar())
+            usePassphrase.fill(0.toChar())
+            Files.deleteIfExists(path)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test fun loadAndUseVaultClearsCredentialAndPassphraseWhenActionThrows() {
+        val directory = Files.createTempDirectory("glafira-vault-scoped-failure")
+        val path = directory.resolve("device.vault")
+        val importPassphrase = "vault-use-passphrase-0002".toCharArray()
+        val usePassphrase = "vault-use-passphrase-0002".toCharArray()
+        val secret = ByteArray(32) { (it + 29).toByte() }
+        try {
+            DesktopBridgeCredentialVault.import(
+                path, "https://192.168.1.20:47321", "device-identifier-04",
+                Base64.getUrlEncoder().withoutPadding().encodeToString(secret),
+                setOf("project.read"), "e".repeat(64), importPassphrase
+            )
+            var capturedSecret: ByteArray? = null
+            assertThrows(IllegalStateException::class.java) {
+                DesktopBridgeCredentialVault.loadAndUseVault(path, usePassphrase) { _, credentials ->
+                    capturedSecret = credentials.hmacSecret
+                    throw IllegalStateException("simulated operation failure")
+                }
+            }
+            assertArrayEquals(ByteArray(32), capturedSecret)
+            assertTrue(usePassphrase.all { it == '\u0000' })
+        } finally {
+            importPassphrase.fill(0.toChar())
+            usePassphrase.fill(0.toChar())
+            Files.deleteIfExists(path)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test fun loadAndUseVaultConsumesPassphraseWhenVaultLoadFails() {
+        val directory = Files.createTempDirectory("glafira-vault-scoped-load-failure")
+        val path = directory.resolve("missing.vault")
+        val passphrase = "vault-use-passphrase-0003".toCharArray()
+        try {
+            assertThrows(java.nio.file.NoSuchFileException::class.java) {
+                DesktopBridgeCredentialVault.loadAndUseVault(path, passphrase) { _, _ -> "unused" }
+            }
+            assertTrue(passphrase.all { it == '\u0000' })
+        } finally {
+            passphrase.fill(0.toChar())
             Files.deleteIfExists(path)
             Files.deleteIfExists(directory)
         }

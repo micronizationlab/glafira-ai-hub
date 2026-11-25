@@ -378,3 +378,18 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Emulator configuration audit:** current `.github/workflows/android.yml` already uses KVM, API 35 `google_apis`, Pixel 2 x86_64, 2 GB RAM, a 900-second emulator boot timeout, disabled snapshots/animations and a JUnit verifier that rejects empty or skipped test reports. The earlier `Timeout waiting for emulator to boot` log belongs to an older workflow run/revision; it is not evidence that the current Main configuration still fails. An explicit `adb wait-for-device` / `sys.boot_completed` probe is not currently present. Add it only with a bounded timeout and after confirming it improves the current runner rather than duplicating the emulator action's own boot wait. Do not switch to `aosp_atd` without checking Google APIs dependencies in the instrumentation suite.
 - **Acceptance boundary:** this confirms managed-emulator execution only. It does not satisfy physical-device acceptance on the owner's Android phone or a real Android↔Windows task handoff.
 - **Next P0 gate:** resolve the transport/security design for separately authenticated Core-to-Core task delivery. Main already contains the local Outbox append, trusted signing-peer registry and tests; no Inbox/ACK sender/receiver path is enabled. Keep payload delivery disabled until the receiver identity, encryption channel, durable Inbox receipt and exact ACK are implemented and tested.
+
+## Work item reservation — 2026-11-25 07:20 UTC
+
+- **Work Item:** `BRIDGE-VAULT-01`; parent Program 150 Step 68; Streams 3 (Bridge) and 7 (CI/CD/security).
+- **Base:** `a5369a8ef6e1a4ee4a2c088f805cf749e92b9cc2`; branch `security/desktop-vault-scoped-use-20261125`.
+- **Deliverable:** synchronous `loadAndUseVault` for one-shot Bridge operations; clear owned credential/passphrase buffers on success and exception; migrate `postFromVault`; add lifecycle tests.
+- **Allowed paths:** `DesktopBridgeCredentialVault.kt`, `DesktopBridgeEnrollmentFlow.kt`, `DesktopBridgeCredentialVaultTest.kt`, this ledger.
+- **Explicit exclusion:** the long-running CLI task worker keeps its existing shutdown-bound secret lifetime because its executor must retain credentials until all in-flight handlers stop. It is not safe to force a callback-finally wipe while that worker is still active; this exception is documented and remains a separate scoped-lease follow-up.
+- **Acceptance:** Desktop Bridge JVM tests pass on exact PR head; success/failure callbacks wipe credentials and consumed passphrase; no change to vault file format or pairing protocol.
+- **Status:** RESERVED; implementation not yet accepted.
+
+## Work item execution update — 2026-11-25 07:18 UTC
+
+- First exact-head run `45566241596` completed. `desktop-bridge:test` executed 58 tests; two new scoped-callback tests failed because the test fixtures used different import and use passphrases. This is a test-fixture mismatch; production vault validation was not weakened. Shared contracts and Android debug APK contracts passed; emulator acceptance completed successfully. Exact-head summary correctly failed because Android JVM tests failed.
+- Corrected both fixtures to use the same passphrase. Next step is one exact-head CI run on the corrected commit; no merge until JVM tests and exact-head summary pass.
