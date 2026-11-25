@@ -574,3 +574,6 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Acceptance:** positive/negative policy tests; Android instrumentation tests; exact-head Android JVM, Debug APK, Shared Contracts and managed-emulator CI; independent review; owner approval; post-merge Main validation. No running-task interruption or claim that a previous attempt never happened.
 - **Safety boundary:** no external-effect interruption, schema migration, owner-authority weakening, secret exposure or change to Core/Desktop execution authority. RETRY_SCHEDULED after any prior claim is not owner-cancellable. Unknown outcomes remain in reconciliation.
 - **Status:** RESERVED before fresh implementation edits. The earlier combined PR #671 is being split because it exceeded the normal 200-line limit; its commits are not treated as merge-ready. No Program 150 completion is claimed.
+
+
+- **Cancellation acceptance slice:** branch `test/core-owner-cancel-acceptance-final-20261125` based on backend revision `6acd364b607138783e032b8aaaae3cee7b5c5c2c`; instrumented tests cover history, dependency failure, project isolation, approval expiry/audit preservation, prior-attempt retry rejection, unknown-outcome preservation, wrong-project/running rejection and concurrent claim/cancel. Exact-head CI and JUnit report are pending; no test pass or DONE status is claimed.
