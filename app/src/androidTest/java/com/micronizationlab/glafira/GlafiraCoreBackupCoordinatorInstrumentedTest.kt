@@ -649,6 +649,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
             try {
                 GlafiraCoreMaintenanceGate.withExclusive {
+                    val tempsBeforeSetup = checkNotNull(context.cacheDir.listFiles { file ->
+                        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                    }) { "Could not inspect recovery temp files under the maintenance gate." }
+                    check(tempsBeforeSetup.isEmpty()) { "Unrelated stale recovery temp files exist; refusing to delete them." }
                     // A stale owner marker can clean a journal only when its generation matches
                     // the marker embedded in that exact journal. Never delete another restore.
                     if (ownerMarker.exists()) {
@@ -732,15 +736,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         val remainingTemps = checkNotNull(context.cacheDir.listFiles { file ->
                             file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
                         }) { "Could not inspect rollback recovery temp files during cleanup." }
-                        remainingTemps.filter { it.absolutePath !in preexistingTemps }.forEach { file ->
-                            check(!file.exists() || file.delete()) {
-                                "Could not delete this run's rollback recovery temp: ${file.absolutePath}"
-                            }
-                        }
-                        check(checkNotNull(context.cacheDir.listFiles { file ->
-                            file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                        }).all { it.absolutePath in preexistingTemps }) {
-                            "This run's rollback recovery temp files remain after cleanup."
+                        // The coordinator owns its decrypted temp lifecycle. Never delete a
+                        // cache file that this test cannot identify as its own generation.
+                        check(remainingTemps.isEmpty()) {
+                            "Rollback recovery temp files remain; refusing to delete unowned cache files."
                         }
                         if (ownsFixture) {
                             check(!knownGoodFile.exists() || knownGoodFile.delete()) {
