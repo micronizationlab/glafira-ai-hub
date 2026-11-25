@@ -638,7 +638,7 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - This is the initial owner-directed handoff checkpoint. Follow-up work begins with #703 and then the remaining P1/P2 blockers.
 
 ### 2026-11-25 — GLAFIRA-GOV-BATCH-W01 (owner-approved 11-lane batch cadence)
-- Reservation: WBS `1.11.1.1.1` — document and enforce dependency-aware sequential batch cycles across the eleven workstreams; Work Item `GLAFIRA-GOV-BATCH-W01`; executor GLAFIRA; branch `${branch}`; base Main `${mainSha}`.
+- Reservation: WBS `1.11.1.1.1` — document and enforce dependency-aware sequential batch cycles across the eleven workstreams; Work Item `GLAFIRA-GOV-BATCH-W01`; executor GLAFIRA; branch `governance/batch-cycle-eleven-workstreams-20261125`; base Main `da8fc4fcdbfd82953096789ab489cfc65703f960`.
 - Owner approved a multi-step package cadence for all eleven permanent lanes. Planning target: 3–5 genuine executable leaf steps per lane when the live backlog/dependencies permit; never invent work, duplicate an item, or bypass predecessors to meet a count.
 - Preserve one active bounded work item per helper. The coordinator pre-plans the package and assigns the next leaf immediately after verified completion/release; helpers do not self-select or switch lanes.
 - Independent tasks may run concurrently only with separate WBS IDs and exclusive file/behavior ownership. Build/release lanes remain serialized. Workstream 11 continuously handles intake, deduplication, review and safe integration.
