@@ -549,3 +549,14 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Review / integration:** CodeRabbit review and GLAFIRA source review were recorded; owner merged the implementation and WBS registration. The bounded leaf acceptance is therefore complete.
 - **Boundary:** DONE applies only to the rollback-journal plaintext-canary leaf. It does not close issue #566 or claim OS process-death, ENOSPC, missing-key/tamper, provider round-trip or clean-device restore acceptance.
 - **Sequencing:** leaf `1.2.1.2.1` remains a separate reservation and may proceed only after its own WBS reservation PR is merged.
+## WBS reservation — Core owner cancellation before dispatch — 2026-11-25
+
+- **Work Item / WBS / parent / Program:** `GLAFIRA-S093-W01` / `1.1.3.1.1` / issue #669 / Program Step 93 (partial task-queue UI cancellation); predecessors: none; dependencies: none.
+- **Tracker:** issue #669. Prior Orbi run `809501cb` stopped after its steering limit; its private uncommitted worktree was not published and is not imported.
+- **Executor:** GLAFIRA coordinator. **Independent review:** CodeRabbit / GLAFIRA review; final merge remains owner-controlled.
+- **Branch / base:** `fix/core-owner-task-cancel-20261125`, based on Main `155b5dd117b97579983d3aa9df6a9e8a69c30e1e`.
+- **Exclusive files:** `GlafiraTask.kt`, `GlafiraTaskStore.kt`, `GlafiraCoreRuntimeOwner.kt`, `TaskQueueScreen.kt`, `GlafiraTaskPolicyTest.kt`, and new `GlafiraTaskCancellationInstrumentedTest.kt`.
+- **Objective / procedure:** register policy states; implement project-bound transactional CAS cancellation and dependency propagation; expose runtime owner API with restore guard; add confirmation UI; test history, dependency failure, all four eligible states, wrong-project/running rejection and concurrent claim-vs-cancel.
+- **Acceptance:** deterministic policy JVM tests; Android instrumentation tests for accepted/rejected/idempotent cancellation, claim exclusion and dependency propagation; exact-head Android JVM, APK, Shared Contracts and managed-emulator CI; independent review; owner approval; post-merge Main validation.
+- **Safety boundary:** no running-task cancellation, no external-effect interruption, no schema/migration change, no change to owner authority or task claim semantics. Do not import Orbi's inaccessible staged worktree or claim its unfinished test passed.
+- **Status:** IN_PROGRESS in stacked acceptance PR #682; production implementation is in PR #671 head `a2be771fe161edd3c5c8011ba3bac38da033f89a`. Android instrumentation coverage and exact-head validation are pending; no merge or Program 150 completion is claimed.
