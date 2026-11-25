@@ -521,3 +521,14 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Dependencies:** existing schema v12 and current Outbox store/tests on Main; no change to recipient-trust requirements.
 - **Acceptance:** exact-head Android JVM, Debug APK, Shared Contracts and managed-emulator tests; CodeRabbit, Security Scan, Dispatcher and GLAFIRA review; owner-controlled merge and post-merge validation.
 - **Status:** `IN_PROGRESS`. No Program 150 step is marked complete by this implementation primitive alone.
+
+
+## Review correction — Core Outbox transaction-aware append — 2026-11-25
+
+- **Canonical implementation:** PR #667 only. Superseded duplicate PRs #665 and #666 are closed unmerged; no unique implementation scope is being discarded.
+- **WBS leaf:** `1.1.2.1.1`, reserved on Main by merged PR #664 before implementation. Implementation PR #667 is based on Main SHA `5be41d316791a4ac89cf4be24d043e7a2ea04dbe`.
+- **Correction to earlier stale ledger text:** the historical checkpoint that described PR #667 as Draft and used the pre-reservation branch/base is superseded. PR #667 was marked Ready for review; its current implementation branch is `core/outbox-transaction-aware-append-main-20261125`. Its body/ledger record must not be treated as merge authorization.
+- **PR #661 post-merge correction:** Main run `45614983384`, attempt 4, completed SUCCESS on merge SHA `c2e980612bc0dc5f6856340c704adf2892498715`. Android JVM (321 tests), Debug APK, Shared Contracts, managed-emulator instrumentation (164 tests; 0 failures, 0 errors, 0 skipped) and exact-head summary passed. This supersedes the earlier checkpoint's statement that post-merge Main validation was unconfirmed. Issue #566 remains OPEN for the remaining recovery matrix.
+- **Review finding:** add direct `appendInTransaction()` idempotent replay and changed-payload conflict coverage; existing replay/conflict assertions on the standalone API alone are insufficient evidence for this path.
+- **Current acceptance state:** exact-head checks for prior head `136df3bce33ba52b7f7917c4aac1936a5bc577fd` passed Android JVM, Debug APK, Shared Contracts, managed emulator, Security Scan and Project Dispatcher. GLAFIRA review requested the additional direct transaction-path test and ledger/body correction. CodeRabbit's independent review was still processing at the last observed poll. Any source change requires fresh exact-head validation; no merge is authorized by the earlier run.
+- **Scope remains limited:** local Outbox persistence primitive only. No producer wiring, recipient authority, sender/retry, receiver Inbox, exact ACK or production delivery is enabled. Issue #366 remains a dependency. No Program 150 count changes.
