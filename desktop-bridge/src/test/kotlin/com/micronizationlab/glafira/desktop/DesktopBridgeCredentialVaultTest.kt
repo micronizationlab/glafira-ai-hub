@@ -99,7 +99,6 @@ class DesktopBridgeCredentialVaultTest {
         }
     }
 
-
     @Test fun loadAndUseVaultClearsCredentialAndConsumesPassphraseAfterSuccess() {
         val directory = Files.createTempDirectory("glafira-vault-scoped-success")
         val path = directory.resolve("device.vault")
@@ -121,7 +120,7 @@ class DesktopBridgeCredentialVaultTest {
                 "completed"
             }
             assertEquals("completed", result)
-            assertArrayEquals(ByteArray(32), capturedSecret)
+            assertArrayEquals(ByteArray(32), requireNotNull(capturedSecret))
             assertTrue(usePassphrase.all { it == '\u0000' })
         } finally {
             importPassphrase.fill(0.toChar())
