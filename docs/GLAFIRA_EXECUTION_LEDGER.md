@@ -519,3 +519,22 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Dependencies:** existing schema v12 and current Outbox store/tests on Main; no change to recipient-trust requirements.
 - **Acceptance:** exact-head Android JVM, Debug APK, Shared Contracts and managed-emulator tests; CodeRabbit, Security Scan, Dispatcher and GLAFIRA review; owner-controlled merge and post-merge validation.
 - **Status:** `RESERVED` before implementation. No Program 150 step is marked complete by this reservation.
+
+
+
+## WBS reservation — Backup recovery re-entry from persisted rollback journal — 2026-11-25
+
+- **WBS parent:** `1.2.1.2` — Interrupted restore recovery and restart re-entry.
+- **WBS leaf:** `1.2.1.2.1` — Verify V3 rollback recovery re-entry after coordinator reconstruction.
+- **Hierarchy:** `1.2` Backup and Recovery → `1.2.1` Local rollback-journal confidentiality and integrity → `1.2.1.2` Interrupted restore recovery and restart re-entry → `1.2.1.2.1` Re-enter recovery from a persisted V3 journal using a newly constructed coordinator.
+- **Tracker:** issue #566. Legacy Program 150 steps 25 / 136 / 158 remain related acceptance references only; this leaf completes none of them.
+- **Predecessor:** `1.2.1.1.1` bounded rollback-journal plaintext-canary acceptance is PASS. This step must not alter its source/test ownership.
+- **Executor:** GLAFIRA coordinator. **Independent reviewer:** CodeRabbit plus GLAFIRA exact-head review; owner controls merge.
+- **Branch / base:** `backup/recovery-reentry-wbs-20261125`, based on Main `5be41d316791a4ac89cf4be24d043e7a2ea04dbe`.
+- **Exclusive file reservation:** `app/src/androidTest/java/com/micronizationlab/glafira/GlafiraCoreBackupCoordinatorInstrumentedTest.kt`. Test-only slice; no production source file is authorized unless a separately registered finding requires it.
+- **Objective:** create a durable V3 rollback journal with `prepareRollback()`, reconstruct a new `GlafiraCoreBackupCoordinator` instance, and invoke the existing recovery entry point. Prove the known-good snapshot is restored, the pending marker/journal and installation-local rollback key are cleared, and no decrypted recovery temp remains.
+- **Important limitation:** this is deterministic restart/re-entry coverage using a newly constructed coordinator in the same instrumentation process. It is not represented as an OS process-kill test. Actual process-death injection at every durable boundary remains a separate acceptance item.
+- **Out of scope:** no archive-format/schema change, no production recovery algorithm change, no missing-key/tamper/ENOSPC claims, no provider or clean-device restore claim, and no Program 150 completion.
+- **Acceptance:** exact-head Android JVM, Debug APK, Shared Contracts and managed-emulator instrumentation; verify the test actually executed with a non-empty JUnit report; Security Scan, Project Dispatcher, CodeRabbit and GLAFIRA review; merge and post-merge Main validation. Preserve current fail-closed behavior.
+- **Implementation sequence:** (1) seed known-good task state; (2) prepare V3 rollback journal; (3) mutate live state after marker durability; (4) construct a fresh coordinator and call recovery; (5) assert original state restored and journal/key/temp cleanup; (6) run the complete applicable suite and inspect logs.
+- **Status:** `RESERVED` before implementation. No source or test changes are authorized until this reservation is merged to Main.
