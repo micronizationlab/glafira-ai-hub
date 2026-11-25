@@ -38,6 +38,39 @@ class MainActivitySmokeTest {
         }
     }
 
+
+    @Test
+    fun chatWorkspaceProjectSelectorSwitchesAndDeleteCancelPreservesProject() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assertTrue("Could not install a temporary test provider key",
+            saveProviderKey(context, ProviderId.OPENAI, "instrumentation-placeholder-key"))
+        try {
+            val device = launch()
+            device.findObject(By.text("ГЛАФИРА")).click()
+            assertTrue("Chat workspace did not open",
+                device.wait(Until.hasObject(By.desc("Выбрать проект: Личное")), 10_000))
+
+            device.findObject(By.desc("Выбрать проект: Личное")).click()
+            assertTrue("Built-in VodorodAktiv project is missing from chat picker",
+                device.wait(Until.hasObject(By.text("ВодородАктив")), 5_000))
+            device.findObject(By.text("ВодородАктив")).click()
+            assertTrue("Chat did not switch to VodorodAktiv",
+                device.wait(Until.hasObject(By.desc("Выбрать проект: ВодородАктив")), 5_000))
+
+            device.findObject(By.desc("Выбрать проект: ВодородАктив")).click()
+            device.findObject(By.desc("Удалить проект: ВодородАктив")).click()
+            assertTrue("Project delete confirmation did not open",
+                device.wait(Until.hasObject(By.text("Удалить проект?")), 5_000))
+            assertTrue("Delete confirmation does not identify the selected project",
+                device.hasObject(By.text("Все чаты проекта «ВодородАктив» и его закрепления будут безвозвратно удалены.")))
+            device.findObject(By.text("Отмена")).click()
+            assertTrue("Cancelling deletion must preserve the selected project",
+                device.wait(Until.hasObject(By.desc("Выбрать проект: ВодородАктив")), 5_000))
+        } finally {
+            saveProviderKey(context, ProviderId.OPENAI, "")
+        }
+    }
+
     @Test
     fun mainActivityLaunchesAndRemainsForegrounded() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
