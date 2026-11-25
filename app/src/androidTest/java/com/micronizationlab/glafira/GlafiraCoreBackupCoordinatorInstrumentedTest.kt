@@ -707,7 +707,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fun keyExists() = KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
 
             try {
-                cancelAndAwaitCoreWorkers()
                 withFixtureLocks {
                     synchronized(store) {
                         if (owner.exists()) {
@@ -802,10 +801,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
         private const val MAINTENANCE_TIMEOUT_MILLIS = 10_000L
         private const val WORKER_STOP_TIMEOUT_SECONDS = 10L
-        private val CORE_WORK_NAMES = listOf(
-            "glafira-core-queue-drain",
-            "glafira-core-queue-retry",
-            "glafira-core-queue-network"
-        )
+        private val CORE_WORK_NAMES = listOf("glafira-core-queue-drain", "glafira-core-queue-retry", "glafira-core-queue-network")
     }
 }
