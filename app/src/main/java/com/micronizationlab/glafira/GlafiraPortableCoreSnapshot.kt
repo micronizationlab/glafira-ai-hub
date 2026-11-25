@@ -279,7 +279,7 @@ internal class GlafiraPortableCoreSnapshot(
         private val TERMINAL = setOf("succeeded", "failed", "cancelled")
         private val NON_PORTABLE = listOf(
             "core_action_approvals", "core_desktop_leases", "core_desktop_nodes",
-            "core_task_ownership", GlafiraCoreLiveRunStore.TABLE
+            "core_task_ownership", GlafiraCoreLiveRunStore.TABLE, GlafiraCoreOutboxSchema.TABLE, "core_outbox_sequences"
         )
         private val NULLABLE = setOf("deadline_at", "retry_at", "last_error", "result_ciphertext", "error_code", "reviewed_at", "from_state", "reason", "parent_event_id", "target_type", "target_id", "result_status", "approval_ref", "duration_ms")
         private val NUMBERS = setOf("event_id", "ordinal", "created_at", "updated_at", "attempt_count", "deadline_at", "retry_at", "completed_at", "reviewed_at", "changed_at", "occurred_at", "redaction_applied", "secret_values_stored", "duration_ms")
