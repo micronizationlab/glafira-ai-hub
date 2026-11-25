@@ -12,6 +12,7 @@ import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
@@ -546,6 +547,26 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             keyStore.aliases().toList().filter { it.startsWith(keyAliasPrefix) }.forEach(keyStore::deleteEntry)
             passphrase.fill('\u0000')
+        }
+    }
+
+
+    @Test
+    fun successfulRestoreDeletesInstallationLocalRollbackKey() = runBlocking {
+        val keyAlias = "glafira_core_rollback_v1"
+        GlafiraRollbackSnapshotCipher.deleteKey()
+        store.enqueue(task("rollback-key-lifecycle"))
+        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val passphrase = "GLAFIRA-rollback-key-lifecycle".toCharArray()
+        val archive = coordinator.create(passphrase)
+        try {
+            coordinator.restore(archive, passphrase)
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            assertFalse("Rollback key must be deleted after the pending journal is cleared", keyStore.containsAlias(keyAlias))
+        } finally {
+            archive.delete()
+            passphrase.fill('\u0000')
+            GlafiraRollbackSnapshotCipher.deleteKey()
         }
     }
 

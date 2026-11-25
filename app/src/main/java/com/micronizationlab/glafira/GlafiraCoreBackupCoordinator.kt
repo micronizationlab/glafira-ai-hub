@@ -156,7 +156,12 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
     private fun clearJournal() {
         check(marker.delete()) { "Не удалось завершить журнал восстановления." }
         syncDirectory(journal)
-        journal.deleteRecursively()
+        check(journal.deleteRecursively()) { "Не удалось удалить журнал восстановления." }
+        syncDirectory(app.noBackupFilesDir)
+        // Delete the installation-local key only after the pending journal and encrypted
+        // rollback snapshot are gone. A cleanup failure must not destroy an otherwise usable
+        // rollback snapshot while its pending marker still exists.
+        GlafiraRollbackSnapshotCipher.deleteKey()
     }
 
     private fun checkpointDatabase() {
