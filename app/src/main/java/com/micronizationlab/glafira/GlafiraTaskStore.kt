@@ -1003,7 +1003,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
     @Synchronized
     fun resumeWaitingForNetwork(nowMillis: Long = System.currentTimeMillis()): Int {
         val ownerClause = if (ownerCoreId == null) "" else
-            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
+            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ? AND owner_generation > 0 AND state_version >= 0)"
         val args = arrayOf(GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue, DESKTOP_TASK_TYPE) +
             if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
         return writableDatabase.update(TABLE_TASKS, ContentValues().apply {
@@ -1254,7 +1254,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 targetId = task.taskId,
                 resultStatus = "cancelled"
             ))
-            failDescendantsWithFailedDependency(db, taskId, projectId, nowMillis)
+            failDescendantsWithFailedDependency(db, taskId, projectId, actingCoreId, nowMillis)
             db.setTransactionSuccessful()
             return true
         } finally {
@@ -1591,12 +1591,38 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         }
     }
 
+    private fun readTaskOwnership(
+        db: SQLiteDatabase,
+        taskId: String,
+        projectId: String
+    ): GlafiraTaskOwnershipRecord? = db.query(
+        TABLE_OWNERSHIP, null, "task_id = ? AND project_id = ?",
+        arrayOf(taskId, projectId), null, null, null, "1"
+    ).use { cursor ->
+        if (!cursor.moveToFirst()) null else GlafiraTaskOwnershipRecord(
+            taskId = taskId,
+            projectId = projectId,
+            ownerCoreId = cursor.getString(cursor.getColumnIndexOrThrow("owner_core_id")),
+            ownerGeneration = cursor.getLong(cursor.getColumnIndexOrThrow("owner_generation")),
+            stateVersion = cursor.getLong(cursor.getColumnIndexOrThrow("state_version")),
+            payloadSha256 = cursor.getString(cursor.getColumnIndexOrThrow("payload_sha256")),
+            idempotencyKey = cursor.getString(cursor.getColumnIndexOrThrow("idempotency_key")),
+            effectRisk = cursor.getString(cursor.getColumnIndexOrThrow("effect_risk")),
+            approvalRef = cursor.getColumnIndexOrThrow("approval_ref").let {
+                if (cursor.isNull(it)) null else cursor.getString(it)
+            },
+            createdAtMillis = cursor.getLong(cursor.getColumnIndexOrThrow("created_at")),
+            updatedAtMillis = cursor.getLong(cursor.getColumnIndexOrThrow("updated_at"))
+        )
+    }
+
     private fun failDescendantsWithFailedDependency(
-        db: SQLiteDatabase, rootTaskId: String, projectId: String, nowMillis: Long
+        db: SQLiteDatabase, rootTaskId: String, projectId: String, actingCoreId: String, nowMillis: Long
     ) {
         // Keep the bind count below SQLite's 999-parameter limit on older Android SQLite.
         // Other query parameters (project, states and owner) are in addition to this batch.
         val ownerId = ownerCoreId ?: return
+        if (ownerId != actingCoreId) return
         val states = arrayOf(
             GlafiraTaskState.QUEUED.databaseValue, GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
             GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue
@@ -1624,10 +1650,16 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 candidates.forEach { childId ->
                     val child = queryTask(db, childId, projectId) ?: return@forEach
                     if (GlafiraTaskPolicy.hasUnresolvedExecutionOutcome(child)) return@forEach
+                    val ownership = readTaskOwnership(db, childId, projectId) ?: return@forEach
+                    if (ownership.ownerCoreId != actingCoreId ||
+                        ownership.ownerGeneration <= 0L || ownership.stateVersion < 0L
+                    ) return@forEach
                     val updateSelection = "task_id = ? AND project_id = ? AND state IN (?, ?, ?, ?) " +
                         "AND EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own " +
-                        "WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ?)"
-                    val updateArgs = arrayOf(childId, projectId) + states + arrayOf(ownerId)
+                        "WHERE own.task_id = $TABLE_TASKS.task_id AND own.owner_core_id = ? " +
+                        "AND own.owner_generation = ? AND own.state_version = ?)"
+                    val updateArgs = arrayOf(childId, projectId) + states +
+                        arrayOf(actingCoreId, ownership.ownerGeneration.toString(), ownership.stateVersion.toString())
                     if (db.update(TABLE_TASKS, values, updateSelection, updateArgs) == 1) {
                         invalidateTaskArtifacts(
                             db, child, nowMillis, "DEPENDENCY_FAILED", GlafiraCoreTraceActorType.CORE
