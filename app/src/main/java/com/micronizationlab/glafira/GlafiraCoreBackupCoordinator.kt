@@ -197,11 +197,12 @@ class GlafiraCoreBackupCoordinator(
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
             val marker = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER)
-            if (marker.exists()) return true
             val stale = app.cacheDir.listFiles { file ->
-                file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                file.name.startsWith(DEFAULT_RECOVERY_TEMP_PREFIX) && file.name.endsWith(".tmp")
             }.orEmpty()
-            return stale.any { it.exists() && !it.delete() }
+            // Read-only fail-closed guard. A caller must never delete a recovery temp that
+            // may belong to another coordinator; serialized recover() performs scoped cleanup.
+            return marker.exists() || stale.any { it.exists() }
         }
     }
 }
