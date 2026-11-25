@@ -202,6 +202,7 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     /** Owner queue action; running work is deliberately not interruptible by this operation. */
     fun cancelTask(taskId: String, projectId: String): Boolean {
         val cancelled = synchronized(taskStore) {
+            // Serialize the restore-marker check with restore and task-store mutation on the same monitor.
             check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
             taskStore.cancelUnclaimedTask(taskId, projectId, System.currentTimeMillis())
         }
