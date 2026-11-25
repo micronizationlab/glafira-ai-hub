@@ -576,3 +576,17 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Out of scope:** Compose/Kotlin/theme/navigation changes; Core/Bridge behavior; permissions; provider integration; data model or security changes; artwork replacement.
 - **Acceptance:** screen inventory, navigation map, text wireframes, component hierarchy, state/interaction tables, 360dp and landscape behavior, keyboard-visible composer behavior, long localized text, screen-reader/touch acceptance; explicit unresolved owner decisions; exact-head docs/security CI and independent review; owner acceptance.
 - **Status:** RESERVED before design-document creation. No implementation, platform visual approval or Program 150 completion is claimed.
+
+
+## WBS reservation — Android operational screens UX — 2026-11-25
+
+- **Work Item / WBS / parent:** `GLAFIRA-DESIGN-ANDROID-OPS-W01` / `1.11.1.2.2` / `1.11.1.2 — Android owner-facing information architecture`.
+- **Tracker / umbrella:** issue #712 / design umbrella #672.
+- **Executor / reviewer:** GLAFIRA coordinator; owner review required before implementation.
+- **Branch / base:** `design/android-operational-screens-ux-stacked-20261125`, based on Android owner-workspace UX branch head `9408938907f7065a65f62d6232cffc9d52c211fe`; this is intentionally stacked on PR #714 to serialize append-only ledger updates.
+- **Exclusive deliverable:** `docs/design/ANDROID_OPERATIONAL_SCREENS_UX.md` only; this ledger reservation is recorded before the design document is created on this branch.
+- **Dependencies:** shared tokens #679 remain provisional; provider/model selector detail #680 is separate; primary Android workspace #711 is predecessor/stacked base.
+- **Scope:** owner-facing project list/detail, task queue/approvals, settings grouping, provider connection summary, voice/microphone permission education and disabled/error/recovery states, grounded in current Android screens.
+- **Out of scope:** Compose/Kotlin/runtime, Core queue semantics, provider integration, permission behavior, secrets, database, protocol, security or backup implementation changes.
+- **Acceptance:** screen inventories, state and action matrices, grouping/navigation, 360dp and keyboard behavior, approval scope visibility, reason-specific disabled/error explanations, accessible labels, owner decisions, exact-head docs/security CI, independent review and owner acceptance.
+- **Status:** RESERVED before design-document creation. No implementation or functional acceptance is claimed.
