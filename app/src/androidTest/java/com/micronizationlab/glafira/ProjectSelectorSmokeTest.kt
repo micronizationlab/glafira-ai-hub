@@ -14,7 +14,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ProjectSelectorSmokeTest {
     @Test
-    fun chatProjectPickerShowsBuiltInsAndSwitchesTheActiveWorkspace() {
+    fun homeProjectPickerShowsReadableNamesAndSwitchesBuiltInWorkspaces() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         resetRecoveryJournalForUiSmokeTest(context)
@@ -36,19 +36,18 @@ class ProjectSelectorSmokeTest {
             )
         )
         val device = UiDevice.getInstance(instrumentation)
-        val coordinator = device.wait(Until.findObject(By.text("ГЛАФИРА")), 20_000)
-        assertTrue("GLAFIRA agent is not available on the home screen", coordinator != null)
-        requireNotNull(coordinator).click()
-
         val personalSelector = By.desc("Выбрать проект: Личное")
         assertTrue(
-            "Chat did not expose the active Personal project selector",
-            device.wait(Until.hasObject(personalSelector), 10_000)
+            "Home screen did not expose the active Personal project selector",
+            device.wait(Until.hasObject(personalSelector), 20_000)
         )
-        device.findObject(personalSelector).click()
+        val selector = device.findObject(personalSelector)
+        assertTrue("Home project selector is not clickable", selector.isClickable)
+        selector.click()
+
         val vodorodaktiv = By.text("ВодородАктив")
         assertTrue(
-            "Built-in VodorodAktiv project is missing from the picker",
+            "Built-in VodorodAktiv project is missing or unreadable in the picker",
             device.wait(Until.hasObject(vodorodaktiv), 5_000)
         )
         device.findObject(vodorodaktiv).click()
@@ -60,7 +59,7 @@ class ProjectSelectorSmokeTest {
 
         device.findObject(selectedBusiness).click()
         val token = By.text("Токен")
-        assertTrue("Built-in Token project is missing after switching", device.wait(Until.hasObject(token), 5_000))
+        assertTrue("Built-in Token project is missing or unreadable", device.wait(Until.hasObject(token), 5_000))
         device.findObject(token).click()
         assertTrue(
             "Selecting Token did not update the active workspace",
