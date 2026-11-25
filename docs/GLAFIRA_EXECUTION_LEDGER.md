@@ -553,11 +553,11 @@ This checkpoint updates the live integration state after the previous Outbox/res
 
 ## WBS reservation — GLAFIRA DESIGN shared visual foundation — 2026-11-25
 
-- **Work Item / WBS / parent / Program mapping:** `GLAFIRA-DESIGN-W01` / `1.11.1.1.1` / issue #672 and child issue #679 / owner-approved cross-step design initiative; no legacy Program 150 step is claimed.
+- **Work Item / WBS / parent / Program mapping:** `GLAFIRA-DESIGN-W01` / `1.11.1.1.1` / parent `1.11.1.1 — Shared design foundation` / umbrella #672 / tracker #679 / owner-approved cross-step design initiative; no legacy Program 150 step is claimed.
 - **Executor / reviewer:** GLAFIRA coordinator / owner review by Валерий Корчагин; implementation teams consume only after owner acceptance.
 - **Branch / base:** `design/shared-tokens-foundation-20261125`, Main `155b5dd117b97579983d3aa9df6a9e8a69c30e1e`.
 - **Exclusive path:** `docs/design/DESIGN_TOKENS.md` only; no overlap with platform UX files #674–#678 or Multi-AI file #680.
 - **Predecessors / dependencies:** none for the semantic token proposal; platform-specific final visual specifications depend on owner review of this foundation. Information architecture/wireframes may proceed with tokens marked pending.
-- **Objective / procedure:** define semantic color roles, typography, spacing, surfaces, native-control adaptation, icon/motion/accessibility rules and common UI states; mark every value as a proposal pending owner approval.
-- **Acceptance:** cross-platform coverage for Android, iOS, Windows Desktop and Agent; light/dark roles; contrast intent; responsive/accessibility and reduced-motion rules; no runtime/security changes; owner review; focused PR and exact-head CI.
-- **Status:** RESERVED before design-file creation. This is a design deliverable only; it does not complete any implementation or platform acceptance step.
+- **Objective / procedure:** define semantic color roles, typography, spacing, surfaces, native-control adaptation, icon/motion/accessibility rules and common UI states; mark all values as proposals pending owner approval.
+- **Manual acceptance evidence:** (1) review semantic-token mapping for Android/iOS/Windows Desktop/Agent; (2) record light/dark text contrast and ≥3:1 non-text boundary calculations; (3) verify active/offline/waiting/quota/error state mappings; (4) verify Android 48dp, iOS 44pt and Windows 40px touch targets plus keyboard focus, screen-reader labels and reduced motion; (5) capture owner approve/request-changes decision. Record a checklist/table in the PR; CI is separate and cannot prove visual acceptance.
+- **Status:** IN_REVIEW on design PR #681, current design-file head `5523dceb4a371521b219f7e2765afa71785a1a8c`; exact-head docs CI, Security Scan and Dispatcher are pending/being rechecked. This design deliverable does not complete any implementation or platform acceptance step.
