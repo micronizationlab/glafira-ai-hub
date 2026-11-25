@@ -42,3 +42,11 @@
 ## Review gate
 
 No queue/store removal, database consolidation, protocol rewrite or data migration is permitted from this initial map alone. Update each row with exact source path, symbol, test and commit before making an architecture decision.
+
+## Cross-cutting integration finding discovered during PR #627 review
+
+- PR #627 creates `core_ownership_transfer_receipts` in the canonical TaskStore database.
+- Main's `GlafiraPortableCoreSnapshot.exportTo()` rejects every `core_%` table not explicitly classified in `TABLES` or `NON_PORTABLE`. This receipt table is not yet in either list on Main.
+- Therefore backup export fails after the ownership-transfer runtime initializes unless the receipt table is explicitly classified. The table is device-local anti-replay evidence and must be added to `NON_PORTABLE`, not exported to another Core.
+- Tracked as blocker #644 and linked from PR #627. Required regression: initialize transfer store, create receipt, export/verify portable snapshot, prove receipt remains local and is not exported/restored.
+- This is a concrete integration defect; it is not covered by the currently green PR #627 exact-head checks. PR #627 must not merge until fixed and revalidated.
