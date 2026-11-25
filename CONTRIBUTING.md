@@ -43,7 +43,8 @@ A build, a documentation entry, a green historical run or a skipped check is not
 ## Review and merge
 
 - Self-review the complete diff before requesting review.
-- At least one independent approval and all required exact-head checks are expected before merge.
+- **Current project stage (fewer than 10 regular active contributors):** GLAFIRA performs a documented self-review of the complete diff, security boundaries and exact-head checks; the owner retains final merge authority. A separate human approval is not required.
+- When at least 10 people are working in the project regularly, the owner may introduce a mandatory independent human review and update this policy explicitly.
 - Resolve review comments explicitly; a `COMMENTED` review is not an approval.
 - Merge only when the PR is current with its base and the required checks have completed successfully.
 - After merge, record the new `main` SHA and verify post-merge CI. Update the execution ledger only for work actually integrated and accepted.
