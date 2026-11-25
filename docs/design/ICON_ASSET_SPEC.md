@@ -1,11 +1,11 @@
 # GLAFIRA icon asset specification
 
 **Work item:** GLAFIRA-DESIGN-W01 · **WBS:** 1.11.1.1.1  
-**Status:** handoff specification; artwork and exports are not yet delivered.
+**Status:** handoff specification. The app flower is already owner-approved; preserve it unchanged. Status icon artwork remains outstanding.
 
 ## 1. Existing app mark
 
-Before changing or replacing the app mark, locate and review the current source asset in the repository. Preserve the recognizable GLAFIRA/ICQ flower identity. Do not fabricate a replacement or claim that an export exists until the source file is verified and reviewed by the owner.
+The canonical GLAFIRA flower already exists and is owner-approved. It is an ICQ-style flower with five green petals, a white center and green core, finished with a glossy/lacquered dimensional highlight. This is a preservation requirement, not a redesign brief. Locate the exact approved source in the active project history/branch before making exports. Do not redraw, replace, recolor or simplify the approved mark. The `main` branch tree scan did not reveal a flower-named SVG/PNG/WebP/ICO asset, so the canonical source location still needs to be resolved.
 
 Required app-mark exports once the source artwork is approved:
 
@@ -50,7 +50,7 @@ The recovery icon must be visually distinct from ordinary danger/error. A recove
 - [ ] Success, warning, danger, neutral and info are distinguishable without color.
 - [ ] Stroke weight, optical alignment and baseline are consistent.
 - [ ] No fixed theme colors are embedded in status source SVGs.
-- [ ] Approved flower source is preserved and all requested raster exports are reproducible.
+- [ ] Existing approved flower source is located and preserved unchanged; requested raster exports are reproducible.
 - [ ] Android, iOS and Windows render previews are reviewed at actual UI sizes.
 - [ ] Accessibility labels and semantic status mapping are documented by consuming components.
 
