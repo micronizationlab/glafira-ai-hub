@@ -344,7 +344,11 @@ class GlafiraTaskOwnershipInstrumentedTest {
         assertEquals(GlafiraTaskState.RUNNING, core.getTask(item.taskId)?.state)
         assertEquals(stateVersionBeforeStaleAttempts, ownership(core, item.taskId)?.get("state_version"))
         assertEquals(historyBeforeStaleAttempts, core.taskHistory(item.taskId, item.projectId).size)
-        assertNull(core.coreTaskResult(item.taskId, item.projectId))
+        val staleResultRowExists = core.readableDatabase.rawQuery(
+            "SELECT 1 FROM core_task_results WHERE task_id = ?",
+            arrayOf(item.taskId)
+        ).use { it.moveToFirst() }
+        assertFalse("Stale claim must not create a result row", staleResultRowExists)
 
         assertTrue(core.persistCoreTaskResultOwned(
             secondClaim.ownershipToken,
