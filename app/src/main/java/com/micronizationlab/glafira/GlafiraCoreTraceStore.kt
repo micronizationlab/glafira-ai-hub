@@ -333,7 +333,7 @@ class GlafiraCoreTraceStore(private val taskStore: GlafiraTaskStore) : GlafiraCo
                         redaction_applied, secret_values_stored, duration_ms
                     ) VALUES (
                         'evt' || lower(hex(randomblob(16))), NEW.project_id, NEW.task_id, NULL, NEW.task_id,
-                        NEW.updated_at, 'CORE', 'core', 'CoreTaskStore',
+                        NEW.updated_at, CASE WHEN NEW.last_error = 'OWNER_CANCELLED' THEN 'OWNER' ELSE 'CORE' END, CASE WHEN NEW.last_error = 'OWNER_CANCELLED' THEN 'owner' ELSE 'core' END, 'CoreTaskStore',
                         CASE NEW.state
                             WHEN 'queued' THEN 'TASK_QUEUED'
                             WHEN 'retry_scheduled' THEN 'TASK_QUEUED'
