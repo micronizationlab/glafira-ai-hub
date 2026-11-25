@@ -57,6 +57,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 arrayOf(GlafiraCoreTraceStore.TABLE)
             ).use { it.moveToFirst() }
             if (traceExists) GlafiraCoreTraceStore.purgeProjectForOwnerDeletion(db, projectId)
+            db.delete(GlafiraCoreOutboxSchema.TABLE, "project_id = ?", arrayOf(projectId))
             db.delete(TABLE_TASKS, "project_id = ?", arrayOf(projectId))
             db.delete("core_task_plans", "project_id = ?", arrayOf(projectId))
             val approvalsExist = db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_action_approvals'", null)
