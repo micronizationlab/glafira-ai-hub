@@ -123,17 +123,17 @@ class GlafiraTaskCancellationInstrumentedTest {
             val id = "waiting-$i"
             store.enqueue(task(id))
             assertTrue(store.transition(id, setOf(GlafiraTaskState.QUEUED), state, 2_000L))
-            assertTrue(store.cancelUnclaimedTask(id, "cancel-project", 3_000L))
+            assertTrue(cancel(id, "cancel-project", 3_000L))
         }
     }
 
     @Test fun unknownExternalOutcomesCannotBeCancelled() {
         listOf("CORE_EXECUTION_OUTCOME_UNKNOWN", "DESKTOP_EXECUTION_OUTCOME_UNKNOWN", "CORE_RESULT_PERSIST_FAILED:disk-write", "CORE_RESULT_PERSIST_FAILED:timeout-after-commit").forEachIndexed { index, marker ->
             val id = "unknown-$index"
-            store.enqueue(task(id))
+            store.enqueue(task(id, taskType = if (marker.startsWith("CORE_RESULT_PERSIST_FAILED:")) "unregistered.external.write" else "project.read"))
             assertTrue(store.transition(id, setOf(GlafiraTaskState.QUEUED),
                 GlafiraTaskState.WAITING_FOR_OWNER, 2_000L, null, marker))
-            assertFalse(store.cancelUnclaimedTask(id, "cancel-project", 3_000L))
+            assertFalse(cancel(id, "cancel-project", 3_000L))
             assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask(id)?.state)
             assertEquals(marker, store.getTask(id)?.lastError)
         }
