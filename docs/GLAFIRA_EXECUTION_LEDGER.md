@@ -562,3 +562,16 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Manual acceptance evidence:** (1) review semantic-token mapping for Android/iOS/Windows Desktop/Agent; (2) record light/dark text contrast and ≥3:1 non-text boundary calculations; (3) verify active/offline/waiting/quota/error and recoveryRequired state mappings; (4) record visible text/icon plus accessible label for each critical state; (5) distinguish Needs owner approval from Reconciliation required and prohibit generic retry for unknown outcomes; (6) verify Android 48dp, iOS 44pt and Windows 40px touch targets, keyboard focus, screen-reader labels and reduced motion; (7) capture owner approve/request-changes decision. Record a checklist/table in the PR; CI is separate and cannot prove visual acceptance.
 - **Changed-file inventory for PR #681:** `docs/design/DESIGN_TOKENS.md`; `docs/GLAFIRA_EXECUTION_LEDGER.md`.
 - **Status:** IN_REVIEW on design PR #681, current design-file head `5523dceb4a371521b219f7e2765afa71785a1a8c`; exact-head docs CI, Security Scan and Dispatcher are pending/being rechecked. This design deliverable does not complete any implementation or platform acceptance step.
+
+
+## WBS reservation — iOS and Windows token references — 2026-11-25
+
+- **WBS leaf:** `1.11.1.1.4` — Add corrected native token references for future iOS and Windows UI targets.
+- **Work item / tracker:** `GLAFIRA-DESIGN-PLATFORM-REF-W01` / issue #686 / umbrella #672.
+- **Predecessor:** shared semantic foundation `1.11.1.1.1` merged in PR #681. Android token source is tracked separately in `1.11.1.1.2` / PR #688; these reference files consume the shared semantics and do not depend on Android runtime code.
+- **Executor / reviewer:** GLAFIRA coordinator / independent review; owner controls merge.
+- **Branch / base:** `design/ios-windows-token-references-20261125`, based on Main `007575058fc4f8b458785e99c1a228973e2e3d17`.
+- **Exclusive paths:** `docs/design/platforms/DesignTokens.swift`, `docs/design/platforms/GlafiraTokens.xaml`.
+- **Scope:** provide a compile-correct SwiftUI color helper that avoids the nested `Color` name-shadowing defect in the supplied draft, plus a clearly labelled WPF-compatible XAML reference. No production target or platform app is created.
+- **Acceptance:** Swift code imports UIKit/SwiftUI and extends `SwiftUI.Color` with light/dark hex initialization; XAML contains semantic light/dark resources and names its WPF scope; both preserve shared token meanings and are labelled reference-only until native targets exist.
+- **Status:** `RESERVED` before edits. No Program 150 item is marked complete.
