@@ -86,7 +86,7 @@ jobs:
             ./gradlew :app:testDebugUnitTest --no-daemon --no-build-cache --rerun-tasks --stacktrace
           fi
       - name: Verify JVM JUnit reports contain executed tests
-        if: success()
+        if: always()
         run: python3 .github/scripts/verify-junit-reports.py app/build/test-results desktop-bridge/build/test-results
       - name: Upload JVM reports
         if: always()
@@ -103,8 +103,8 @@ jobs:
 
   android-apk:
     name: Android debug APK package
-    needs: [changes, android-tests]
-    if: needs.changes.outputs.android == 'true' && needs.android-tests.result == 'success'
+    needs: [changes]
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -126,8 +126,8 @@ jobs:
 
   android-emulator:
     name: Android emulator acceptance
-    needs: [changes, android-tests]
-    if: needs.changes.outputs.android_acceptance == 'true' && needs.android-tests.result == 'success'
+    needs: [changes]
+    if: needs.changes.outputs.android_acceptance == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
@@ -161,7 +161,7 @@ jobs:
           disable-animations: true
           script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-build-cache --rerun-tasks --stacktrace
       - name: Verify emulator JUnit reports contain executed tests
-        if: success()
+        if: always()
         run: python3 .github/scripts/verify-junit-reports.py app/build/outputs/androidTest-results/connected
       - name: Upload emulator diagnostics
         if: always()
