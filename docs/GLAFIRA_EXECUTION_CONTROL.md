@@ -129,7 +129,7 @@ No vague “done”, no hidden progress, no repeated work, no second build witho
 
 ## 12. Mandatory fallback project — GLAFIRA DESIGN
 
-Every one of the eleven workstreams must produce one bounded deliverable in each coordinator cycle. A lane must not be left idle or silently marked skipped. If its assigned implementation or validation step cannot advance because of a dependency, unavailable executor, CI/platform lane not selected, external physical acceptance, pending review, or another explicit blocker, the coordinator assigns that lane one distinct work package in the separate **GLAFIRA DESIGN** project tracked by issue #672.
+Every one of the eleven workstreams must receive one bounded assignment in each coordinator cycle; a lane must not be silently left idle. Before using the design fallback, the coordinator/dispatcher first checks for eligible, dependency-ready implementation or validation work at the same or higher owner priority (especially P1 Core, P2 Backup & Recovery, P3 Bridge/Desktop). If such work exists, assign that work first. Only when no suitable higher-priority implementation/validation work is ready does the coordinator assign the lane one distinct, dependency-ready work package in the separate **GLAFIRA DESIGN** project tracked by issue #672. A skipped CI lane caused by change-aware selection is not itself evidence that the platform is validated; it can trigger design fallback only after the ready-work check.
 
 The original implementation/test/acceptance outcome is immutable and must be preserved exactly, including **BLOCKED**, **NOT RUN**, **SKIPPED**, **CANCELLED**, **OWNER_ACCEPTANCE**, or any other recorded state. Report design fallback progress separately; never overwrite or reinterpret the original lane outcome. Design work is a separate deliverable and never substitutes for required tests, physical-device acceptance, security review, owner approval or merge gates.
 
@@ -143,6 +143,7 @@ The original implementation/test/acceptance outcome is immutable and must be pre
 
 ### Assignment rules
 
+- Before assigning a design package, register its canonical hierarchical WBS executable leaf in the execution ledger, map it to a Program 150 step or an explicitly owner-approved cross-step task, and record its issue, executor, exact allowed path, dependencies, base SHA, branch, acceptance and tests. Reservation must precede edits.
 - One helper = one active bounded assignment. A blocked helper does not self-select another task; the coordinator assigns a distinct design package.
 - The design packages in issue #672 have separate platform/component ownership and non-overlapping files or document sections.
 - The design foundation/tokens precede dependent visual specifications. A package may begin only when its declared predecessors are ready; information architecture/wireframes may proceed independently if the issue explicitly marks visual tokens as pending. No duplicated edits or competing source-of-truth files.
