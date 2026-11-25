@@ -166,7 +166,33 @@ The 11 workstreams may progress in parallel, but shared authority and integratio
 - Integrate to main only after independent review and required CI. After merge, verify the new main SHA and post-merge CI.
 - Update the execution ledger from actual merged commits and evidence, never from planned steps or documentation changes alone.
 
-## 14. Release gates
+## 14. Shared maintenance gate and queue inventory
+
+The existing `GlafiraCoreMaintenanceGate` is retained as the synchronization boundary between ordinary task execution and exclusive maintenance operations such as backup snapshots, restore, schema migration and integrity repair. Do not remove it, replace it with a second lock or bypass it from a worker. Its contract must prove that a snapshot cannot race an active state mutation and that a failed maintenance operation releases the gate safely. Keep concurrency, cancellation and process-restart tests.
+
+Before consolidating or deleting any queue, inventory all queue-like stores and buffers, including Android Core TaskStore/WorkManager scheduling, Windows Desktop Core persistence, Windows Hub/Agent local queues and Bridge Outbox/Inbox. Classify each as:
+- canonical task-state authority;
+- durable cross-peer delivery buffer;
+- platform scheduler/wakeup mechanism;
+- subordinate Agent execution buffer;
+- transient in-memory optimization.
+
+Do not merge queues merely because they contain similar task fields. Record each producer, consumer, persistence boundary, retry policy, idempotency key, lease/fencing semantics, result owner and ACK meaning. Remove or consolidate a queue only after proving that its unique durability/transport responsibility is preserved, adding migration and failure-injection tests, and obtaining owner approval. A local scheduler is not a second canonical task authority; an Outbox/Inbox is not a competing task queue.
+
+## 15. Delivery order
+
+The near-term implementation order is:
+
+1. Finish Core ownership and shared-executor integration without weakening DRY_RUN or owner policy.
+2. Complete durable Outbox/Inbox delivery, canonical result persistence and exact ACK.
+3. Close restart/failure recovery, BackupArchive integrity and restore-rollback acceptance.
+4. Complete authenticated peer pairing and reconnection using mDNS for discovery only, one-time QR bootstrap, TLS validation, SAS confirmation, key rotation and revocation.
+5. Complete Windows Desktop Core/Hub execution and subordinate Agent reconciliation under the dual-Core contract.
+6. Add OpenTelemetry exporters/metrics after TraceService remains durable and redaction/failure-isolation tests exist; then expand higher-level team/Squads workflows.
+
+This ordering does not change the repository's P0–P5 priorities or the owner's 11 parallel workstreams. Parallel discovery and isolated implementation may continue, but dependent authority and transport changes integrate in this order.
+
+## 16. Release gates
 
 Do not enable cross-Core LIVE execution based only on unit tests or a successful build. Required evidence includes:
 
