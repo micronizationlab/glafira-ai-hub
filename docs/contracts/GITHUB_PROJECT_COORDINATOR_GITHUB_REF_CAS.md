@@ -1,6 +1,6 @@
 # GitHub ref compare-and-swap protocol for project leadership
 
-**Status:** implementation contract; do not enable autonomous election until concurrency acceptance passes.
+**Status:** SUPERSEDED for runtime coordination by [ADR-0001](../adr/ADR-0001-runtime-coordination-local-core-not-github.md) (owner-approved 2026-11-25). Retained as historical protocol analysis; do not implement or enable GitHub-backed runtime election/claims.
 
 ## Authoritative ref
 
