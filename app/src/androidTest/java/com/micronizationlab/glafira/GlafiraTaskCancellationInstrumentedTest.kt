@@ -159,6 +159,43 @@ class GlafiraTaskCancellationInstrumentedTest {
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("desktop-unknown-child")?.state)
     }
 
+    @Test fun readOnlyPersistenceRetriesExpireButUncertainWritesDoNot() {
+        store.enqueue(task("read-only-persist-retry", deadlineAtMillis = 1_500L))
+        assertTrue(store.transition(
+            "read-only-persist-retry", setOf(GlafiraTaskState.QUEUED),
+            GlafiraTaskState.RETRY_SCHEDULED, 1_200L, 1_000L,
+            "CORE_RESULT_PERSIST_FAILED:read-only-result"
+        ))
+
+        store.enqueue(task("uncertain-write-retry", taskType = "unknown.external.write"))
+        assertTrue(store.transition(
+            "uncertain-write-retry", setOf(GlafiraTaskState.QUEUED),
+            GlafiraTaskState.RETRY_SCHEDULED, 1_200L, 1_000L,
+            "CORE_RESULT_PERSIST_FAILED:write-after-commit"
+        ))
+
+        store.enqueue(task("near-match-retry", deadlineAtMillis = 1_500L))
+        assertTrue(store.transition(
+            "near-match-retry", setOf(GlafiraTaskState.QUEUED),
+            GlafiraTaskState.RETRY_SCHEDULED, 1_200L, 1_000L,
+            "CORE-RESULT-PERSIST-FAILED:ordinary"
+        ))
+
+        assertNull(store.claimNext(2_000L))
+        assertEquals(GlafiraTaskState.FAILED, store.getTask("read-only-persist-retry")?.state)
+        assertEquals("TASK_DEADLINE_EXPIRED", store.getTask("read-only-persist-retry")?.lastError)
+        assertEquals(GlafiraTaskState.RETRY_SCHEDULED, store.getTask("uncertain-write-retry")?.state)
+        assertEquals("CORE_RESULT_PERSIST_FAILED:write-after-commit", store.getTask("uncertain-write-retry")?.lastError)
+        assertEquals(GlafiraTaskState.FAILED, store.getTask("near-match-retry")?.state)
+    }
+
+    @Test fun taskAtExactDeadlineIsExpiredBeforeClaim() {
+        store.enqueue(task("deadline-equality", deadlineAtMillis = 2_000L))
+        assertNull(store.claimNext(2_000L))
+        assertEquals(GlafiraTaskState.FAILED, store.getTask("deadline-equality")?.state)
+        assertEquals("TASK_DEADLINE_EXPIRED", store.getTask("deadline-equality")?.lastError)
+    }
+
     @Test fun wideDependencyGraphIsPropagatedInBoundedSqlBatches() {
         store.enqueue(task("wide-root"))
         repeat(1_005) { index ->
