@@ -1028,7 +1028,8 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
 
     private fun expirePendingTasks(db: SQLiteDatabase, nowMillis: Long) {
         val ownerClause = if (ownerCoreId == null) "" else
-            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
+            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ? " +
+            "AND owner_generation > 0 AND state_version >= 0)"
         val args = arrayOf(nowMillis.toString()) +
             if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
         db.update(TABLE_TASKS, ContentValues().apply {
