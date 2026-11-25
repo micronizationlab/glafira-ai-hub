@@ -199,6 +199,13 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         return result
     }
 
+    /** Owner queue action; running work is deliberately not interruptible by this operation. */
+    fun cancelTask(taskId: String): Boolean {
+        val cancelled = taskStore.cancelUnclaimedTask(taskId, System.currentTimeMillis())
+        if (cancelled && isEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+        return cancelled
+    }
+
     /** Decomposes a high-level instruction through a trusted planner, then persists its DAG. */
     suspend fun submitInstruction(
         request: GlafiraCoreTaskPlanRequest,
