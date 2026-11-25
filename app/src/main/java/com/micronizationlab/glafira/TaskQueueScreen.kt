@@ -203,7 +203,12 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                         else -> "Задача уже выполняется или больше не доступна для отмены."
                     }
                     cancelTaskTarget = null
-                    refresh()
+                    if (result.isSuccess) {
+                        runCatching { refresh() }.onFailure {
+                            message = "Операция завершена, но очередь не удалось обновить: " +
+                                (it.message ?: "ошибка чтения хранилища")
+                        }
+                    }
                 }) { Text("ДА, ОТМЕНИТЬ") }
             },
             dismissButton = {
