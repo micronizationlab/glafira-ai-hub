@@ -1513,17 +1513,30 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             GlafiraTaskState.FAILED.databaseValue,
             GlafiraTaskState.CANCELLED.databaseValue
         ) + if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
-        while (db.update(TABLE_TASKS, values, selection, args) > 0) {
+        while (true) {
+            val candidates = db.rawQuery(
+                "SELECT task_id FROM $TABLE_TASKS WHERE $selection",
+                args
+            ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+            if (candidates.isEmpty()) break
+            val changed = db.update(TABLE_TASKS, values, selection, args)
+            if (changed == 0) break
+            if (tableExists(db, "core_action_approvals")) {
+                candidates.forEach { dependentTaskId ->
+                    db.update(
+                        "core_action_approvals",
+                        ContentValues().apply {
+                            put("status", "EXPIRED")
+                            putNull("approved_at")
+                            putNull("grant_expires_at")
+                            put("decided_by", "dependency-failed")
+                        },
+                        "task_id = ? AND status IN ('PENDING','APPROVED')",
+                        arrayOf(dependentTaskId)
+                    )
+                }
+            }
             // Iterate so failure propagates to grandchildren in the same transaction.
-        }
-        if (tableExists(db, "core_action_approvals")) {
-            db.execSQL(
-                "UPDATE core_action_approvals SET status = 'EXPIRED', approved_at = NULL, " +
-                    "grant_expires_at = NULL, decided_by = 'dependency-failed' " +
-                    "WHERE status IN ('PENDING','APPROVED') AND task_id IN (" +
-                    "SELECT task_id FROM $TABLE_TASKS WHERE state = ? AND last_error = ?)",
-                arrayOf(GlafiraTaskState.FAILED.databaseValue, "DEPENDENCY_FAILED")
-            )
         }
     }
 
