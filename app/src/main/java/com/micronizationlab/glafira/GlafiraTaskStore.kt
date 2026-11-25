@@ -640,7 +640,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         dependencyTaskIds: Set<String>,
         nowMillis: Long = System.currentTimeMillis()
     ): Boolean {
-        require(taskId.isNotBlank() && nowMillis > 0L)
+        require(taskId.isNotBlank() && projectId.isNotBlank() && nowMillis > 0L)
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -1177,11 +1177,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
      * The state change, history trigger and dependency propagation share one SQLite transaction.
      */
     @Synchronized
-    internal fun cancelUnclaimedTask(taskId: String, nowMillis: Long): Boolean {
+    internal fun cancelUnclaimedTask(taskId: String, projectId: String, nowMillis: Long): Boolean {
         require(taskId.isNotBlank() && nowMillis > 0L)
         val db = writableDatabase
         db.beginTransaction()
         try {
+            val task = queryTask(db, taskId) ?: return false
+            if (task.projectId != projectId) return false
             val changed = transitionInternal(
                 token = null,
                 taskId = taskId,
