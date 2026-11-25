@@ -629,6 +629,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         runBlocking {
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
             val marker = File(journal, "restore.pending")
+            val journalOwnerMarker = File(journal, "test-owner")
             val rollbackDatabase = File(journal, "database.db")
             val rollbackArchive = File(journal, "files.glb")
             val ownerMarker = File(context.noBackupFilesDir, "glafira-v3-reentry-test-owner")
@@ -660,6 +661,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     assertEquals("GLAFIRA_RESTORE_ROLLBACK_V3", marker.readText(Charsets.UTF_8))
                     assertTrue(rollbackDatabase.isFile && rollbackDatabase.length() > 0L)
                     assertTrue(rollbackArchive.isFile && rollbackArchive.length() > 0L)
+                    journalOwnerMarker.writeText(runId, Charsets.UTF_8)
                 }
 
                 store.enqueue(task("mutated-after-marker"))
@@ -691,8 +693,17 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 GlafiraCoreMaintenanceGate.withExclusive {
                     if (ownsFixture && ownerMarker.isFile && ownerMarker.readText(Charsets.UTF_8) == runId) {
                         // The fixture was created only after proving the journal/key were absent.
-                        if (journal.exists()) check(journal.deleteRecursively()) { "Could not clean the test-owned journal." }
-                        if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                        if (journal.exists()) {
+                            check(journalOwnerMarker.isFile && journalOwnerMarker.readText(Charsets.UTF_8) == runId) {
+                                "Refusing to delete a journal not proven to belong to this test generation."
+                            }
+                            check(journal.deleteRecursively()) { "Could not clean the test-owned journal." }
+                            if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                        } else {
+                            check(!rollbackKeyExists()) {
+                                "Rollback key remains without this test-owned journal; preserve it for diagnosis."
+                            }
+                        }
                         check(!knownGoodFile.exists() || knownGoodFile.delete())
                         check(!createdAfterMarkerFile.exists() || createdAfterMarkerFile.delete())
                         check(ownerMarker.delete()) { "Could not clear the test ownership marker." }
