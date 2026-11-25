@@ -122,7 +122,8 @@ internal class GlafiraCoreOutboxStore(
             GlafiraCoreOutboxSchema.TABLE,
             arrayOf(
                 "event_id", "source_core_id", "recipient_core_id", "project_id",
-                "source_sequence", "task_id", "payload_sha256", "payload_ciphertext", "signature_base64"
+                "source_sequence", "task_id", "payload_sha256", "payload_ciphertext", "signature_base64",
+                "source_key_epoch", "protocol_version", "correlation_id", "causation_id", "created_at"
             ),
             "source_core_id = ? AND idempotency_key = ? AND event_type = ? " +
                 "AND owner_generation = ? AND state_version = ?",
@@ -136,6 +137,13 @@ internal class GlafiraCoreOutboxStore(
             null, null, null, "1"
         ).use { cursor ->
             if (!cursor.moveToFirst()) return@use null
+            require(
+                cursor.getLong(9) == draft.sourceKeyEpoch &&
+                    cursor.getInt(10) == draft.protocolVersion &&
+                    cursor.getString(11) == draft.correlationId &&
+                    cursor.getString(12) == draft.causationId &&
+                    cursor.getLong(13) == draft.createdAtMillis
+            ) { "CORE_OUTBOX_IDEMPOTENCY_CONFLICT" }
             GlafiraCoreOutboxAppendResult(
                 eventId = cursor.getString(0),
                 sourceCoreId = cursor.getString(1),
