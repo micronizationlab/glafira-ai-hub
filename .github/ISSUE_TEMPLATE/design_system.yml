@@ -1,0 +1,70 @@
+name: "Design system task"
+description: "Register a bounded GLAFIRA design or platform-token work item"
+title: "design: "
+labels: ["design-system"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every task must have a registered WBS leaf, predecessor check, exclusive file ownership and explicit acceptance evidence. Do not use this form to bypass Core, Backup, Bridge or security gates.
+  - type: input
+    id: wbs
+    attributes:
+      label: WBS leaf ID
+      description: Permanent hierarchical ID registered in docs/GLAFIRA_EXECUTION_LEDGER.md
+      placeholder: "1.11.1.1.2"
+    validations:
+      required: true
+  - type: input
+    id: parent
+    attributes:
+      label: Parent issue / design package
+      placeholder: "#672"
+    validations:
+      required: true
+  - type: textarea
+    id: predecessors
+    attributes:
+      label: Predecessors and dependency evidence
+      description: List predecessor WBS IDs and their accepted evidence. Mark blocked dependencies explicitly.
+    validations:
+      required: true
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective and out-of-scope
+      description: One independently reviewable deliverable; list prohibited adjacent changes.
+    validations:
+      required: true
+  - type: textarea
+    id: ownership
+    attributes:
+      label: Executor, reviewer and exclusive file paths
+      description: One active assignment per helper. List exact paths reserved for this task.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and tests
+      description: Include light/dark states, accessibility, responsive behavior, reduced motion and platform-specific validation as applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: CI, review and merge evidence
+      description: Record exact commit SHA, workflow/job IDs, logs, skipped/cancelled lanes, reviewer findings and post-merge validation.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safeguards
+    attributes:
+      label: Design and governance safeguards
+      options:
+        - label: No changes to Core authority, owner approval, permissions, cryptography, database or Bridge protocol.
+          required: true
+        - label: Status meaning is not conveyed by color alone; recovery-required is distinct from ordinary error.
+          required: true
+        - label: No asset or accessibility compliance is claimed without the corresponding source and evidence.
+          required: true
