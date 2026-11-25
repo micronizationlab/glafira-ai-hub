@@ -635,10 +635,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val ownerMarker = File(context.noBackupFilesDir, "glafira-v3-reentry-test-owner")
             val knownGoodFile = File(context.filesDir, "v3-reentry-known-good.txt")
             val createdAfterMarkerFile = File(context.filesDir, "v3-reentry-created-after-marker.txt")
+            val unrelatedRecoveryTemp = File(context.cacheDir, "glafira-rollback-recovery-unrelated-$runId.tmp")
             val runId = UUID.randomUUID().toString()
             val recoveryTempPrefix = "glafira-v3-reentry-$runId-"
             var ownsFixture = false
             var ownsJournal = false
+            var ownsUnrelatedRecoveryTemp = false
             var expectedTask: GlafiraTask? = null
             fun rollbackKeyExists(): Boolean =
                 KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
@@ -748,6 +750,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 assertTrue(rollbackArchive.isFile && rollbackArchive.length() > 0L)
                 assertTrue(rollbackKeyExists())
 
+                // Simulate another caller's default-prefix recovery temp. This coordinator
+                // must clean only the unique prefix injected for this test generation.
+                unrelatedRecoveryTemp.writeText("other-caller-temp", Charsets.UTF_8)
+                ownsUnrelatedRecoveryTemp = true
                 store.enqueue(task("mutated-after-marker"))
                 assertTrue(store.transition(
                     "known-good-before-marker", setOf(GlafiraTaskState.QUEUED),
@@ -774,6 +780,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
                 }) { "Could not inspect rollback recovery temp files after recovery." }
                 assertTrue("No decrypted rollback recovery temp may remain", remainingTemps.isEmpty())
+                assertTrue("Another caller's default-prefix temp must remain untouched", unrelatedRecoveryTemp.isFile)
+                assertEquals("other-caller-temp", unrelatedRecoveryTemp.readText(Charsets.UTF_8))
             } catch (error: Throwable) {
                 originalFailure = error
                 throw error
@@ -800,6 +808,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 "Test-owned rollback journal still exists; preserve its key."
                             }
                             if (sidecarProvesKeyOwnership) GlafiraRollbackSnapshotCipher.deleteKey()
+                        }
+                        if (ownsUnrelatedRecoveryTemp) {
+                            attemptCleanup {
+                                check(!unrelatedRecoveryTemp.exists() || unrelatedRecoveryTemp.delete()) {
+                                    "Could not remove this test's explicitly owned other-caller temp fixture."
+                                }
+                            }
                         }
                         if (ownsFixture) {
                             attemptCleanup {
