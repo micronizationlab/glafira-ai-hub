@@ -13,14 +13,6 @@ internal class GlafiraAiLocalTaskPort(
     private val appContext = context.applicationContext
 
     override suspend fun execute(task: GlafiraDistributedTask): GlafiraDistributedTaskResult {
-        if (!isProviderConfigured(appContext, providerId)) {
-            return GlafiraDistributedTaskResult(
-                taskId = task.taskId,
-                node = GlafiraExecutionNode.ANDROID,
-                succeeded = false,
-                errorCode = "LOCAL_AI_PROVIDER_NOT_CONFIGURED"
-            )
-        }
         val systemPrompt = when (task.executor) {
             GlafiraTaskExecutor.GLAFIRA ->
                 "Ты — локальный координатор GLAFIRA. Выполни только аналитическую координацию; не вызывай инструменты."
@@ -31,7 +23,7 @@ internal class GlafiraAiLocalTaskPort(
             GlafiraTaskExecutor.RESEARCHER ->
                 "Ты — исследователь GLAFIRA. Не выдумывай источники и явно отмечай отсутствие веб-поиска."
         }
-        val response = callAiProvider(
+        return callAiProviderResult(
             context = appContext,
             providerId = providerId,
             history = listOf(Msg(
@@ -41,15 +33,29 @@ internal class GlafiraAiLocalTaskPort(
                 date = ""
             )),
             systemPrompt = systemPrompt
-        )
-        val failed = response.isBlank() || response.startsWith("Ошибка:") ||
-            response.startsWith("Ошибка API") || response.startsWith("Ошибка сети")
-        return GlafiraDistributedTaskResult(
-            taskId = task.taskId,
-            node = GlafiraExecutionNode.ANDROID,
-            succeeded = !failed,
-            output = response.takeIf { !failed }?.take(12_000),
-            errorCode = if (failed) "LOCAL_AI_PROVIDER_REQUEST_FAILED" else null
-        )
+        ).toDistributedTaskResult(task.taskId)
     }
 }
+
+/** Keeps the provider's dispatch certainty attached to the distributed result; never retries here. */
+internal fun AiProviderResult.toDistributedTaskResult(taskId: String): GlafiraDistributedTaskResult =
+    when (this) {
+        is AiProviderResult.Success -> GlafiraDistributedTaskResult(
+            taskId = taskId,
+            node = GlafiraExecutionNode.ANDROID,
+            succeeded = text.isNotBlank(),
+            output = text.takeIf { it.isNotBlank() }?.take(12_000),
+            errorCode = if (text.isBlank()) "LOCAL_AI_PROVIDER_EMPTY_RESPONSE" else null,
+            providerOutcome = if (text.isBlank()) AiRequestOutcome.UNKNOWN else null,
+            providerErrorCategory = if (text.isBlank()) AiProviderErrorCategory.INVALID_RESPONSE else null
+        )
+        is AiProviderResult.Failure -> GlafiraDistributedTaskResult(
+            taskId = taskId,
+            node = GlafiraExecutionNode.ANDROID,
+            succeeded = false,
+            errorCode = "LOCAL_AI_PROVIDER_REQUEST_FAILED",
+            providerOutcome = error.outcome,
+            providerErrorCategory = error.category,
+            providerRetryAfterMillis = error.retryAfterMillis
+        )
+    }
