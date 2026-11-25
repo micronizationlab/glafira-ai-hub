@@ -700,7 +700,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 originalFailure = error
                 throw error
             } finally {
-                passphrase.fill('\\u0000')
+                passphrase.fill('\u0000')
                 val cleanupFailure = runCatching {
                     if (journal.exists()) {
                         check(journal.deleteRecursively()) {
@@ -719,8 +719,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     }).isEmpty()) { "Rollback recovery temp files remain after cleanup." }
                     // Delete the installation-local key only after confirming the journal is gone.
                     GlafiraRollbackSnapshotCipher.deleteKey()
-                    knownGoodFile.delete()
-                    createdAfterMarkerFile.delete()
+                    check(!knownGoodFile.exists() || knownGoodFile.delete()) { "Could not remove test-owned known-good file." }
+                    check(!createdAfterMarkerFile.exists() || createdAfterMarkerFile.delete()) { "Could not remove test-owned mutation file." }
                     check(!ownerMarker.exists() || ownerMarker.delete()) { "Could not clear test ownership marker." }
                 }.exceptionOrNull()
                 if (cleanupFailure != null) {
