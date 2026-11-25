@@ -76,18 +76,17 @@ class DesktopBridgeHttpsClient(
     private val connectTimeout: Duration = Duration.ofSeconds(10),
     private val requestTimeout: Duration = Duration.ofSeconds(15)
 ) {
+    @JvmOverloads
     fun post(
         origin: String,
         credentials: DesktopBridgeCredentials,
         projectId: String,
         operation: DesktopBridgeOperation,
-        payload: Map<String, String>
+        payload: Map<String, String>,
+        logicalOperationId: String? = null
     ): DesktopBridgeResponse {
-        require(isProjectIdentifier(projectId))
-        require(payload.size <= 16)
-        require(payload.entries.all { (key, value) ->
-            key.matches(Regex("[A-Za-z][A-Za-z0-9]{0,63}")) && value.length <= 16_384
-        })
+        val request = prepareRequest(credentials, projectId, operation, payload, logicalOperationId)
+        val requestId = request.requestId
 
         val endpoint = parseOrigin(origin)
         val pin = parsePin(credentials.serverCertificateSha256)
@@ -103,22 +102,7 @@ class DesktopBridgeHttpsClient(
             .sslParameters(sslParameters)
             .build()
 
-        val requestId = UUID.randomUUID().toString()
-        val idempotencyKey = UUID.randomUUID().toString()
-        val issuedAt = System.currentTimeMillis()
-        val request = BridgeRequest(
-            protocolVersion = PROTOCOL_VERSION,
-            requestId = requestId,
-            idempotencyKey = idempotencyKey,
-            deviceId = credentials.deviceId,
-            projectId = projectId,
-            operation = operation,
-            issuedAtEpochMs = issuedAt,
-            expiresAtEpochMs = issuedAt + REQUEST_TTL_MS,
-            payload = payload.toSortedMap()
-        )
-        val signed = request.copy(signatureHex = sign(request, credentials.hmacSecret))
-        val body = encode(signed).toByteArray(Charsets.UTF_8)
+        val body = encode(request).toByteArray(Charsets.UTF_8)
         require(body.size <= MAX_REQUEST_BYTES) { "Bridge request exceeds the size limit." }
 
         val response = try {
@@ -150,6 +134,42 @@ class DesktopBridgeHttpsClient(
         } finally {
             responseBytes.fill(0)
         }
+    }
+
+    /** New transport envelope, same logical operation on an explicit retry. No retry is performed here. */
+    internal fun prepareRequest(
+        credentials: DesktopBridgeCredentials,
+        projectId: String,
+        operation: DesktopBridgeOperation,
+        payload: Map<String, String>,
+        logicalOperationId: String? = null
+    ): BridgeRequest {
+        require(isProjectIdentifier(projectId))
+        require(payload.size <= 16)
+        require(payload.entries.all { (key, value) ->
+            key.matches(Regex("[A-Za-z][A-Za-z0-9]{0,63}")) && value.length <= 16_384
+        })
+
+        validateLogicalOperationId(logicalOperationId)
+        if (logicalOperationId != null) require(operation in DURABLE_CORE_OPERATIONS) {
+            "A logical operation ID is supported only for durable Core operations."
+        }
+        require(operation != DesktopBridgeOperation.CONVERSATION_APPEND || logicalOperationId != null) {
+            "CONVERSATION_APPEND requires a stable logical operation ID (CLI: --operation-id message-2026-001). Reuse it with the same project and payload after an uncertain response."
+        }
+        val issuedAt = System.currentTimeMillis()
+        val request = BridgeRequest(
+            protocolVersion = PROTOCOL_VERSION,
+            requestId = UUID.randomUUID().toString(),
+            idempotencyKey = logicalOperationId ?: UUID.randomUUID().toString(),
+            deviceId = credentials.deviceId,
+            projectId = projectId,
+            operation = operation,
+            issuedAtEpochMs = issuedAt,
+            expiresAtEpochMs = issuedAt + REQUEST_TTL_MS,
+            payload = payload.toSortedMap()
+        )
+        return request.copy(signatureHex = sign(request, credentials.hmacSecret))
     }
 
     private fun pinnedSslContext(expectedPin: ByteArray): SSLContext {
@@ -279,7 +299,7 @@ class DesktopBridgeHttpsClient(
     private fun isIdentifier(value: String): Boolean =
         value.length in 8..128 && value.all { it.isLetterOrDigit() || it in "-_." }
 
-    private data class BridgeRequest(
+    internal data class BridgeRequest(
         val protocolVersion: Int,
         val requestId: String,
         val idempotencyKey: String,
@@ -293,6 +313,17 @@ class DesktopBridgeHttpsClient(
     )
 
     companion object {
+        internal fun validateLogicalOperationId(value: String?) {
+            require(value == null || value.matches(Regex("[A-Za-z0-9_-]{8,128}"))) {
+                "Operation ID must contain 8–128 ASCII letters, digits, '_' or '-'."
+            }
+        }
+
+        private val DURABLE_CORE_OPERATIONS = setOf(
+            DesktopBridgeOperation.PROJECT_READ,
+            DesktopBridgeOperation.CONVERSATION_READ,
+            DesktopBridgeOperation.CONVERSATION_APPEND
+        )
         private const val PROTOCOL_VERSION = 1
         private const val REQUEST_TTL_MS = 60_000L
         private const val REQUEST_PATH = "/bridge/v1/requests"
