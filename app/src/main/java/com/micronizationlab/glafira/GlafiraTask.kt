@@ -66,6 +66,15 @@ internal object GlafiraTaskPolicy {
         }
     }
 
+    val ownerCancellableStates: Set<GlafiraTaskState> = setOf(
+        GlafiraTaskState.QUEUED,
+        GlafiraTaskState.RETRY_SCHEDULED,
+        GlafiraTaskState.WAITING_FOR_NETWORK,
+        GlafiraTaskState.WAITING_FOR_OWNER
+    )
+
+    fun ownerCanCancel(state: GlafiraTaskState): Boolean = state in ownerCancellableStates
+
     fun canTransition(from: GlafiraTaskState, to: GlafiraTaskState): Boolean =
         when (from) {
             GlafiraTaskState.QUEUED -> to in setOf(
