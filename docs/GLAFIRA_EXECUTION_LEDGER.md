@@ -452,7 +452,6 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - Current artifact branch now contains the ownership map, license register, 18-scenario acceptance matrix, execution-control pointer and append-only ledger evidence. No Program-150 checkbox was changed.
 
 ## DataManager auditor follow-up — 2026-11-25
-
 - Issue #639 closed NOT_PLANNED after Main code-path inspection: no project rename API or UI exists; DataManagerProjectMigrationInstrumentedTest already verifies accidental built-in name collision repair preserves stable ID. The proposed warning has no current interaction to attach to; retain current behavior and revisit only if rename is introduced.
 
 ## Mainline ADR integration checkpoint — 2026-11-25
