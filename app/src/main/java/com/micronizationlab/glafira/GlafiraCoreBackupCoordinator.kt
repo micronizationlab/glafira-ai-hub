@@ -90,6 +90,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         check(journal.mkdirs())
         try {
             val consistentDatabase = taskStore.prepareConsistentSnapshotSource()
+            sync(consistentDatabase)
             GlafiraRollbackSnapshotCipher.encrypt(consistentDatabase, safetyDatabase)
             sync(safetyDatabase)
             val archive = BackupArchive.create(app, passphrase)
