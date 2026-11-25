@@ -164,7 +164,12 @@ Hierarchy: `1.11.2` — Batch-cycle coordination; `1.11.2.1` — Governance and 
 - This cadence does not relax security, owner approval, exact-head CI, serialized build/release, review, PR-size, dependency or protected-Main rules.
 
 
-**Executable procedure for `1.11.1.1.1`:** (1) refresh all eleven lane queues and exact Main/PR/CI state; (2) map existing work to permanent WBS leaves and remove duplicates; (3) build each lane's dependency-ready sequential package, targeting 3–5 real leaves only where available; (4) reserve one active leaf per helper and exclusive files/behavior before dispatch; (5) dispatch independent leaves concurrently and hold dependent leaves; (6) on completion, inspect evidence, release ownership and assign the next eligible leaf; (7) on block, scan the global ready queue, then assign a unique #672 design fallback only if no equal/higher-priority work exists; (8) restore the primary lane when unblocked; (9) record planned/assigned/completed/blocked/review/CI/merged counts and exact evidence; (10) preserve all security, owner, review, serialized-build and Main merge gates. Acceptance: all five governance instruction sources agree, no second queue is introduced, and no existing one-active-item/dependency rule is weakened.
-
-
 **Executable procedure for `1.11.2.1.1`:** (1) refresh all eleven lane queues and exact Main/PR/CI state; (2) map existing work to permanent WBS leaves and remove duplicates; (3) build each lane's dependency-ready sequential package, targeting 3–5 real leaves only where available; (4) reserve one active leaf per helper and exclusive files/behavior before dispatch; (5) dispatch independent leaves concurrently and hold dependent leaves; (6) retain file ownership until the leaf is DONE after merge and post-merge checks; (7) on a formal handoff, transfer or retain the reservation and prohibit the prior executor from editing; (8) on block, scan the global ready queue, then assign a unique #672 design fallback only to an available helper; (9) resume the primary lane through an explicit reservation handoff; (10) record planned/assigned/completed/blocked/review/CI/merged counts and exact evidence. Acceptance: all five governance instruction sources agree, no second queue is introduced, and no existing one-active-item/dependency/merge rule is weakened.
+
+
+### Registered hierarchy for `GLAFIRA-GOV-BATCH-W01`
+
+- `1.11.2` — Multi-lane batch-cycle coordination.
+- `1.11.2.1` — Governance and assignment cadence.
+- `1.11.2.1.1` — Document and enforce the eleven-lane batch-cycle cadence (Work Item `GLAFIRA-GOV-BATCH-W01`).
+
