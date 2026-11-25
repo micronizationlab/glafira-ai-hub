@@ -1775,7 +1775,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
      * The caller must hold GlafiraCoreMaintenanceGate for the whole snapshot operation.
      */
     @Synchronized
-    internal fun exportConsistentSnapshot(destination: File) {
+    internal fun prepareConsistentSnapshotSource(): File {
         val db = writableDatabase
         db.rawQuery("PRAGMA wal_checkpoint(FULL)", null).use { cursor ->
             if (cursor.moveToFirst()) {
@@ -1795,6 +1795,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         check(!walFile.exists() || walFile.length() == 0L) {
             "SQLite WAL still contains data after closing the queue; Core snapshot aborted."
         }
+        validateDatabaseSnapshot(source)
+        return source
+    }
+
+    @Synchronized
+    internal fun exportConsistentSnapshot(destination: File) {
+        val source = prepareConsistentSnapshotSource()
         destination.parentFile?.mkdirs()
         source.copyTo(destination, overwrite = true)
         validateDatabaseSnapshot(destination)
