@@ -1192,7 +1192,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                     cursor.getString(0), cursor.getLong(1), cursor.getLong(2)
                 )
             } ?: return false
-            if (ownership.first != actingCoreId || ownership.second <= 0L || ownership.third <= 0L) return false
+            if (ownership.first != actingCoreId || ownership.second <= 0L) return false
             val task = queryTask(db, taskId, projectId) ?: return false
             if (!GlafiraTaskPolicy.ownerCanCancel(task)) return false
             val changed = transitionInternal(
