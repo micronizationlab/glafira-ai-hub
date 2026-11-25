@@ -74,3 +74,18 @@ Record each build as `repository|commit SHA|workflow|job/lane|configuration`. Re
 - Exact-head CI run `45534865139`: Android JVM, shared contracts, Debug APK and managed emulator passed; Windows Agent/Desktop, iOS and workflow lint were skipped by change-aware routing. Project Dispatcher run `45534865152` passed.
 - Provider `NOT_SENT`, `REJECTED` and `UNKNOWN` outcomes, error category and Retry-After now survive the two task adapters. No automatic retry or fallback was introduced.
 - This is one Step 17 adapter slice only. Provider coordinator checkpoints, durable reconciliation and full Step 17 acceptance remain open. Older PR #552 remains unmerged and is not the continuation branch.
+### 2026-11-25 — GLAFIRA-S018-W01
+- Scope: Core durable outbox schema foundation; no event sender, receiver inbox, retry worker or cross-Core replay is enabled.
+- Draft implementation PR #575 on `core/step18-outbox-schema-v12-current-main`; exact latest code commit `ece7f198e6bc3325e6f32473fc9c03f298067993`.
+- Schema v12 stores source/recipient/project, monotonic source sequence, correlation/causation, owner generation/state version, idempotency key, payload digest/ciphertext, source key epoch, protocol version and exact ACK binding fields.
+- Project deletion removes project-scoped outbox rows in the existing transaction; portable Core snapshots exclude the outbox as non-portable authority.
+- Added fresh-database schema assertions and a v11→v12 migration test that simulates a v11 database by removing the new table and lowering `user_version` while preserving the existing Core tables.
+- Exact-head CI for commit `ece7f198e6bc3325e6f32473fc9c03f298067993`: Project Dispatcher run `45536961095` succeeded; shared-contract conformance succeeded; Android JVM run `45536961073` was still running at this checkpoint. Android emulator acceptance and APK packaging were not reported for this latest head yet.
+- Merge gate: wait for all applicable exact-head jobs, review the migration and portability tests, then integrate only if the head remains unchanged. No completion or merge is claimed here.
+
+### 2026-11-25 — GLAFIRA-GOV-W02
+- Audited open workstream PR ancestry against Main `f6aa2ce498cf5a05c7bd8d03eaff271cbdb6435d`.
+- Trusted-peer chain #563→#564→#565, backup #559/#567, Bridge #560, CI #555, Android selector #568, provider policy #545, GitHub read #547, Token #183 and Core-1B #41 are still open; several are based on older Main SHAs and remain draft/stacked. Do not treat `mergeable=true` as proof of current-head CI or safe integration.
+- #568 exact-head run `45506983690` failed Android emulator acceptance; failure remains the project-selector accessibility clickability assertion. Do not merge until the semantics node exposes and proves the click action and the full emulator suite passes.
+- #550 and #572 are confirmed merged as `1aa7a1adab9296c1845d3fcc9268d5a886e59e9e` and `f0ecbccddd3f79de53c30ff4d3b96504dff88c62`, respectively. #410 remains frozen and untouched.
+- Work rule: before each integration, compare the exact head with current Main, run applicable checks on that exact SHA, review the actual diff and record the resulting Main SHA plus the validation evidence. A passing Dispatcher alone is not a merge gate.
