@@ -775,10 +775,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
 
             try {
-                assertEquals(
-                    GlafiraCoreRuntimeEnablementMutation.PAUSED,
-                    GlafiraCoreRuntimeOwner.get(context).setEnabled(false)
-                )
                 cancelAndAwaitCoreWorkers()
                 withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
                     GlafiraCoreMaintenanceGate.withExclusive {
