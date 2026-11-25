@@ -1,9 +1,9 @@
 # GLAFIRA Task and Agent Contracts v1
 
-Status: initial cross-platform contract draft; requires review before platform adoption.
+Status: cross-platform message-shape draft; project-coordinator election/claims are INACTIVE per ADR-0001 and must not be used for runtime coordination.
 
 ## Scope
-This schema is the shared language-neutral source for task dispatch and participating-node lifecycle. Android, iOS and Windows Desktop full GLAFIRA installations may participate in the GitHub-backed project coordinator election when owner-enrolled and eligible. A Windows Agent remains a subordinate worker unless explicitly provisioned as a full eligible GLAFIRA node. Project coordination does not replace the owning Core's policy and approval authority.
+This schema is the shared language-neutral source for task dispatch and participating-node lifecycle. Android and Windows Desktop Core installations retain independent task authority; Windows Hub may coordinate its local Agent fleet. A Windows Agent remains a subordinate worker unless explicitly provisioned as a full GLAFIRA node. The legacy project-coordinator message family is not active for runtime election, task claims or heartbeats. See ADR-0001.
 
 ## Message families
 - `TaskEnvelope`: immutable task intent, project scope, idempotency key, typed task kind, payload reference and hash, dependencies, risk/approval metadata and resource budget.
@@ -151,9 +151,9 @@ The signature covers every transfer field except `signature`, in the exact field
 Android and iOS owner clients may maintain a non-authoritative ownership projection. They must resolve the old Core's public key by the authenticated Core ID, key epoch and SHA-256 fingerprint; verify the fixed-width P-256 signature; require the current time to be inside the signed validity window; and advance only from the exact recorded old owner/generation and state binding to the signed next generation. An exact transfer retry is idempotent, while a reused transfer ID, stale generation, divergent state or untrusted key fails closed without replacing the projection. This projection does not issue leases, authorize execution or make a mobile client a Hub; Windows Hub remains authoritative.
 
 
-## Project coordinator and multi-node participation v1
+## Project coordinator and multi-node participation v1 (LEGACY / INACTIVE)
 
-The separate `project-coordinator.schema.json` defines four versioned messages:
+Historical note: the following schema remains for compatibility and design traceability only. It is not a production runtime contract and must not be used for GitHub-backed leader election or task claims. The separate `project-coordinator.schema.json` defines four versioned messages:
 - `ProjectNodeRecord`: enrolled Android, Windows Desktop, iOS or Windows Agent installation, with platform, capabilities, enrollment/credential epochs, liveness sequence and explicit coordinator eligibility.
 - `CoordinatorLeaseRecord`: project coordinator identity, monotonic generation, lease, heartbeat sequence and node signature.
 - `CoordinatorClaimRequest`: signed compare-and-swap claim against the generation and lease observed by the candidate.
@@ -161,4 +161,4 @@ The separate `project-coordinator.schema.json` defines four versioned messages:
 
 The fixtures and validator are part of the same v1 conformance gate. A subordinate `WORKER_AGENT` is schema-ineligible to elect itself. A Windows Agent may participate in election only after explicit provisioning as a full GLAFIRA node. This project-level coordinator role never replaces per-task Core ownership, owner approval or the Windows Hub's local Agent-fleet role.
 
-The schema describes message shape, not storage atomicity. The exact GitHub ref compare-and-swap algorithm, lease timing, outage behavior and concurrency acceptance are specified in `docs/contracts/GITHUB_PROJECT_COORDINATOR_GITHUB_REF_CAS.md`. The model generator also emits Kotlin, Swift and C# DTOs for these four coordinator messages. A read-then-write sequence without CAS is not an election protocol.
+The schema describes historical message shape only. The prior GitHub ref compare-and-swap algorithm is superseded by ADR-0001. The model generator's DTOs may remain for compatibility but must not be wired to runtime coordination without a new owner-approved ADR.
