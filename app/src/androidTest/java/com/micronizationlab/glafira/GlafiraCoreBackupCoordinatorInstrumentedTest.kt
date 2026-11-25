@@ -689,11 +689,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     store.enqueue(knownGoodTask)
                     expectedTask = checkNotNull(store.getTask(knownGoodTask.taskId))
                     GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
+                    // Record ownership before assertions so teardown can clean this exact
+                    // fixture generation even when a later assertion fails.
+                    journalOwnerMarker.writeText(runId, Charsets.UTF_8)
                     assertTrue("V3 marker must be durable before live-state mutation", marker.isFile)
                     assertEquals("GLAFIRA_RESTORE_ROLLBACK_V3", marker.readText(Charsets.UTF_8))
                     assertTrue(rollbackDatabase.isFile && rollbackDatabase.length() > 0L)
                     assertTrue(rollbackArchive.isFile && rollbackArchive.length() > 0L)
-                    journalOwnerMarker.writeText(runId, Charsets.UTF_8)
                 }
 
                 store.enqueue(task("mutated-after-marker"))
