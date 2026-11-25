@@ -445,3 +445,8 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Artifact:** docs/acceptance/DUAL_CORE_PAIRING_BACKUP_ACCEPTANCE_MATRIX.md defines 18 scenarios across Core transfer, pairing, backup and physical Android↔Windows acceptance.
 - **Evidence honesty:** existing tests are distinguished from missing end-to-end paths. In particular, receiver duplicate/restart and concurrent CAS tests do not prove a 10-minute network partition, sender/receiver ACK, SAS mismatch or physical Android↔Windows acceptance.
 - **Status:** specification artifact only; scenarios not marked implemented are not claimed as passing. Automated harness and physical runs remain open.
+
+## Execution-control sprint pointer — 2026-11-25 09:30 UTC
+
+- Updated `docs/GLAFIRA_EXECUTION_CONTROL.md` with the owner-approved sprint #634, priorities, artifact links and blocker #644. The permanent eleven-workstream hierarchy is unchanged.
+- Current artifact branch now contains the ownership map, license register, 18-scenario acceptance matrix, execution-control pointer and append-only ledger evidence. No Program-150 checkbox was changed.
