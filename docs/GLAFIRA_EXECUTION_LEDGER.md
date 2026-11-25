@@ -430,3 +430,11 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Validation of this artifact branch:** not yet run at this ledger entry. Do not claim PR or CI success until created and exact-head checks complete.
 - **Program 150:** no numbered acceptance step is marked DONE by this checkpoint. The two artifacts are initial inventories, not final audited maps or completed license/legal review.
 - **Next:** finish exact ownership map against Windows Hub/Core code; resolve transitive manifests and SPDX evidence; build acceptance harness for #637; then proceed with P1 Core transfer sender/Inbox/ACK after #627 review and trust/key-agreement dependencies.
+
+## Cross-stream blocker found during Core transfer review — 2026-11-25 09:14 UTC
+
+- **Finding:** PR #627 adds `core_ownership_transfer_receipts` to the canonical TaskStore SQLite database. Main's `GlafiraPortableCoreSnapshot.exportTo()` enumerates `core_%` tables and rejects tables not explicitly in `TABLES` or `NON_PORTABLE`. The new receipt table is absent from both, so backup export fails after the ownership-transfer runtime initializes.
+- **Classification:** concrete integration regression, not a speculative audit point. Receipts are device-local anti-replay evidence and must be explicitly NON_PORTABLE, not included in portable snapshots.
+- **Tracker:** blocker issue #644; finding commented on PR #627. Required fix: explicit NON_PORTABLE allowlist + regression test proving snapshot export succeeds and receipts are not exported/restored while local receipts persist.
+- **Merge gate:** PR #627 is NOT merge-ready despite green Android/JVM/emulator/APK/contracts CI. The CI did not cover this backup integration path. Do not merge until #644 is fixed and exact-head validation passes.
+- **Map update:** queue/store ownership map now records this cross-stream dependency. Documentation PR #643 head is expected to be refreshed after this append; no CI/merge claim yet.
