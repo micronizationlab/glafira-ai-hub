@@ -44,6 +44,11 @@ class AndroidWorkflowContinuationTests(unittest.TestCase):
             r"name: Verify emulator JUnit reports contain executed tests\n\s+if: always\(\)",
         )
 
+    def test_pr_summary_reports_head_sha_and_non_pr_runs_fall_back_to_event_sha(self):
+        block = job_block(self.source, "ci-summary")
+        self.assertIn("SHA: ${{ github.event.pull_request.head.sha || github.sha }}", block)
+        self.assertNotIn("SHA: ${{ github.sha }}", block)
+
     def test_exact_head_summary_waits_for_all_android_results(self):
         block = job_block(self.source, "ci-summary")
         self.assertIn("if: always()", self.source)
