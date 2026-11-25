@@ -553,12 +553,12 @@ This checkpoint updates the live integration state after the previous Outbox/res
 
 ## WBS reservation — Core owner cancellation before dispatch — 2026-11-25
 
-- **WBS leaf:** `1.1.3.1.1` — Owner cancellation of an unclaimed Core task.
+- **Work Item / WBS / parent / Program:** `GLAFIRA-S093-W01` / `1.1.3.1.1` / issue #669 / Program Step 93 (partial task-queue UI cancellation); predecessors: none; dependencies: none.
 - **Tracker:** issue #669. Prior Orbi run `809501cb` stopped after its steering limit; its private uncommitted worktree was not published and is not imported.
 - **Executor:** GLAFIRA coordinator. **Independent review:** CodeRabbit / GLAFIRA review; final merge remains owner-controlled.
 - **Branch / base:** `fix/core-owner-task-cancel-20261125`, based on Main `155b5dd117b97579983d3aa9df6a9e8a69c30e1e`.
 - **Exclusive files:** `GlafiraTask.kt`, `GlafiraTaskStore.kt`, `GlafiraCoreRuntimeOwner.kt`, `TaskQueueScreen.kt`, `GlafiraTaskPolicyTest.kt`, and new `GlafiraTaskCancellationInstrumentedTest.kt`.
-- **Objective:** allow the owner to atomically cancel only `queued`, `retry_scheduled`, `waiting_for_network`, and `waiting_for_owner` tasks; reject running and terminal tasks; keep cancelled work unclaimable; propagate failed dependencies transactionally; expose a confirmation-gated queue action.
+- **Objective / procedure:** register policy states; implement project-bound transactional CAS cancellation and dependency propagation; expose runtime owner API with restore guard; add confirmation UI; test history, dependency failure, all four eligible states, wrong-project/running rejection and concurrent claim-vs-cancel.
 - **Acceptance:** deterministic policy JVM tests; Android instrumentation tests for accepted/rejected/idempotent cancellation, claim exclusion and dependency propagation; exact-head Android JVM, APK, Shared Contracts and managed-emulator CI; independent review; owner approval; post-merge Main validation.
 - **Safety boundary:** no running-task cancellation, no external-effect interruption, no schema/migration change, no change to owner authority or task claim semantics. Do not import Orbi's inaccessible staged worktree or claim its unfinished test passed.
-- **Status:** RESERVED before edits on this branch. No Program 150 numbered step is marked complete by this bounded leaf.
+- **Status:** IN_PROGRESS on exact head `d6e1a01a42b981c46c8c368d8b2bfb796d89fe53`; initial CI `45648028119` caught the test fixture's private database-name reference, corrected in a later commit. Current exact-head CI is pending; no test pass, merge or Program 150 completion is claimed.
