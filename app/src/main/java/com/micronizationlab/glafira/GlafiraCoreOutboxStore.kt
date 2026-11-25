@@ -7,9 +7,39 @@ import android.database.sqlite.SQLiteDatabase
 internal class GlafiraCoreOutboxStore(private val db: SQLiteDatabase, private val sourceCoreId: String) {
     init { require(sourceCoreId.matches(Regex("^[A-Za-z0-9._-]{8,128}$"))) }
 
+    /**
+     * Standalone append for callers that do not own a Core transaction.
+     * Existing callers retain the same atomic/idempotent behavior.
+     */
     @Synchronized
     fun append(d: GlafiraCoreOutboxDraft): GlafiraCoreOutboxAppendResult {
         require(!db.inTransaction()) { "CORE_OUTBOX_APPEND_REQUIRES_TRANSACTION_BOUNDARY" }
+        validate(d)
+        db.beginTransaction()
+        try {
+            val appended = appendValidatedInTransaction(d)
+            db.setTransactionSuccessful()
+            return appended
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
+     * Appends using a caller-owned Core SQLite transaction.
+     *
+     * The caller is responsible for committing or rolling back the surrounding transaction.
+     * This method never starts, commits, or ends a transaction, so task result, Trace and Outbox
+     * records can become one atomic unit when a trusted recipient envelope is available.
+     */
+    @Synchronized
+    internal fun appendInTransaction(d: GlafiraCoreOutboxDraft): GlafiraCoreOutboxAppendResult {
+        check(db.inTransaction()) { "CORE_OUTBOX_CALLER_TRANSACTION_REQUIRED" }
+        validate(d)
+        return appendValidatedInTransaction(d)
+    }
+
+    private fun validate(d: GlafiraCoreOutboxDraft) {
         require(d.eventId.isNotBlank() && d.eventId.length <= 128)
         require(d.recipientCoreId.matches(Regex("^[A-Za-z0-9._-]{8,128}$")) && d.recipientCoreId != sourceCoreId)
         require(d.projectId.isNotBlank() && d.taskId.isNotBlank())
@@ -18,57 +48,53 @@ internal class GlafiraCoreOutboxStore(private val db: SQLiteDatabase, private va
         require(d.idempotencyKey.isNotBlank() && d.idempotencyKey.length <= 256)
         require(d.payloadSha256.matches(Regex("^[0-9a-f]{64}$")))
         require(d.payloadCiphertext.isNotBlank() && d.signatureBase64.isNotBlank() && d.createdAtMillis > 0)
+    }
 
-        db.beginTransaction()
-        try {
-            val old = db.query(GlafiraCoreOutboxSchema.TABLE, arrayOf(
-                "event_id", "recipient_core_id", "project_id", "task_id", "payload_sha256",
-                "payload_ciphertext", "signature_base64", "source_key_epoch", "protocol_version",
-                "correlation_id", "causation_id", "created_at", "source_sequence"
-            ), "source_core_id=? AND idempotency_key=? AND event_type=? AND owner_generation=? AND state_version=?",
-                arrayOf(sourceCoreId, d.idempotencyKey, d.eventType, d.ownerGeneration.toString(), d.stateVersion.toString()),
-                null, null, null, "1").use { c ->
-                if (!c.moveToFirst()) null else {
-                    require(c.getString(0) == d.eventId && c.getString(1) == d.recipientCoreId &&
-                        c.getString(2) == d.projectId && c.getString(3) == d.taskId &&
-                        c.getString(4) == d.payloadSha256 && c.getString(5) == d.payloadCiphertext &&
-                        c.getString(6) == d.signatureBase64 && c.getLong(7) == d.sourceKeyEpoch &&
-                        c.getInt(8) == d.protocolVersion && c.getString(9) == d.correlationId &&
-                        c.getString(10) == d.causationId && c.getLong(11) == d.createdAtMillis
-                    ) { "CORE_OUTBOX_IDEMPOTENCY_CONFLICT" }
-                    c.getLong(12)
-                }
+    /** Must only be called after validate(), while db.inTransaction() is true. */
+    private fun appendValidatedInTransaction(d: GlafiraCoreOutboxDraft): GlafiraCoreOutboxAppendResult {
+        val old = db.query(GlafiraCoreOutboxSchema.TABLE, arrayOf(
+            "event_id", "recipient_core_id", "project_id", "task_id", "payload_sha256",
+            "payload_ciphertext", "signature_base64", "source_key_epoch", "protocol_version",
+            "correlation_id", "causation_id", "created_at", "source_sequence"
+        ), "source_core_id=? AND idempotency_key=? AND event_type=? AND owner_generation=? AND state_version=?",
+            arrayOf(sourceCoreId, d.idempotencyKey, d.eventType, d.ownerGeneration.toString(), d.stateVersion.toString()),
+            null, null, null, "1").use { c ->
+            if (!c.moveToFirst()) null else {
+                require(c.getString(0) == d.eventId && c.getString(1) == d.recipientCoreId &&
+                    c.getString(2) == d.projectId && c.getString(3) == d.taskId &&
+                    c.getString(4) == d.payloadSha256 && c.getString(5) == d.payloadCiphertext &&
+                    c.getString(6) == d.signatureBase64 && c.getLong(7) == d.sourceKeyEpoch &&
+                    c.getInt(8) == d.protocolVersion && c.getString(9) == d.correlationId &&
+                    c.getString(10) == d.causationId && c.getLong(11) == d.createdAtMillis
+                ) { "CORE_OUTBOX_IDEMPOTENCY_CONFLICT" }
+                c.getLong(12)
             }
-            if (old != null) {
-                db.setTransactionSuccessful()
-                return result(d, old, false)
-            }
+        }
+        if (old != null) return result(d, old, false)
 
-            db.insertWithOnConflict("core_outbox_sequences", null, ContentValues().apply {
-                put("source_core_id", sourceCoreId); put("last_sequence", 0L); put("updated_at", d.createdAtMillis)
-            }, SQLiteDatabase.CONFLICT_IGNORE)
-            val previous = db.rawQuery("SELECT last_sequence FROM core_outbox_sequences WHERE source_core_id=?",
-                arrayOf(sourceCoreId)).use { c -> check(c.moveToFirst()); c.getLong(0) }
-            val next = Math.addExact(previous, 1L)
-            check(db.update("core_outbox_sequences", ContentValues().apply {
-                put("last_sequence", next); put("updated_at", d.createdAtMillis)
-            }, "source_core_id=? AND last_sequence=?", arrayOf(sourceCoreId, previous.toString())) == 1)
+        db.insertWithOnConflict("core_outbox_sequences", null, ContentValues().apply {
+            put("source_core_id", sourceCoreId); put("last_sequence", 0L); put("updated_at", d.createdAtMillis)
+        }, SQLiteDatabase.CONFLICT_IGNORE)
+        val previous = db.rawQuery("SELECT last_sequence FROM core_outbox_sequences WHERE source_core_id=?",
+            arrayOf(sourceCoreId)).use { c -> check(c.moveToFirst()); c.getLong(0) }
+        val next = Math.addExact(previous, 1L)
+        check(db.update("core_outbox_sequences", ContentValues().apply {
+            put("last_sequence", next); put("updated_at", d.createdAtMillis)
+        }, "source_core_id=? AND last_sequence=?", arrayOf(sourceCoreId, previous.toString())) == 1)
 
-            db.insertOrThrow(GlafiraCoreOutboxSchema.TABLE, null, ContentValues().apply {
-                put("event_id", d.eventId); put("source_core_id", sourceCoreId)
-                put("recipient_core_id", d.recipientCoreId); put("project_id", d.projectId)
-                put("source_sequence", next); put("correlation_id", d.correlationId); put("causation_id", d.causationId)
-                put("source_key_epoch", d.sourceKeyEpoch); put("protocol_version", d.protocolVersion)
-                put("event_type", d.eventType); put("task_id", d.taskId)
-                put("owner_generation", d.ownerGeneration); put("state_version", d.stateVersion)
-                put("idempotency_key", d.idempotencyKey); put("payload_sha256", d.payloadSha256)
-                put("payload_ciphertext", d.payloadCiphertext); put("signature_base64", d.signatureBase64)
-                put("created_at", d.createdAtMillis); put("delivery_state", "PENDING")
-                put("attempt_count", 0); put("next_attempt_at", d.createdAtMillis)
-            })
-            db.setTransactionSuccessful()
-            return result(d, next, true)
-        } finally { db.endTransaction() }
+        db.insertOrThrow(GlafiraCoreOutboxSchema.TABLE, null, ContentValues().apply {
+            put("event_id", d.eventId); put("source_core_id", sourceCoreId)
+            put("recipient_core_id", d.recipientCoreId); put("project_id", d.projectId)
+            put("source_sequence", next); put("correlation_id", d.correlationId); put("causation_id", d.causationId)
+            put("source_key_epoch", d.sourceKeyEpoch); put("protocol_version", d.protocolVersion)
+            put("event_type", d.eventType); put("task_id", d.taskId)
+            put("owner_generation", d.ownerGeneration); put("state_version", d.stateVersion)
+            put("idempotency_key", d.idempotencyKey); put("payload_sha256", d.payloadSha256)
+            put("payload_ciphertext", d.payloadCiphertext); put("signature_base64", d.signatureBase64)
+            put("created_at", d.createdAtMillis); put("delivery_state", "PENDING")
+            put("attempt_count", 0); put("next_attempt_at", d.createdAtMillis)
+        })
+        return result(d, next, true)
     }
 
     private fun result(d: GlafiraCoreOutboxDraft, sequence: Long, inserted: Boolean) =
