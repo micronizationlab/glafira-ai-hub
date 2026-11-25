@@ -189,9 +189,9 @@ private fun WorkspaceApp() {
                 refreshKey = statusRefresh,
                 onProjectSelect = { currentProject = it },
                 onProjectAdd = { name ->
-                    val newProj = Project(UUID.randomUUID().toString(), name)
-                    projects = updateProjects(context) { it + newProj }
-                    currentProject = newProj
+                    val selectedProject = createOrSelectProject(context, name)
+                    projects = loadProjects(context)
+                    currentProject = selectedProject
                 },
                 onProjectDelete = { project ->
                     scope.launch {
