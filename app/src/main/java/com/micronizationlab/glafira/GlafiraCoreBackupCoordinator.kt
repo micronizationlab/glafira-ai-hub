@@ -105,6 +105,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         } catch (error: Exception) {
             if (!marker.exists()) journal.deleteRecursively()
             throw error
+        }
     }
 
     private fun cleanupStaleDecryptedRollbackSnapshots() {
