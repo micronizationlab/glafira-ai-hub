@@ -1026,7 +1026,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             put("updated_at", nowMillis)
             putNull("retry_at")
             put("last_error", "TASK_DEADLINE_EXPIRED")
-        }, "state IN ('queued','waiting_for_network','waiting_for_owner','retry_scheduled') AND deadline_at <= ? AND (last_error IS NULL OR last_error NOT IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN','EXECUTION_OUTCOME_UNCERTAIN','CORE_RESULT_PERSIST_FAILED:CORE_EXECUTION_OUTCOME_UNKNOWN'))$ownerClause",
+        }, "state IN ('queued','waiting_for_network','waiting_for_owner','retry_scheduled') AND deadline_at <= ? AND (last_error IS NULL OR (last_error NOT IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN','EXECUTION_OUTCOME_UNCERTAIN') AND last_error NOT LIKE 'CORE_RESULT_PERSIST_FAILED:%'))$ownerClause",
             args)
     }
 
@@ -1571,67 +1571,53 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         }
     }
 
-    /** Propagates failed predecessor states through the entire acyclic task graph. */
+    /** Propagates failed predecessor states through the acyclic task graph without
+     * overwriting unresolved external outcomes or erasing owner approval history. */
     private fun failTasksWithFailedDependencies(db: SQLiteDatabase, nowMillis: Long) {
+        val ownerClause = if (ownerCoreId == null) "" else
+            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
+        val states = arrayOf(
+            GlafiraTaskState.QUEUED.databaseValue,
+            GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
+            GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue,
+            GlafiraTaskState.WAITING_FOR_OWNER.databaseValue
+        )
+        val selection = "state IN (?, ?, ?, ?) AND task_id IN (" +
+            "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
+            "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
+            "WHERE p.state IN (?, ?))$ownerClause"
+        val args = states + arrayOf(
+            GlafiraTaskState.FAILED.databaseValue,
+            GlafiraTaskState.CANCELLED.databaseValue
+        ) + if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
         val values = ContentValues().apply {
             put("state", GlafiraTaskState.FAILED.databaseValue)
             put("updated_at", nowMillis)
             put("last_error", "DEPENDENCY_FAILED")
             putNull("retry_at")
         }
-        val ownerClause = if (ownerCoreId == null) "" else
-            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
-        val selection = "state IN (?, ?, ?, ?) " +
-            "AND (last_error IS NULL OR last_error NOT IN (?, ?, ?, ?)) AND task_id IN (" +
-            "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
-            "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
-            "WHERE p.state IN (?, ?))$ownerClause"
-        val args = arrayOf(
-            GlafiraTaskState.QUEUED.databaseValue,
-            GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
-            GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue,
-            GlafiraTaskState.WAITING_FOR_OWNER.databaseValue,
-            "CORE_EXECUTION_OUTCOME_UNKNOWN",
-            "DESKTOP_EXECUTION_OUTCOME_UNKNOWN",
-            "EXECUTION_OUTCOME_UNCERTAIN",
-            "CORE_RESULT_PERSIST_FAILED:CORE_EXECUTION_OUTCOME_UNKNOWN",
-            GlafiraTaskState.FAILED.databaseValue,
-            GlafiraTaskState.CANCELLED.databaseValue
-        ) + if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
         while (true) {
             val candidates = db.rawQuery(
-                "SELECT task_id FROM $TABLE_TASKS WHERE $selection",
-                args
+                "SELECT task_id FROM $TABLE_TASKS WHERE $selection", args
             ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
             if (candidates.isEmpty()) break
-            val changed = db.update(TABLE_TASKS, values, selection, args)
-            if (changed == 0) break
-            if (tableExists(db, "core_action_approvals")) {
-                candidates.forEach { dependentTaskId ->
-                    db.update(
-                        "core_action_approvals",
-                        ContentValues().apply {
-                            put("status", "EXPIRED")
-                            putNull("approved_at")
-                            putNull("grant_expires_at")
-                            put("decided_by", "dependency-failed")
-                        },
-                        "task_id = ? AND status IN ('PENDING','APPROVED')",
-                        arrayOf(dependentTaskId)
+            var changedCount = 0
+            candidates.forEach { taskId ->
+                val task = queryTask(db, taskId) ?: return@forEach
+                if (GlafiraTaskPolicy.hasUnresolvedExecutionOutcome(task)) return@forEach
+                val updateSelection = "task_id = ? AND project_id = ? AND state IN (?, ?, ?, ?)$ownerClause"
+                val updateArgs = arrayOf(taskId, task.projectId) + states +
+                    if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
+                if (db.update(TABLE_TASKS, values, updateSelection, updateArgs) == 1) {
+                    invalidateTaskArtifacts(
+                        db, task, nowMillis, "DEPENDENCY_FAILED", GlafiraCoreTraceActorType.CORE
                     )
+                    changedCount++
                 }
             }
-            // Iterate so failure propagates to grandchildren in the same transaction.
+            if (changedCount == 0) break
         }
     }
-
-    private fun hasUnresolvedTaskDependencies(db: SQLiteDatabase, taskId: String): Boolean =
-        db.rawQuery(
-            "SELECT 1 FROM $TABLE_DEPENDENCIES d " +
-                "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
-                "WHERE d.task_id = ? AND p.state != ? LIMIT 1",
-            arrayOf(taskId, GlafiraTaskState.SUCCEEDED.databaseValue)
-        ).use { it.moveToFirst() }
 
     /** Expiration proves loss of contact, never that an external operation did not happen. */
     private fun quarantineExpiredDesktopLeases(db: SQLiteDatabase, nowMillis: Long) {
