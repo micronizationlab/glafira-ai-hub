@@ -405,3 +405,15 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Post-merge CI limitation:** the available commit-workflow lookup exposes PR-triggered runs only; it returned no post-merge run for merge SHA `a1f9cc40b209616f4a3ef5a90d721d2226579090`. Therefore PR exact-head CI and dispatcher success are recorded, but post-merge Main CI is not claimed as passed.
 - **Next eligible work:** reconcile the live Program-150 ledger and map active P1/P2/P3 acceptance steps to hierarchical WBS IDs; then continue Core Inbox/ACK and secure peer key agreement in dependency order. Keep payload delivery disabled until authenticated encryption, durable Inbox receipt and exact ACK are implemented and tested.
 - **No Program-150 acceptance item is marked DONE solely because PR #626 or #628 merged.**
+
+
+## Integration checkpoint — 2026-11-25 07:56 UTC (ledger merge and active Core PR triage)
+
+- **Main SHA at checkpoint:** `b7abe6f4bc3cf11e62f07f98c6c4f2038865d642`.
+- **PR #630 merged:** `b7abe6f4bc3cf11e62f07f98c6c4f2038865d642`. Exact-head documentation CI `45571727989` and Dispatcher reconciliation `45571727975` both completed SUCCESS. All platform lanes were intentionally skipped by change-aware routing; no platform pass is claimed.
+- **PR #627 ownership-transfer receiver:** exact-head CI `45570418926` and Dispatcher `45570419011` completed SUCCESS. It remains Draft and is not merge-ready: +915/-2 across 7 files exceeds the 200-line PR ceiling. Coordinator review comment `7156389124` requests dependency-ordered extraction and additional concurrency/rollback/key-revocation tests. No ownership-transfer acceptance is marked DONE.
+- **PR #41 Core-1B memory/Trace:** remains open and must not be merged as a whole. Coordinator review requires reusing the canonical TaskStore/TraceStore database rather than creating a parallel `glafira_core.db` and second Trace authority; the original aggregate also exceeds the PR size ceiling.
+- **PR #558 Android workspace selector:** remains Draft/oversized parent; already merged chat project-selector slice is in Main. Extract only remaining unique agent-selector and module/action-menu work as separate small PRs.
+- **Audit follow-up issue #629:** created with 31 evidence-based questions, mandatory source/commit/test proof and a KEEP/SIMPLIFY/ADOPT/REWRITE/REMOVE/NEEDS-MORE-EVIDENCE matrix. It authorizes assessment only, not automatic architecture changes.
+- **Current next Core gate:** the normative Dual-Core contract states that signing trust does not provide payload encryption. Separate key agreement, authenticated envelope encryption, durable receiver Inbox, exact ACK and sender/receiver workers are still required. Keep cross-Core payload delivery disabled until these are implemented and accepted.
+- **Post-merge CI visibility:** the connected workflow lookup returns PR-triggered runs only. No post-merge run was returned for the ledger merge SHA at capture time; this is not recorded as a pass.
