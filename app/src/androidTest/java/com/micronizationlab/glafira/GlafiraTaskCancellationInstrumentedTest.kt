@@ -19,14 +19,14 @@ class GlafiraTaskCancellationInstrumentedTest {
 
     @Before
     fun setUp() {
-        context.deleteDatabase(DATABASE_NAME)
+        context.deleteDatabase("glafira_core_tasks.db")
         store = GlafiraTaskStore(context)
     }
 
     @After
     fun tearDown() {
         store.close()
-        context.deleteDatabase(DATABASE_NAME)
+        context.deleteDatabase("glafira_core_tasks.db")
     }
 
     private fun task(id: String) = GlafiraTask(
