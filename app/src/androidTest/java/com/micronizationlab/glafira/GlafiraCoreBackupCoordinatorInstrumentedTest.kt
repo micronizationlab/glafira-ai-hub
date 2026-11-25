@@ -623,6 +623,53 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
+    @Test
+    fun v3RecoveryReentersAfterFreshCoordinatorConstruction() = runBlocking {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val marker = File(journal, "restore.pending")
+        val rollbackDatabase = File(journal, "database.db")
+        val rollbackArchive = File(journal, "files.glb")
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val keyAlias = "glafira_core_rollback_v1"
+        val passphrase = "GLAFIRA-v3-reentry-test-2026".toCharArray()
+        assertFalse("Test requires an isolated, clean rollback journal", marker.exists())
+        assertFalse("Test requires no pre-existing restore journal", journal.exists())
+        GlafiraRollbackSnapshotCipher.deleteKey()
+        try {
+            store.enqueue(task("known-good-before-marker"))
+            val originalCoordinator = GlafiraCoreBackupCoordinator(context, store)
+            originalCoordinator.prepareRollback(passphrase)
+
+            assertTrue("V3 marker must be durable before live-state mutation", marker.isFile)
+            assertEquals("GLAFIRA_RESTORE_ROLLBACK_V3", marker.readText(Charsets.UTF_8))
+            assertTrue(rollbackDatabase.isFile && rollbackDatabase.length() > 0L)
+            assertTrue(rollbackArchive.isFile && rollbackArchive.length() > 0L)
+            assertTrue(keyStore.containsAlias(keyAlias))
+
+            store.enqueue(task("mutated-after-marker"))
+            assertEquals("mutated-after-marker", store.getTask("mutated-after-marker")?.taskId)
+
+            // Reconstruct the coordinator and enter through its public recovery API.
+            GlafiraCoreBackupCoordinator(context, store).recover(passphrase)
+
+            assertEquals("known-good-before-marker", store.getTask("known-good-before-marker")?.taskId)
+            assertNull(store.getTask("mutated-after-marker"))
+            assertFalse("Successful recovery must clear the pending marker", marker.exists())
+            assertFalse("Successful recovery must remove the rollback journal", journal.exists())
+            assertFalse("Successful recovery must delete its installation-local key", keyStore.containsAlias(keyAlias))
+            assertTrue(
+                "No decrypted rollback recovery temp may remain",
+                context.cacheDir.listFiles { file ->
+                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                }.orEmpty().isEmpty()
+            )
+        } finally {
+            passphrase.fill('\u0000')
+            if (journal.exists() && !marker.exists()) journal.deleteRecursively()
+            GlafiraRollbackSnapshotCipher.deleteKey()
+        }
+    }
+
     companion object {
         private const val DATABASE_NAME = "glafira_core_tasks.db"
     }
