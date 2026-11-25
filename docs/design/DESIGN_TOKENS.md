@@ -76,7 +76,7 @@ Shared roles: display, title, section, body, bodyStrong, label, caption, micro, 
 - **Primary button:** one clear action per view; disabled state explains why where possible.
 - **Secondary button:** neutral outlined or tonal surface; never visually competes with primary.
 - **Destructive button:** explicit label, danger semantics and confirmation for irreversible actions.
-- **Status chip:** icon + text + semantic color; supports active, idle, offline, waiting, error and quota states.
+- **Status chip:** icon + text + semantic color; supports active, idle, offline, waiting, error and quota states. Default label color is text.primary on the current surface; status tone applies to the icon/accent only. Use a colored label only with a verified ≥4.5:1 text pairing.
 - **Card/panel:** stable title, primary content, metadata and optional actions; avoid nested card-on-card unless hierarchy requires it.
 - **Text field:** persistent label, visible focus/error state, clear validation text and platform-native input behavior.
 - **Dialog/sheet:** concise consequence statement, explicit confirm/cancel actions; destructive confirmation defaults to cancel.
@@ -86,12 +86,15 @@ Shared roles: display, title, section, body, bodyStrong, label, caption, micro, 
 
 Every interactive screen documents: loading, empty, ready, disabled, waiting, offline, stale, error, success, confirmationRequired and recoveryRequired where applicable. Disabled and focus states use the shared semantic tokens above or a documented native equivalent.
 
+Model/provider availability is distinct from connection state and quota. Task state is also reason-aware: WAITING_FOR_OWNER due to a pending approval is labelled “Needs owner approval”; CORE_EXECUTION_OUTCOME_UNKNOWN is labelled “Reconciliation required” with a distinct icon and must not offer generic retry. Do not collapse both into one generic waiting chip.
+
 Model/provider availability is distinct from connection state and quota:
 - Active/ready — green semantic state plus text.
 - Inactive/offline — neutral state plus text.
 - Waiting/limited — warning state plus reason.
 - Quota exhausted — danger state plus explicit reset/renewal information when known.
 - Error — danger state plus retry/recovery guidance only when safe.
+- Recovery required — distinct visible text (“Recovery required”), a dedicated recovery/alert icon and an accessible label; never communicate it only by color or collapse it into ordinary error/waiting.
 - Never invent quota reset times or provider availability.
 
 ## 7. Motion and interaction
@@ -104,7 +107,7 @@ Model/provider availability is distinct from connection state and quota:
 ## 8. Accessibility and responsive behavior
 
 - Target WCAG 2.2 AA contrast and visible focus; do not rely on color-only state.
-- Support screen readers with meaningful names, roles, state and action descriptions.
+- Support screen readers with meaningful names, roles, state and action descriptions. For every critical state, provide a visible text/icon cue plus an accessible label; include recoveryRequired and unknown-execution reconciliation.
 - Preserve keyboard navigation and predictable focus order on desktop; touch targets remain usable on mobile.
 - Test dynamic type/font scaling, 200% zoom where supported, landscape, narrow windows and long localized strings.
 - For Android, validate on a 360dp-wide layout and the owner's Realme 8i class device. Do not assume desktop density or large-screen space.
