@@ -29,7 +29,7 @@ Required source SVGs:
 - `ic_status_neutral.svg`
 - `ic_status_info.svg`
 
-The recovery icon must be visually distinct from ordinary danger/error. A recovery-required state is an operational condition that may require reconciliation or restore; it must not look like a generic failed task.
+The recovery icon must be visually distinct from ordinary danger/error. Map `CORE_EXECUTION_OUTCOME_UNKNOWN` explicitly to `ic_status_recovery.svg` and the visible label `Reconciliation required`; do not map it to owner approval or generic failure. A recovery-required state is an operational condition that may require reconciliation or restore; it must not look like a generic failed task.
 
 ## 3. SVG production requirements
 
