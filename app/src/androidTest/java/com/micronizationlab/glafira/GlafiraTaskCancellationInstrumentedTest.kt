@@ -61,6 +61,23 @@ class GlafiraTaskCancellationInstrumentedTest {
     }
 
     @Test
+    fun retryScheduledTaskCanBeCancelledBeforeItsNextClaim() {
+        store.enqueue(task("retry-task"))
+        assertEquals("retry-task", store.claimNext(2_000L)?.taskId)
+        assertTrue(store.transition(
+            "retry-task",
+            setOf(GlafiraTaskState.RUNNING),
+            GlafiraTaskState.RETRY_SCHEDULED,
+            nowMillis = 2_500L,
+            retryAtMillis = 4_000L
+        ))
+
+        assertTrue(store.cancelUnclaimedTask("retry-task", 3_000L))
+        assertEquals(GlafiraTaskState.CANCELLED, store.listTasks().single().state)
+        assertNull(store.claimNext(5_000L))
+    }
+
+    @Test
     fun waitingStatesCanBeCancelledBeforeDispatch() {
         listOf(
             GlafiraTaskState.WAITING_FOR_NETWORK,
