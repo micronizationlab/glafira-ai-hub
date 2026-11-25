@@ -567,6 +567,20 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             "UPDATE core_task_history SET reason = ? WHERE task_id = ?",
             arrayOf(canary, taskId)
         )
+        assertEquals(
+            canary,
+            store.readableDatabase.rawQuery(
+                "SELECT last_error FROM core_tasks WHERE task_id = ?",
+                arrayOf(taskId)
+            ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        )
+        assertEquals(
+            canary,
+            store.readableDatabase.rawQuery(
+                "SELECT reason FROM core_task_history WHERE task_id = ?",
+                arrayOf(taskId)
+            ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        )
         val passphrase = "GLAFIRA-rollback-canary-test-2026".toCharArray()
         try {
             GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
