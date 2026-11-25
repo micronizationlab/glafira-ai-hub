@@ -117,7 +117,7 @@ class GlafiraPortableSnapshotInstrumentedTest {
         assertFalse(encrypted.readBytes().take(15).toByteArray()
             .contentEquals("SQLite format 3".toByteArray(Charsets.US_ASCII)))
 
-        val raw = File(context.cacheDir, "glafira-rollback-test-${UUID.randomUUID()}.tmp")
+        val raw = File(context.cacheDir, "glafira-rollback-test-${java.util.UUID.randomUUID()}.tmp")
         try {
             GlafiraRollbackSnapshotCipher.decrypt(encrypted, raw)
             assertTrue(raw.readBytes().copyOfRange(0, 15).toString(Charsets.US_ASCII).startsWith("SQLite format 3"))
@@ -129,7 +129,7 @@ class GlafiraPortableSnapshotInstrumentedTest {
             assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
         } finally {
             raw.delete()
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
         }
     }
 
@@ -154,7 +154,7 @@ class GlafiraPortableSnapshotInstrumentedTest {
         val afterFailure = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         assertFalse(afterFailure.containsAlias("glafira_core_rollback_v1"))
         assertNull(store.getTask("preserved-missing-key"))
-        passphrase.fill('\\u0000')
+        passphrase.fill('\u0000')
     }
 
     @Test fun missingTablesAreRejectedBeforeAnyReplacement() {
