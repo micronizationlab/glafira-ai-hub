@@ -154,11 +154,12 @@ object DesktopBridgeCredentialVault {
     }
 
     /**
-     * Loads credentials for one synchronous operation and wipes every buffer owned here.
+     * Loads credentials for one synchronous operation and wipes the credential/passphrase arrays owned by this call.
      *
      * The passphrase is consumed and cleared even when loading or the action fails.
      * Do not use this for a worker that outlives the callback: long-running workers must
-     * retain credentials until their executor has actually terminated.
+     * retain credentials until their executor has actually terminated. JVM/JCE internal copies
+     * cannot be guaranteed erased by clearing application-owned arrays.
      */
     fun <T> loadAndUseVault(
         path: Path,
