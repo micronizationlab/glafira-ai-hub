@@ -1585,7 +1585,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         val selection = "state IN (?, ?, ?, ?) AND task_id IN (" +
             "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
             "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
-            "WHERE p.state IN (?, ?))$ownerClause"
+            "WHERE p.state IN (?, ?) AND p.project_id = core_tasks.project_id)$ownerClause"
         val args = states + arrayOf(
             GlafiraTaskState.FAILED.databaseValue,
             GlafiraTaskState.CANCELLED.databaseValue
