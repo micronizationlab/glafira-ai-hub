@@ -80,3 +80,9 @@ Credentials, API keys, OAuth refresh tokens, passwords, Bridge device secrets, o
 - Wrong passphrase, corrupt archive, malformed snapshot, missing required data, incompatible schema and path traversal are rejected before live data changes.
 - Interrupted restore either completes or returns to a verified safety snapshot; no partial restore is reported as successful.
 - A clean-profile restore passes SQLite integrity and Core health checks.
+
+## Encrypted local rollback journal (2026-11-25)
+
+The raw SQLite safety snapshot is now sealed with an installation-local Android Keystore AES-GCM key before it is persisted in `noBackupFilesDir/glafira-restore-journal`. The plaintext export exists only as a temporary file in app-private cache and is deleted in a `finally` path. The journal marker is versioned as `GLAFIRA_RESTORE_ROLLBACK_V3`; the recovery path still accepts the legacy V2 raw-database journal so an interrupted restore from an older build can finish.
+
+Recovery decrypts and validates the database snapshot before applying the safety archive to live app files. If the Keystore key is missing or the ciphertext is tampered, recovery fails closed, does not regenerate the key, retains the journal, and leaves Core blocked for recovery. The managed-emulator tests cover encrypted journal creation, successful V3 recovery, legacy V2 recovery and missing-key no-regeneration behavior.
