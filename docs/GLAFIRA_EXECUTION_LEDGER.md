@@ -417,3 +417,10 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Audit follow-up issue #629:** created with 31 evidence-based questions, mandatory source/commit/test proof and a KEEP/SIMPLIFY/ADOPT/REWRITE/REMOVE/NEEDS-MORE-EVIDENCE matrix. It authorizes assessment only, not automatic architecture changes.
 - **Current next Core gate:** the normative Dual-Core contract states that signing trust does not provide payload encryption. Separate key agreement, authenticated envelope encryption, durable receiver Inbox, exact ACK and sender/receiver workers are still required. Keep cross-Core payload delivery disabled until these are implemented and accepted.
 - **Post-merge CI visibility:** the connected workflow lookup returns PR-triggered runs only. No post-merge run was returned for the ledger merge SHA at capture time; this is not recorded as a pass.
+
+## MaintenanceGate contention test — 2026-11-25
+
+- **Work Item:** GLAFIRA-S016-W01 / WBS 1.1.4; issue #638 under sprint #634.
+- **Change:** add a host-JVM test with 100 concurrent waiting coroutines, a held execution lease, exclusive maintenance window, blocked late entrants, release ordering, and a ThreadMXBean CPU-time ratio check when supported.
+- **Purpose:** verify the current CompletableDeferred.await() gate suspends rather than busy-spins, preserves maintenance exclusivity, and wakes waiters without losing notifications. No rewrite to Mutex/Channel was made.
+- **Validation:** exact-head JVM CI required; CPU metric is diagnostic and guarded when thread CPU time is unsupported. Test source only does not establish performance until CI passes.
