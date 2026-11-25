@@ -413,6 +413,31 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     fun pendingOwnerApprovals(): List<GlafiraPendingActionApproval> =
         ownerApprovalStore.pendingApprovals()
 
+    /** GLAFIRA-S093-W01: cancel only after fresh one-use owner authentication and restore-lock validation. */
+    fun cancelTask(
+        taskId: String,
+        projectId: String,
+        ownerSession: GlafiraCoreOwnerSession
+    ): Boolean {
+        if (!ownerSession.consume()) return false
+        val cancelled = synchronized(taskStore) {
+            check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) {
+                "RESTORE_RECOVERY_REQUIRED"
+            }
+            taskStore.cancelUnclaimedTask(taskId, projectId, System.currentTimeMillis())
+        }
+        if (cancelled) runCatching {
+            if (isEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
+        }.onFailure {
+            android.util.Log.w(
+                "GlafiraCoreRuntimeOwner",
+                "Task cancellation committed but Core wake scheduling failed.",
+                it
+            )
+        }
+        return cancelled
+    }
+
     fun approveOwnerAction(
         taskId: String,
         selectedScopes: Set<String>,
