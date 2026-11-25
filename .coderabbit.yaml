@@ -4,7 +4,6 @@ language: ru-RU
 reviews:
   profile: assertive
   high_level_summary: true
-  walkthrough: true
   poem: false
   review_status: true
   collapse_walkthrough: true
