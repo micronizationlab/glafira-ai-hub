@@ -125,3 +125,12 @@ At the end of each work cycle report:
 - active blockers and who owns them.
 
 No vague “done”, no hidden progress, no repeated work, no second build without a reason.
+
+
+## 12. Active owner-approved sprint (2026-11-25)
+
+The active two-week sprint is tracked by GitHub issue #634 (25 Nov–9 Dec 2026): P1 Core transfer/Inbox-Outbox/fencing/ACK; P2 Android–Windows pairing; P3 Backup & Recovery; P4 Desktop Bridge/Windows Desktop; P5 CI and physical acceptance. The eleven permanent workstreams remain visible; deferred streams cannot bypass these dependencies.
+
+Mandatory artifacts are tracked in #635 (queue/store/protocol ownership map), #636 (direct/transitive license register), and #637 (18-scenario acceptance matrix). Current artifacts: [ownership map](architecture/QUEUE_STORE_PROTOCOL_OWNERSHIP_MAP.md), [license register](governance/THIRD_PARTY_LICENSE_REGISTER.md), [acceptance matrix](acceptance/DUAL_CORE_PAIRING_BACKUP_ACCEPTANCE_MATRIX.md). Cross-stream backup blocker #644 must be resolved before merging ownership-transfer PR #627.
+
+The initial inventories contain explicit UNKNOWN/PENDING fields and are not permission to remove queues, migrate archives, replace TraceService or approve third-party components. Physical-device tests remain OWNER_ACCEPTANCE until evidence is attached. No Program-150 step is completed by documentation alone.
