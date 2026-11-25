@@ -782,6 +782,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 assertTrue("No decrypted rollback recovery temp may remain", remainingTemps.isEmpty())
                 assertTrue("Another caller's default-prefix temp must remain untouched", unrelatedRecoveryTemp.isFile)
                 assertEquals("other-caller-temp", unrelatedRecoveryTemp.readText(Charsets.UTF_8))
+                assertTrue("Read-only interrupted-restore guard must still detect the unrelated temp",
+                    GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+                assertTrue("Detection must not delete another caller's temp", unrelatedRecoveryTemp.isFile)
             } catch (error: Throwable) {
                 originalFailure = error
                 throw error
