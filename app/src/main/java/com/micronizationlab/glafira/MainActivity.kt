@@ -31,6 +31,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
@@ -884,8 +886,9 @@ fun ChatScreen(
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 5.dp)
                                 .clickable { showProjectSelector = true }
-                                .semantics(mergeDescendants = true) {
+                                .clearAndSetSemantics {
                                     contentDescription = "Выбрать проект: ${project.name}"
+                                    role = Role.Button
                                     onClick(label = "Выбрать проект") {
                                         showProjectSelector = true
                                         true
