@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Scan repository history for verified secrets
-        uses: trufflesecurity/trufflehog@v3
+        uses: trufflesecurity/trufflehog@v3.100.1
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}
