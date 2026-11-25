@@ -31,7 +31,17 @@ Required source SVGs:
 
 The recovery icon must be visually distinct from ordinary danger/error. Map `CORE_EXECUTION_OUTCOME_UNKNOWN` explicitly to `ic_status_recovery.svg` and the visible label `Reconciliation required`; do not map it to owner approval or generic failure. A recovery-required state is an operational condition that may require reconciliation or restore; it must not look like a generic failed task.
 
-## 3. SVG production requirements
+## 3. Native platform delivery paths
+
+Keep the six canonical SVG files as editable design masters under `design/icons/`; do not add a runtime SVG-renderer dependency solely for these status assets. Generate and review native outputs from the same SVG source:
+
+- **Android Compose:** convert each SVG to a VectorDrawable XML resource under `app/src/main/res/drawable/` (Android Studio Vector Asset import or a deterministic reviewed conversion). Bind `currentColor` to the semantic Compose tint at runtime; do not bake light/dark colors into generated paths.
+- **Windows WPF:** convert SVG paths to `DrawingImage` / `Geometry` resources in the existing `windows-desktop/GLAFIRA.Desktop.App` resource dictionary. Bind fills/strokes to semantic WPF brushes; do not introduce WinUI-only APIs or an SVG runtime library.
+- **iOS SwiftUI:** deliver vector PDF assets in the existing asset catalog with Preserve Vector Data enabled, or a reviewed SwiftUI `Path` representation generated from the same source. Keep semantic tint dynamic and verify both appearances.
+
+Generated platform assets are build inputs, not replacements for the canonical SVG masters. Each consuming PR must record the source-to-output mapping and attach light/dark and monochrome previews.
+
+## 4. SVG production requirements
 
 - Artboard: 24×24 viewBox.
 - Nominal stroke: 2px, with consistent joins and caps.
@@ -43,7 +53,7 @@ The recovery icon must be visually distinct from ordinary danger/error. Map `COR
 - Use shape/symbol differences plus accessible text labels; never rely on color alone.
 - Supply a light/dark preview sheet and a monochrome preview sheet.
 
-## 4. Acceptance checklist
+## 5. Acceptance checklist
 
 - [ ] Six status SVGs are present and parse as valid SVG.
 - [ ] Recovery is distinguishable from danger at 16px in monochrome.
@@ -54,7 +64,7 @@ The recovery icon must be visually distinct from ordinary danger/error. Map `COR
 - [ ] Android, iOS and Windows render previews are reviewed at actual UI sizes.
 - [ ] Accessibility labels and semantic status mapping are documented by consuming components.
 
-## 5. Delivery layout
+## 6. Delivery layout
 
 Recommended final layout after artwork review:
 
