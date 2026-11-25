@@ -68,6 +68,7 @@ class GlafiraCoreOutboxSchemaInstrumentedTest {
         )
         try {
             legacy.execSQL("DROP TABLE ${GlafiraCoreOutboxSchema.TABLE}")
+            legacy.execSQL("DROP TABLE IF EXISTS core_outbox_sequences")
             legacy.execSQL("PRAGMA user_version = 11")
         } finally {
             legacy.close()
