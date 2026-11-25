@@ -89,9 +89,11 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         if (journal.exists()) check(journal.deleteRecursively())
         check(journal.mkdirs())
         try {
-            val consistentDatabase = taskStore.prepareConsistentSnapshotSource()
-            sync(consistentDatabase)
-            GlafiraRollbackSnapshotCipher.encrypt(consistentDatabase, safetyDatabase)
+            synchronized(taskStore) {
+                val consistentDatabase = taskStore.prepareConsistentSnapshotSource()
+                sync(consistentDatabase)
+                GlafiraRollbackSnapshotCipher.encrypt(consistentDatabase, safetyDatabase)
+            }
             sync(safetyDatabase)
             val archive = BackupArchive.create(app, passphrase)
             try { archive.copyTo(safetyArchive, overwrite = false); sync(safetyArchive) }
