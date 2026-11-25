@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.content.ContentValues
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.concurrent.CountDownLatch
@@ -64,6 +65,61 @@ class GlafiraTaskCancellationInstrumentedTest {
         assertTrue(store.cancelUnclaimedTask("retry", "cancel-project", 5_000L))
         assertEquals(GlafiraTaskState.CANCELLED, store.getTask("retry")?.state)
     }
+
+    @Test fun unknownExternalOutcomesCannotBeCancelled() {
+        listOf("CORE_EXECUTION_OUTCOME_UNKNOWN", "DESKTOP_EXECUTION_OUTCOME_UNKNOWN").forEachIndexed { index, marker ->
+            val id = "unknown-$index"
+            store.enqueue(task(id))
+            assertTrue(store.transition(id, setOf(GlafiraTaskState.QUEUED),
+                GlafiraTaskState.WAITING_FOR_OWNER, 2_000L, null, marker))
+            assertFalse(store.cancelUnclaimedTask(id, "cancel-project", 3_000L))
+            assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask(id)?.state)
+            assertEquals(marker, store.getTask(id)?.lastError)
+        }
+    }
+
+    @Test fun waitingDependentsFailButUnknownOutcomeDependentsRemainForReconciliation() {
+        store.enqueue(task("parent"))
+        listOf(
+            Triple("network-child", GlafiraTaskState.WAITING_FOR_NETWORK, "NETWORK_UNAVAILABLE"),
+            Triple("approval-child", GlafiraTaskState.WAITING_FOR_OWNER, "OWNER_APPROVAL_REQUIRED"),
+            Triple("core-unknown-child", GlafiraTaskState.WAITING_FOR_OWNER, "CORE_EXECUTION_OUTCOME_UNKNOWN"),
+            Triple("desktop-unknown-child", GlafiraTaskState.WAITING_FOR_OWNER, "DESKTOP_EXECUTION_OUTCOME_UNKNOWN")
+        ).forEachIndexed { index, item ->
+            store.enqueueWithDependencies(task(item.first), setOf("parent"), 1_500L + index)
+            assertTrue(store.transition(item.first, setOf(GlafiraTaskState.QUEUED),
+                item.second, 2_000L + index, null, item.third))
+        }
+        assertTrue(store.cancelUnclaimedTask("parent", "cancel-project", 3_000L))
+        assertEquals(GlafiraTaskState.FAILED, store.getTask("network-child")?.state)
+        assertEquals(GlafiraTaskState.FAILED, store.getTask("approval-child")?.state)
+        assertEquals("DEPENDENCY_FAILED", store.getTask("approval-child")?.lastError)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("core-unknown-child")?.state)
+        assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("desktop-unknown-child")?.state)
+    }
+
+    @Test fun cancellationExpiresOnlyItsOwnPendingApproval() {
+        GlafiraCoreOwnerApprovalStore(store)
+        store.enqueue(task("approval-task"))
+        assertTrue(store.transition("approval-task", setOf(GlafiraTaskState.QUEUED),
+            GlafiraTaskState.WAITING_FOR_OWNER, 2_000L, null, "OWNER_APPROVAL_REQUIRED"))
+        store.writableDatabase.insertOrThrow("core_action_approvals", null, ContentValues().apply {
+            put("task_id", "approval-task")
+            put("project_id", "cancel-project")
+            put("tool_id", "project.read")
+            put("action_hash", "hash")
+            put("requested_scopes", "[]")
+            put("requested_at", 2_000L)
+            put("expires_at", 99_000L)
+            put("status", "PENDING")
+        })
+        assertTrue(store.cancelUnclaimedTask("approval-task", "cancel-project", 3_000L))
+        store.writableDatabase.rawQuery(
+            "SELECT status FROM core_action_approvals WHERE task_id=?",
+            arrayOf("approval-task")
+        ).use { assertTrue(it.moveToFirst()); assertEquals("EXPIRED", it.getString(0)) }
+    }
+
     @Test fun concurrentClaimAndCancelCannotOverwriteEachOther() {
         val secondStore = GlafiraTaskStore(context)
         val gate = CountDownLatch(1)
