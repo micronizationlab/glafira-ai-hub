@@ -107,6 +107,7 @@ internal class GlafiraCoreOutboxStore(
                 inserted = true,
                 payloadSha256 = draft.payloadSha256,
                 payloadCiphertext = draft.payloadCiphertext,
+                signatureBase64 = draft.signatureBase64,
                 recipientCoreId = draft.recipientCoreId,
                 projectId = draft.projectId,
                 taskId = draft.taskId
@@ -121,7 +122,7 @@ internal class GlafiraCoreOutboxStore(
             GlafiraCoreOutboxSchema.TABLE,
             arrayOf(
                 "event_id", "source_core_id", "recipient_core_id", "project_id",
-                "source_sequence", "task_id", "payload_sha256", "payload_ciphertext"
+                "source_sequence", "task_id", "payload_sha256", "payload_ciphertext", "signature_base64"
             ),
             "source_core_id = ? AND idempotency_key = ? AND event_type = ? " +
                 "AND owner_generation = ? AND state_version = ?",
@@ -144,21 +145,9 @@ internal class GlafiraCoreOutboxStore(
                 taskId = cursor.getString(5),
                 payloadSha256 = cursor.getString(6),
                 payloadCiphertext = cursor.getString(7),
-                signatureBase64 = readSignatureFor(cursor.getString(0)),
+                signatureBase64 = cursor.getString(8),
                 inserted = false
             )
-        }
-
-    private fun readSignatureFor(eventId: String): String =
-        db.query(
-            GlafiraCoreOutboxSchema.TABLE,
-            arrayOf("signature_base64"),
-            "event_id = ?",
-            arrayOf(eventId),
-            null, null, null, "1"
-        ).use { cursor ->
-            check(cursor.moveToFirst())
-            cursor.getString(0)
         }
 
     private fun validate(draft: GlafiraCoreOutboxDraft) {
