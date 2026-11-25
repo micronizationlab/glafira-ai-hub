@@ -2,7 +2,7 @@
 
 **Umbrella:** issue #672 · **Work item:** GLAFIRA-DESIGN-W01 · **WBS:** 1.11.1.1.1  
 **Source of truth:** [DESIGN_TOKENS.md](DESIGN_TOKENS.md)  
-**Status:** implementation handoff based on the owner-approved baseline in `DESIGN_TOKENS.md`; no second palette approval is required.
+**Status:** implementation handoff based on the current token proposal in `DESIGN_TOKENS.md`; palette-dependent implementation remains pending owner approval and WBS acceptance.
 
 ## 1. Repository reality checked for this handoff
 
@@ -38,7 +38,7 @@ Minimum requirements:
 
 The repository already has a SwiftUI UI package at `ios/GlafiraBridgeKit/Sources/GlafiraIOSUI`.
 
-Using the owner-approved baseline tokens:
+Using the semantic roles in `DESIGN_TOKENS.md`; treat palette values as pending until the owner approves the token proposal:
 1. Add a dedicated design-token source in the existing Swift package, using unambiguous names such as `GlafiraPalette` and `GlafiraSpacing`; avoid nesting a type named `Color` that shadows `SwiftUI.Color`.
 2. Use SwiftUI `Color` with explicit light/dark asset or dynamic-provider implementation. If using `UIColor`, guard UIKit-specific code with `#if canImport(UIKit)` and provide a `macOS`-compilable fallback so the shared package continues to compile under `swift test` on macOS.
 3. Add reusable `StatusChip` with SF Symbols/custom SVG fallback, text label and accessibility label/value.
@@ -51,7 +51,7 @@ Do not copy a sample with a nested `Color` enum shadowing SwiftUI's `Color`; the
 
 The repository contains a WPF desktop app and a Windows Agent project. The initial implementation should use the existing WPF resource system rather than introduce WinUI/XAML APIs that do not match the current project.
 
-After owner approval:
+After owner approval of the token proposal:
 1. Define shared semantic `Color`/`Brush` resources in the desktop application resource dictionary.
 2. Move repeated literal colors from `MainWindow.xaml` to semantic resources.
 3. Add visible keyboard focus styles and predictable tab order.
@@ -76,10 +76,10 @@ After owner approval:
 
 ## 6. Change control and rollout
 
-This is an approved cross-platform design foundation, not permission to redesign all screens at once. Use the approved tokens as the baseline and migrate screens in small, reviewable slices. Implementation should be split into small platform PRs, each with screenshots/previews and tests. No design change may alter Core authority, permissions, Bridge protocol, encryption, backup/restore or owner-approval behavior.
+This is an implementation handoff for the shared design foundation, not palette approval or permission to redesign all screens at once. Use semantic roles for planning; keep palette-dependent implementation pending until the owner approves the token proposal and its WBS leaf is accepted. Then migrate screens in small, reviewable slices. Implementation should be split into small platform PRs, each with screenshots/previews and tests. No design change may alter Core authority, permissions, Bridge protocol, encryption, backup/restore or owner-approval behavior.
 
 Recommended order:
-1. Consume the owner-approved shared semantic tokens and icon direction; palette re-approval is not a prerequisite. Verify rendered component contrast and accessibility as part of each platform PR.
+1. Complete owner review of the shared semantic token proposal and icon direction. Verify rendered component contrast and accessibility as part of each platform PR; do not infer palette approval from this handoff.
 2. Android token adapter + status component.
 3. Windows resource adapter + focus/status styles.
 4. iOS SwiftUI adapter + Dynamic Type previews.
