@@ -583,7 +583,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         )
         val passphrase = "GLAFIRA-rollback-canary-test-2026".toCharArray()
         try {
-            GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
+            GlafiraCoreBackupCoordinator(context, store, recoveryTempPrefix).prepareRollback(passphrase)
             val journalFiles = journal.walkTopDown().filter { it.isFile }.toList()
             assertTrue("Rollback journal must contain its encrypted snapshot and marker", journalFiles.isNotEmpty())
             val cacheFiles = context.cacheDir.walkTopDown().filter { it.isFile }.toList()
@@ -594,7 +594,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue(
                 "No decrypted rollback recovery temp may remain after prepareRollback",
                 context.cacheDir.listFiles { file ->
-                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                    file.name.startsWith(recoveryTempPrefix) && file.name.endsWith(".tmp")
                 }.orEmpty().isEmpty()
             )
         } finally {
@@ -636,6 +636,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val knownGoodFile = File(context.filesDir, "v3-reentry-known-good.txt")
             val createdAfterMarkerFile = File(context.filesDir, "v3-reentry-created-after-marker.txt")
             val runId = UUID.randomUUID().toString()
+            val recoveryTempPrefix = "glafira-v3-reentry-$runId-"
             var ownsFixture = false
             var ownsJournal = false
             var expectedTask: GlafiraTask? = null
@@ -748,12 +749,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 assertTrue(rollbackKeyExists())
 
                 store.enqueue(task("mutated-after-marker"))
+                assertTrue(store.transition(
+                    "known-good-before-marker", setOf(GlafiraTaskState.QUEUED),
+                    GlafiraTaskState.WAITING_FOR_OWNER, System.currentTimeMillis(), null,
+                    "mutated-after-marker"
+                ))
+                assertEquals(GlafiraTaskState.WAITING_FOR_OWNER,
+                    store.getTask("known-good-before-marker")?.state)
                 knownGoodFile.writeText("mutated-after-marker", Charsets.UTF_8)
                 createdAfterMarkerFile.writeText("created-after-marker", Charsets.UTF_8)
                 assertEquals("mutated-after-marker", store.getTask("mutated-after-marker")?.taskId)
 
                 // recover() owns the maintenance gate itself; do not nest a second acquisition.
-                GlafiraCoreBackupCoordinator(context, store).recover(passphrase)
+                GlafiraCoreBackupCoordinator(context, store, recoveryTempPrefix).recover(passphrase)
 
                 assertEquals(expectedTask, store.getTask("known-good-before-marker"))
                 assertNull(store.getTask("mutated-after-marker"))
