@@ -1,0 +1,126 @@
+# GLAFIRA hierarchical work breakdown and step-order standard
+
+**Status:** mandatory project governance rule  
+**Owner:** Валерий Корчагин  
+**Coordinator:** GLAFIRA  
+**Applies to:** every human contributor, AI assistant, coding agent, reviewer, helper and all eleven workstreams  
+**Canonical execution control:** `docs/GLAFIRA_EXECUTION_CONTROL.md`  
+**Canonical history:** `docs/GLAFIRA_EXECUTION_LEDGER.md`
+
+## 1. Canonical hierarchy
+
+The entire GLAFIRA program uses one permanent dotted-decimal hierarchy. The root is project **1 — GLAFIRA**. Every child is numbered by appending the next integer to its parent's identifier.
+
+| Level | Meaning | Example |
+|---|---|---|
+| 1 | Main project | `1 GLAFIRA` |
+| 1.1 | Subproject | `1.1 Core` |
+| 1.1.1 | Chapter within that subproject | `1.1.1 Identity and ownership` |
+| 1.1.1.1 | Section | `1.1.1.1 Owner identity` |
+| 1.1.1.1.1 | Task | `1.1.1.1.1 Define owner identity contract` |
+| 1.1.1.1.1.1 | Subtask | `1.1.1.1.1.1 Add persistence migration` |
+| 1.1.1.1.1.1.1 | Executable step | `1.1.1.1.1.1.1 Add migration test` |
+
+The same rule continues to any depth needed. Do not invent a second numbering style for chapters, tasks, subtasks or individual actions.
+
+## 2. Root project and eleven permanent subprojects
+
+The root is always `1 GLAFIRA`. Its first-level subprojects map to the eleven permanent workstreams:
+
+- `1.1` Core and owner authority
+- `1.2` Backup and Recovery
+- `1.3` Desktop Bridge and device pairing
+- `1.4` Windows Desktop and Hub
+- `1.5` Android application
+- `1.6` iOS application
+- `1.7` CI/CD, security and release engineering
+- `1.8` Windows Agent
+- `1.9` Commercial Network and compute economics
+- `1.10` Multi-model runtime and specialist roles
+- `1.11` Helper intake, review and integration
+
+A workstream may contain many chapters, sections, tasks, subtasks and steps. The workstream list is stable; owner-approved scope changes may add children but must not silently repurpose an existing identifier.
+
+## 3. Identifier stability and compatibility
+
+1. Every node receives one unique permanent ID when it is first approved.
+2. Never renumber an existing node because of reordering, cancellation, changed priority or a new architecture.
+3. A cancelled or replaced node remains in the register as `CANCELLED` or `SUPERSEDED`, with a reason and replacement ID if applicable. Its number is never reused.
+4. A split creates new child IDs beneath the original parent; it does not erase the original history.
+5. Existing Program 150 acceptance IDs (for example `S016`) remain valid legacy acceptance references. Map each one to one or more WBS IDs in the plan/ledger; do not silently renumber or pretend the two namespaces are identical.
+6. Every issue, branch, PR, commit, test report and ledger entry must include its WBS ID(s), plus any legacy Program Step ID(s).
+
+## 4. Mandatory step-by-step execution
+
+Every participant MUST work in this order:
+
+1. Read this standard, execution control, current plan, ledger, relevant contracts and the assigned issue.
+2. Refresh current `main`, open PRs, branches, changed files and exact-head CI; search for existing work before creating anything.
+3. Identify the exact WBS leaf step being assigned. If it does not exist, propose its parent path and obtain coordinator/owner registration before implementation.
+4. Confirm predecessor steps and dependencies. A step cannot start until every required predecessor is `DONE` with evidence.
+5. Reserve the leaf step in the ledger before editing: executor, files, branch, base SHA, dependencies, acceptance criteria and tests.
+6. Implement only that step. Do not combine unrelated steps or expand scope without updating the WBS and receiving approval.
+7. Run the specified tests, inspect all failures and correct the source or test defects. Do not stop a test suite at its first failure if the suite can safely complete and produce a full defect list.
+8. Record exact evidence and status in the ledger. A step is `DONE` only after its acceptance criteria, review, required exact-head CI, merge and post-merge checks are satisfied.
+9. Only then start the next sequential step. If blocked, mark `BLOCKED`, record the reason and stop dependent work; do not silently skip ahead.
+10. Report the completed step ID, evidence, remaining blocker and next eligible step to the coordinator.
+
+## 5. Sequencing and parallel work
+
+- Default execution within a task is sequential: `step N` before `step N+1`.
+- Parallel work is allowed only for explicitly independent sibling tasks whose dependency graph, files, APIs, schemas and resources do not overlap.
+- Every parallel item needs its own WBS leaf ID, owner, branch, file reservation and acceptance criteria.
+- One logical behavior or shared file set has one active implementation owner. Reviewers may inspect but must not create competing implementations.
+- The eleventh workstream must collect helper work, map it to WBS IDs, deduplicate it and reserve ownership before integration.
+- No participant may bypass a predecessor, change the owner-approved priority, or merge its own work around the integration gates.
+
+## 6. Required record for every executable step
+
+Each leaf step must have:
+
+- WBS ID and title;
+- parent task and legacy Program Step mapping, if any;
+- objective and explicit out-of-scope items;
+- accountable executor and independent reviewer;
+- predecessor IDs and dependency graph;
+- allowed files and exclusive file ownership;
+- branch, base SHA, PR and changed-file list;
+- implementation procedure in numbered micro-steps;
+- acceptance criteria and positive, negative, failure, concurrency and recovery tests as relevant;
+- exact CI workflow/job/run IDs and log evidence;
+- status: `PROPOSED`, `READY`, `RESERVED`, `IN_PROGRESS`, `BLOCKED`, `IN_REVIEW`, `MERGED`, `DONE`, `CANCELLED` or `SUPERSEDED`;
+- merge SHA, post-merge validation and next eligible WBS ID.
+
+A plan checkbox, document statement, green unrelated CI run or successful build alone is not completion evidence.
+
+## 7. Change control
+
+- The owner approves changes to project invariants, priorities, root/subproject structure, security boundaries and acceptance criteria.
+- The coordinator maintains the canonical WBS and ledger, resolves duplicate assignments and enforces dependencies.
+- Helpers may suggest a correction or architecture reset, but may not silently rewrite approved requirements.
+- If evidence shows the current design is wrong, stop the affected dependent steps, create a numbered decision/reassessment task, compare options and migration/rollback costs, and record the owner's decision before implementation.
+- Preserve working behavior and data. A rewrite is justified only when measured reliability, security, maintainability or delivery improves enough to justify migration risk.
+
+## 8. Merge and reporting rules
+
+The existing PR size, review, exact-head CI, owner approval, merge and post-merge rules in `docs/GLAFIRA_EXECUTION_CONTROL.md` remain mandatory. A WBS step does not become `DONE` merely because its PR merged. The ledger must link the exact PR, merge SHA, required CI runs, test evidence and any physical-device acceptance.
+
+Every cycle report must state the current `main` SHA, WBS ID, legacy step mapping, executor, branch/PR, changed files, tests and logs, merge/post-merge status, blockers and next eligible step.
+
+## 9. Worked example
+
+```text
+1 GLAFIRA
+└── 1.1 Core
+    └── 1.1.1 Owner identity and task authority
+        └── 1.1.1.1 Owner identity persistence
+            └── 1.1.1.1.1 Define identity contract
+                └── 1.1.1.1.1.1 Add contract fields
+                    └── 1.1.1.1.1.1.1 Add validation test
+                    └── 1.1.1.1.1.1.2 Add serialization test
+                └── 1.1.1.1.2 Implement migration
+                    └── 1.1.1.1.2.1 Add migration code
+                    └── 1.1.1.1.2.2 Verify upgrade and rollback
+```
+
+The next executable step is not eligible until its predecessor is accepted and recorded. This rule is mandatory for every participant and every workstream.
