@@ -690,6 +690,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         check(!createdAfterMarkerFile.exists() || createdAfterMarkerFile.delete()) {
                             "Could not remove previous test-owned mutation file."
                         }
+                        check(!rollbackKeyExists()) {
+                            "An unowned or orphaned rollback key remains; preserve the owner marker for diagnosis."
+                        }
                         check(ownerMarker.delete()) { "Could not clear previous test ownership marker." }
                     }
 
