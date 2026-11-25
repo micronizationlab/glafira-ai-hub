@@ -291,3 +291,20 @@ This checkpoint supersedes prior live-state descriptions above where they confli
 3. Implement receiver Inbox + ACK verifier and distinct peer key agreement before Outbox sender/retry.
 4. Wire provider-context policy into actual dispatch with durable owner grants and Trace.
 5. Keep Windows Desktop/Agent/iOS on shared contracts and avoid expanding Token/agents until the foundation is reliable.
+
+
+## Integration checkpoint — 2026-11-25 05:42 UTC (post-#612)
+
+This entry supersedes earlier live-state descriptions above where they conflict. Earlier entries remain historical records and are not retroactively rewritten.
+
+- Main before this checkpoint: `4396a7719dbe07e48f14db0c8ce6eb5d264309f8`.
+- PR #612 merged by squash as `4396a7719dbe07e48f14db0c8ce6eb5d264309f8`. Scope: encrypt the local Core rollback journal with an installation-local Android Keystore AES-GCM key; validate the decrypted snapshot before replacing live database files; preserve legacy V2 recovery; fail closed on missing key/tampering and clean temporary plaintext.
+- Exact PR-head CI run `45554381081` completed SUCCESS on head `42c9937f87ff86b9fc81beb90f5c96c731672884`. Android JVM: 316 tests, 0 failures, 0 errors, 0 skipped. Managed Android emulator: 143 tests, 0 failures, 0 errors, 0 skipped; JUnit verifier found one report with 143 test cases. Shared contracts and Debug APK passed. Windows Desktop, Windows Agent, iOS and workflow lint were skipped by change-aware routing, not tested.
+- Closed PR #567 as superseded by #612 after diff comparison; the missing-key fail-closed and rollback-journal encryption scope is represented by #612. Do not reopen #567.
+- Post-merge Main CI run `45555332895` for `4396a7719dbe07e48f14db0c8ce6eb5d264309f8` was IN_PROGRESS at this checkpoint. Shared contracts passed; Android JVM, managed emulator and Debug APK were still running. This is post-merge validation and must be checked separately; PR-head CI success is not a substitute for it.
+- Current Outbox status: schema v12 only. There is still no atomic runtime enqueue/sequence allocator, sender, receiver Inbox, authenticated ACK verifier, retry worker or cross-Core delivery. Keep remote delivery disabled. Signing identity and payload-encryption key agreement remain separate prerequisites.
+- Backup status: #612 supplies an encrypted rollback-journal primitive. Do not claim full production Backup/Restore acceptance until the actual restore staging path, maintenance gate, missing-key behavior and crash recovery are validated end-to-end.
+- Android project selector: #603/#606 remain merged; #568 is a separate accessibility/workspace change stacked on large stale #558. #558 is not eligible for bulk merge; split and port only independently validated slices to current Main.
+- Bridge #608 logical operation identity is merged; durable receiver Inbox/ACK/restart recovery remain open. Windows Desktop and Agent require their own applicable CI and end-to-end handoff validation. iOS remains lower priority than Core/Desktop. Token/GCU and helper expansion remain parked.
+- The earlier live checkpoint in this file is stale on merge SHAs and open-PR status; use this entry plus live GitHub state for the next action. Do not mark plan steps DONE from PR existence or partial CI.
+- Next execution: finish post-merge run `45555332895`; then implement one bounded Core Outbox primitive (atomic sequence allocation + idempotent local enqueue) with transaction/rollback tests, while preserving the no-remote-send gate. In parallel, split #558 and review the stale dependent PRs against current Main.
