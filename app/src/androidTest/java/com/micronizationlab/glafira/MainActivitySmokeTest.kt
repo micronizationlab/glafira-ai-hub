@@ -2,10 +2,13 @@ package com.micronizationlab.glafira
 
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertNotNull
@@ -15,6 +18,22 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainActivitySmokeTest {
+
+    private fun clickFresh(device: UiDevice, selector: BySelector) {
+        var lastStale: StaleObjectException? = null
+        repeat(8) {
+            val target = device.wait(Until.findObject(selector), 2_000) ?: return@repeat
+            try {
+                target.click()
+                return
+            } catch (stale: StaleObjectException) {
+                lastStale = stale
+                SystemClock.sleep(120)
+            }
+        }
+        throw AssertionError("Accessibility node remained stale for selector: $selector", lastStale)
+    }
+
     private fun prepareUnlockedHome(context: Context) {
         resetRecoveryJournalForUiSmokeTest(context)
         assertTrue(
@@ -46,27 +65,27 @@ class MainActivitySmokeTest {
             saveProviderKey(context, ProviderId.OPENAI, "instrumentation-placeholder-key"))
         try {
             val device = launch()
-            device.findObject(By.text("ГЛАФИРА")).click()
+            clickFresh(device, By.text("ГЛАФИРА"))
             assertTrue("Chat workspace did not open",
                 device.wait(Until.hasObject(By.desc("Выбрать проект: Личное")), 10_000))
 
-            device.findObject(By.desc("Выбрать проект: Личное")).click()
+            clickFresh(device, By.desc("Выбрать проект: Личное"))
             assertTrue("Built-in VodorodAktiv project is missing from chat picker",
                 device.wait(Until.hasObject(By.text("ВодородАктив")), 5_000))
-            device.findObject(By.text("ВодородАктив")).click()
+            clickFresh(device, By.text("ВодородАктив"))
             assertTrue("Chat did not switch to VodorodAktiv",
                 device.wait(Until.hasObject(By.desc("Выбрать проект: ВодородАктив")), 5_000))
 
-            device.findObject(By.desc("Выбрать проект: ВодородАктив")).click()
-            device.findObject(By.desc("Удалить проект: ВодородАктив")).click()
+            clickFresh(device, By.desc("Выбрать проект: ВодородАктив"))
+            clickFresh(device, By.desc("Удалить проект: ВодородАктив"))
             assertTrue("Project delete confirmation did not open",
                 device.wait(Until.hasObject(By.text("Удалить проект?")), 5_000))
             assertTrue("Delete confirmation does not identify the selected project",
                 device.hasObject(By.text("Все чаты проекта «ВодородАктив» и его закрепления будут безвозвратно удалены.")))
-            device.findObject(By.text("Отмена")).click()
+            clickFresh(device, By.text("Отмена"))
             assertTrue("Cancelling deletion must preserve the selected project",
                 device.wait(Until.hasObject(By.desc("Выбрать проект: ВодородАктив")), 5_000))
-            device.findObject(By.text("←")).click()
+            clickFresh(device, By.text("←"))
             assertTrue("Chat back action did not return to the home screen",
                 device.wait(Until.hasObject(By.descContains("Открыть очередь задач")), 5_000))
         } finally {
