@@ -170,3 +170,49 @@ Record each build as `repository|commit SHA|workflow|job/lane|configuration`. Re
 - CI continuation principle: independent selected jobs continue after another job fails; JUnit validation and artifact upload must run after failure; a failed required job keeps the aggregate failed. Skipped is never success. Full emulator logs/JUnit/artifacts are retained before writing the repair list.
 - Superseded PRs #583, #585, #588 were closed after clean-current-Main ports #590 and #589 were opened. PR #586 remains superseded by merged #587. #567 remains blocked for non-key lifecycle issues; #560, #545 and #569 remain open/draft pending their stated acceptance. #410 remains frozen and untouched.
 - No numbered 150-step item is marked DONE in this checkpoint. All merge claims are tied to actual merge SHA; outstanding PRs above are not merged.
+
+## Reconciled live checkpoint — 2026-11-25 05:06 UTC
+
+This section supersedes earlier *current-state* statements above where they conflict with this checkpoint. Earlier entries remain unchanged as historical evidence.
+
+- Verified current `main`: `a800d3553a51f4ef89763a67cedd1fbfb5f40081`.
+- Verified PR #595 is merged (2026-11-25T04:38:51Z), merge commit equals current Main `a800d3553a51f4ef89763a67cedd1fbfb5f40081`. Outbox schema v12 and v11→v12 migration coverage are therefore in Main. This is schema groundwork only; no sender, receiver inbox, durable ACK/retry worker or cross-Core delivery is claimed.
+- PR #594 is closed unmerged as superseded by clean-current-Main PR #601. Its change was re-ported, not discarded.
+- PR #600 (CI exact-head report and required-check context names): head `b2f4b410db0110feed40f1a99423c581827b1a59`, base current Main. Latest observed CI run `45550520308`: Android JVM, APK, iOS, Windows Desktop, Windows Agent, workflow lint and shared contracts succeeded; managed Android emulator acceptance remained IN_PROGRESS. Exact-head summary is downstream of all lanes and had not yet completed. Do not merge until emulator and exact-head summary complete successfully.
+- PR #601 (Android home project selector): clean base current Main `a800d3553a51f4ef89763a67cedd1fbfb5f40081`, head `55557e6b93871cda25f1d2d5e40ae9649b383cc3`, exactly two files changed. CI run `45550825942`: Android JVM, APK and managed-emulator lanes were IN_PROGRESS at last capture; unrelated iOS/Windows/workflow lanes were skipped by change-aware routing. It still needs fresh validation against the corrected required-check names after #600 is integrated. No merge claimed.
+- Older-base PRs #596 (Backup), #597 (provider-context security), #598 (canonical project IDs) and #599 (Bridge logical operation identity) still target superseded base `72d063046faeb31778500d2fb595211608cf9587`; each remains open and blocked. Re-port one bounded change at a time onto current Main, compare actual diffs, and rerun exact-head CI; do not change base metadata alone and call it a rebase.
+- The active ruleset `Protect main` requires these exact status contexts: `Android JVM tests`, `Shared contracts`, `SharedAndroid emulator acceptance contracts`, `Android debug APK contracts`, `Windows Desktop`, `Windows Agent`, `iOS`, `Workflow lint`, and `Exact-head CI summary`. A skipped or missing required context is not a pass. Repository auto-merge is disabled. No ruleset bypass was used.
+
+### Eleven workstream status at this checkpoint
+
+1. **Core / owner lifecycle:** continue runtime owner-generation fencing and safe external-effect boundaries; schema work alone is not runtime completion.
+2. **Backup & recovery:** #596 is a small missing-rollback-key fail-closed slice, but its base is stale and exact-head validation/review is still required.
+3. **Android project/workspace selector:** clean-current-Main PR #601 adds accessible selector semantics, refresh-on-open and emulator switching coverage for Personal, VodorodAktiv and Token. Not merged or yet validated at this checkpoint.
+4. **Bridge:** #599 client logical-operation identity is only a client-side slice; durable server Inbox, authenticated receive, ACK and restart recovery remain open.
+5. **Windows Desktop Hub:** CI lane passed on #600; no claim of full Core integration or end-to-end device handoff.
+6. **Windows Agent:** CI lane passed on #600; background execution, durable handoff and restart recovery still need integration acceptance.
+7. **iOS:** CI lane passed on #600; maintain shared contract compatibility, but keep below Core/Desktop priority.
+8. **CI/CD:** #600 aligns seven job display names to the ruleset contexts and corrects the PR summary SHA to `pull_request.head.sha`; emulator and exact-head summary remain the merge gate.
+9. **Provider security/context:** #597 adds a fail-closed policy kernel but production provider-dispatch wiring is not yet proven; stale base prevents integration.
+10. **Token/GCU:** keep design and safety constraints recorded; no implementation priority ahead of Core, Bridge and Desktop.
+11. **Helpers/agents:** validate useful real project work only after foundation; no agent work is allowed to displace Core/Backup/Bridge/Desktop.
+
+### Journal discipline
+- This checkpoint records observed repository evidence, not planned work as completed.
+- A CI run is recorded against its exact commit SHA; cancelled, skipped, pending or missing required lanes are never reported as green.
+- A PR is recorded as integrated only after GitHub reports `merged=true` and the resulting Main SHA is re-read.
+- Next priority: complete #600's emulator and exact-head summary; then integrate it if every required context is successful. Next, validate #601 on the corrected ruleset contexts. In parallel, prepare a focused Core Outbox enqueue/sequence slice only after reviewing the current transaction and identity APIs.
+
+## Follow-up reconciliation — 2026-11-25 05:08 UTC
+
+- PR #600 was merged by squash after all nine exact required status contexts passed. Exact PR head: `b2f4b410db0110feed40f1a99423c581827b1a59`. Exact-head summary job `138992202050` in CI run `45550520308` succeeded and printed that same SHA with all nine component outcomes `success`. Merge commit / new Main: `5bfe84924981748dc3ee04874bd33621372523cb`.
+- PR #601 is closed unmerged and superseded by #603. Its exact-head CI exposed a real compile error in both Android JVM and APK lanes: missing import `androidx.compose.ui.semantics.role` at `MainActivity.kt:393`. This was diagnosed from job logs, corrected, and re-ported on post-#600 Main. Do not count the earlier failed run as passing.
+- PR #603 is the current Android selector candidate: clean base `5bfe84924981748dc3ee04874bd33621372523cb`, head `708b1026fc936fae40b79f1b1a46688e6fa84c2e`, with fresh exact-head CI runs `45551263461` and `45551263391` in progress at capture. Await all applicable Android JVM/APK/emulator/shared-contract/exact-head-summary contexts before merge.
+- PR #602's docs-only branch diverged after #600 merged. This follow-up copies the append-only ledger update onto the new Main baseline; #602 is superseded by this clean-current-Main documentation PR.
+- Main post-merge workflow run was still in progress at capture; the successful PR #600 exact-head validation remains the evidence for that merge. Recheck post-merge checks separately; do not conflate them with PR-head checks.
+
+### Next queue after this checkpoint
+1. Complete #603 CI, fix any compiler or emulator failures from logs, then merge only when required contexts are green.
+2. Integrate this ledger reconciliation so the append-only journal remains synchronized.
+3. Port #596 Backup and #597 provider policy individually onto current Main, then #599 Bridge and #598 project identity; each gets exact-head validation and its own bounded diff.
+4. Resume Core Outbox with a reviewed atomic enqueue/sequence-allocation slice. Do not add a sender or cross-Core transport before identity binding, encryption, peer trust, signature verification, inbox idempotency, ACK binding and restart recovery have tests.
