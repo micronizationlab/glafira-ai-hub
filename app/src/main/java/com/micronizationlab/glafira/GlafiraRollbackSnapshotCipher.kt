@@ -17,11 +17,12 @@ import javax.crypto.spec.GCMParameterSpec
 internal object GlafiraRollbackSnapshotCipher {
     private const val KEY_ALIAS = "glafira_core_rollback_v1"
     private const val ANDROID_KEY_STORE = "AndroidKeyStore"
+    private const val MAGIC_BYTES = 8
     private val MAGIC = "GLRBK001".toByteArray(Charsets.US_ASCII)
     private const val IV_BYTES = 12
     private const val MAX_SNAPSHOT_BYTES = 512L * 1024L * 1024L
     private const val GCM_TAG_BYTES = 16
-    private const val MAX_ENCRYPTED_BYTES = MAX_SNAPSHOT_BYTES + MAGIC.size + IV_BYTES + GCM_TAG_BYTES
+    private const val MAX_ENCRYPTED_BYTES = MAX_SNAPSHOT_BYTES + MAGIC_BYTES + IV_BYTES + GCM_TAG_BYTES
 
     fun encrypt(source: File, destination: File) {
         require(source.isFile && source.length() in 1L..MAX_SNAPSHOT_BYTES) {
