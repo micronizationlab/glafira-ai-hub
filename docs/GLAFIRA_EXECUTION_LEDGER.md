@@ -388,3 +388,8 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Explicit exclusion:** the long-running CLI task worker keeps its existing shutdown-bound secret lifetime because its executor must retain credentials until all in-flight handlers stop. It is not safe to force a callback-finally wipe while that worker is still active; this exception is documented and remains a separate scoped-lease follow-up.
 - **Acceptance:** Desktop Bridge JVM tests pass on exact PR head; success/failure callbacks wipe credentials and consumed passphrase; no change to vault file format or pairing protocol.
 - **Status:** RESERVED; implementation not yet accepted.
+
+## Work item execution update — 2026-11-25 07:18 UTC
+
+- First exact-head run `45566241596` completed. `desktop-bridge:test` executed 58 tests; two new scoped-callback tests failed because the test fixtures used different import and use passphrases. This is a test-fixture mismatch; production vault validation was not weakened. Shared contracts and Android debug APK contracts passed; emulator acceptance completed successfully. Exact-head summary correctly failed because Android JVM tests failed.
+- Corrected both fixtures to use the same passphrase. Next step is one exact-head CI run on the corrected commit; no merge until JVM tests and exact-head summary pass.
