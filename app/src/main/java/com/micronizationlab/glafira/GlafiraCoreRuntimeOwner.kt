@@ -201,8 +201,10 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
 
     /** Owner queue action; running work is deliberately not interruptible by this operation. */
     fun cancelTask(taskId: String, projectId: String): Boolean {
-        check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
-        val cancelled = taskStore.cancelUnclaimedTask(taskId, projectId, System.currentTimeMillis())
+        val cancelled = synchronized(taskStore) {
+            check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
+            taskStore.cancelUnclaimedTask(taskId, projectId, System.currentTimeMillis())
+        }
         if (cancelled && isEnabled) runCatching {
             GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
         }.onFailure {
