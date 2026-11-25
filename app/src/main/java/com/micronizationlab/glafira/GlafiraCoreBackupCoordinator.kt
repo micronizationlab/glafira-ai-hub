@@ -154,6 +154,9 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
     }
 
     private fun clearJournal() {
+        // The installation-local key is needed only while a pending rollback journal exists.
+        // Keep the marker until key deletion succeeds so cleanup failures remain fail-closed.
+        GlafiraRollbackSnapshotCipher.deleteKey()
         check(marker.delete()) { "Не удалось завершить журнал восстановления." }
         syncDirectory(journal)
         journal.deleteRecursively()
