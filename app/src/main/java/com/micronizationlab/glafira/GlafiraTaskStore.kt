@@ -1237,6 +1237,23 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             invalidateTaskArtifacts(
                 db, task, nowMillis, "OWNER_CANCELLED", GlafiraCoreTraceActorType.OWNER
             )
+            // The state trigger records the durable Core state transition. Add a separate,
+            // explicit OWNER action so audit consumers do not attribute the user's decision
+            // to Core merely because Core executed the transaction.
+            coreTraceStore.appendInTransaction(db, GlafiraCoreTraceDraft(
+                projectId = task.projectId,
+                taskId = task.taskId,
+                correlationId = task.taskId,
+                occurredAtMillis = nowMillis,
+                actorType = GlafiraCoreTraceActorType.OWNER,
+                actorId = "owner",
+                component = "CoreTaskStore",
+                eventType = GlafiraCoreTraceEventType.TASK_CANCELLED,
+                actionCode = "OWNER_CANCELLED_UNCLAIMED_TASK",
+                targetType = "TASK",
+                targetId = task.taskId,
+                resultStatus = "cancelled"
+            ))
             failDescendantsWithFailedDependency(db, taskId, projectId, nowMillis)
             db.setTransactionSuccessful()
             return true
@@ -1556,6 +1573,9 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             val preview = db.update(
                 GlafiraDryRunPreviewSchema.TABLE,
                 ContentValues().apply {
+                    // The enum has no CLOSED state. Keep the preview non-actionable in
+                    // storage, but audit task cancellation as lifecycle closure, never as an
+                    // owner review rejection.
                     put("review_status", GlafiraDryRunReviewStatus.REJECTED.name)
                     put("reviewed_at", nowMillis)
                 },
@@ -1564,9 +1584,9 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             if (preview > 0) coreTraceStore.appendInTransaction(db, GlafiraCoreTraceDraft(
                 projectId = task.projectId, taskId = task.taskId, correlationId = task.taskId,
                 occurredAtMillis = nowMillis, actorType = actorType, actorId = actorId,
-                component = "CoreTaskStore", eventType = GlafiraCoreTraceEventType.REVIEW_REJECTED,
+                component = "CoreTaskStore", eventType = GlafiraCoreTraceEventType.POLICY_CHECKED,
                 actionCode = "${actionPrefix}_DRY_RUN_PREVIEW_CLOSED", targetType = "DRY_RUN_PREVIEW",
-                targetId = task.taskId, resultStatus = "rejected"
+                targetId = task.taskId, resultStatus = "closed"
             ))
         }
     }
