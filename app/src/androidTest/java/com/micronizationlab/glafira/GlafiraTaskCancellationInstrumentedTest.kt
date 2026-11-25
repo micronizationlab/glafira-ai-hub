@@ -49,6 +49,23 @@ class GlafiraTaskCancellationInstrumentedTest {
         )
     }
 
+    @Test fun dependencyPropagationDoesNotFailAnotherCoresDescendant() {
+        store.enqueue(task("parent-owned-by-test-core"))
+        val otherCoreStore = GlafiraTaskStore(context, "glafira-cancel-peer-core")
+        try {
+            otherCoreStore.enqueueWithDependencies(
+                task("peer-core-child"), setOf("parent-owned-by-test-core"), 1_500L
+            )
+            assertTrue(cancel("parent-owned-by-test-core", "cancel-project", 2_000L))
+            assertEquals(
+                GlafiraTaskState.QUEUED,
+                otherCoreStore.getTask("peer-core-child")?.state
+            )
+        } finally {
+            otherCoreStore.close()
+        }
+    }
+
     @Test fun cancellationTraceIncludesExplicitOwnerActor() {
         store.enqueue(task("owner-trace"))
         assertTrue(cancel("owner-trace", "cancel-project", 2_000L))
