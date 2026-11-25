@@ -639,37 +639,46 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val passphrase = "GLAFIRA-${UUID.randomUUID()}-${UUID.randomUUID()}".toCharArray()
             var originalFailure: Throwable? = null
 
-            // A leftover owner marker proves that an interrupted previous run of this exact
-            // test may own the fixed journal. Never delete an unowned restore journal.
-            if (ownerMarker.exists()) {
-                check(!journal.exists() || journal.deleteRecursively()) {
-                    "Could not clean the previous test-owned rollback journal; preserve its Keystore key."
-                }
-                check(!journal.exists()) { "Previous test-owned rollback journal still exists." }
-                val staleTemps = checkNotNull(context.cacheDir.listFiles { file ->
-                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                }) { "Could not inspect stale rollback recovery files." }
-                staleTemps.forEach { file ->
-                    check(!file.exists() || file.delete()) { "Could not delete stale test recovery file: ${file.name}" }
-                }
-                check(checkNotNull(context.cacheDir.listFiles { file ->
-                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                }).isEmpty()) { "Stale test recovery files remain." }
-                GlafiraRollbackSnapshotCipher.deleteKey()
-                check(ownerMarker.delete()) { "Could not clear previous test ownership marker." }
-            }
-
-            assertFalse("Test refuses to delete an unowned pending restore journal", journal.exists())
-            assertFalse("Test requires no pre-existing rollback key", rollbackKeyExists())
-            assertFalse("Test-owned file must start absent", knownGoodFile.exists())
-            assertFalse("Mutation file must start absent", createdAfterMarkerFile.exists())
-
             try {
-                check(ownerMarker.createNewFile()) { "Could not establish test ownership marker." }
-                knownGoodFile.writeText("known-good-before-marker", Charsets.UTF_8)
-                store.enqueue(task("known-good-before-marker"))
-                val originalCoordinator = GlafiraCoreBackupCoordinator(context, store)
-                originalCoordinator.prepareRollback(passphrase)
+                // Serialize setup/cleanup with every public backup/restore operation. The
+                // owner marker proves that this test, and only this test, owns the fixed journal.
+                GlafiraCoreMaintenanceGate.withExclusive {
+                    if (ownerMarker.exists()) {
+                        check(!journal.exists() || journal.deleteRecursively()) {
+                            "Could not clean the previous test-owned rollback journal; preserve its Keystore key."
+                        }
+                        check(!journal.exists()) { "Previous test-owned rollback journal still exists." }
+                        val staleTemps = checkNotNull(context.cacheDir.listFiles { file ->
+                            file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                        }) { "Could not inspect stale rollback recovery files." }
+                        staleTemps.forEach { file ->
+                            check(!file.exists() || file.delete()) {
+                                "Could not delete stale test recovery file: ${file.name}"
+                            }
+                        }
+                        check(checkNotNull(context.cacheDir.listFiles { file ->
+                            file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                        }).isEmpty()) { "Stale test recovery files remain." }
+                        check(!knownGoodFile.exists() || knownGoodFile.delete()) {
+                            "Could not remove previous test-owned known-good file."
+                        }
+                        check(!createdAfterMarkerFile.exists() || createdAfterMarkerFile.delete()) {
+                            "Could not remove previous test-owned mutation file."
+                        }
+                        GlafiraRollbackSnapshotCipher.deleteKey()
+                        check(ownerMarker.delete()) { "Could not clear previous test ownership marker." }
+                    }
+
+                    assertFalse("Test refuses to delete an unowned pending restore journal", journal.exists())
+                    assertFalse("Test requires no pre-existing rollback key", rollbackKeyExists())
+                    assertFalse("Test-owned file must start absent", knownGoodFile.exists())
+                    assertFalse("Mutation file must start absent", createdAfterMarkerFile.exists())
+
+                    check(ownerMarker.createNewFile()) { "Could not establish test ownership marker." }
+                    knownGoodFile.writeText("known-good-before-marker", Charsets.UTF_8)
+                    store.enqueue(task("known-good-before-marker"))
+                    GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
+                }
 
                 assertTrue("V3 marker must be durable before live-state mutation", marker.isFile)
                 assertEquals("GLAFIRA_RESTORE_ROLLBACK_V3", marker.readText(Charsets.UTF_8))
@@ -702,26 +711,39 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             } finally {
                 passphrase.fill('\u0000')
                 val cleanupFailure = runCatching {
-                    if (journal.exists()) {
-                        check(journal.deleteRecursively()) {
-                            "Could not remove test-owned rollback journal; its Keystore key must be preserved."
+                    GlafiraCoreMaintenanceGate.withExclusive {
+                        // Without the ownership marker, leave any journal/key untouched.
+                        if (ownerMarker.exists()) {
+                            if (journal.exists()) {
+                                check(journal.deleteRecursively()) {
+                                    "Could not remove test-owned rollback journal; its Keystore key must be preserved."
+                                }
+                            }
+                            check(!journal.exists()) {
+                                "Test-owned rollback journal still exists; preserve its Keystore key."
+                            }
+                            val remainingTemps = checkNotNull(context.cacheDir.listFiles { file ->
+                                file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                            }) { "Could not inspect rollback recovery temp files during cleanup." }
+                            remainingTemps.forEach { file ->
+                                check(!file.exists() || file.delete()) {
+                                    "Could not delete rollback recovery temp: ${file.absolutePath}"
+                                }
+                            }
+                            check(checkNotNull(context.cacheDir.listFiles { file ->
+                                file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                            }).isEmpty()) { "Rollback recovery temp files remain after cleanup." }
+                            // Delete the installation-local key only after confirming the journal is gone.
+                            GlafiraRollbackSnapshotCipher.deleteKey()
+                            check(!knownGoodFile.exists() || knownGoodFile.delete()) {
+                                "Could not remove test-owned known-good file."
+                            }
+                            check(!createdAfterMarkerFile.exists() || createdAfterMarkerFile.delete()) {
+                                "Could not remove test-owned mutation file."
+                            }
+                            check(ownerMarker.delete()) { "Could not clear test ownership marker." }
                         }
                     }
-                    check(!journal.exists()) { "Test-owned rollback journal still exists; preserve its Keystore key." }
-                    val remainingTemps = checkNotNull(context.cacheDir.listFiles { file ->
-                        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                    }) { "Could not inspect rollback recovery temp files during cleanup." }
-                    remainingTemps.forEach { file ->
-                        check(!file.exists() || file.delete()) { "Could not delete rollback recovery temp: ${file.absolutePath}" }
-                    }
-                    check(checkNotNull(context.cacheDir.listFiles { file ->
-                        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                    }).isEmpty()) { "Rollback recovery temp files remain after cleanup." }
-                    // Delete the installation-local key only after confirming the journal is gone.
-                    GlafiraRollbackSnapshotCipher.deleteKey()
-                    check(!knownGoodFile.exists() || knownGoodFile.delete()) { "Could not remove test-owned known-good file." }
-                    check(!createdAfterMarkerFile.exists() || createdAfterMarkerFile.delete()) { "Could not remove test-owned mutation file." }
-                    check(!ownerMarker.exists() || ownerMarker.delete()) { "Could not clear test ownership marker." }
                 }.exceptionOrNull()
                 if (cleanupFailure != null) {
                     val failure = originalFailure
