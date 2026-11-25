@@ -14,13 +14,10 @@ class GlafiraAiProviderTaskPlanDecomposer(
     private val appContext = context.applicationContext
 
     override suspend fun decompose(request: GlafiraCoreTaskPlanRequest): GlafiraCoreTaskPlan {
-        require(isProviderConfigured(appContext, providerId)) {
-            "TASK_PLANNER_PROVIDER_NOT_CONFIGURED"
-        }
         val prompt = buildString {
             appendLine("Ты — планировщик GLAFIRA. Разбей поручение на проверяемые независимые подзадачи.")
             appendLine("Верни только JSON без Markdown и пояснений.")
-            appendLine("Формат: {\"goal\":\"...\",\"tasks\":[{\"id\":\"task_1\",\"title\":\"...\",\"instruction\":\"...\",\"executor\":\"GLAFIRA|ANALYST|PROGRAMMER|RESEARCHER\",\"dependsOn\":[]}]}.")
+            appendLine("Формат: {\"goal\":\"...\",\"tasks\":[{\"id\":\"task_1\",\"title\":\"...\",\"instruction\":\"...\",\"executor\":\"GLAFIRA|ANALYST|PROGRAMMER|RESEARCHER\",\"dependsOn\":[]} ]}.")
             appendLine("Не более ${minOf(request.maxNodes, GlafiraTaskPlanner.MAX_TASKS)} подзадач.")
             appendLine("Зависимости указывай только по id других подзадач; независимые задачи не связывай.")
             appendLine("Не включай пароли, ключи, токены, персональные секреты или выдуманные результаты.")
@@ -28,7 +25,7 @@ class GlafiraAiProviderTaskPlanDecomposer(
             appendLine("Используй исполнителя RESEARCHER для исследования, ANALYST для анализа, PROGRAMMER для разработки, GLAFIRA для координации.")
             appendLine("Каждая инструкция должна быть самодостаточной, конкретной и проверяемой.")
         }
-        val response = callAiProvider(
+        val response = callAiProviderResult(
             context = appContext,
             providerId = providerId,
             history = listOf(Msg(
@@ -38,10 +35,20 @@ class GlafiraAiProviderTaskPlanDecomposer(
                 date = ""
             )),
             systemPrompt = prompt
-        )
-        require(response.isNotBlank() && !response.startsWith("Ошибка:") &&
-            !response.startsWith("Ошибка API") && !response.startsWith("Ошибка сети")
-        ) { "TASK_PLANNER_PROVIDER_REQUEST_FAILED" }
+        ).requirePlanText()
         return GlafiraJsonTaskPlanDecoder.decode(request, response)
     }
 }
+
+/** Propagates typed dispatch certainty to the caller; this adapter never performs a fallback or retry. */
+internal fun AiProviderResult.requirePlanText(): String = when (this) {
+    is AiProviderResult.Success -> {
+        require(text.isNotBlank()) { "TASK_PLANNER_PROVIDER_EMPTY_RESPONSE" }
+        text
+    }
+    is AiProviderResult.Failure -> throw AiProviderTaskPlanException(error)
+}
+
+internal class AiProviderTaskPlanException(
+    val providerError: AiProviderError
+) : IllegalStateException("TASK_PLANNER_PROVIDER_${providerError.category.name}")

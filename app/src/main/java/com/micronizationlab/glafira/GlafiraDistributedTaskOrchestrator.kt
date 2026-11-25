@@ -33,7 +33,11 @@ internal data class GlafiraDistributedTaskResult(
     val node: GlafiraExecutionNode,
     val succeeded: Boolean,
     val output: String? = null,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    /** Preserved provider dispatch classification; null for non-provider or successful remote work. */
+    val providerOutcome: AiRequestOutcome? = null,
+    val providerErrorCategory: AiProviderErrorCategory? = null,
+    val providerRetryAfterMillis: Long? = null
 )
 
 /**
