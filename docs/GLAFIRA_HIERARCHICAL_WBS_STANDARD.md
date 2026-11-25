@@ -68,7 +68,7 @@ Every participant MUST work in this order:
 ## 5. Sequencing and parallel work
 
 - Default execution within a task is sequential: `step N` before `step N+1`.
-- Parallel work is allowed for explicitly independent executable leaves across different workstreams or within one workstream; sibling status is not required. Dependency graphs, files, APIs, schemas and shared resources must not overlap, and build/release lanes remain serialized.
+- Parallel work is allowed for explicitly independent executable leaves across different workstreams or within one workstream; sibling status is not required. Parallel leaves must not depend on one another or on any unfinished common predecessor. Their dependency paths may share ancestors only when every shared ancestor is already accepted as `DONE`. Files, APIs, schemas and shared resources must not overlap, and build/release lanes remain serialized.
 - Every parallel item needs its own WBS leaf ID, owner, branch, file reservation and acceptance criteria.
 - One logical behavior or shared file set has one active implementation owner. Reviewers may inspect but must not create competing implementations.
 - The eleventh workstream must collect helper work, map it to WBS IDs, deduplicate it and reserve ownership before integration.
