@@ -9,6 +9,14 @@
 - **Superseded** — заменено более новым ADR с указанием ссылки.
 - **Rejected** — отклонено с кратким обоснованием.
 
+## Текущие решения
+
+| ADR | Решение | Статус |
+|---|---|---|
+| [ADR-0001](ADR-0001-runtime-coordination-local-core-not-github.md) | Runtime coordination остаётся внутри независимых Core; GitHub — development plane | Accepted |
+| [ADR-0002](ADR-0002-kotlin-core-not-rust-rewrite.md) | Kotlin сохраняется для Android Core; Rust rewrite не выполняется; Windows остаётся .NET/C# | Accepted |
+| [ADR-0003](ADR-0003-trace-service-and-opentelemetry.md) | TraceService — durable audit; OpenTelemetry — отдельная техническая телеметрия | Accepted |
+
 ## Структура ADR
 
 1. Заголовок и номер.
