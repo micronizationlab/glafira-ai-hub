@@ -445,3 +445,9 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Correct invariant:** after restore, the receipt and ownership row are absent, the task is WAITING_FOR_OWNER, and replay of the old signed transfer is rejected as TASK_NOT_FOUND. This proves the restore owner-reset boundary prevents transfer replay until fresh owner authority is established.
 - **Correction:** commit `16c591abb4ab4e37aebc7c9862d7eed2ca2110d9` replaces the incorrect receipt-survival assertion with the complete owner-reset/replay-rejection test. Issue #644 now records this correct acceptance condition.
 - **Validation:** new exact-head CI must run against the updated branch. Do not report PR #627 as green until emulator, JVM, APK, shared contracts and exact-head summary pass. Prior run failure remains recorded.
+
+## Core PR branch reconciliation onto current Main — 2026-11-25
+
+- Main advanced by the owner-approved documentation ADR commit `ea2647ff99512702f6f584171d8e6159b6ac14b1` while PR #627 was in flight. The original PR branch was therefore one commit behind and not mergeable.
+- Created `core/android-ownership-transfer-mainline-current-20261125` from current Main and copied the exact eight changed files from PR #627, including the latest corrected backup restore test and all prior implementation. Compare against Main shows 8 changed files; no additional or removed code paths.
+- The replacement branch is ready to move the canonical PR #627 head with an expected-old-SHA lease. This is a branch-history reconciliation only; it preserves the file contents and is not a direct Main code push. Fresh exact-head CI is mandatory after the ref update.
