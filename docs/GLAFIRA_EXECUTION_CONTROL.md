@@ -125,3 +125,29 @@ At the end of each work cycle report:
 - active blockers and who owns them.
 
 No vague “done”, no hidden progress, no repeated work, no second build without a reason.
+
+
+## 12. Mandatory fallback project — GLAFIRA DESIGN
+
+Every one of the eleven workstreams must produce one bounded deliverable in each coordinator cycle. A lane must not be left idle or silently marked skipped. If its assigned implementation or validation step cannot advance because of a dependency, unavailable executor, CI/platform lane not selected, external physical acceptance, pending review, or another explicit blocker, the coordinator assigns that lane one distinct work package in the separate **GLAFIRA DESIGN** project tracked by issue #672.
+
+The original implementation/test/acceptance status remains exactly **BLOCKED**, **NOT RUN**, or **SKIPPED** as applicable. Design work is a separate deliverable and never substitutes for required tests, physical-device acceptance, security review, owner approval or merge gates.
+
+### Design scope and boundaries
+
+- Product identity: ICQ 2003 + Apple/macOS polish, retaining the ICQ flower.
+- One coherent system for Android, iOS, Windows Desktop and Windows Agent.
+- Shared color and typography tokens, spacing, surfaces, iconography, controls, navigation, motion, accessibility, and loading/empty/error/model-status/quota states.
+- Screen specifications for Chat, Projects/Control Center, Agent Network, model/provider status, Task Queue, Settings, pairing and Backup/Recovery.
+- Design may not change Core behavior, owner authority, permissions, cryptography, database schemas, Bridge protocols or security/approval boundaries.
+
+### Assignment rules
+
+- One helper = one active bounded assignment. A blocked helper does not self-select another task; the coordinator assigns a distinct design package.
+- The design packages in issue #672 have separate platform/component ownership and non-overlapping files or document sections.
+- The design foundation/tokens precede dependent platform specifications. No duplicated edits or competing source-of-truth files.
+- Each package has its own branch and focused PR, normally 50–150 changed lines and no more than 200 without prior written approval.
+- Design proposals require owner review before implementation lanes treat them as accepted. A mockup or design document is not implementation completion.
+- The coordinator still owns cross-lane intake, deduplication, review, CI, merge sequencing and post-merge verification.
+
+This rule applies whenever a lane would otherwise be idle for a cycle. It does not authorize parallel work on conflicting files or weaken the dependency order of P1 Core, P2 Backup & Recovery, P3 Bridge/Desktop.
