@@ -45,7 +45,7 @@ jobs:
         run: python3 .github/scripts/detect_changes.py
 
   workflow-lint:
-    name: GitHub Actions workflow lint
+    name: Workflow lint
     needs: changes
     if: needs.changes.outputs.workflow_lint == 'true'
     runs-on: ubuntu-latest
@@ -102,7 +102,7 @@ jobs:
           retention-days: 7
 
   android-apk:
-    name: Android debug APK package
+    name: Android debug APK contracts
     needs: [changes]
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
@@ -125,7 +125,7 @@ jobs:
           retention-days: 14
 
   android-emulator:
-    name: Android emulator acceptance
+    name: SharedAndroid emulator acceptance contracts
     needs: [changes]
     if: needs.changes.outputs.android_acceptance == 'true'
     runs-on: ubuntu-24.04
@@ -176,7 +176,7 @@ jobs:
           retention-days: 7
 
   ios-tests:
-    name: iOS Swift package tests
+    name: iOS
     needs: changes
     if: needs.changes.outputs.ios == 'true'
     runs-on: macos-latest
@@ -204,7 +204,7 @@ jobs:
         run: xcodebuild -project ios/GLAFIRA.xcodeproj -scheme GLAFIRA -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 
   windows-desktop-tests:
-    name: Windows Desktop Hub tests and build
+    name: Windows Desktop
     needs: changes
     if: needs.changes.outputs.desktop_hub == 'true'
     runs-on: windows-latest
@@ -225,7 +225,7 @@ jobs:
           if-no-files-found: error
 
   windows-agent-tests:
-    name: Windows Agent tests and build
+    name: Windows Agent
     needs: changes
     if: needs.changes.outputs.agent == 'true'
     runs-on: windows-latest
@@ -246,7 +246,7 @@ jobs:
       - run: dotnet build windows-agent/GLAFIRA.Agent.Worker/GLAFIRA.Agent.Worker.csproj --configuration Release --no-restore
 
   contract-conformance:
-    name: Shared contract conformance
+    name: Shared contracts
     needs: changes
     if: needs.changes.outputs.contracts == 'true'
     runs-on: ubuntu-latest
@@ -267,7 +267,7 @@ jobs:
     steps:
       - name: Publish exact SHA and honest component status
         env:
-          SHA: ${{ github.sha }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           CHANGES: ${{ needs.changes.result }}
           WORKFLOW_LINT: ${{ needs.workflow-lint.result }}
           ANDROID: ${{ needs.android-tests.result }}
