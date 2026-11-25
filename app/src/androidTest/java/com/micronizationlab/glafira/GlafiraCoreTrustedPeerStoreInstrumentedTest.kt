@@ -157,30 +157,14 @@ class GlafiraCoreTrustedPeerStoreInstrumentedTest {
     @Test
     fun missingOrAlreadyRevokedPeerDoesNotConsumeFreshOwnerSession() {
         val session = ownerSession()
-        assertEquals(
-            GlafiraPeerTrustMutation.NOT_FOUND,
-            store().revoke("peer-core-0008", 1, session, 16_000L)
-        )
+        assertEquals(GlafiraPeerTrustMutation.NOT_FOUND, store().revoke("peer-core-0008", 1, session, 16_000L))
         val first = candidate("peer-core-0008", 1)
-        assertEquals(
-            GlafiraPeerTrustMutation.ENROLLED,
-            store().enroll(first, first.claimedFingerprintSha256, session, 16_001L)
-        )
-        assertEquals(
-            GlafiraPeerTrustMutation.REVOKED,
-            store().revoke(first.coreId, 1, ownerSession(), 16_002L)
-        )
-
+        assertEquals(GlafiraPeerTrustMutation.ENROLLED, store().enroll(first, first.claimedFingerprintSha256, session, 16_001L))
+        assertEquals(GlafiraPeerTrustMutation.REVOKED, store().revoke(first.coreId, 1, ownerSession(), 16_002L))
         val retrySession = ownerSession()
-        assertEquals(
-            GlafiraPeerTrustMutation.ALREADY_REVOKED,
-            store().revoke(first.coreId, 1, retrySession, 16_003L)
-        )
-        val nextEpoch = candidate(first.coreId, 2)
-        assertEquals(
-            GlafiraPeerTrustMutation.ENROLLED,
-            store().enroll(nextEpoch, nextEpoch.claimedFingerprintSha256, retrySession, 16_004L)
-        )
+        assertEquals(GlafiraPeerTrustMutation.ALREADY_REVOKED, store().revoke(first.coreId, 1, retrySession, 16_003L))
+        val next = candidate(first.coreId, 2)
+        assertEquals(GlafiraPeerTrustMutation.ENROLLED, store().enroll(next, next.claimedFingerprintSha256, retrySession, 16_004L))
     }
 
     private fun store(): GlafiraCoreTrustedPeerStore =
