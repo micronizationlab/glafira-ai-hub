@@ -30,7 +30,7 @@ class GlafiraCoreTrustedPeerStore(
     null,
     DATABASE_VERSION
 ) {
-    private val localCoreId = AndroidCoreInstallationIdentityStore(context).loadOrCreate().coreId
+    internal val localCoreId = AndroidCoreInstallationIdentityStore(context).loadOrCreate().coreId
 
     init {
         val noBackupRoot = context.noBackupFilesDir.canonicalFile
@@ -161,6 +161,20 @@ class GlafiraCoreTrustedPeerStore(
         } finally {
             if (db.inTransaction()) db.endTransaction()
         }
+    }
+
+    /**
+     * Runs a short local operation while this peer's active trust record cannot be revoked
+     * or rotated. The callback must not perform network or UI work.
+     */
+    @Synchronized
+    internal fun <T : Any> withActivePeer(
+        coreId: String,
+        keyEpoch: Long,
+        action: (GlafiraTrustedPeer) -> T
+    ): T? {
+        val peer = resolveActive(coreId, keyEpoch) ?: return null
+        return action(peer)
     }
 
     /** Exact active key lookup for a later transfer verifier; revoked or stale epochs never resolve. */

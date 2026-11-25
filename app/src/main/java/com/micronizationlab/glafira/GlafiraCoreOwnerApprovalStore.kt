@@ -110,6 +110,27 @@ class GlafiraCoreOwnerApprovalStore(
         )
     }
 
+    /**
+     * Invalidates approvals issued under the previous task owner generation.
+     * Called inside the ownership-transfer SQLite transaction.
+     */
+    internal fun invalidateForOwnershipTransfer(
+        db: SQLiteDatabase,
+        taskId: String,
+        oldOwnerCoreId: String,
+        oldOwnerGeneration: Long
+    ): Int = db.update(
+        "core_action_approvals",
+        ContentValues().apply {
+            put("status", "EXPIRED")
+            putNull("approved_at")
+            putNull("grant_expires_at")
+            put("decided_by", "ownership-transfer")
+        },
+        "task_id = ? AND owner_core_id = ? AND owner_generation = ? AND status IN ('PENDING','APPROVED')",
+        arrayOf(taskId, oldOwnerCoreId, oldOwnerGeneration.toString())
+    )
+
     @Synchronized
     override fun grantedScopes(task: GlafiraTask): Set<String> {
         val summary = runCatching {
