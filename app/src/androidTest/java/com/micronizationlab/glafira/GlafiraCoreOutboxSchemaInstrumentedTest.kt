@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
@@ -40,6 +42,15 @@ class GlafiraCoreOutboxSchemaInstrumentedTest {
             ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
             assertTrue(indexes.contains("index_core_outbox_pending_delivery"))
             assertTrue(indexes.contains("index_core_outbox_task_generation"))
+            val portableFile = File(context.cacheDir, "core-outbox-portability-test.json")
+            try {
+                val portable = GlafiraPortableCoreSnapshot(store)
+                portable.exportTo(portableFile)
+                val snapshot = portable.readVerified(portableFile)
+                assertFalse(snapshot.getJSONObject("tables").has(GlafiraCoreOutboxSchema.TABLE))
+            } finally {
+                portableFile.delete()
+            }
         } finally {
             store.close()
             context.deleteDatabase("glafira_core_tasks.db")
