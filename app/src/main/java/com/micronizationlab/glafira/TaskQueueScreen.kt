@@ -207,11 +207,11 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                         message = "Не удалось открыть подтверждение владельца из текущего окна."
                         cancelTaskTarget = null
                     } else {
+                        cancellingTask = true
                         showBiometricPromptWithResult(
                             activity = activity,
                             onSuccess = { authenticationResult ->
                                 val session = GlafiraCoreOwnerSession.fromAuthentication(authenticationResult)
-                                cancellingTask = true
                                 scope.launch {
                                     val result = runCatching {
                                         withContext(Dispatchers.IO) {
@@ -230,6 +230,7 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                                 }
                             },
                             onError = { error ->
+                                cancellingTask = false
                                 message = "Биометрическое подтверждение отменено: $error"
                                 cancelTaskTarget = null
                             }
