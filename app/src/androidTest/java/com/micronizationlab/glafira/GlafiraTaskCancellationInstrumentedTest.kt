@@ -11,7 +11,6 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-
 @RunWith(AndroidJUnit4::class)
 class GlafiraTaskCancellationInstrumentedTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
@@ -29,7 +28,6 @@ class GlafiraTaskCancellationInstrumentedTest {
         payload = "{}", origin = "owner", createdAtMillis = 1_000L,
         updatedAtMillis = 1_000L, idempotencyKey = "cancel-project:$id"
     )
-
     @Test fun cancellationRecordsHistoryFailsChildrenAndExcludesClaim() {
         store.enqueue(task("parent"))
         store.enqueueWithDependencies(task("child"), setOf("parent"), 1_500L)
@@ -43,7 +41,6 @@ class GlafiraTaskCancellationInstrumentedTest {
         assertFalse(store.cancelUnclaimedTask("parent", "cancel-project", 3_000L))
         assertNull(store.claimNext(4_000L))
     }
-
     @Test fun runningOrWrongProjectTaskCannotBeCancelled() {
         store.enqueue(task("running"))
         assertEquals("running", store.claimNext(2_000L)?.taskId)
@@ -53,7 +50,6 @@ class GlafiraTaskCancellationInstrumentedTest {
         assertFalse(store.cancelUnclaimedTask("wrong-project", "another-project", 4_000L))
         assertEquals(GlafiraTaskState.QUEUED, store.getTask("wrong-project")?.state)
     }
-
     @Test fun waitingAndRetryScheduledTasksCanBeCancelled() {
         listOf(GlafiraTaskState.WAITING_FOR_NETWORK, GlafiraTaskState.WAITING_FOR_OWNER).forEachIndexed { i, state ->
             val id = "waiting-$i"
@@ -68,7 +64,6 @@ class GlafiraTaskCancellationInstrumentedTest {
         assertTrue(store.cancelUnclaimedTask("retry", "cancel-project", 5_000L))
         assertEquals(GlafiraTaskState.CANCELLED, store.getTask("retry")?.state)
     }
-
     @Test fun concurrentClaimAndCancelCannotOverwriteEachOther() {
         val secondStore = GlafiraTaskStore(context)
         val gate = CountDownLatch(1)
