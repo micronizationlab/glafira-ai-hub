@@ -581,7 +581,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 arrayOf(taskId)
             ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
         )
-        val recoveryTempPrefix = "glafira-rollback-recovery-"
         val passphrase = "GLAFIRA-rollback-canary-test-2026".toCharArray()
         try {
             GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
