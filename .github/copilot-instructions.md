@@ -118,3 +118,14 @@ A numbered Program 150 step becomes DONE only after its full acceptance criterio
 ## Mandatory autonomous defect-repair cycle (owner-approved operating rule, 2026-11-24)
 
 Every helper MUST follow [AUTONOMOUS_REPAIR_CYCLE.md](../docs/engineering/AUTONOMOUS_REPAIR_CYCLE.md): capture reproducible evidence; check ledger/PR/branch ownership; fix actionable defects within the reserved scope; add regression coverage; run and inspect relevant tests; repeat after source/test failures; and report exact evidence. If the defect belongs to another component, create/link a specific work item for its named owner and continue independent work. A journal entry alone does not close an actionable defect. This rule grants no additional write, approval, merge, secret or side-effect permissions and does not override execution control, PR limits, serialized CI, owner approval or frozen PR #410.
+
+
+## Mandatory multi-step cycle cadence — owner-approved for all eleven workstreams
+
+The coordinator pre-plans a bounded sequential package for each of the eleven permanent workstreams. Target 3–5 genuine executable leaf steps per lane when the current backlog/dependencies permit; this is not a quota. Never invent tasks, duplicate work, split acceptance artificially, or bypass predecessor steps.
+
+Each helper still has **exactly one active bounded work item at a time**. The coordinator may plan several leaves but assigns the next only after the current leaf is completed and its evidence reviewed, or explicitly released as blocked. Helpers must not self-select tasks or switch lanes. Independent leaves may run concurrently only with distinct WBS IDs, executors, branches and exclusive file/behavior ownership. Dependent leaves wait for accepted predecessors.
+
+On verified completion, the coordinator releases file ownership and assigns the next eligible leaf immediately; do not wait for the slowest lane. On a blocker, check the global ready queue for equal/higher-priority implementation, validation, intake, review, merge or post-merge work first. Only when none is eligible may the coordinator assign a separate bounded GLAFIRA DESIGN fallback item from issue #672. Keep the original blocked/skipped/owner-acceptance state unchanged; design is separate work and never substitutes for acceptance. Return to the primary package when unblocked.
+
+Workstream 11 continuously performs helper intake, deduplication, reservations, review and safe integration. Track planned/assigned/completed/blocked/in-review/CI-passed/merged outcomes per lane with exact evidence. Reuse the existing Core durable queue, owner generation/fencing, grants, Trace, ACK and recovery for runtime orchestration; never add a competing queue or use GitHub as real-time runtime coordination. This cadence does not weaken owner authority, privacy/security, exact-head CI, serialized builds, PR-size, review or protected-Main requirements.
