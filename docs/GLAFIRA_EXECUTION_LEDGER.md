@@ -451,3 +451,12 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - Main advanced by the owner-approved documentation ADR commit `ea2647ff99512702f6f584171d8e6159b6ac14b1` while PR #627 was in flight. The original PR branch was therefore one commit behind and not mergeable.
 - Created `core/android-ownership-transfer-mainline-current-20261125` from current Main and copied the exact eight changed files from PR #627, including the latest corrected backup restore test and all prior implementation. Compare against Main shows 8 changed files; no additional or removed code paths.
 - The replacement branch is ready to move the canonical PR #627 head with an expected-old-SHA lease. This is a branch-history reconciliation only; it preserves the file contents and is not a direct Main code push. Fresh exact-head CI is mandatory after the ref update.
+
+
+## MaintenanceGate contention test — 2026-11-25 (integrated after Core ownership receiver)
+
+- **Work item:** GLAFIRA-S016-W01 / WBS 1.1.4; tracker #638, sprint #634; PR #648.
+- **Change:** host-JVM regression test holds an execution lease, enters exclusive maintenance, verifies 100 waiters remain suspended, then releases maintenance and verifies all 100 resume; optional ThreadMXBean CPU measurement is reflection-only and safely unavailable on unsupported VMs.
+- **Exact-head evidence before reconciliation:** CI #45599259011 passed Android JVM (321 tests, 0 failures/errors/skips), Android Debug APK and Shared contracts; emulator/iOS/Windows/workflow lint were skipped by change-aware routing. Dispatcher #45599259055 passed.
+- **Integration note:** PR branch conflicted after Core receiver PR #627 merged. The branch is reconciled onto Main with the concurrency test preserved and this ledger entry appended to the current Main ledger. Fresh exact-head CI is required for the reconciled head.
+- **Scope:** test-only; no production MaintenanceGate behavior changed. Host-JVM evidence does not imply emulator or physical-device acceptance.
