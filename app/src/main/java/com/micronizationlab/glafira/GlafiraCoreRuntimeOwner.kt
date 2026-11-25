@@ -417,14 +417,23 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     fun cancelTask(
         taskId: String,
         projectId: String,
+        expectedOwnerCoreId: String,
+        expectedOwnerGeneration: Long,
+        expectedStateVersion: Long,
         ownerSession: GlafiraCoreOwnerSession
     ): Boolean {
         if (!ownerSession.consume()) return false
+        if (expectedOwnerCoreId != installationIdentity.coreId ||
+            expectedOwnerGeneration <= 0L || expectedStateVersion < 0L
+        ) return false
         val cancelled = synchronized(taskStore) {
             check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) {
                 "RESTORE_RECOVERY_REQUIRED"
             }
-            taskStore.cancelUnclaimedTask(taskId, projectId, System.currentTimeMillis())
+            taskStore.cancelUnclaimedTask(
+                taskId, projectId, expectedOwnerCoreId, expectedOwnerGeneration, expectedStateVersion,
+                System.currentTimeMillis()
+            )
         }
         if (cancelled) runCatching {
             if (isEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
