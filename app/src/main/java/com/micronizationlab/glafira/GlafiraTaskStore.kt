@@ -532,8 +532,8 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 null, null, null, "1"
             ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
                 ?: return false
-            val task = queryTask(db, taskId) ?: return false
-            if (task.projectId != previewProjectId) return false
+            val task = queryTask(db, taskId, previewProjectId) ?: return false
+            if (task.state == GlafiraTaskState.CANCELLED || task.state == GlafiraTaskState.FAILED) return false
             val changed = db.update(
                 GlafiraDryRunPreviewSchema.TABLE,
                 ContentValues().apply {
@@ -1026,7 +1026,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             put("updated_at", nowMillis)
             putNull("retry_at")
             put("last_error", "TASK_DEADLINE_EXPIRED")
-        }, "state IN ('queued','waiting_for_network','waiting_for_owner','retry_scheduled') AND deadline_at <= ? AND (last_error IS NULL OR last_error NOT IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN'))$ownerClause",
+        }, "state IN ('queued','waiting_for_network','waiting_for_owner','retry_scheduled') AND deadline_at <= ? AND (last_error IS NULL OR last_error NOT IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN','EXECUTION_OUTCOME_UNCERTAIN','CORE_RESULT_PERSIST_FAILED:CORE_EXECUTION_OUTCOME_UNKNOWN'))$ownerClause",
             args)
     }
 
@@ -1182,8 +1182,8 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val task = queryTask(db, taskId) ?: return false
-            if (task.projectId != projectId || !GlafiraTaskPolicy.ownerCanCancel(task)) return false
+            val task = queryTask(db, taskId, projectId) ?: return false
+            if (!GlafiraTaskPolicy.ownerCanCancel(task)) return false
             val changed = transitionInternal(
                 token = null,
                 taskId = taskId,
@@ -1194,20 +1194,10 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 lastError = "OWNER_CANCELLED"
             )
             if (!changed) return false
-            if (tableExists(db, "core_action_approvals")) {
-                db.update(
-                    "core_action_approvals",
-                    ContentValues().apply {
-                        put("status", "EXPIRED")
-                        putNull("approved_at")
-                        putNull("grant_expires_at")
-                        put("decided_by", "owner-cancelled")
-                    },
-                    "task_id = ? AND status IN ('PENDING','APPROVED')",
-                    arrayOf(taskId)
-                )
-            }
-            failTasksWithFailedDependencies(db, nowMillis)
+            invalidateTaskArtifacts(
+                db, task, nowMillis, "OWNER_CANCELLED", GlafiraCoreTraceActorType.OWNER
+            )
+            failDescendantsWithFailedDependency(db, taskId, projectId, nowMillis)
             db.setTransactionSuccessful()
             return true
         } finally {
@@ -1488,6 +1478,99 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         }
     }
 
+    private fun invalidateTaskArtifacts(
+        db: SQLiteDatabase,
+        task: GlafiraTask,
+        nowMillis: Long,
+        actionPrefix: String,
+        actorType: GlafiraCoreTraceActorType
+    ) {
+        val actorId = if (actorType == GlafiraCoreTraceActorType.OWNER) "owner" else "core"
+        if (tableExists(db, "core_action_approvals")) {
+            val pending = db.update(
+                "core_action_approvals",
+                ContentValues().apply { put("status", "EXPIRED"); putNull("approved_at"); putNull("grant_expires_at") },
+                "task_id = ? AND status = 'PENDING'", arrayOf(task.taskId)
+            )
+            if (pending > 0) coreTraceStore.appendInTransaction(db, GlafiraCoreTraceDraft(
+                projectId = task.projectId, taskId = task.taskId, correlationId = task.taskId,
+                occurredAtMillis = nowMillis, actorType = actorType, actorId = actorId,
+                component = "CoreTaskStore", eventType = GlafiraCoreTraceEventType.APPROVAL_EXPIRED,
+                actionCode = "${actionPrefix}_PENDING_APPROVAL_EXPIRED", targetType = "ACTION_APPROVAL",
+                targetId = task.taskId, approvalRef = task.taskId, resultStatus = "expired"
+            ))
+            val approved = db.update(
+                "core_action_approvals",
+                ContentValues().apply { put("status", "EXPIRED"); putNull("grant_expires_at") },
+                "task_id = ? AND status = 'APPROVED'", arrayOf(task.taskId)
+            )
+            if (approved > 0) coreTraceStore.appendInTransaction(db, GlafiraCoreTraceDraft(
+                projectId = task.projectId, taskId = task.taskId, correlationId = task.taskId,
+                occurredAtMillis = nowMillis, actorType = actorType, actorId = actorId,
+                component = "CoreTaskStore", eventType = GlafiraCoreTraceEventType.APPROVAL_REVOKED,
+                actionCode = "${actionPrefix}_APPROVED_GRANT_REVOKED", targetType = "ACTION_APPROVAL",
+                targetId = task.taskId, approvalRef = task.taskId, resultStatus = "revoked"
+            ))
+        }
+        if (tableExists(db, GlafiraDryRunPreviewSchema.TABLE)) {
+            val preview = db.update(
+                GlafiraDryRunPreviewSchema.TABLE,
+                ContentValues().apply {
+                    put("review_status", GlafiraDryRunReviewStatus.REJECTED.name)
+                    put("reviewed_at", nowMillis)
+                },
+                "task_id = ? AND review_status = ?", arrayOf(task.taskId, GlafiraDryRunReviewStatus.PENDING.name)
+            )
+            if (preview > 0) coreTraceStore.appendInTransaction(db, GlafiraCoreTraceDraft(
+                projectId = task.projectId, taskId = task.taskId, correlationId = task.taskId,
+                occurredAtMillis = nowMillis, actorType = actorType, actorId = actorId,
+                component = "CoreTaskStore", eventType = GlafiraCoreTraceEventType.REVIEW_REJECTED,
+                actionCode = "${actionPrefix}_DRY_RUN_PREVIEW_CLOSED", targetType = "DRY_RUN_PREVIEW",
+                targetId = task.taskId, resultStatus = "rejected"
+            ))
+        }
+    }
+
+    private fun failDescendantsWithFailedDependency(
+        db: SQLiteDatabase, rootTaskId: String, projectId: String, nowMillis: Long
+    ) {
+        val ownerClause = if (ownerCoreId == null) "" else
+            " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
+        val states = arrayOf(
+            GlafiraTaskState.QUEUED.databaseValue, GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
+            GlafiraTaskState.WAITING_FOR_NETWORK.databaseValue, GlafiraTaskState.WAITING_FOR_OWNER.databaseValue
+        )
+        var frontier = listOf(rootTaskId)
+        val values = ContentValues().apply {
+            put("state", GlafiraTaskState.FAILED.databaseValue)
+            put("updated_at", nowMillis)
+            put("last_error", "DEPENDENCY_FAILED")
+            putNull("retry_at")
+        }
+        while (frontier.isNotEmpty()) {
+            val placeholders = frontier.joinToString(",") { "?" }
+            val selection = "project_id = ? AND state IN (?, ?, ?, ?) AND task_id IN (" +
+                "SELECT task_id FROM $TABLE_DEPENDENCIES WHERE depends_on_task_id IN ($placeholders))$ownerClause"
+            val args = arrayOf(projectId) + states + frontier.toTypedArray() +
+                if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
+            val candidates = db.rawQuery("SELECT DISTINCT task_id FROM $TABLE_TASKS WHERE $selection", args)
+                .use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+            val next = mutableListOf<String>()
+            candidates.forEach { childId ->
+                val child = queryTask(db, childId, projectId) ?: return@forEach
+                if (GlafiraTaskPolicy.hasUnresolvedExecutionOutcome(child)) return@forEach
+                val updateSelection = "task_id = ? AND project_id = ? AND state IN (?, ?, ?, ?)$ownerClause"
+                val updateArgs = arrayOf(childId, projectId) + states +
+                    if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
+                if (db.update(TABLE_TASKS, values, updateSelection, updateArgs) == 1) {
+                    invalidateTaskArtifacts(db, child, nowMillis, "DEPENDENCY_FAILED", GlafiraCoreTraceActorType.CORE)
+                    next.add(childId)
+                }
+            }
+            frontier = next
+        }
+    }
+
     /** Propagates failed predecessor states through the entire acyclic task graph. */
     private fun failTasksWithFailedDependencies(db: SQLiteDatabase, nowMillis: Long) {
         val values = ContentValues().apply {
@@ -1499,7 +1582,7 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
         val ownerClause = if (ownerCoreId == null) "" else
             " AND task_id IN (SELECT task_id FROM $TABLE_OWNERSHIP WHERE owner_core_id = ?)"
         val selection = "state IN (?, ?, ?, ?) " +
-            "AND (last_error IS NULL OR last_error NOT IN (?, ?)) AND task_id IN (" +
+            "AND (last_error IS NULL OR last_error NOT IN (?, ?, ?, ?)) AND task_id IN (" +
             "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
             "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
             "WHERE p.state IN (?, ?))$ownerClause"
@@ -1510,6 +1593,8 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             GlafiraTaskState.WAITING_FOR_OWNER.databaseValue,
             "CORE_EXECUTION_OUTCOME_UNKNOWN",
             "DESKTOP_EXECUTION_OUTCOME_UNKNOWN",
+            "EXECUTION_OUTCOME_UNCERTAIN",
+            "CORE_RESULT_PERSIST_FAILED:CORE_EXECUTION_OUTCOME_UNKNOWN",
             GlafiraTaskState.FAILED.databaseValue,
             GlafiraTaskState.CANCELLED.databaseValue
         ) + if (ownerCoreId == null) emptyArray() else arrayOf(ownerCoreId)
@@ -1781,6 +1866,12 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             null,
             null,
             "1"
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.toTask() else null }
+
+    private fun queryTask(db: SQLiteDatabase, taskId: String, projectId: String): GlafiraTask? =
+        db.query(
+            TABLE_TASKS, null, "task_id = ? AND project_id = ?", arrayOf(taskId, projectId),
+            null, null, null, "1"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.toTask() else null }
 
     private fun GlafiraTask.toContentValues(): ContentValues {
