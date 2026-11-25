@@ -674,11 +674,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     if (ownerMarker.exists()) {
                         val previousRunId = ownerMarker.readText(Charsets.UTF_8)
                         if (journal.exists()) {
+                            val sidecarProvesKeyOwnership = journalOwnerMarker.isFile &&
+                                journalOwnerMarker.readText(Charsets.UTF_8) == previousRunId
                             check(deleteOwnedJournal(previousRunId)) {
                                 "Refusing to remove a journal not proven to belong to the previous test generation."
                             }
                             check(!journal.exists()) { "Previous test-owned rollback journal still exists." }
-                            GlafiraRollbackSnapshotCipher.deleteKey()
+                            if (sidecarProvesKeyOwnership) GlafiraRollbackSnapshotCipher.deleteKey()
                         }
                         // A missing journal is not proof that the remaining key belongs to this test.
                         // Clean only uniquely named test fixture files, then clear our marker.
@@ -784,13 +786,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 attemptCleanup {
                     GlafiraCoreMaintenanceGate.withExclusive {
                         if (ownsJournal && journal.exists()) {
+                            val sidecarProvesKeyOwnership = journalOwnerMarker.isFile &&
+                                journalOwnerMarker.readText(Charsets.UTF_8) == runId
                             check(deleteOwnedJournal(runId)) {
                                 "Could not remove this run's journal; preserve its rollback key and owner marker."
                             }
                             check(!journal.exists()) {
                                 "Test-owned rollback journal still exists; preserve its key."
                             }
-                            GlafiraRollbackSnapshotCipher.deleteKey()
+                            if (sidecarProvesKeyOwnership) GlafiraRollbackSnapshotCipher.deleteKey()
                         }
                         // Fixture cleanup is independent of cache inspection; one failure must
                         // not prevent removal of the other uniquely named test files.
