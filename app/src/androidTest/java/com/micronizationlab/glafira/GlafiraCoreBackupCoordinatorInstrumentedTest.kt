@@ -624,57 +624,115 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    fun v3RecoveryReentersAfterFreshCoordinatorConstruction() = runBlocking {
-        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-        val marker = File(journal, "restore.pending")
-        val rollbackDatabase = File(journal, "database.db")
-        val rollbackArchive = File(journal, "files.glb")
-        val keyAlias = "glafira_core_rollback_v1"
-        fun rollbackKeyExists(): Boolean = KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
-        val passphrase = "GLAFIRA-v3-reentry-test-2026".toCharArray()
-        assertFalse("Test requires an isolated, clean rollback journal", marker.exists())
-        assertFalse("Test requires no pre-existing restore journal", journal.exists())
-        GlafiraRollbackSnapshotCipher.deleteKey()
-        try {
-            store.enqueue(task("known-good-before-marker"))
-            val originalCoordinator = GlafiraCoreBackupCoordinator(context, store)
-            originalCoordinator.prepareRollback(passphrase)
+    fun v3RecoveryReentersAfterFreshCoordinatorConstruction() = synchronized(V3_REENTRY_TEST_LOCK) {
+        runBlocking {
+            val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+            val marker = File(journal, "restore.pending")
+            val rollbackDatabase = File(journal, "database.db")
+            val rollbackArchive = File(journal, "files.glb")
+            val keyAlias = "glafira_core_rollback_v1"
+            val ownerMarker = File(context.cacheDir, "glafira-v3-reentry-test-owner")
+            val knownGoodFile = File(context.filesDir, "v3-reentry-known-good.txt")
+            val createdAfterMarkerFile = File(context.filesDir, "v3-reentry-created-after-marker.txt")
+            fun rollbackKeyExists(): Boolean =
+                KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
+            val passphrase = "GLAFIRA-${UUID.randomUUID()}-${UUID.randomUUID()}".toCharArray()
+            var originalFailure: Throwable? = null
 
-            assertTrue("V3 marker must be durable before live-state mutation", marker.isFile)
-            assertEquals("GLAFIRA_RESTORE_ROLLBACK_V3", marker.readText(Charsets.UTF_8))
-            assertTrue(rollbackDatabase.isFile && rollbackDatabase.length() > 0L)
-            assertTrue(rollbackArchive.isFile && rollbackArchive.length() > 0L)
-            assertTrue(rollbackKeyExists())
-
-            store.enqueue(task("mutated-after-marker"))
-            assertEquals("mutated-after-marker", store.getTask("mutated-after-marker")?.taskId)
-
-            // Reconstruct the coordinator and enter through its public recovery API.
-            GlafiraCoreBackupCoordinator(context, store).recover(passphrase)
-
-            assertEquals("known-good-before-marker", store.getTask("known-good-before-marker")?.taskId)
-            assertNull(store.getTask("mutated-after-marker"))
-            assertFalse("Successful recovery must clear the pending marker", marker.exists())
-            assertFalse("Successful recovery must remove the rollback journal", journal.exists())
-            assertFalse("Successful recovery must delete its installation-local key", rollbackKeyExists())
-            assertTrue(
-                "No decrypted rollback recovery temp may remain",
-                context.cacheDir.listFiles { file ->
+            // A leftover owner marker proves that an interrupted previous run of this exact
+            // test may own the fixed journal. Never delete an unowned restore journal.
+            if (ownerMarker.exists()) {
+                check(!journal.exists() || journal.deleteRecursively()) {
+                    "Could not clean the previous test-owned rollback journal; preserve its Keystore key."
+                }
+                check(!journal.exists()) { "Previous test-owned rollback journal still exists." }
+                val staleTemps = checkNotNull(context.cacheDir.listFiles { file ->
                     file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                }.orEmpty().isEmpty()
-            )
-        } finally {
-            passphrase.fill('\u0000')
-            // The journal was required to be absent before this test, so any remaining journal is test-owned.
-            journal.deleteRecursively()
-            context.cacheDir.listFiles { file ->
-                file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-            }.orEmpty().forEach { it.delete() }
-            GlafiraRollbackSnapshotCipher.deleteKey()
+                }) { "Could not inspect stale rollback recovery files." }
+                staleTemps.forEach { file ->
+                    check(!file.exists() || file.delete()) { "Could not delete stale test recovery file: ${file.name}" }
+                }
+                check(checkNotNull(context.cacheDir.listFiles { file ->
+                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                }).isEmpty()) { "Stale test recovery files remain." }
+                GlafiraRollbackSnapshotCipher.deleteKey()
+                check(ownerMarker.delete()) { "Could not clear previous test ownership marker." }
+            }
+
+            assertFalse("Test refuses to delete an unowned pending restore journal", journal.exists())
+            assertFalse("Test requires no pre-existing rollback key", rollbackKeyExists())
+            assertFalse("Test-owned file must start absent", knownGoodFile.exists())
+            assertFalse("Mutation file must start absent", createdAfterMarkerFile.exists())
+
+            try {
+                check(ownerMarker.createNewFile()) { "Could not establish test ownership marker." }
+                knownGoodFile.writeText("known-good-before-marker", Charsets.UTF_8)
+                store.enqueue(task("known-good-before-marker"))
+                val originalCoordinator = GlafiraCoreBackupCoordinator(context, store)
+                originalCoordinator.prepareRollback(passphrase)
+
+                assertTrue("V3 marker must be durable before live-state mutation", marker.isFile)
+                assertEquals("GLAFIRA_RESTORE_ROLLBACK_V3", marker.readText(Charsets.UTF_8))
+                assertTrue(rollbackDatabase.isFile && rollbackDatabase.length() > 0L)
+                assertTrue(rollbackArchive.isFile && rollbackArchive.length() > 0L)
+                assertTrue(rollbackKeyExists())
+
+                store.enqueue(task("mutated-after-marker"))
+                knownGoodFile.writeText("mutated-after-marker", Charsets.UTF_8)
+                createdAfterMarkerFile.writeText("created-after-marker", Charsets.UTF_8)
+                assertEquals("mutated-after-marker", store.getTask("mutated-after-marker")?.taskId)
+
+                // Reconstruct the coordinator and enter through its public recovery API.
+                GlafiraCoreBackupCoordinator(context, store).recover(passphrase)
+
+                assertEquals("known-good-before-marker", store.getTask("known-good-before-marker")?.taskId)
+                assertNull(store.getTask("mutated-after-marker"))
+                assertEquals("known-good-before-marker", knownGoodFile.readText(Charsets.UTF_8))
+                assertFalse("Files created after the marker must be removed by exact snapshot restore", createdAfterMarkerFile.exists())
+                assertFalse("Successful recovery must clear the pending marker", marker.exists())
+                assertFalse("Successful recovery must remove the rollback journal", journal.exists())
+                assertFalse("Successful recovery must delete its installation-local key", rollbackKeyExists())
+                val remainingTemps = checkNotNull(context.cacheDir.listFiles { file ->
+                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                }) { "Could not inspect rollback recovery temp files after recovery." }
+                assertTrue("No decrypted rollback recovery temp may remain", remainingTemps.isEmpty())
+            } catch (error: Throwable) {
+                originalFailure = error
+                throw error
+            } finally {
+                passphrase.fill('\\u0000')
+                val cleanupFailure = runCatching {
+                    if (journal.exists()) {
+                        check(journal.deleteRecursively()) {
+                            "Could not remove test-owned rollback journal; its Keystore key must be preserved."
+                        }
+                    }
+                    check(!journal.exists()) { "Test-owned rollback journal still exists; preserve its Keystore key." }
+                    val remainingTemps = checkNotNull(context.cacheDir.listFiles { file ->
+                        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                    }) { "Could not inspect rollback recovery temp files during cleanup." }
+                    remainingTemps.forEach { file ->
+                        check(!file.exists() || file.delete()) { "Could not delete rollback recovery temp: ${file.absolutePath}" }
+                    }
+                    check(checkNotNull(context.cacheDir.listFiles { file ->
+                        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                    }).isEmpty()) { "Rollback recovery temp files remain after cleanup." }
+                    // Delete the installation-local key only after confirming the journal is gone.
+                    GlafiraRollbackSnapshotCipher.deleteKey()
+                    knownGoodFile.delete()
+                    createdAfterMarkerFile.delete()
+                    check(!ownerMarker.exists() || ownerMarker.delete()) { "Could not clear test ownership marker." }
+                }.exceptionOrNull()
+                if (cleanupFailure != null) {
+                    val failure = originalFailure
+                    if (failure != null) failure.addSuppressed(cleanupFailure) else throw cleanupFailure
+                }
+            }
         }
     }
 
     companion object {
+        private val V3_REENTRY_TEST_LOCK = Any()
         private const val DATABASE_NAME = "glafira_core_tasks.db"
     }
 }
