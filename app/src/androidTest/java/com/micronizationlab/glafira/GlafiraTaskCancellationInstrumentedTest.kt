@@ -310,7 +310,7 @@ class GlafiraTaskCancellationInstrumentedTest {
                     check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
                         "RESTORE_RECOVERY_REQUIRED"
                     }
-                    store.cancelUnclaimedTask("restore-guard", "cancel-project", 3_000L)
+                    cancel("restore-guard", "cancel-project", 3_000L)
                 }
             }
             assertTrue(result.isFailure)
