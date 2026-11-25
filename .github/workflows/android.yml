@@ -41,7 +41,7 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
-          CURRENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CURRENT_SHA: ${{ github.sha }}
         run: python3 .github/scripts/detect_changes.py
 
   workflow-lint:
@@ -267,7 +267,7 @@ jobs:
     steps:
       - name: Publish exact SHA and honest component status
         env:
-          SHA: ${{ github.sha }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           CHANGES: ${{ needs.changes.result }}
           WORKFLOW_LINT: ${{ needs.workflow-lint.result }}
           ANDROID: ${{ needs.android-tests.result }}
