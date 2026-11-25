@@ -1,0 +1,45 @@
+name: Предложить функцию
+description: Описать пользовательскую потребность и ожидаемый результат
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую проблему нужно решить?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Предлагаемое решение
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы и ограничения
+    validations:
+      required: false
+  - type: dropdown
+    id: module
+    attributes:
+      label: Направление
+      options:
+        - Core
+        - Android
+        - Desktop
+        - Bridge / Agent
+        - Backup & Recovery
+        - CI / Security
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Подтверждение
+      options:
+        - label: Это предложение, а не разрешение на изменение архитектуры или main.
+          required: true
