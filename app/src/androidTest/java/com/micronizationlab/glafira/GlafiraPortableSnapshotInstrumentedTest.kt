@@ -124,7 +124,11 @@ class GlafiraPortableSnapshotInstrumentedTest {
             store.writableDatabase.delete("core_tasks", null, null)
             assertNull(store.getTask("preserved-encrypted"))
 
+            val staleRecovery = File(context.cacheDir, "glafira-rollback-recovery-stale.tmp")
+            staleRecovery.writeText("SQLite format 3")
+            assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
             coordinator.recover(passphrase)
+            assertFalse(staleRecovery.exists())
             assertNotNull(store.getTask("preserved-encrypted"))
             assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
         } finally {
@@ -155,6 +159,13 @@ class GlafiraPortableSnapshotInstrumentedTest {
         assertFalse(afterFailure.containsAlias("glafira_core_rollback_v1"))
         assertNull(store.getTask("preserved-missing-key"))
         passphrase.fill('\u0000')
+    }
+
+    @Test fun staleDecryptedRollbackTemporaryBlocksCoreUntilRemoved() {
+        val stale = File(context.cacheDir, "glafira-rollback-recovery-orphan.tmp")
+        stale.writeText("sensitive plaintext")
+        assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+        assertFalse(stale.exists())
     }
 
     @Test fun missingTablesAreRejectedBeforeAnyReplacement() {
