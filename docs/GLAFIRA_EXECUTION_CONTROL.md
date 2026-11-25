@@ -165,3 +165,15 @@ This rule applies whenever a lane would otherwise be idle for a cycle. It does n
 - If the original executor responds after transfer, it must stop editing the transferred implementation. It may contribute review evidence only when explicitly requested by the coordinator.
 - A genuine external dependency, unavailable permission, owner-only acceptance or infrastructure outage is a BLOCKED state, not proof of laziness. The coordinator still transfers actionable work where possible and records the exact blocker; design fallback is assigned only if no higher-priority ready task exists.
 - This escalation rule does not weaken dependency order, exact-head CI, review, owner approval, physical-device acceptance or merge gates. No direct merge to main is authorized by the transfer itself.
+
+## 13. Owner-approved multi-step batch cadence across all eleven workstreams
+
+The coordinator must pre-plan a bounded sequential package for each of the eleven permanent lanes at the start of every cycle. The planning target is 3–5 genuine executable leaf steps per lane when live backlog and dependencies permit. It is not a quota: never invent work, duplicate existing items, split acceptance artificially or bypass predecessors to reach a count.
+
+The existing **one active work item per helper** rule remains mandatory. The coordinator may pre-plan several leaves but assigns only one active leaf to each helper. After verified completion and evidence review, release the reservation and assign the next eligible leaf immediately; do not wait for the slowest lane. A helper never self-selects or switches lanes. Independent tasks may run concurrently only with distinct WBS IDs, executors, branches and exclusive file/behavior ownership. Dependent leaves wait for accepted predecessors.
+
+When a lane is blocked, first search the global ready queue for equal/higher-priority implementation, validation, intake, review, merge or post-merge work. Only if none exists may the coordinator assign a separate bounded GLAFIRA DESIGN item from issue #672. Preserve the original BLOCKED / NOT RUN / SKIPPED / OWNER_ACCEPTANCE status; design is separate work and never substitutes for acceptance. Return to the lane's primary package when unblocked.
+
+Workstream 11 continuously handles helper intake, deduplication, ownership reservations, exact-diff review and safe integration. Track planned / assigned / completed / blocked / in-review / CI-passed / merged counts per lane with exact evidence. Build and release lanes remain serialized under Section 5.
+
+The runtime architecture change belongs in the existing GLAFIRA Development Orchestrator (#446): reuse the Core durable task queue, owner generation/fencing, grants, Trace, ACK and recovery. Add no competing queue and do not use GitHub as real-time runtime coordination. This cadence does not relax any owner-approval, privacy/security, dependency, CI, review, PR-size or protected-Main gate.
