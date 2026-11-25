@@ -2,7 +2,7 @@
 
 **Umbrella:** issue #672 · **Work item:** GLAFIRA-DESIGN-W01 · **WBS:** 1.11.1.1.1  
 **Source of truth:** [DESIGN_TOKENS.md](DESIGN_TOKENS.md)  
-**Status:** implementation handoff; visual tokens remain proposals pending owner approval.
+**Status:** implementation handoff based on the owner-approved baseline in `DESIGN_TOKENS.md`; no second palette approval is required.
 
 ## 1. Repository reality checked for this handoff
 
@@ -40,7 +40,7 @@ The repository already has a SwiftUI UI package at `ios/GlafiraBridgeKit/Sources
 
 Using the owner-approved baseline tokens:
 1. Add a dedicated design-token source in the existing Swift package, using unambiguous names such as `GlafiraPalette` and `GlafiraSpacing`; avoid nesting a type named `Color` that shadows `SwiftUI.Color`.
-2. Use SwiftUI `Color` with explicit light/dark asset or dynamic-provider implementation. Import UIKit only if the implementation actually uses `UIColor`.
+2. Use SwiftUI `Color` with explicit light/dark asset or dynamic-provider implementation. If using `UIColor`, guard UIKit-specific code with `#if canImport(UIKit)` and provide a `macOS`-compilable fallback so the shared package continues to compile under `swift test` on macOS.
 3. Add reusable `StatusChip` with SF Symbols/custom SVG fallback, text label and accessibility label/value.
 4. Support Dynamic Type, safe areas, system appearance and 44×44pt minimum interactive targets.
 5. Add previews for all semantic states and both appearances.
@@ -65,6 +65,7 @@ After owner approval:
 - Non-text controls and meaningful boundaries: at least 3:1 against adjacent colors.
 - Color is never the sole status signal.
 - Status chips always include an icon or shape cue and a visible text label.
+- Pending approval and unknown execution outcome use distinct labels and icons; `CORE_EXECUTION_OUTCOME_UNKNOWN` maps to `Reconciliation required` / `ic_status_recovery.svg` and never offers generic retry.
 - Recovery-required is distinct from ordinary danger/error and waiting-for-owner.
 - Focus is clearly visible for keyboard and accessibility navigation.
 - Transitions default to 120–220ms; respect reduced-motion preferences.
@@ -76,7 +77,7 @@ After owner approval:
 This is an approved cross-platform design foundation, not permission to redesign all screens at once. Use the approved tokens as the baseline and migrate screens in small, reviewable slices. Implementation should be split into small platform PRs, each with screenshots/previews and tests. No design change may alter Core authority, permissions, Bridge protocol, encryption, backup/restore or owner-approval behavior.
 
 Recommended order:
-1. Approve shared semantic tokens and icon direction.
+1. Consume the owner-approved shared semantic tokens and icon direction; palette re-approval is not a prerequisite. Verify rendered component contrast and accessibility as part of each platform PR.
 2. Android token adapter + status component.
 3. Windows resource adapter + focus/status styles.
 4. iOS SwiftUI adapter + Dynamic Type previews.
