@@ -95,7 +95,22 @@ class GlafiraTaskPolicyTest {
                 updatedAtMillis = 10L, idempotencyKey = "project-1:cancel-$state"
             )
             assertTrue(GlafiraTaskPolicy.ownerCanCancel(task))
+            val previouslyClaimed = task.copy(
+                taskId = "previously-claimed-$state",
+                attemptCount = 1,
+                idempotencyKey = "project-1:previously-claimed-$state"
+            )
+            assertFalse("Attempt-count guard must reject $state after a claim",
+                GlafiraTaskPolicy.ownerCanCancel(previouslyClaimed))
         }
+        val disallowedWithoutAttempt = GlafiraTask(
+            taskId = "running-zero-attempts", projectId = "project-1", taskType = "project.read",
+            payload = "{}", origin = "owner", state = GlafiraTaskState.RUNNING,
+            createdAtMillis = 10L, updatedAtMillis = 20L, attemptCount = 0,
+            idempotencyKey = "project-1:running-zero-attempts"
+        )
+        assertFalse("State allowlist must reject RUNNING even with zero attempts",
+            GlafiraTaskPolicy.ownerCanCancel(disallowedWithoutAttempt))
         val retried = GlafiraTask(
             taskId = "retried", projectId = "project-1", taskType = "project.read",
             payload = "{}", origin = "owner", state = GlafiraTaskState.RETRY_SCHEDULED,
@@ -111,7 +126,8 @@ class GlafiraTaskPolicyTest {
             "CORE_EXECUTION_OUTCOME_UNKNOWN",
             "DESKTOP_EXECUTION_OUTCOME_UNKNOWN",
             "EXECUTION_OUTCOME_UNCERTAIN",
-            "CORE_RESULT_PERSIST_FAILED:CORE_EXECUTION_OUTCOME_UNKNOWN"
+            "CORE_RESULT_PERSIST_FAILED:CORE_EXECUTION_OUTCOME_UNKNOWN",
+            "CORE_RESULT_PERSIST_FAILED:timeout-after-commit"
         ).forEachIndexed { index, marker ->
             val task = GlafiraTask(
                 taskId = "unknown-$index", projectId = "project-1", taskType = "project.write",
