@@ -20,6 +20,9 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
@@ -35,6 +38,10 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     var instruction by remember { mutableStateOf("") }
     var priority by remember { mutableIntStateOf(5) }
     var message by remember { mutableStateOf<String?>(null) }
+    var cancelTaskTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var cancellingTask by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(currentProject.id) { cancelTaskTarget = null }
 
     fun refresh() {
         tasks = owner.taskStore.listTasks(limit = 200)
@@ -174,11 +181,68 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                                 color = Tx, fontSize = 9.sp
                             )
                             task.lastError?.let { Text("Причина/результат: $it", color = Red, fontSize = 10.sp) }
+                            if (GlafiraTaskPolicy.ownerCanCancel(task)) {
+                                TextButton(onClick = { cancelTaskTarget = currentProject.id to task.taskId }) {
+                                    Text("ОТМЕНИТЬ ЗАДАЧУ")
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    cancelTaskTarget?.let { (projectId, taskId) ->
+        AlertDialog(
+            onDismissRequest = { if (!cancellingTask) cancelTaskTarget = null },
+            title = { Text("Отменить задачу?") },
+            text = {
+                Text("Задача будет отменена только если Core подтвердит, что она ещё не была запущена. Неопределённый результат внешнего действия не отменяется. Для подтверждения потребуется новая биометрическая проверка владельца.")
+            },
+            confirmButton = {
+                TextButton(enabled = !cancellingTask, onClick = {
+                    val activity = context as? FragmentActivity
+                    if (activity == null) {
+                        message = "Не удалось открыть подтверждение владельца из текущего окна."
+                        cancelTaskTarget = null
+                    } else {
+                        showBiometricPromptWithResult(
+                            activity = activity,
+                            onSuccess = { authenticationResult ->
+                                val session = GlafiraCoreOwnerSession.fromAuthentication(authenticationResult)
+                                cancellingTask = true
+                                scope.launch {
+                                    val result = runCatching {
+                                        withContext(Dispatchers.IO) {
+                                            owner.cancelTask(taskId, projectId, session)
+                                        }
+                                    }
+                                    cancellingTask = false
+                                    message = when {
+                                        result.isFailure -> result.exceptionOrNull()?.message
+                                            ?: "Не удалось отменить задачу."
+                                        result.getOrDefault(false) -> "Задача отменена."
+                                        else -> "Задача уже запущена или больше не доступна для отмены."
+                                    }
+                                    cancelTaskTarget = null
+                                    refresh()
+                                }
+                            },
+                            onError = { error ->
+                                message = "Биометрическое подтверждение отменено: $error"
+                                cancelTaskTarget = null
+                            }
+                        )
+                    }
+                }) { Text(if (cancellingTask) "ПРОВЕРКА…" else "ПОДТВЕРДИТЬ") }
+            },
+            dismissButton = {
+                TextButton(enabled = !cancellingTask, onClick = { cancelTaskTarget = null }) {
+                    Text("НЕТ")
+                }
+            }
+        )
     }
 
     if (showAddDialog) {
