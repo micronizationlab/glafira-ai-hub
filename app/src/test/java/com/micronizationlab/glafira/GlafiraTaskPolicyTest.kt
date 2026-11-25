@@ -6,6 +6,20 @@ import org.junit.Test
 
 class GlafiraTaskPolicyTest {
     @Test
+    fun ownerCanCancelOnlyUnclaimedTaskStates() {
+        assertTrue(GlafiraTaskPolicy.ownerCancellableStates.containsAll(listOf(
+            GlafiraTaskState.QUEUED,
+            GlafiraTaskState.RETRY_SCHEDULED,
+            GlafiraTaskState.WAITING_FOR_NETWORK,
+            GlafiraTaskState.WAITING_FOR_OWNER
+        )))
+        assertFalse(GlafiraTaskPolicy.ownerCanCancel(GlafiraTaskState.RUNNING))
+        assertFalse(GlafiraTaskPolicy.ownerCanCancel(GlafiraTaskState.SUCCEEDED))
+        assertFalse(GlafiraTaskPolicy.ownerCanCancel(GlafiraTaskState.FAILED))
+        assertFalse(GlafiraTaskPolicy.ownerCanCancel(GlafiraTaskState.CANCELLED))
+    }
+
+    @Test
     fun runningTaskCanWaitForNetworkOrOwnerAndCanFinish() {
         assertTrue(GlafiraTaskPolicy.canTransition(
             GlafiraTaskState.RUNNING,
