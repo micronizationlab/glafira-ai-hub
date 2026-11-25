@@ -369,7 +369,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         }
 
         store = GlafiraTaskStore(context, TEST_CORE_ID)
-        assertEquals(11, store.readableDatabase.version)
+        assertEquals(12, store.readableDatabase.version)
         assertNotNull(store.getTask("legacy-v1"))
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v1")?.state)
         assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy-v1")?.lastError)
@@ -410,7 +410,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         }
 
         store = GlafiraTaskStore(context, TEST_CORE_ID)
-        assertEquals(11, store.readableDatabase.version)
+        assertEquals(12, store.readableDatabase.version)
         assertNotNull(store.getTask("legacy-v2"))
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v2")?.state)
         assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy-v2")?.lastError)
@@ -432,7 +432,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         db.version = 3
         store.close()
         store = GlafiraTaskStore(context, TEST_CORE_ID)
-        assertEquals(11, store.writableDatabase.version)
+        assertEquals(12, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy")?.state)
         assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy")?.lastError)
         val history = store.taskHistory("legacy", "project")
@@ -537,7 +537,7 @@ class GlafiraTaskQueueRecoveryInstrumentedTest {
         store.close()
         store = GlafiraTaskStore(context, TEST_CORE_ID)
 
-        assertEquals(11, store.writableDatabase.version)
+        assertEquals(12, store.writableDatabase.version)
         assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, store.getTask("legacy-v4")?.state)
         assertEquals("LEGACY_TASK_OWNER_REVIEW_REQUIRED", store.getTask("legacy-v4")?.lastError)
         assertTrue(store.readableDatabase.rawQuery(
