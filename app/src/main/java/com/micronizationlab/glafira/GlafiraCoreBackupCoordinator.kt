@@ -84,19 +84,23 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         } finally { directory.deleteRecursively() }
     }
 
-    private fun prepareRollback(passphrase: CharArray) {
+    internal fun prepareRollback(passphrase: CharArray) {
         check(!marker.exists())
         if (journal.exists()) check(journal.deleteRecursively())
         check(journal.mkdirs())
         try {
-            taskStore.exportConsistentSnapshot(safetyDatabase)
+            synchronized(taskStore) {
+                val consistentDatabase = taskStore.prepareConsistentSnapshotSource()
+                sync(consistentDatabase)
+                GlafiraRollbackSnapshotCipher.encrypt(consistentDatabase, safetyDatabase)
+            }
             sync(safetyDatabase)
             val archive = BackupArchive.create(app, passphrase)
             try { archive.copyTo(safetyArchive, overwrite = false); sync(safetyArchive) }
             finally { archive.delete() }
             val pendingMarker = File(journal, "$JOURNAL_MARKER.tmp")
             FileOutputStream(pendingMarker).use {
-                it.write("GLAFIRA_RESTORE_ROLLBACK_V2".toByteArray(Charsets.UTF_8)); it.fd.sync()
+                it.write("GLAFIRA_RESTORE_ROLLBACK_V3".toByteArray(Charsets.UTF_8)); it.fd.sync()
             }
             check(pendingMarker.renameTo(marker))
             syncDirectory(journal)
@@ -107,18 +111,45 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         }
     }
 
+    private fun cleanupStaleDecryptedRollbackSnapshots() {
+        val stale = app.cacheDir.listFiles { file ->
+            file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+        }.orEmpty()
+        stale.forEach { file ->
+            check(!file.exists() || file.delete()) {
+                "Не удалось удалить временный расшифрованный снимок; Core остаётся заблокирован."
+            }
+        }
+    }
+
     private fun recoverInterruptedRestore(passphrase: CharArray) {
+        cleanupStaleDecryptedRollbackSnapshots()
         if (!marker.exists()) return
         require(safetyArchive.isFile && safetyDatabase.isFile) { "Повреждён журнал восстановления; Core заблокирован." }
+        val markerVersion = marker.readText(Charsets.UTF_8).trim()
+        val encryptedRollback = markerVersion == "GLAFIRA_RESTORE_ROLLBACK_V3"
+        require(encryptedRollback || markerVersion == "GLAFIRA_RESTORE_ROLLBACK_V2") {
+            "Неподдерживаемая версия журнала восстановления; Core заблокирован."
+        }
+        val decryptedDatabase = if (encryptedRollback) {
+            File(app.cacheDir, "glafira-rollback-recovery-${UUID.randomUUID()}.tmp")
+        } else null
+        val rollbackDatabase = decryptedDatabase ?: safetyDatabase
         try {
+            // Decrypt and validate the database before applying the safety archive to live files.
+            // A missing Keystore key must fail closed without regenerating a key or partially restoring files.
+            if (encryptedRollback) GlafiraRollbackSnapshotCipher.decrypt(safetyDatabase, rollbackDatabase)
+            taskStore.verifyConsistentSnapshot(rollbackDatabase)
             BackupArchive.verify(app, safetyArchive, passphrase)
             BackupArchive.restore(app, safetyArchive, passphrase)
-            taskStore.restoreConsistentSnapshot(safetyDatabase)
+            taskStore.restoreConsistentSnapshot(rollbackDatabase)
             GlafiraCoreRuntimeOwner.pauseForRestore(app)
             checkpointDatabase()
             clearJournal()
         } catch (error: Exception) {
-            throw IllegalStateException("Введите пароль прерванного восстановления. Core остаётся заблокирован до успешного отката.", error)
+            throw IllegalStateException("Не удалось проверить или восстановить safety snapshot. Core остаётся заблокирован до успешного отката.", error)
+        } finally {
+            decryptedDatabase?.delete()
         }
     }
 
@@ -147,8 +178,15 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         private const val MAX_ARCHIVE_BYTES = 512L * 1024L * 1024L
         private const val JOURNAL_DIRECTORY = "glafira-restore-journal"
         private const val JOURNAL_MARKER = "restore.pending"
-        fun hasInterruptedRestore(context: Context): Boolean =
-            File(File(context.applicationContext.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER).exists()
+        fun hasInterruptedRestore(context: Context): Boolean {
+            val app = context.applicationContext
+            val marker = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER)
+            if (marker.exists()) return true
+            val stale = app.cacheDir.listFiles { file ->
+                file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+            }.orEmpty()
+            return stale.any { it.exists() && !it.delete() }
+        }
     }
 }
 
