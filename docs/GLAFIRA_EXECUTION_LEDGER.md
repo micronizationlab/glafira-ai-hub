@@ -573,6 +573,28 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **This reservation PR changed-file inventory:** `docs/GLAFIRA_EXECUTION_LEDGER.md` only. This is distinct from the two exclusive implementation paths above.
 - **Sibling sequence:** `1.11.1.1.1` shared token proposal PR #681 — merged, but WBS status IN_REVIEW and not DONE; `1.11.1.1.2` Android Compose token adapter PR #688 — open Draft; `1.11.1.1.3` designer asset handoff PR #689 — open Draft; `1.11.1.1.4` iOS/Windows token references PR #690 — open Draft; `1.11.1.1.5` this cross-platform implementation handoff. This records the existing sibling allocation and does not mark any sibling DONE.
 - **Predecessor gate / lifecycle:** PR #681 is merged, but its token WBS leaf remains IN_REVIEW; owner acceptance and WBS DONE are not recorded. Therefore this handoff is **BLOCKED**. No replacement implementation branch or edits to either exclusive path are authorized until (a) this reservation PR #704 is merged to Main and (b) predecessor WBS `1.11.1.1.1` is accepted and recorded DONE. The premature draft implementation PR #705 is closed unmerged and is not an accepted implementation.
+- **Numbered implementation procedure (blocked until predecessor acceptance):**
+  1. Confirm WBS `1.11.1.1.1` is accepted DONE and record the owner's token-palette approval; do not infer approval from this reservation or start palette-dependent implementation earlier.
+  2. Inventory the exact Android Compose, iOS SwiftUI and Windows WPF source/resource paths on the then-current Main commit; record source references and verify that each target exists before editing.
+  3. Draft `PLATFORM_IMPLEMENTATION_HANDOFF.md` with per-platform component locations, semantic-token adapters, keyboard/touch requirements, migration order and platform-specific test evidence.
+  4. Draft `ICON_ASSET_SPEC.md` with six SVG masters, Android VectorDrawable, iOS PDF/SwiftUI Path and WPF DrawingImage/Geometry output mappings; no runtime SVG renderer.
+  5. Add and verify the critical-state mapping table below for all three platforms, including accessible labels and actual component contrast pairs in light and dark appearances.
+  6. Attach preview/source-to-output evidence, run the exact-head Docs CI/security/dispatcher gates, complete independent review, resolve all findings, then request owner acceptance.
+- **Cross-platform critical-state mapping (same semantics on Compose, SwiftUI and WPF):**
+
+  | Semantic state | Canonical icon | Accessible label | Required behavior |
+  |---|---|---|---|
+  | `OWNER_APPROVAL_PENDING` | `ic_status_neutral.svg` | Waiting for owner | Approval wait is not an error or recovery condition. |
+  | `WAITING_FOR_NETWORK` | `ic_status_info.svg` | Waiting for connection | Distinct from owner approval and recovery. |
+  | `CORE_EXECUTION_OUTCOME_UNKNOWN` / `DESKTOP_EXECUTION_OUTCOME_UNKNOWN` | `ic_status_recovery.svg` | Reconciliation required | Distinct from ordinary error and waiting; never offer generic retry. |
+  | `FAILED` | `ic_status_danger.svg` | Failed | Ordinary terminal failure only; never substitute for unknown outcome. |
+  | `SUCCEEDED` | `ic_status_success.svg` | Completed | Preserve success semantics. |
+  | `WARNING` | `ic_status_warning.svg` | Warning | Preserve warning semantics. |
+  | `INFO` | `ic_status_info.svg` | Information | Preserve informational semantics. |
+
+  Android uses VectorDrawable plus Compose content descriptions; iOS uses vector PDF/SwiftUI Path plus `accessibilityLabel`; WPF uses DrawingImage/Geometry plus `AutomationProperties.Name`. Tint is semantic and dynamic; palette values remain pending owner approval. Each platform must explicitly reject mapping recovery-required to ordinary error or waiting.
+- **Docs-only CI evidence on prior reservation head `50175151b35487eb0a5e0b6b3fba512efc850ee0`:** workflow `45672046203` — `Detect changed components` job `139409630347` SUCCESS and `Exact-head CI summary` job `139409733214` SUCCESS; platform compile/test jobs were routed SKIPPED because the PR changes only the ledger. Security workflow `45672046166` — `Verified secrets scan` job `139409629893` SUCCESS. Dispatcher workflow `45672046512` — `Reconcile all active GLAFIRA workstreams` job `139409674749` SUCCESS. Job-step summaries were inspected; this evidence is for the prior head only. The new head created by this ledger edit must rerun these checks; publish final exact-head IDs in PR #704's body without another ledger edit.
+- **Markdown review is separate from CI:** Proofline/CodeRabbit/Sourcery findings, link/heading checks and owner acceptance must be recorded independently; a green Docs CI result is not a Markdown-review pass.
 - **Objective:** document verified Android Compose, iOS SwiftUI and Windows WPF implementation locations, safe migration sequence, accessibility acceptance, native icon delivery paths, and recovery/reconciliation semantics.
 - **Guardrails:** documentation only; no runtime, Core, Backup, Bridge, permission, cryptography, schema or task-state changes. Windows Agent remains a worker service; no separate UI is invented. SVG masters are converted to native platform resources without adding an unapproved renderer dependency.
 - **Acceptance:** source paths verified; native delivery outputs specified; pending owner approval, unknown execution outcome and recovery-required remain distinct; recovery has visible text, a dedicated icon and accessible label; no generic retry for unknown outcomes; exact-head Docs CI, Security Scan and Dispatcher for both reservation and implementation PRs; independent review; owner-controlled merge; post-merge Main validation. The handoff PR's CI/review is separate from token WBS owner acceptance.
