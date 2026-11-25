@@ -131,7 +131,7 @@ No vague “done”, no hidden progress, no repeated work, no second build witho
 
 Every one of the eleven workstreams must produce one bounded deliverable in each coordinator cycle. A lane must not be left idle or silently marked skipped. If its assigned implementation or validation step cannot advance because of a dependency, unavailable executor, CI/platform lane not selected, external physical acceptance, pending review, or another explicit blocker, the coordinator assigns that lane one distinct work package in the separate **GLAFIRA DESIGN** project tracked by issue #672.
 
-The original implementation/test/acceptance status remains exactly **BLOCKED**, **NOT RUN**, or **SKIPPED** as applicable. Design work is a separate deliverable and never substitutes for required tests, physical-device acceptance, security review, owner approval or merge gates.
+The original implementation/test/acceptance outcome is immutable and must be preserved exactly, including **BLOCKED**, **NOT RUN**, **SKIPPED**, **CANCELLED**, **OWNER_ACCEPTANCE**, or any other recorded state. Report design fallback progress separately; never overwrite or reinterpret the original lane outcome. Design work is a separate deliverable and never substitutes for required tests, physical-device acceptance, security review, owner approval or merge gates.
 
 ### Design scope and boundaries
 
@@ -145,8 +145,10 @@ The original implementation/test/acceptance status remains exactly **BLOCKED**, 
 
 - One helper = one active bounded assignment. A blocked helper does not self-select another task; the coordinator assigns a distinct design package.
 - The design packages in issue #672 have separate platform/component ownership and non-overlapping files or document sections.
-- The design foundation/tokens precede dependent platform specifications. No duplicated edits or competing source-of-truth files.
+- The design foundation/tokens precede dependent visual specifications. A package may begin only when its declared predecessors are ready; information architecture/wireframes may proceed independently if the issue explicitly marks visual tokens as pending. No duplicated edits or competing source-of-truth files.
+- If no dependency-ready design package exists, the coordinator records a blocked cycle with the missing predecessor, its owner and the next unblock action. Do not fabricate a deliverable or violate dependency order.
 - Each package has its own branch and focused PR, normally 50–150 changed lines and no more than 200 without prior written approval.
+- When the original lane becomes actionable again (for example, review requests a code correction), the coordinator pauses or hands off the active design package before reactivating the original assignment. The helper never holds two active assignments. Preserve the design package's file reservation during pause/handoff; release it only after explicit completion or reassignment.
 - Design proposals require owner review before implementation lanes treat them as accepted. A mockup or design document is not implementation completion.
 - The coordinator still owns cross-lane intake, deduplication, review, CI, merge sequencing and post-merge verification.
 
