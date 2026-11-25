@@ -154,3 +154,14 @@ The original implementation/test/acceptance outcome is immutable and must be pre
 - The coordinator still owns cross-lane intake, deduplication, review, CI, merge sequencing and post-merge verification.
 
 This rule applies whenever a lane would otherwise be idle for a cycle. It does not authorize parallel work on conflicting files or weaken the dependency order of P1 Core, P2 Backup & Recovery, P3 Bridge/Desktop.
+
+## 13. Three-pass non-response escalation and design reassignment
+
+- A coordinator pass is one completed eleven-workstream reconciliation cycle in which the assigned executor receives a concrete task, the current blocker/acceptance evidence is made available, and the coordinator checks for a substantive response or a new verifiable artifact.
+- A substantive response means a code/document change, commit, review that resolves or precisely answers findings, a completed required check with inspectable logs, or a concrete blocker report with evidence and a next action. A bot status ping, reaction, repeated promise, unchanged PR head, or comment that does not address the requested work is not a substantive response.
+- After THREE consecutive coordinator passes with no substantive response, the coordinator records the three pass dates/evidence and automatically transfers the task to GLAFIRA or another available qualified executor. The original bot/helper is removed from active ownership; preserve its branch/PR and history, but do not wait for it or permit overlapping edits.
+- The replacement executor first checks the exact current main SHA, WBS reservation, dependencies, changed files and existing work. It then takes ownership in a dedicated branch and continues from the last verified state; no work is discarded or duplicated.
+- The non-responsive bot/helper is reassigned one distinct, dependency-ready package from the separate GLAFIRA DESIGN project. The design package must have its own WBS leaf, issue, branch, allowed files, acceptance criteria and reservation. It must not overlap another active design reservation or replace the original implementation task's status.
+- If the original executor responds after transfer, it must stop editing the transferred implementation. It may contribute review evidence only when explicitly requested by the coordinator.
+- A genuine external dependency, unavailable permission, owner-only acceptance or infrastructure outage is a BLOCKED state, not proof of laziness. The coordinator still transfers actionable work where possible and records the exact blocker; design fallback is assigned only if no higher-priority ready task exists.
+- This escalation rule does not weaken dependency order, exact-head CI, review, owner approval, physical-device acceptance or merge gates. No direct merge to main is authorized by the transfer itself.
