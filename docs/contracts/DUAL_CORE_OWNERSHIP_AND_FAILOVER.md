@@ -32,6 +32,14 @@ Every installation creates a cryptographically random, persistent `coreId` and h
 - `protocolVersion` and `schemaVersion`;
 - owner-approved capabilities and revocation state.
 
+### Signing and payload-encryption keys are separate
+
+The current Android and Windows installation-identity key pairs are signing identities. The trusted-peer registry pins a peer's public signing key; it does not establish a payload-decryption key. The Android task-payload AES key is installation-local and must never be treated as a shared Core-to-Core encryption key.
+
+Therefore, a signed outbox row or an app-local ciphertext is not yet a deliverable cross-Core message. Before any remote payload is sent, each installation must have a separately enrolled key-agreement public key bound to the same Core ID, key epoch and owner-confirmed peer record. The protocol must define authenticated envelope encryption (ephemeral key agreement, a reviewed KDF, AEAD, and canonical associated data binding event ID, source/recipient Core IDs, project/task IDs, owner generation, state version, sequence and payload digest). Do not reuse an ECDSA signing key for key agreement.
+
+Acceptance must cover recipient/key-epoch mismatch, ciphertext tampering, replay, key rotation/revocation, missing local private key, crash during envelope creation and restore onto a new installation. A missing or mismatched decryption key is a hard failure; never regenerate a key and silently reinterpret old ciphertext. Cross-Core payload delivery remains disabled until this separate key lifecycle and envelope suite is implemented and reviewed.
+
 A reinstall or restore onto a new installation creates a new `coreId`. It must not silently inherit live leases, credentials, approval grants or the previous installation's authority.
 
 ## 3. Canonical task ownership record
