@@ -216,3 +216,38 @@ This section supersedes earlier *current-state* statements above where they conf
 2. Integrate this ledger reconciliation so the append-only journal remains synchronized.
 3. Port #596 Backup and #597 provider policy individually onto current Main, then #599 Bridge and #598 project identity; each gets exact-head validation and its own bounded diff.
 4. Resume Core Outbox with a reviewed atomic enqueue/sequence-allocation slice. Do not add a sender or cross-Core transport before identity binding, encryption, peer trust, signature verification, inbox idempotency, ACK binding and restart recovery have tests.
+
+## Live checkpoint after selector and Core security-gate merges — 2026-11-25 05:14 UTC
+
+- Current Main observed: `0727c8e2eebab9ece50067bd158635eb116c55ec`.
+- PR #603 (home project selector) merged by squash as `0727c8e2eebab9ece50067bd158635eb116c55ec`. Exact PR head `708b1026fc936fae40b79f1b1a46688e6fa84c2e`. CI run `45551263461`: Android JVM, Debug APK, Shared contracts, managed emulator and exact-head summary all succeeded. Emulator JUnit: 135 test cases, 0 failures, 0 errors, 0 skipped. The new smoke test exercises opening the selector and switching Personal, VodorodAktiv and Token.
+- PR #609 merged as `15c9a04f599e9763295f2843b892e3356eb50335`. The Dual-Core contract now explicitly separates signing identity from recipient payload encryption. Existing Android/Windows Core keys are signing keys; trusted-peer pins are signing-key metadata; local Android task AES is not a cross-Core encryption key. A separate owner-approved key-agreement key and authenticated envelope-encryption protocol are required before any remote payload delivery. No transport was enabled.
+- PR #605 is the clean-current-Main port of #596's rollback snapshot cipher and missing-key fail-closed tests. Head `59cbd5233e0c067dacfe9df5280b9f9985c134f1`; Android JVM, APK and shared contracts succeeded; emulator acceptance was still IN_PROGRESS at capture. The slice is a primitive only; production Backup/Restore wiring remains open.
+- PR #606 is the clean-current-Main port of #598's canonical built-in project ID repair. Head `a30e83b5132766c00d935a7ff023a66c9cec75d7`; Android JVM, APK and shared contracts succeeded; emulator acceptance was still IN_PROGRESS. The helper still needs to be wired into the actual project-create UI after selector integration; do not claim duplicate prevention in the UI until that is done.
+- PR #607 is the clean-current-Main port of #597's fail-closed provider-context policy kernel. Head `65c174b2b09759f8b4520564f87dfb9b4d60db15`; Android JVM, APK and shared contracts succeeded; emulator acceptance was still IN_PROGRESS. It remains a pure kernel until production provider dispatch and durable owner grants/Trace are wired.
+- PR #608 is the clean-current-Main port of #599's Bridge logical-operation identity. Head `b8c667a12d09f2818e08b2479aa443e6efed7733`; Android JVM, APK and shared contracts succeeded; emulator acceptance remained IN_PROGRESS at capture. It adds caller-controlled stable logical IDs, not automatic retries or server-side durable Inbox/ACK.
+- Post-merge Main CI for #603, run `45552011537`, was still IN_PROGRESS at capture (Android JVM/APK/emulator); PR-head validation for #603 is complete and remains separately recorded above.
+- PR #600 and #604 are merged as recorded in the prior checkpoint. PR #601 and #602 are closed as superseded. PR #594 is closed as superseded by #601/#603.
+- Older PRs #596–#599 remain open until their clean-current-Main replacements (#605–#608) pass full applicable validation and are integrated. Do not merge stale-base duplicates.
+
+### Eleven workstreams — live status
+
+1. **Core identity/runtime:** Android/Windows signing identity exists, but no separate cross-Core payload-encryption key agreement is enrolled. Owner-generation and safe-effect fencing remain mandatory.
+2. **Backup & recovery:** #605 has JVM/APK/shared-contract success; emulator and production backup/restore wiring remain open.
+3. **Android project/workspaces:** selector UI merged in #603 with 135/135 emulator tests passing. Canonical project-ID repair is under #606; UI wiring is not yet complete.
+4. **Bridge:** #608 client logical-operation identity under CI; server Inbox, durable receipt, authenticated ACK and restart recovery remain unimplemented.
+5. **Windows Desktop:** #600's Windows Desktop CI lane passed; end-to-end Core/Bridge handoff remains open.
+6. **Windows Agent:** #600's Windows Agent CI lane passed; production task-handler and durable Core reconciliation remain separate gates.
+7. **iOS:** #600's iOS lane passed; shared contracts remain the compatibility gate.
+8. **CI/CD:** #600 merged and aligns required check contexts; exact PR-head SHA summary is now validated.
+9. **Provider security:** #607 policy kernel under CI; production dispatch enforcement and durable grants remain open.
+10. **Token/GCU:** retained as a lower-priority design track; no implementation work ahead of Core/Backup/Bridge/Desktop.
+11. **Helpers/agents:** retained below foundation work; use only after core platform and execution safety gates.
+
+### Next execution order
+1. Finish exact-head emulator and summary checks for #605–#608; inspect complete logs/JUnit before deciding.
+2. Wire #606's `createOrSelectProject` into the production project-creation callback after checking it against #603's merged UI.
+3. Integrate #605 into the actual rollback/restore path only after confirming maintenance-gate and staging-cleanup behavior.
+4. Integrate #607 through the real provider dispatch path with durable owner grants and Trace-before-dispatch.
+5. Implement Core Outbox in the correct order: separate peer key agreement and envelope encryption; atomic enqueue/sequence; receiver Inbox idempotency; signature/ACK verification; retry/recovery. No cross-Core send before these gates pass.
+6. Reconcile stale PRs #596–#599 only after replacements are validated; close each duplicate with an explicit superseding link.
