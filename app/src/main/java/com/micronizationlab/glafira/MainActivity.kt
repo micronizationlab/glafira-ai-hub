@@ -855,6 +855,8 @@ fun ChatScreen(
                     )
                     Text("✕", color = Gr, fontSize = 16.sp, modifier = Modifier.clickable { isSearching = false; searchQuery = "" }.padding(start = 8.dp))
                 } else {
+                    Text("←", color = Gr, fontSize = 18.sp,
+                        modifier = Modifier.clickable { onBack() }.padding(end = 6.dp))
                     Box(Modifier.weight(1f)) {
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 5.dp)
