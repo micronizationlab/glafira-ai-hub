@@ -772,8 +772,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             } finally {
                 passphrase.fill('\u0000')
                 var cleanupFailure: Throwable? = null
-                fun attemptCleanup(block: () -> Unit) {
-                    runCatching(block).exceptionOrNull()?.let { failure ->
+                suspend fun attemptCleanup(block: suspend () -> Unit) {
+                    try {
+                        block()
+                    } catch (failure: Throwable) {
                         if (cleanupFailure == null) cleanupFailure = failure
                         else cleanupFailure?.addSuppressed(failure)
                     }
