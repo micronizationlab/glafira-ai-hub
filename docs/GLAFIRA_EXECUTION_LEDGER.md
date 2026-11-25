@@ -417,3 +417,20 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Audit follow-up issue #629:** created with 31 evidence-based questions, mandatory source/commit/test proof and a KEEP/SIMPLIFY/ADOPT/REWRITE/REMOVE/NEEDS-MORE-EVIDENCE matrix. It authorizes assessment only, not automatic architecture changes.
 - **Current next Core gate:** the normative Dual-Core contract states that signing trust does not provide payload encryption. Separate key agreement, authenticated envelope encryption, durable receiver Inbox, exact ACK and sender/receiver workers are still required. Keep cross-Core payload delivery disabled until these are implemented and accepted.
 - **Post-merge CI visibility:** the connected workflow lookup returns PR-triggered runs only. No post-merge run was returned for the ledger merge SHA at capture time; this is not recorded as a pass.
+
+## MaintenanceGate contention test — 2026-11-25
+
+- **Work Item:** GLAFIRA-S016-W01 / WBS 1.1.4; issue #638 under sprint #634.
+- **Change:** add a host-JVM test with 100 concurrent waiting coroutines, a held execution lease, exclusive maintenance window, blocked late entrants, release ordering, and a ThreadMXBean CPU-time ratio check when supported.
+- **Purpose:** verify the current CompletableDeferred.await() gate suspends rather than busy-spins, preserves maintenance exclusivity, and wakes waiters without losing notifications. No rewrite to Mutex/Channel was made.
+- **Validation:** exact-head JVM CI required; CPU metric is diagnostic and guarded when thread CPU time is unsupported. Test source only does not establish performance until CI passes.
+
+
+## MaintenanceGate CI defect repair — 2026-11-25
+
+- **Work Item:** GLAFIRA-S016-W01 / WBS 1.1.4; parent sprint #634, tracker #638; PR #648.
+- **Base / prior failing head:** main `ea2647ff99512702f6f584171d8e6159b6ac14b1`; PR head `66e4823278d90c4d6811d007bce2249c759fb3e6`.
+- **Observed exact-head run:** #45585505515 failed in Android JVM compilation. Full job log identifies `java.lang.management.ManagementFactory` as unresolved at import/use sites in `GlafiraCoreConcurrencyTest.kt`; Android compile stubs do not expose the host-JVM management API. The JUnit verifier then failed because compilation produced no test-results directory. This is a source/test compilation defect, not emulator or runner infrastructure.
+- **Correction:** commit `179c72732336fe85012b5b4112d0f17ce524d74a` removes the compile-time management API import and resolves the optional host ThreadMXBean metric reflectively. Unsupported/unavailable VM metrics now cleanly skip only that optional measurement; the 100-waiter exclusivity, release-order and wakeup assertions remain mandatory.
+- **Scope:** test-only; production MaintenanceGate implementation unchanged. No speculative Mutex/Channel rewrite.
+- **Validation:** correction is committed to the existing PR branch. Fresh exact-head Android JVM, APK, shared contracts and managed-emulator validation are required; no result is claimed yet. Merge remains gated on exact-head checks and review.
