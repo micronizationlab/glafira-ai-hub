@@ -582,88 +582,55 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
 
     @Test
-    fun rollbackJournalAndCacheNeverExposePlaintextMetadataCanary() = runBlocking {
+    fun rollbackJournalAndCacheNeverExposePlaintextMetadataCanary() {
         val taskId = "rollback-journal-canary"
         val canary = "GLAFIRA_ROLLBACK_METADATA_CANARY_91C7"
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-        val journalOwner = File(journal, "test-owner")
-        val owner = File(context.noBackupFilesDir, "glafira-rollback-canary-test-owner")
-        val runId = UUID.randomUUID().toString()
-        val keyAlias = "glafira_core_rollback_v1"
+        journal.deleteRecursively()
+        GlafiraRollbackSnapshotCipher.deleteKey()
+        store.enqueue(task(taskId))
+        store.writableDatabase.execSQL(
+            "UPDATE core_tasks SET last_error = ? WHERE task_id = ?",
+            arrayOf(canary, taskId)
+        )
+        store.writableDatabase.execSQL(
+            "UPDATE core_task_history SET reason = ? WHERE task_id = ?",
+            arrayOf(canary, taskId)
+        )
+        assertEquals(
+            canary,
+            store.readableDatabase.rawQuery(
+                "SELECT last_error FROM core_tasks WHERE task_id = ?",
+                arrayOf(taskId)
+            ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        )
+        assertEquals(
+            canary,
+            store.readableDatabase.rawQuery(
+                "SELECT reason FROM core_task_history WHERE task_id = ?",
+                arrayOf(taskId)
+            ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
+        )
         val passphrase = "GLAFIRA-rollback-canary-test-2026".toCharArray()
-        var ownsFixture = false
-        var primaryFailure: Throwable? = null
-        fun keyExists() = KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
-
         try {
-            withFixtureLocks {
-                synchronized(store) {
-                    if (owner.exists()) {
-                        val previous = owner.readText(Charsets.UTF_8)
-                        if (journal.exists()) {
-                            check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
-                            check(journal.deleteRecursively())
-                            if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                        } else check(!keyExists()) { "Preserve an orphaned rollback key for diagnosis." }
-                        check(owner.delete())
-                    }
-                    assertFalse("Refuse to overwrite an unowned journal", journal.exists())
-                    assertFalse("Refuse to overwrite an existing rollback key", keyExists())
-                    owner.writeText(runId, Charsets.UTF_8)
-                    ownsFixture = true
-                    store.enqueue(task(taskId))
-                    store.writableDatabase.execSQL(
-                        "UPDATE core_tasks SET last_error = ? WHERE task_id = ?", arrayOf(canary, taskId)
-                    )
-                    store.writableDatabase.execSQL(
-                        "UPDATE core_task_history SET reason = ? WHERE task_id = ?", arrayOf(canary, taskId)
-                    )
-                    assertEquals(canary, store.readableDatabase.rawQuery(
-                        "SELECT last_error FROM core_tasks WHERE task_id = ?", arrayOf(taskId)
-                    ).use { it.moveToFirst(); it.getString(0) })
-                    assertEquals(canary, store.readableDatabase.rawQuery(
-                        "SELECT reason FROM core_task_history WHERE task_id = ?", arrayOf(taskId)
-                    ).use { it.moveToFirst(); it.getString(0) })
-                    try {
-                        GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
-                        journalOwner.writeText(runId, Charsets.UTF_8)
-                    } catch (error: Exception) {
-                        if (journal.exists() && !journalOwner.exists()) journalOwner.writeText(runId, Charsets.UTF_8)
-                        throw error
-                    }
-                    val files = journal.walkTopDown().filter { it.isFile }.toList() +
-                        context.cacheDir.walkTopDown().filter { it.isFile }.toList()
-                    assertTrue("Encrypted rollback journal must exist", files.any { it.parentFile == journal })
-                    files.forEach { file ->
-                        assertFalse("Plaintext rollback metadata leaked into ${file.name}",
-                            file.readBytes().toString(Charsets.ISO_8859_1).contains(canary))
-                    }
-                    assertTrue(context.cacheDir.listFiles { file ->
-                        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                    }.orEmpty().isEmpty())
-                }
+            GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
+            val journalFiles = journal.walkTopDown().filter { it.isFile }.toList()
+            assertTrue("Rollback journal must contain its encrypted snapshot and marker", journalFiles.isNotEmpty())
+            val cacheFiles = context.cacheDir.walkTopDown().filter { it.isFile }.toList()
+            (journalFiles + cacheFiles).forEach { file ->
+                val contents = file.readBytes().toString(Charsets.ISO_8859_1)
+                assertFalse("Plaintext rollback metadata leaked into ${file.name}", contents.contains(canary))
             }
-        } catch (error: Throwable) {
-            primaryFailure = error
-            throw error
+            assertTrue(
+                "No decrypted rollback recovery temp may remain after prepareRollback",
+                context.cacheDir.listFiles { file ->
+                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                }.orEmpty().isEmpty()
+            )
         } finally {
+            journal.deleteRecursively()
             passphrase.fill('\u0000')
-            if (ownsFixture) try {
-                withFixtureLocks {
-                    synchronized(store) {
-                        if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
-                            if (journal.exists()) {
-                                check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
-                                check(journal.deleteRecursively())
-                                if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                            } else check(!keyExists()) { "Preserve an orphaned canary key for diagnosis." }
-                            check(owner.delete())
-                        }
-                    }
-                }
-            } catch (cleanup: Throwable) {
-                if (primaryFailure != null) primaryFailure!!.addSuppressed(cleanup) else throw cleanup
-            }
+            GlafiraRollbackSnapshotCipher.deleteKey()
         }
     }
 
