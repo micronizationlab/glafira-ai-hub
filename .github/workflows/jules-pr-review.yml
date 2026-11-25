@@ -1,22 +1,23 @@
 
-name: GLAFIRA Jules PR Review
+name: GLAFIRA Dual Jules PR Review
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
-  group: glafira-jules-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: glafira-dual-jules-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
   pull-requests: write
   checks: write
+  statuses: write
 
 jobs:
-  jules-review:
-    name: Google Jules independent review
+  advanced-jules-review:
+    name: Advanced Jules - Main Review
     runs-on: ubuntu-latest
     steps:
       - name: Advanced Jules PR Reviewer
@@ -24,8 +25,65 @@ jobs:
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          fail_on: never
+          fail_on: blocking
+          min_severity_to_report: info
+          strictness: assertive
           skip_drafts: true
           skip_forks: true
-          diff_mode: agentic
-          strictness: chill
+          bypass_label: jules-override
+          status_context: advanced-jules/review
+          rules_file: ""
+          rules_directory: ""
+          extra_instructions: |
+            You are the primary independent code reviewer for GLAFIRA AI HUB.
+
+            Review the complete PR diff and changed files.
+            Focus on:
+            - GLAFIRA Core and durable task execution.
+            - Backup and Recovery.
+            - Runtime, Bridge and Desktop.
+            - Security, data integrity and owner authorization.
+            - Concurrency, race conditions and recovery.
+            - Tests, CI results and regression risks.
+
+            Check actual code, not only descriptions or bot comments.
+            Report precise file and line references.
+            Classify findings by severity and confidence.
+            Do not modify code.
+            Do not merge pull requests.
+            Never bypass repository protections.
+
+  sanjay-jules-review:
+    name: Jules - Independent Second Review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Jules PR Reviewer
+        uses: sanjay3290/jules-pr-reviewer@v1.0.0
+        with:
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on: blocking
+          skip_drafts: true
+          skip_forks: true
+          bypass_label: jules-override
+          status_context: sanjay-jules/review
+          rules_file: ""
+          extra_instructions: |
+            You are the independent second reviewer for GLAFIRA AI HUB.
+
+            Perform a separate review. Do not rely on the first reviewer's verdict.
+
+            Concentrate on:
+            - Hidden defects and overlooked edge cases.
+            - Security vulnerabilities and unsafe permissions.
+            - Data loss, backup and recovery failures.
+            - Core queue consistency and task duplication.
+            - Bridge and Desktop reliability.
+            - Concurrency, deadlocks and race conditions.
+            - Missing tests and incomplete CI evidence.
+
+            Verify whether proposed changes are actually implemented.
+            Do not approve based only on PR descriptions.
+            Do not modify code.
+            Do not merge pull requests.
+            Never bypass repository protections.
