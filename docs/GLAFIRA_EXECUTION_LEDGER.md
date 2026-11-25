@@ -528,7 +528,7 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **WBS leaf:** `1.2.1.2.1` — Verify V3 rollback recovery re-entry after coordinator reconstruction.
 - **Hierarchy:** `1.2` Backup and Recovery → `1.2.1` Local rollback-journal confidentiality and integrity → `1.2.1.2` Interrupted restore recovery and restart re-entry → `1.2.1.2.1` Re-enter recovery from a persisted V3 journal using a newly constructed coordinator.
 - **Tracker:** issue #566. Legacy Program 150 steps 25 / 136 / 158 remain related acceptance references only; this leaf completes none of them.
-- **Predecessor:** `1.2.1.1.1` bounded rollback-journal plaintext-canary acceptance is PASS. This step must not alter its source/test ownership.
+- **Predecessor:** `1.2.1.1.1` bounded rollback-journal plaintext-canary acceptance result is PASS; its WBS lifecycle status is DONE, supported by successful post-merge Main validation below. This leaf may start only after this reservation is merged; do not alter predecessor source/test ownership.
 - **Executor:** GLAFIRA coordinator. **Independent reviewer:** CodeRabbit plus GLAFIRA exact-head review; owner controls merge.
 - **Branch / base:** `backup/recovery-reentry-wbs-20261125`, based on Main `5be41d316791a4ac89cf4be24d043e7a2ea04dbe`.
 - **Exclusive file reservation:** `app/src/androidTest/java/com/micronizationlab/glafira/GlafiraCoreBackupCoordinatorInstrumentedTest.kt`. Test-only slice; no production source file is authorized unless a separately registered finding requires it.
