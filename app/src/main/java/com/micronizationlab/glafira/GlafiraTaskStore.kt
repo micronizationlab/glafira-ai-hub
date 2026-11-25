@@ -1026,7 +1026,11 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             put("updated_at", nowMillis)
             putNull("retry_at")
             put("last_error", "TASK_DEADLINE_EXPIRED")
-        }, "state IN ('queued','waiting_for_network','waiting_for_owner','retry_scheduled') AND deadline_at <= ? AND (last_error IS NULL OR (last_error NOT IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN','EXECUTION_OUTCOME_UNCERTAIN') AND last_error NOT LIKE 'CORE_RESULT_PERSIST_FAILED:%'))$ownerClause",
+        }, "state IN ('queued','waiting_for_network','waiting_for_owner','retry_scheduled') AND deadline_at <= ? " +
+            "AND NOT (COALESCE(last_error,'') IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN','EXECUTION_OUTCOME_UNCERTAIN') " +
+            "OR (COALESCE(last_error,'') GLOB 'CORE_RESULT_PERSIST_FAILED:*' AND EXISTS (" +
+            "SELECT 1 FROM $TABLE_OWNERSHIP own_risk WHERE own_risk.task_id = $TABLE_TASKS.task_id " +
+            "AND own_risk.effect_risk IN ('EXTERNAL_SIDE_EFFECT','FINANCIAL','DESTRUCTIVE'))))$ownerClause",
             args)
     }
 
@@ -1058,9 +1062,13 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
                 "SELECT task_id FROM $TABLE_TASKS t " +
                     "WHERE state IN (?, ?) AND task_type != ? " +
                     "AND (retry_at IS NULL OR retry_at <= ?) " +
-                    "AND (deadline_at IS NULL OR deadline_at >= ?) " +
+                    "AND (deadline_at IS NULL OR deadline_at > ?) " +
                     "AND (? = '' OR EXISTS (SELECT 1 FROM $TABLE_OWNERSHIP own " +
                     "WHERE own.task_id = t.task_id AND own.owner_core_id = ?)) " +
+                    "AND NOT (COALESCE(t.last_error,'') IN ('CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN','EXECUTION_OUTCOME_UNCERTAIN') " +
+                    "OR (COALESCE(t.last_error,'') GLOB 'CORE_RESULT_PERSIST_FAILED:*' AND EXISTS (" +
+                    "SELECT 1 FROM $TABLE_OWNERSHIP own_risk WHERE own_risk.task_id = t.task_id " +
+                    "AND own_risk.effect_risk IN ('EXTERNAL_SIDE_EFFECT','FINANCIAL','DESTRUCTIVE')))) " +
                     "AND NOT EXISTS (SELECT 1 FROM $TABLE_DEPENDENCIES d " +
                     "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
                     "WHERE d.task_id = t.task_id AND p.state != ?) " +
@@ -1605,9 +1613,11 @@ class GlafiraTaskStore(context: Context, private val ownerCoreId: String? = null
             "SELECT d.task_id FROM $TABLE_DEPENDENCIES d " +
             "JOIN $TABLE_TASKS p ON p.task_id = d.depends_on_task_id " +
             "WHERE p.state IN (?, ?))$ownerClause " +
-            "AND (last_error IS NULL OR (last_error NOT IN (" +
-            "'CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN'," +
-            "'EXECUTION_OUTCOME_UNCERTAIN') AND last_error NOT GLOB 'CORE_RESULT_PERSIST_FAILED:*'))"
+            "AND NOT (COALESCE($TABLE_TASKS.last_error,'') IN (" +
+            "'CORE_EXECUTION_OUTCOME_UNKNOWN','DESKTOP_EXECUTION_OUTCOME_UNKNOWN','EXECUTION_OUTCOME_UNCERTAIN') " +
+            "OR (COALESCE($TABLE_TASKS.last_error,'') GLOB 'CORE_RESULT_PERSIST_FAILED:*' AND EXISTS (" +
+            "SELECT 1 FROM $TABLE_OWNERSHIP own_risk WHERE own_risk.task_id = $TABLE_TASKS.task_id " +
+            "AND own_risk.effect_risk IN ('EXTERNAL_SIDE_EFFECT','FINANCIAL','DESTRUCTIVE'))))"
         val args = arrayOf(
             GlafiraTaskState.QUEUED.databaseValue,
             GlafiraTaskState.RETRY_SCHEDULED.databaseValue,
