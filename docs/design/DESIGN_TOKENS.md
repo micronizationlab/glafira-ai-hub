@@ -1,6 +1,6 @@
 # GLAFIRA DESIGN — shared visual tokens and component foundation
 
-**Status:** proposal — not owner-approved for implementation  
+**Status:** owner-approved baseline — approved by owner on 2026-11-25 for implementation  
 **Umbrella:** issue #672 · **Work item:** GLAFIRA-DESIGN-W01 · **WBS:** 1.11.1.1.1  
 **Identity:** ICQ 2003 visual character + Apple/macOS polish; retain the ICQ flower.
 
@@ -122,7 +122,7 @@ Model/provider availability is distinct from connection state and quota:
 
 ## 10. Approval and implementation gate
 
-All colors, dimensions and component recommendations in this document remain proposals until owner review. Platform UX packages #674–#678 and #680 may define information architecture and wireframes while exact visual tokens are marked pending. No implementation lane may treat this file as an accepted UI contract until the owner approves it. This document changes no runtime code, Core authority, permissions, cryptography, Bridge protocol, database schema or backup behavior.
+The owner approved this baseline token set and visual direction on 2026-11-25. These semantic roles and listed palette values are the implementation baseline. Platform UX packages #674–#678 and #680 may now consume them. Contrast was independently checked for the listed primary action, control outline, focus and status accent pairs against the specified adjacent surfaces; consuming components must still verify their actual text/background and boundary pairings. Any later palette change requires a documented rationale and owner approval. This document changes no runtime code, Core authority, permissions, cryptography, Bridge protocol, database schema or backup behavior.
 
 
 ## 11. Implementation handoff and assets
@@ -132,6 +132,6 @@ The companion documents make the platform work actionable without assuming that 
 - [Platform implementation handoff](PLATFORM_IMPLEMENTATION_HANDOFF.md) — verified repository locations, Android Compose / iOS SwiftUI / Windows WPF adaptation, migration order and acceptance gates.
 - [SVG icon asset specification](ICON_ASSET_SPEC.md) — app flower exports, six semantic status icons, SVG production rules and delivery checklist.
 
-The current Android UI still has a legacy palette in `MainActivity.kt`; Windows also contains legacy literal colors. These are migration targets, not proof that the new token system is already wired into runtime screens. The repository currently has no verified approved flower master or completed six-icon SVG set. Do not fabricate these assets or mark them complete.
+The current Android UI still has a legacy palette in `MainActivity.kt`; Windows also contains legacy literal colors. These are migration targets, not proof that the new token system is already wired into runtime screens. The owner confirms that the GLAFIRA flower already exists and is the approved canonical mark: preserve the ICQ-style five green petals, white center and green core with a glossy/lacquered dimensional finish. Do not redesign, replace or independently reinterpret it. The exact source file must be located in the active project history/branch before exporting or editing; the current `main` tree scan did not expose a flower-named asset. The six semantic status SVGs remain a separate asset-delivery task.
 
 The GitHub issue form for scoped implementation is available at `.github/ISSUE_TEMPLATE/design_system.md`. Umbrella tracking remains issue #672; do not create duplicate umbrella issues.
