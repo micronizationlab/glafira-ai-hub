@@ -124,3 +124,18 @@ Every cycle report must state the current `main` SHA, WBS ID, legacy step mappin
 ```
 
 The next executable step is not eligible until its predecessor is accepted and recorded. This rule is mandatory for every participant and every workstream.
+
+
+## 8. Core task queue lifecycle — owner cancellation WBS registration
+
+The following owner-approved cross-step task is mapped to legacy Program Step 93 (task queue UI cancellation). This registration does not claim Step 93 complete.
+
+- `1.1.3` — Core task queue and dispatcher.
+- `1.1.3.1` — Task queue lifecycle.
+- `1.1.3.1.1` — Owner cancellation of unclaimed tasks (Work Item `GLAFIRA-S093-W01`, issue #669).
+- `1.1.3.1.1.1` — Implement the safe owner cancellation path.
+- `1.1.3.1.1.1.1` — Storage/state primitive: eligible states, project-bound transaction, history, safe descendant propagation and unresolved-outcome preservation.
+- `1.1.3.1.1.1.2` — Owner API and Android queue UX: fresh one-use biometric session, restore-lock guard, project-bound confirmation and non-blocking execution. Predecessor: `.1` DONE.
+- `1.1.3.1.1.1.3` — Acceptance: policy JVM and Android instrumentation coverage, including restore-marker rejection and restore-vs-cancellation serialization. Predecessors: `.1` and `.2` DONE.
+
+The reservation PR must precede source edits. The storage, UI/API and acceptance slices are separate focused PRs, each retaining the same Work Item ID and exact executable-step ID. No slice may be marked DONE until its exact-head tests, review, merge and post-merge validation are complete; the parent task and Program Step 93 remain open until all required owner acceptance is satisfied.
