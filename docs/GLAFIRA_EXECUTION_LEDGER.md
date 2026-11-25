@@ -549,3 +549,16 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Review / integration:** CodeRabbit review and GLAFIRA source review were recorded; owner merged the implementation and WBS registration. The bounded leaf acceptance is therefore complete.
 - **Boundary:** DONE applies only to the rollback-journal plaintext-canary leaf. It does not close issue #566 or claim OS process-death, ENOSPC, missing-key/tamper, provider round-trip or clean-device restore acceptance.
 - **Sequencing:** leaf `1.2.1.2.1` remains a separate reservation and may proceed only after its own WBS reservation PR is merged.
+
+
+## WBS reservation — GLAFIRA DESIGN shared visual foundation — 2026-11-25
+
+- **Work Item / WBS / parent / Program mapping:** `GLAFIRA-DESIGN-W01` / `1.11.1.1.1` / parent `1.11.1.1 — Shared design foundation` / umbrella #672 / tracker #679 / owner-approved cross-step design initiative; no legacy Program 150 step is claimed.
+- **Executor / reviewer:** GLAFIRA coordinator / owner review by Валерий Корчагин; implementation teams consume only after owner acceptance.
+- **Branch / base:** `design/shared-tokens-foundation-20261125`, Main `155b5dd117b97579983d3aa9df6a9e8a69c30e1e`.
+- **Exclusive path:** `docs/design/DESIGN_TOKENS.md` only; no overlap with platform UX files #674–#678 or Multi-AI file #680.
+- **Predecessors / dependencies:** none for the semantic token proposal; platform-specific final visual specifications depend on owner review of this foundation. Information architecture/wireframes may proceed with tokens marked pending.
+- **Drafting / revision procedure:** (1) inventory cross-platform semantic roles and existing GLAFIRA status meanings; (2) define proposed light/dark tokens and native mappings; (3) calculate text and non-text contrast for each proposed pairing; (4) specify component, focus, disabled, touch and motion behavior; (5) map approval-waiting vs unknown-outcome reconciliation and recovery-required states; (6) incorporate independent review findings and record owner changes. Keep all values provisional until approval.
+- **Manual acceptance evidence:** (1) review semantic-token mapping for Android/iOS/Windows Desktop/Agent; (2) record light/dark text contrast and ≥3:1 non-text boundary calculations; (3) verify active/offline/waiting/quota/error and recoveryRequired state mappings; (4) record visible text/icon plus accessible label for each critical state; (5) distinguish Needs owner approval from Reconciliation required and prohibit generic retry for unknown outcomes; (6) verify Android 48dp, iOS 44pt and Windows 40px touch targets, keyboard focus, screen-reader labels and reduced motion; (7) capture owner approve/request-changes decision. Record a checklist/table in the PR; CI is separate and cannot prove visual acceptance.
+- **Changed-file inventory for PR #681:** `docs/design/DESIGN_TOKENS.md`; `docs/GLAFIRA_EXECUTION_LEDGER.md`.
+- **Status:** IN_REVIEW on design PR #681, current design-file head `5523dceb4a371521b219f7e2765afa71785a1a8c`; exact-head docs CI, Security Scan and Dispatcher are pending/being rechecked. This design deliverable does not complete any implementation or platform acceptance step.
