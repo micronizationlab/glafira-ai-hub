@@ -12,6 +12,7 @@ internal object GlafiraCoreOutboxSchema {
                 event_id TEXT PRIMARY KEY NOT NULL,
                 source_core_id TEXT NOT NULL,
                 recipient_core_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
                 source_sequence INTEGER NOT NULL CHECK(source_sequence > 0),
                 correlation_id TEXT,
                 causation_id TEXT,
@@ -26,8 +27,8 @@ internal object GlafiraCoreOutboxSchema {
                 state_version INTEGER NOT NULL CHECK(state_version >= 0),
                 idempotency_key TEXT NOT NULL,
                 payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256) = 64),
-                payload_ciphertext TEXT NOT NULL,
-                signature_base64 TEXT NOT NULL,
+                payload_ciphertext TEXT NOT NULL CHECK(length(payload_ciphertext) > 0),
+                signature_base64 TEXT NOT NULL CHECK(length(signature_base64) > 0),
                 created_at INTEGER NOT NULL CHECK(created_at > 0),
                 delivery_state TEXT NOT NULL DEFAULT 'PENDING' CHECK(delivery_state IN (
                     'PENDING', 'ACKNOWLEDGED', 'QUARANTINED'
@@ -40,21 +41,23 @@ internal object GlafiraCoreOutboxSchema {
                 ack_recipient_core_id TEXT,
                 ack_owner_generation INTEGER,
                 ack_state_version INTEGER,
-                ack_payload_sha256 TEXT,
+                ack_payload_sha256 TEXT CHECK(ack_payload_sha256 IS NULL OR ack_payload_sha256 NOT GLOB '*[^0-9a-f]*'),
                 ack_signature_base64 TEXT,
                 UNIQUE(source_core_id, source_sequence),
                 UNIQUE(source_core_id, idempotency_key, event_type, owner_generation, state_version),
+                CHECK(length(source_core_id) BETWEEN 8 AND 128),
+                CHECK(length(recipient_core_id) BETWEEN 8 AND 128),
                 CHECK(source_core_id != recipient_core_id),
                 CHECK(length(idempotency_key) BETWEEN 1 AND 256),
                 CHECK(payload_sha256 NOT GLOB '*[^0-9a-f]*'),
                 CHECK(
                     (delivery_state = 'ACKNOWLEDGED' AND acknowledged_at IS NOT NULL
-                        AND ack_sender_core_id = recipient_core_id
-                        AND ack_recipient_core_id = source_core_id
-                        AND ack_owner_generation = owner_generation
-                        AND ack_state_version = state_version
-                        AND ack_payload_sha256 = payload_sha256
-                        AND ack_signature_base64 IS NOT NULL)
+                        AND ack_sender_core_id IS NOT NULL AND ack_sender_core_id = recipient_core_id
+                        AND ack_recipient_core_id IS NOT NULL AND ack_recipient_core_id = source_core_id
+                        AND ack_owner_generation IS NOT NULL AND ack_owner_generation = owner_generation
+                        AND ack_state_version IS NOT NULL AND ack_state_version = state_version
+                        AND ack_payload_sha256 IS NOT NULL AND ack_payload_sha256 = payload_sha256
+                        AND ack_signature_base64 IS NOT NULL AND length(ack_signature_base64) > 0)
                     OR
                     (delivery_state != 'ACKNOWLEDGED' AND acknowledged_at IS NULL
                         AND ack_sender_core_id IS NULL AND ack_recipient_core_id IS NULL
