@@ -635,9 +635,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val ownerMarker = File(context.noBackupFilesDir, "glafira-v3-reentry-test-owner")
             val knownGoodFile = File(context.filesDir, "v3-reentry-known-good.txt")
             val createdAfterMarkerFile = File(context.filesDir, "v3-reentry-created-after-marker.txt")
-            val unrelatedRecoveryTemp = File(context.cacheDir, "glafira-rollback-recovery-unrelated-$runId.tmp")
             val runId = UUID.randomUUID().toString()
             val recoveryTempPrefix = "glafira-v3-reentry-$runId-"
+            val unrelatedRecoveryTemp = File(context.cacheDir, "glafira-rollback-recovery-unrelated-$runId.tmp")
             var ownsFixture = false
             var ownsJournal = false
             var ownsUnrelatedRecoveryTemp = false
