@@ -32,6 +32,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
@@ -188,6 +190,7 @@ private fun WorkspaceApp() {
                 currentProject = currentProject,
                 refreshKey = statusRefresh,
                 onProjectSelect = { currentProject = it },
+                onProjectPickerOpen = { projects = loadProjects(context) },
                 onProjectAdd = { name ->
                     val newProj = Project(UUID.randomUUID().toString(), name)
                     projects = updateProjects(context) { it + newProj }
@@ -289,6 +292,7 @@ fun ContactList(
     currentProject: Project,
     refreshKey: Int,
     onProjectSelect: (Project) -> Unit,
+    onProjectPickerOpen: () -> Unit,
     onProjectAdd: (String) -> Unit,
     onProjectDelete: (Project) -> Unit,
     onAgentClick: (A) -> Unit,
@@ -378,7 +382,23 @@ fun ContactList(
         Row(Modifier.fillMaxWidth().background(GrD).border(1.dp, Line).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Проект: ", color = Tx, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
             Box {
-                Row(modifier = Modifier.clickable { showProjectMenu = true }, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier
+                        .clickable {
+                            onProjectPickerOpen()
+                            showProjectMenu = true
+                        }
+                        .clearAndSetSemantics {
+                            contentDescription = "Выбрать проект: ${currentProject.name}"
+                            role = Role.Button
+                            onClick(label = "Выбрать проект") {
+                                onProjectPickerOpen()
+                                showProjectMenu = true
+                                true
+                            }
+                        },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(currentProject.name, color = Gr, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     Text(" ▼", color = Gr, fontSize = 8.sp)
                 }
@@ -386,7 +406,7 @@ fun ContactList(
                     projects.forEach { proj ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             DropdownMenuItem(
-                                text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Bg) },
+                                text = { Text(proj.name, color = if (proj.id == currentProject.id) Gr else Color(0xFF202020)) },
                                 onClick = { onProjectSelect(proj); showProjectMenu = false },
                                 modifier = Modifier.weight(1f)
                             )
