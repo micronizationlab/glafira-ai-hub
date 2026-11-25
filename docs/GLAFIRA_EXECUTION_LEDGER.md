@@ -549,3 +549,16 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Review / integration:** CodeRabbit review and GLAFIRA source review were recorded; owner merged the implementation and WBS registration. The bounded leaf acceptance is therefore complete.
 - **Boundary:** DONE applies only to the rollback-journal plaintext-canary leaf. It does not close issue #566 or claim OS process-death, ENOSPC, missing-key/tamper, provider round-trip or clean-device restore acceptance.
 - **Sequencing:** leaf `1.2.1.2.1` remains a separate reservation and may proceed only after its own WBS reservation PR is merged.
+
+
+## WBS reservation — Core owner cancellation before dispatch — 2026-11-25
+
+- **WBS leaf:** `1.1.3.1.1` — Owner cancellation of an unclaimed Core task.
+- **Tracker:** issue #669. Prior Orbi run `809501cb` stopped after its steering limit; its private uncommitted worktree was not published and is not imported.
+- **Executor:** GLAFIRA coordinator. **Independent review:** CodeRabbit / GLAFIRA review; final merge remains owner-controlled.
+- **Branch / base:** `fix/core-owner-task-cancel-20261125`, based on Main `155b5dd117b97579983d3aa9df6a9e8a69c30e1e`.
+- **Exclusive files:** `GlafiraTask.kt`, `GlafiraTaskStore.kt`, `GlafiraCoreRuntimeOwner.kt`, `TaskQueueScreen.kt`, `GlafiraTaskPolicyTest.kt`, and new `GlafiraTaskCancellationInstrumentedTest.kt`.
+- **Objective:** allow the owner to atomically cancel only `queued`, `retry_scheduled`, `waiting_for_network`, and `waiting_for_owner` tasks; reject running and terminal tasks; keep cancelled work unclaimable; propagate failed dependencies transactionally; expose a confirmation-gated queue action.
+- **Acceptance:** deterministic policy JVM tests; Android instrumentation tests for accepted/rejected/idempotent cancellation, claim exclusion and dependency propagation; exact-head Android JVM, APK, Shared Contracts and managed-emulator CI; independent review; owner approval; post-merge Main validation.
+- **Safety boundary:** no running-task cancellation, no external-effect interruption, no schema/migration change, no change to owner authority or task claim semantics. Do not import Orbi's inaccessible staged worktree or claim its unfinished test passed.
+- **Status:** RESERVED before edits on this branch. No Program 150 numbered step is marked complete by this bounded leaf.
