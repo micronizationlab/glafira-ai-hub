@@ -12,7 +12,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
-import java.lang.management.ManagementFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -211,6 +210,26 @@ class GlafiraCoreConcurrencyTest {
         first.await()
         second.await()
     }
+    /**
+     * java.lang.management is available on the host JVM but not in Android's compile SDK stubs.
+     * Resolve it reflectively so this host-side diagnostic does not break Android test compilation.
+     * Missing/disabled VM support makes the optional metric unavailable, not a test failure.
+     */
+    private fun currentThreadCpuTimeNanos(): Long? = runCatching {
+        val factory = Class.forName("java.lang.management.ManagementFactory")
+        val bean = factory.getMethod("getThreadMXBean").invoke(null)
+        val beanType = Class.forName("java.lang.management.ThreadMXBean")
+        val supported = beanType.getMethod("isThreadCpuTimeSupported").invoke(bean) as Boolean
+        if (!supported) return@runCatching null
+        val enabled = beanType.getMethod("isThreadCpuTimeEnabled").invoke(bean) as Boolean
+        if (!enabled) {
+            beanType.getMethod("setThreadCpuTimeEnabled", Boolean::class.javaPrimitiveType!!)
+                .invoke(bean, true)
+        }
+        beanType.getMethod("getThreadCpuTime", Long::class.javaPrimitiveType!!)
+            .invoke(bean, Thread.currentThread().id) as Long
+    }.getOrNull()?.takeIf { it >= 0L }
+
     @Test
     fun maintenanceGateSuspendsOneHundredWaitingCoroutinesWithoutBusySpin() {
         val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
@@ -258,23 +277,18 @@ class GlafiraCoreConcurrencyTest {
                 delay(50L)
                 assertEquals("New execution leases must remain blocked during maintenance", 0, waitingEntered.get())
 
-                val threadBean = ManagementFactory.getThreadMXBean()
-                val threadId = Thread.currentThread().id
-                if (threadBean.isThreadCpuTimeSupported) {
-                    if (!threadBean.isThreadCpuTimeEnabled) threadBean.isThreadCpuTimeEnabled = true
-                    val cpuBefore = threadBean.getThreadCpuTime(threadId)
-                    val wallBefore = System.nanoTime()
-                    delay(250L)
-                    val cpuAfter = threadBean.getThreadCpuTime(threadId)
-                    val wallAfter = System.nanoTime()
-                    if (cpuBefore >= 0L && cpuAfter >= cpuBefore) {
-                        val cpuNanos = cpuAfter - cpuBefore
-                        val wallNanos = wallAfter - wallBefore
-                        assertTrue(
-                            "Suspended waiters consumed excessive CPU: cpu=$cpuNanos wall=$wallNanos",
-                            cpuNanos < wallNanos / 2L
-                        )
-                    }
+                val cpuBefore = currentThreadCpuTimeNanos()
+                val wallBefore = System.nanoTime()
+                delay(250L)
+                val cpuAfter = currentThreadCpuTimeNanos()
+                val wallAfter = System.nanoTime()
+                if (cpuBefore != null && cpuAfter != null && cpuAfter >= cpuBefore) {
+                    val cpuNanos = cpuAfter - cpuBefore
+                    val wallNanos = wallAfter - wallBefore
+                    assertTrue(
+                        "Suspended waiters consumed excessive CPU: cpu=$cpuNanos wall=$wallNanos",
+                        cpuNanos < wallNanos / 2L
+                    )
                 }
 
                 releaseFirst.complete(Unit)
