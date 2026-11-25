@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
@@ -53,6 +54,43 @@ class GlafiraCoreOutboxSchemaInstrumentedTest {
             }
         } finally {
             store.close()
+            context.deleteDatabase("glafira_core_tasks.db")
+        }
+    }
+
+    @Test fun versionElevenDatabaseMigratesOutboxWithoutLosingExistingCoreTables() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("glafira_core_tasks.db")
+        val initial = GlafiraTaskStore(context, "glafira-outbox-migration-core-0001")
+        initial.writableDatabase
+        initial.close()
+
+        val legacy = SQLiteDatabase.openDatabase(
+            context.getDatabasePath("glafira_core_tasks.db").absolutePath,
+            null, SQLiteDatabase.OPEN_READWRITE
+        )
+        try {
+            legacy.execSQL("DROP TABLE ${GlafiraCoreOutboxSchema.TABLE}")
+            legacy.execSQL("PRAGMA user_version = 11")
+        } finally {
+            legacy.close()
+        }
+
+        val upgraded = GlafiraTaskStore(context, "glafira-outbox-migration-core-0001")
+        try {
+            val version = upgraded.readableDatabase.rawQuery("PRAGMA user_version", null).use {
+                assertTrue(it.moveToFirst())
+                it.getInt(0)
+            }
+            assertEquals(12, version)
+            val tables = upgraded.readableDatabase.rawQuery(
+                "SELECT name FROM sqlite_master WHERE type='table'", null
+            ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+            assertTrue(tables.contains(GlafiraCoreOutboxSchema.TABLE))
+            assertTrue(tables.contains("core_tasks"))
+            assertTrue(tables.contains("core_task_ownership"))
+        } finally {
+            upgraded.close()
             context.deleteDatabase("glafira_core_tasks.db")
         }
     }
