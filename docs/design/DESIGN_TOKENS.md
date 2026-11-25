@@ -53,7 +53,7 @@ The values below are **provisional proposals** for review. Components should con
 
 ### Required contrast evidence — provisional palette
 
-Ratios use the WCAG relative-luminance formula and the exact hex values above. This is proposal evidence, not a substitute for measuring rendered components after implementation. Text threshold: **4.5:1** for normal text. Functional boundaries, focus indicators and status icons: **3:1** against the actual adjacent surface. Status labels use `text.primary`; status color is for the icon/accent only.
+Ratios use the WCAG relative-luminance formula and the exact hex values above. This is proposal evidence, not a substitute for measuring rendered components after implementation. Text threshold: **4.5:1** for normal text. Functional boundaries, focus indicators and status icons: **3:1** against the actual adjacent surface. Status labels default to `text.primary`; a semantic status-colored label is permitted only when its exact foreground/background pairing on the actual rendered surface is measured at ≥4.5:1 and recorded in the platform specification. Status color remains an icon/accent otherwise.
 
 | Light theme · component/state pairing | Canvas | Panel | Raised | Threshold / result |
 |---|---:|---:|---:|---|
@@ -66,7 +66,7 @@ Ratios use the WCAG relative-luminance formula and the exact hex values above. T
 | Interactive control outline · control.outline | 4.59 | 5.01 | 5.01 | 3.0 · PASS |
 | Disabled control boundary · control.disabled | 3.51 | 3.83 | 3.83 | 3.0 · PASS |
 | Exterior keyboard focus ring · focus.ring | 5.91 | 6.45 | 6.45 | 3.0 · PASS |
-| Status icons · success / warning / danger / info | 4.38 / 4.16 / 5.98 / 5.18 | 4.77 / 4.54 / 6.53 / 5.66 | 4.77 / 4.54 / 6.53 / 5.66 | 3.0 · PASS |
+| Status icons · success / warning / danger / info / neutral | 4.38 / 4.16 / 5.98 / 5.18 / 4.56 | 4.77 / 4.54 / 6.53 / 5.66 / 4.97 | 4.77 / 4.54 / 6.53 / 5.66 / 4.97 | 3.0 · PASS |
 
 | Dark theme · component/state pairing | Canvas | Panel | Raised | Threshold / result |
 |---|---:|---:|---:|---|
@@ -79,7 +79,7 @@ Ratios use the WCAG relative-luminance formula and the exact hex values above. T
 | Interactive control outline · control.outline | 5.04 | 4.37 | 3.75 | 3.0 · PASS |
 | Disabled control boundary · control.disabled | 4.27 | 3.70 | 3.17 | 3.0 · PASS |
 | Exterior keyboard focus ring · focus.ring | 9.11 | 7.90 | 6.77 | 3.0 · PASS |
-| Status icons · success / warning / danger / info | 8.38 / 9.45 / 6.75 / 8.24 | 7.27 / 8.19 / 5.85 / 7.15 | 6.23 / 7.02 / 5.01 / 6.12 | 3.0 · PASS |
+| Status icons · success / warning / danger / info / neutral | 8.38 / 9.45 / 6.75 / 8.24 / 7.86 | 7.27 / 8.19 / 5.85 / 7.15 / 6.81 | 6.23 / 7.02 / 5.01 / 6.12 / 5.84 | 3.0 · PASS |
 
 Disabled controls retain their real Canvas/Panel/Raised surface fill; the disabled boundary is a separate non-text edge. Therefore no text is rendered on `control.disabled` itself. The primary-button focus treatment is an **exterior** ring with a gap that exposes the button's actual surrounding surface; the measured ring-to-surface ratios above apply. If a platform cannot render this treatment, it must document and measure an alternate indicator against every adjacent color before approval. Never place the ring directly against `brand.action` using the current values.
 
@@ -155,4 +155,4 @@ Model/provider availability is distinct from connection state and quota:
 
 ## 10. Approval and implementation gate
 
-All colors, dimensions and component recommendations in this document remain proposals until owner review. Platform UX packages #674–#678 and #680 may define information architecture and wireframes while tokens are pending, but **final visual specifications may not be finalized until this WBS leaf `1.11.1.1.1` is owner-approved and recorded `DONE` in the ledger**. No implementation lane may treat this file as an accepted UI contract until that gate is met. This document changes no runtime code, Core authority, permissions, cryptography, Bridge protocol, database schema or backup behavior.
+All colors, dimensions and component recommendations in this document remain proposals until owner review. Platform UX packages #674–#678 and #680 may define information architecture and wireframes while tokens are pending only when the corresponding package issue explicitly states **“visual tokens pending #679”**. Otherwise the package must wait. **No platform may adopt this proposal as its UI contract or finalize visual specifications until this WBS leaf `1.11.1.1.1` is owner-approved and recorded `DONE` in the ledger**. No implementation lane may treat this file as an accepted UI contract until that gate is met. This document changes no runtime code, Core authority, permissions, cryptography, Bridge protocol, database schema or backup behavior.
