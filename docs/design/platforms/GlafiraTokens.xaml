@@ -1,0 +1,54 @@
+<!--
+  WPF-compatible reference dictionary for the future Windows Desktop/Agent UI.
+  The repository does not yet declare whether the final Windows target is WPF or WinUI 3.
+  If WinUI 3 is selected, translate these semantic values to its ResourceDictionary syntax;
+  do not copy this file into a WinUI project unchanged.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Brand -->
+    <Color x:Key="Glafira.Brand.Primary.Light">#FF78B83A</Color>
+    <Color x:Key="Glafira.Brand.Primary.Dark">#FF9AD45A</Color>
+    <Color x:Key="Glafira.Brand.Action.Light">#FF3E6F20</Color>
+    <Color x:Key="Glafira.Brand.Action.Dark">#FF9AD45A</Color>
+    <Color x:Key="Glafira.Brand.OnAction.Light">#FFFFFFFF</Color>
+    <Color x:Key="Glafira.Brand.OnAction.Dark">#FF14220A</Color>
+
+    <!-- Surfaces -->
+    <Color x:Key="Glafira.Surface.Canvas.Light">#FFF3F6F0</Color>
+    <Color x:Key="Glafira.Surface.Canvas.Dark">#FF151A17</Color>
+    <Color x:Key="Glafira.Surface.Panel.Light">#FFFFFFFF</Color>
+    <Color x:Key="Glafira.Surface.Panel.Dark">#FF202722</Color>
+    <Color x:Key="Glafira.Surface.Raised.Light">#FFFFFFFF</Color>
+    <Color x:Key="Glafira.Surface.Raised.Dark">#FF29332C</Color>
+
+    <!-- Text and controls -->
+    <Color x:Key="Glafira.Text.Primary.Light">#FF182019</Color>
+    <Color x:Key="Glafira.Text.Primary.Dark">#FFF1F5F0</Color>
+    <Color x:Key="Glafira.Text.Secondary.Light">#FF59645B</Color>
+    <Color x:Key="Glafira.Text.Secondary.Dark">#FFB5C0B6</Color>
+    <Color x:Key="Glafira.Control.Outline.Light">#FF657365</Color>
+    <Color x:Key="Glafira.Control.Outline.Dark">#FF7E8D80</Color>
+    <Color x:Key="Glafira.Focus.Ring.Light">#FF245EAA</Color>
+    <Color x:Key="Glafira.Focus.Ring.Dark">#FF8DBDFF</Color>
+
+    <!-- Status -->
+    <Color x:Key="Glafira.Status.Neutral.Light">#FF66736A</Color>
+    <Color x:Key="Glafira.Status.Neutral.Dark">#FFA5B0A7</Color>
+    <Color x:Key="Glafira.Status.Success.Light">#FF238343</Color>
+    <Color x:Key="Glafira.Status.Success.Dark">#FF62C77E</Color>
+    <Color x:Key="Glafira.Status.Warning.Light">#FFA96708</Color>
+    <Color x:Key="Glafira.Status.Warning.Dark">#FFF0B34D</Color>
+    <Color x:Key="Glafira.Status.Danger.Light">#FFB4232C</Color>
+    <Color x:Key="Glafira.Status.Danger.Dark">#FFFF747C</Color>
+    <Color x:Key="Glafira.Status.Info.Light">#FF2868B2</Color>
+    <Color x:Key="Glafira.Status.Info.Dark">#FF79B6F5</Color>
+
+    <!-- Convenience brushes; choose the Light/Dark resource set in the app theme. -->
+    <SolidColorBrush x:Key="Glafira.Brand.Primary.Light.Brush" Color="{StaticResource Glafira.Brand.Primary.Light}" />
+    <SolidColorBrush x:Key="Glafira.Brand.Primary.Dark.Brush" Color="{StaticResource Glafira.Brand.Primary.Dark}" />
+    <SolidColorBrush x:Key="Glafira.Text.Primary.Light.Brush" Color="{StaticResource Glafira.Text.Primary.Light}" />
+    <SolidColorBrush x:Key="Glafira.Text.Primary.Dark.Brush" Color="{StaticResource Glafira.Text.Primary.Dark}" />
+</ResourceDictionary>
