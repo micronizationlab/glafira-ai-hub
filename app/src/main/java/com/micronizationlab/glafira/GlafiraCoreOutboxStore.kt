@@ -7,10 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 internal class GlafiraCoreOutboxStore(private val db: SQLiteDatabase, private val sourceCoreId: String) {
     init { require(sourceCoreId.matches(Regex("^[A-Za-z0-9._-]{8,128}$"))) }
 
-    /**
-     * Standalone append for callers that do not own a Core transaction.
-     * Existing callers retain the same atomic/idempotent behavior.
-     */
+    /** Standalone atomic append for callers without an enclosing Core transaction. */
     @Synchronized
     fun append(d: GlafiraCoreOutboxDraft): GlafiraCoreOutboxAppendResult {
         require(!db.inTransaction()) { "CORE_OUTBOX_APPEND_REQUIRES_TRANSACTION_BOUNDARY" }
@@ -25,13 +22,7 @@ internal class GlafiraCoreOutboxStore(private val db: SQLiteDatabase, private va
         }
     }
 
-    /**
-     * Appends using a caller-owned Core SQLite transaction.
-     *
-     * The caller is responsible for committing or rolling back the surrounding transaction.
-     * This method never starts, commits, or ends a transaction, so task result, Trace and Outbox
-     * records can become one atomic unit when a trusted recipient envelope is available.
-     */
+    /** Appends inside a caller-owned transaction; never begins, commits, or ends it. */
     internal fun appendInTransaction(d: GlafiraCoreOutboxDraft): GlafiraCoreOutboxAppendResult {
         check(db.inTransaction()) { "CORE_OUTBOX_CALLER_TRANSACTION_REQUIRED" }
         validate(d)
