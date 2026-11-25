@@ -6,7 +6,11 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 /** Portable logical Core data inside an authenticated archive; raw SQLite is local rollback only. */
-class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: GlafiraTaskStore) {
+class GlafiraCoreBackupCoordinator(
+    context: Context,
+    private val taskStore: GlafiraTaskStore,
+    private val recoveryTempPrefix: String = DEFAULT_RECOVERY_TEMP_PREFIX
+) {
     private val app = context.applicationContext
     private val portable = GlafiraPortableCoreSnapshot(taskStore)
     private val journal get() = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
@@ -113,7 +117,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
 
     private fun cleanupStaleDecryptedRollbackSnapshots() {
         val stale = app.cacheDir.listFiles { file ->
-            file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+            file.name.startsWith(recoveryTempPrefix) && file.name.endsWith(".tmp")
         }.orEmpty()
         stale.forEach { file ->
             check(!file.exists() || file.delete()) {
@@ -132,7 +136,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
             "Неподдерживаемая версия журнала восстановления; Core заблокирован."
         }
         val decryptedDatabase = if (encryptedRollback) {
-            File(app.cacheDir, "glafira-rollback-recovery-${UUID.randomUUID()}.tmp")
+            File(app.cacheDir, "$recoveryTempPrefix${UUID.randomUUID()}.tmp")
         } else null
         val rollbackDatabase = decryptedDatabase ?: safetyDatabase
         try {
@@ -183,6 +187,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         private const val MAX_ARCHIVE_BYTES = 512L * 1024L * 1024L
         private const val JOURNAL_DIRECTORY = "glafira-restore-journal"
         private const val JOURNAL_MARKER = "restore.pending"
+        private const val DEFAULT_RECOVERY_TEMP_PREFIX = "glafira-rollback-recovery-"
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
             val marker = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER)
