@@ -68,6 +68,14 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
     val taskStore = GlafiraTaskStore(appContext, installationIdentity.coreId)
     val traceStore = GlafiraCoreTraceStore(taskStore)
     private val ownerApprovalStore = GlafiraCoreOwnerApprovalStore(taskStore)
+    val trustedPeerStore = GlafiraCoreTrustedPeerStore(context.applicationContext)
+    val ownershipTransferStore = GlafiraCoreOwnershipTransferStore(
+        taskStore = taskStore,
+        trustedPeerStore = trustedPeerStore,
+        localCoreId = installationIdentity.coreId,
+        traceStore = traceStore,
+        ownerApprovalStore = ownerApprovalStore
+    )
     // Pairing approval writes device credentials into this same encrypted approval DB.
     // Reading from the legacy SharedPreferences store would make newly paired devices
     // invisible to Core authorization even though HTTPS admission accepts them.
