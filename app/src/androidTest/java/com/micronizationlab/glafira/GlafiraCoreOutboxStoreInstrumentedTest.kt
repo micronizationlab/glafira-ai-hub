@@ -63,11 +63,9 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
         try {
             val db = store.writableDatabase
             val outbox = GlafiraCoreOutboxStore(db, source)
-
             assertThrows(IllegalStateException::class.java) {
                 outbox.appendInTransaction(draft("event-outside-transaction"))
             }
-
             db.beginTransaction()
             try {
                 val appended = outbox.appendInTransaction(draft("event-caller-rollback"))
@@ -80,12 +78,10 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
             } finally {
                 db.endTransaction()
             }
-
             assertEquals(0, db.rawQuery("SELECT COUNT(*) FROM core_outbox", null)
                 .use { it.moveToFirst(); it.getInt(0) })
             assertEquals(0, db.rawQuery("SELECT COUNT(*) FROM core_outbox_sequences", null)
                 .use { it.moveToFirst(); it.getInt(0) })
-
             val committed = outbox.append(draft("event-after-caller-rollback"))
             assertTrue(committed.inserted)
             assertEquals("Rollback must not consume a source sequence", 1L, committed.sourceSequence)
@@ -105,7 +101,6 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
             } finally {
                 db.endTransaction()
             }
-
             assertTrue(appended.inserted)
             assertEquals(1L, appended.sourceSequence)
             assertEquals(1, db.rawQuery("SELECT COUNT(*) FROM core_outbox", null)
@@ -137,7 +132,6 @@ class GlafiraCoreOutboxStoreInstrumentedTest {
             } finally {
                 db.endTransaction()
             }
-
             assertEquals(1L, results.first.sourceSequence)
             assertEquals(results.first.sourceSequence, results.second.sourceSequence)
             assertEquals(1, db.rawQuery("SELECT COUNT(*) FROM core_outbox", null)
