@@ -49,6 +49,7 @@ class GlafiraCoreOutboxSchemaInstrumentedTest {
                 portable.exportTo(portableFile)
                 val snapshot = portable.readVerified(portableFile)
                 assertFalse(snapshot.getJSONObject("tables").has(GlafiraCoreOutboxSchema.TABLE))
+                assertFalse(snapshot.getJSONObject("tables").has("core_outbox_sequences"))
             } finally {
                 portableFile.delete()
             }
@@ -87,6 +88,7 @@ class GlafiraCoreOutboxSchemaInstrumentedTest {
                 "SELECT name FROM sqlite_master WHERE type='table'", null
             ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
             assertTrue(tables.contains(GlafiraCoreOutboxSchema.TABLE))
+            assertTrue(tables.contains("core_outbox_sequences"))
             assertTrue(tables.contains("core_tasks"))
             assertTrue(tables.contains("core_task_ownership"))
         } finally {
