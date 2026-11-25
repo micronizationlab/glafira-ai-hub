@@ -126,7 +126,7 @@ Every cycle report must state the current `main` SHA, WBS ID, legacy step mappin
 The next executable step is not eligible until its predecessor is accepted and recorded. This rule is mandatory for every participant and every workstream.
 
 
-## 8. Core task queue lifecycle — owner cancellation WBS registration
+## 10. Core task queue lifecycle — owner cancellation WBS registration
 
 The following owner-approved cross-step task is mapped to legacy Program Step 93 (task queue UI cancellation). This registration does not claim Step 93 complete.
 
