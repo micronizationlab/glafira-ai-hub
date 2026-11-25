@@ -49,6 +49,28 @@ class GlafiraTaskCancellationInstrumentedTest {
         )
     }
 
+    @Test fun cancellationTraceIncludesExplicitOwnerActor() {
+        store.enqueue(task("owner-trace"))
+        assertTrue(cancel("owner-trace", "cancel-project", 2_000L))
+        val page = GlafiraCoreTraceStore(store).query(
+            GlafiraCoreTraceQuery(
+                projectId = "cancel-project",
+                taskId = "owner-trace",
+                eventTypes = setOf(GlafiraCoreTraceEventType.TASK_CANCELLED)
+            ),
+            GlafiraCoreTraceAccessContext(
+                projectId = "cancel-project",
+                taskIds = setOf("owner-trace")
+            )
+        )
+        val ownerAction = page.events.firstOrNull {
+            it.actionCode == "OWNER_CANCELLED_UNCLAIMED_TASK"
+        }
+        assertNotNull(ownerAction)
+        assertEquals(GlafiraCoreTraceActorType.OWNER, ownerAction?.actorType)
+        assertEquals("owner", ownerAction?.actorId)
+    }
+
     @Test fun cancellationRecordsHistoryFailsChildrenAndExcludesClaim() {
         store.enqueue(task("parent"))
         store.enqueueWithDependencies(task("child"), setOf("parent"), 1_500L)
