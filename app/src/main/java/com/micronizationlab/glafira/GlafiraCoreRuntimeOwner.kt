@@ -199,21 +199,6 @@ class GlafiraCoreRuntimeOwner private constructor(context: Context) {
         return result
     }
 
-    /** Owner queue action; running work is deliberately not interruptible by this operation. */
-    fun cancelTask(taskId: String, projectId: String): Boolean {
-        val cancelled = synchronized(taskStore) {
-            // Serialize the restore-marker check with restore and task-store mutation on the same monitor.
-            check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)) { "RESTORE_RECOVERY_REQUIRED" }
-            taskStore.cancelUnclaimedTask(taskId, projectId, System.currentTimeMillis())
-        }
-        if (cancelled) runCatching {
-            if (isEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
-        }.onFailure {
-            android.util.Log.w("GlafiraCoreRuntimeOwner", "Unable to wake Core after committed task cancellation.", it)
-        }
-        return cancelled
-    }
-
     /** Decomposes a high-level instruction through a trusted planner, then persists its DAG. */
     suspend fun submitInstruction(
         request: GlafiraCoreTaskPlanRequest,
