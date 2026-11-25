@@ -549,3 +549,15 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Review / integration:** CodeRabbit review and GLAFIRA source review were recorded; owner merged the implementation and WBS registration. The bounded leaf acceptance is therefore complete.
 - **Boundary:** DONE applies only to the rollback-journal plaintext-canary leaf. It does not close issue #566 or claim OS process-death, ENOSPC, missing-key/tamper, provider round-trip or clean-device restore acceptance.
 - **Sequencing:** leaf `1.2.1.2.1` remains a separate reservation and may proceed only after its own WBS reservation PR is merged.
+
+
+## WBS reservation — GLAFIRA DESIGN shared visual foundation — 2026-11-25
+
+- **Work Item / WBS / parent / Program mapping:** `GLAFIRA-DESIGN-W01` / `1.11.1.1.1` / issue #672 and child issue #679 / owner-approved cross-step design initiative; no legacy Program 150 step is claimed.
+- **Executor / reviewer:** GLAFIRA coordinator / owner review by Валерий Корчагин; implementation teams consume only after owner acceptance.
+- **Branch / base:** `design/shared-tokens-foundation-20261125`, Main `155b5dd117b97579983d3aa9df6a9e8a69c30e1e`.
+- **Exclusive path:** `docs/design/DESIGN_TOKENS.md` only; no overlap with platform UX files #674–#678 or Multi-AI file #680.
+- **Predecessors / dependencies:** none for the semantic token proposal; platform-specific final visual specifications depend on owner review of this foundation. Information architecture/wireframes may proceed with tokens marked pending.
+- **Objective / procedure:** define semantic color roles, typography, spacing, surfaces, native-control adaptation, icon/motion/accessibility rules and common UI states; mark every value as a proposal pending owner approval.
+- **Acceptance:** cross-platform coverage for Android, iOS, Windows Desktop and Agent; light/dark roles; contrast intent; responsive/accessibility and reduced-motion rules; no runtime/security changes; owner review; focused PR and exact-head CI.
+- **Status:** RESERVED before design-file creation. This is a design deliverable only; it does not complete any implementation or platform acceptance step.
