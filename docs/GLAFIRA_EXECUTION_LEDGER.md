@@ -438,3 +438,10 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Tracker:** blocker issue #644; finding commented on PR #627. Required fix: explicit NON_PORTABLE allowlist + regression test proving snapshot export succeeds and receipts are not exported/restored while local receipts persist.
 - **Merge gate:** PR #627 is NOT merge-ready despite green Android/JVM/emulator/APK/contracts CI. The CI did not cover this backup integration path. Do not merge until #644 is fixed and exact-head validation passes.
 - **Map update:** queue/store ownership map now records this cross-stream dependency. Documentation PR #643 head is expected to be refreshed after this append; no CI/merge claim yet.
+
+## Acceptance matrix artifact — 2026-11-25 09:26 UTC
+
+- **Work Item:** GLAFIRA-S018-W02 / WBS 1.1.3, 1.3.2, 1.2.2, 1.7.4; tracker #637 under sprint #634.
+- **Artifact:** docs/acceptance/DUAL_CORE_PAIRING_BACKUP_ACCEPTANCE_MATRIX.md defines 18 scenarios across Core transfer, pairing, backup and physical Android↔Windows acceptance.
+- **Evidence honesty:** existing tests are distinguished from missing end-to-end paths. In particular, receiver duplicate/restart and concurrent CAS tests do not prove a 10-minute network partition, sender/receiver ACK, SAS mismatch or physical Android↔Windows acceptance.
+- **Status:** specification artifact only; scenarios not marked implemented are not claimed as passing. Automated harness and physical runs remain open.
