@@ -31,8 +31,6 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
     }
     val projectTasks = tasks.filter { it.projectId == currentProject.id }
     var showAddDialog by remember { mutableStateOf(false) }
-    var cancelTaskTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
-    LaunchedEffect(currentProject.id) { cancelTaskTarget = null }
     var title by remember { mutableStateOf("") }
     var instruction by remember { mutableStateOf("") }
     var priority by remember { mutableIntStateOf(5) }
@@ -176,45 +174,11 @@ fun TaskQueueScreen(currentProject: Project, onBack: () -> Unit) {
                                 color = Tx, fontSize = 9.sp
                             )
                             task.lastError?.let { Text("Причина/результат: $it", color = Red, fontSize = 10.sp) }
-                            if (GlafiraTaskPolicy.ownerCanCancel(task)) {
-                                OutlinedButton(
-                                    onClick = { cancelTaskTarget = currentProject.id to task.taskId },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { Text("ОТМЕНИТЬ") }
-                            }
                         }
                     }
                 }
             }
         }
-    }
-
-    cancelTaskTarget?.let { (projectId, taskId) ->
-        AlertDialog(
-            onDismissRequest = { cancelTaskTarget = null },
-            title = { Text("Отменить задачу?") },
-            text = { Text("Задача не будет выполнена. Отменить?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    val result = runCatching { owner.cancelTask(taskId, projectId) }
-                    message = when {
-                        result.isFailure -> result.exceptionOrNull()?.message ?: "Не удалось отменить задачу."
-                        result.getOrDefault(false) -> "Задача отменена."
-                        else -> "Задача уже выполняется или больше не доступна для отмены."
-                    }
-                    cancelTaskTarget = null
-                    if (result.isSuccess) {
-                        runCatching { refresh() }.onFailure {
-                            message = "Операция завершена, но очередь не удалось обновить: " +
-                                (it.message ?: "ошибка чтения хранилища")
-                        }
-                    }
-                }) { Text("ДА, ОТМЕНИТЬ") }
-            },
-            dismissButton = {
-                TextButton(onClick = { cancelTaskTarget = null }) { Text("НЕТ") }
-            }
-        )
     }
 
     if (showAddDialog) {
