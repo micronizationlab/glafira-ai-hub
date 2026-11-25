@@ -210,6 +210,26 @@ class GlafiraCoreTraceStoreInstrumentedTest {
     }
 
     @Test
+    fun ownerCancellationStateTransitionIsAttributedToOwner() {
+        val taskId = "trace-owner-cancel-task"
+        val projectId = "trace-owner-cancel-project"
+        taskStore.enqueue(task(taskId, projectId))
+
+        taskStore.writableDatabase.execSQL(
+            "UPDATE core_tasks SET state = ?, updated_at = ?, last_error = ? WHERE task_id = ?",
+            arrayOf(GlafiraTaskState.CANCELLED.databaseValue, 2_000L, "OWNER_CANCELLED", taskId)
+        )
+
+        val cancellation = traceStore.query(
+            GlafiraCoreTraceQuery(projectId),
+            GlafiraCoreTraceAccessContext(projectId, taskIds = setOf(taskId))
+        ).events.single { it.eventType == GlafiraCoreTraceEventType.TASK_CANCELLED }
+
+        assertEquals(GlafiraCoreTraceActorType.OWNER, cancellation.actorType)
+        assertEquals("owner", cancellation.actorId)
+    }
+
+    @Test
     fun taskLifecycleTraceSharesTransactionsWithQueueAndResultWrites() {
         val taskId = "trace-lifecycle-task"
         val projectId = "trace-lifecycle-project"
