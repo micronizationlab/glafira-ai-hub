@@ -1,0 +1,31 @@
+
+name: GLAFIRA Java Format Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+concurrency:
+  group: glafira-java-format-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  java-format:
+    name: Google Java Style Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Google Java Style
+        uses: ryanbascom/googlejavaformat@v5
+        with:
+          args: "--set-exit-if-changed"
+          files: "**/*.java"
+          skip-commit: true
