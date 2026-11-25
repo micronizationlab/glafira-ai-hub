@@ -549,3 +549,18 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Review / integration:** CodeRabbit review and GLAFIRA source review were recorded; owner merged the implementation and WBS registration. The bounded leaf acceptance is therefore complete.
 - **Boundary:** DONE applies only to the rollback-journal plaintext-canary leaf. It does not close issue #566 or claim OS process-death, ENOSPC, missing-key/tamper, provider round-trip or clean-device restore acceptance.
 - **Sequencing:** leaf `1.2.1.2.1` remains a separate reservation and may proceed only after its own WBS reservation PR is merged.
+
+
+## WBS reservation — Backup & Recovery owner-facing UX design — 2026-11-25
+
+- **Work Item / WBS / parent / Program:** `GLAFIRA-S095-D01` / `1.2.2.1.1` / parent `1.2.2.1 — Manual backup and restore UX` under `1.2.2 — Owner-facing backup and restore experience` / tracker issue #678 / Program Step 95 (partial: manual backup prerequisites, progress, verification and actionable errors).
+- **Hierarchy:** `1.2` Backup and Recovery → `1.2.2` Owner-facing backup and restore experience → `1.2.2.1` Manual backup and restore UX → `1.2.2.1.1` Define owner-facing information architecture and wireframe-level lifecycle states.
+- **Trigger / priority:** Backup & Recovery lane's assigned Amazon Q executor for #670 supplied no acknowledgement, branch, commit or test evidence after repeated requests. The Amazon Q label/reservation was released; #670 remains BLOCKED and is not replaced by this design task. This is the separate GLAFIRA DESIGN fallback requested by the owner.
+- **Executor / reviewer:** GLAFIRA coordinator (design specification only); owner review required. Independent documentation review after PR creation.
+- **Branch / base:** `design/backup-recovery-owner-flows-v2-20261125`, based on Main `155b5dd117b97579983d3aa9df6a9e8a69c30e1e`.
+- **Exclusive files:** `docs/design/BACKUP_RECOVERY_UX.md` and this ledger entry only.
+- **Dependencies:** No predecessor for information architecture and wireframe-level flows. Shared visual tokens in issue #679 are a dependency only for final visual styling; mark all token-dependent values as pending and do not invent approved colors, typography or component measurements.
+- **Objective:** Specify owner-facing create/export, destination selection, progress, verification, restore preflight, conflict/rollback, interruption/re-entry and recovery-required journeys, including success/loading/empty/error/cancel states and accessible descriptions.
+- **Safety boundary:** No Core behavior, archive schema, encryption, key/passphrase handling, backup implementation, restore implementation, permissions, Bridge protocol or security/approval boundary changes. Never place secrets in examples, logs, URLs or UI copy. Design does not replace #670, clean-device restore or physical-device acceptance.
+- **Acceptance / tests:** Each journey has entry conditions, owner action, visible status, state transition, failure/retry behavior and recovery guidance; platform adaptation notes cover Android and Windows Desktop first, with iOS consistency; visual tokens explicitly pending #679; Markdown lint and link checks; owner approval before any implementation.
+- **Status:** RESERVED before design document edits. The first scratch branch `design/backup-recovery-owner-flows-20261125` was superseded before PR submission to keep the deliverable within the mandatory PR size limit; no implementation or WBS completion is claimed.
