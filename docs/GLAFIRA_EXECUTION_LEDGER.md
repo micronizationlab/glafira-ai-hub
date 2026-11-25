@@ -417,3 +417,43 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Audit follow-up issue #629:** created with 31 evidence-based questions, mandatory source/commit/test proof and a KEEP/SIMPLIFY/ADOPT/REWRITE/REMOVE/NEEDS-MORE-EVIDENCE matrix. It authorizes assessment only, not automatic architecture changes.
 - **Current next Core gate:** the normative Dual-Core contract states that signing trust does not provide payload encryption. Separate key agreement, authenticated envelope encryption, durable receiver Inbox, exact ACK and sender/receiver workers are still required. Keep cross-Core payload delivery disabled until these are implemented and accepted.
 - **Post-merge CI visibility:** the connected workflow lookup returns PR-triggered runs only. No post-merge run was returned for the ledger merge SHA at capture time; this is not recorded as a pass.
+
+## Sprint reservation and first artifact delivery — 2026-11-25 09:10 UTC
+
+- **Owner approval:** two-week sprint #634 (25 Nov–9 Dec 2026), based on the completed independent audit response. Priority order: Core ownership transfer/Inbox-Outbox/fencing/ACK; Android–Windows secure pairing; Backup & Recovery; Desktop Bridge/Windows Desktop; CI and physical acceptance.
+- **New tracker items:** #635 queue/store/protocol ownership map; #636 third-party and transitive license register; #637 minimum-14-scenario acceptance matrix; #638 MaintenanceGate contention test; #639 built-in project rename UX; #640 GitHub CAS boundary ADR; #641 isolated Restic/Borg prototype; #642 OpenTelemetry separation design. Existing #366, #266, #22, #25, #26, #77 and #79 are reused; no duplicate implementation issue was created.
+- **Work Item:** GLAFIRA-S018-W01 (artifact foundation; cross-step integration) / WBS 1.1.2, 1.3.1, 1.4.1, 1.7.3, 1.11.1.
+- **Branch:** docs/sprint-queue-and-license-register-20261125, created from live main ref. Docs commits: 1551a0e916e26f487788d39f90ca8264948406bf (queue/store/protocol map) and 6f309bfe7a2062c8fdde560bfe0649a31a535a20 (license register).
+- **Artifacts:** docs/architecture/QUEUE_STORE_PROTOCOL_OWNERSHIP_MAP.md records verified Android Core TaskStore/Trace/outbox, distinct Desktop worker queue/result journal, backup coordinator and explicit unknowns. docs/governance/THIRD_PARTY_LICENSE_REGISTER.md inventories currently verified Gradle/.NET direct manifests; all license conclusions remain PENDING until resolved transitive graphs and authoritative SPDX/license evidence are captured.
+- **Evidence correction:** GlafiraCoreMaintenanceGate.withExecution awaits a CompletableDeferred; it is suspending, not a CPU busy-spin. Load/latency test remains open in #638. DesktopTaskQueue is a distinct local Desktop worker queue; this does not prove duplicate Core authority. GlafiraCoreOutboxSchema/Store already provide a local append primitive, but crypto, peer verification, transport and ACK are external; #266 remains open. No blanket queue deletion or TraceService replacement is justified.
+- **PR #627 exact-head status:** head 08edface22f5f8013b8cb1ca5c6dec5d367a6166; CI #45573962098 SUCCESS (Android JVM, Debug APK, Shared contracts, managed emulator and exact-head summary); Dispatcher #45573962096 SUCCESS. Workflow lint, iOS, Windows Desktop and Windows Agent skipped by routing. No submitted PR reviews were returned; PR remains unmerged and receiver-only. Physical Android↔Windows acceptance remains open.
+- **Validation of this artifact branch:** not yet run at this ledger entry. Do not claim PR or CI success until created and exact-head checks complete.
+- **Program 150:** no numbered acceptance step is marked DONE by this checkpoint. The two artifacts are initial inventories, not final audited maps or completed license/legal review.
+- **Next:** finish exact ownership map against Windows Hub/Core code; resolve transitive manifests and SPDX evidence; build acceptance harness for #637; then proceed with P1 Core transfer sender/Inbox/ACK after #627 review and trust/key-agreement dependencies.
+
+## Cross-stream blocker found during Core transfer review — 2026-11-25 09:14 UTC
+
+- **Finding:** PR #627 adds `core_ownership_transfer_receipts` to the canonical TaskStore SQLite database. Main's `GlafiraPortableCoreSnapshot.exportTo()` enumerates `core_%` tables and rejects tables not explicitly in `TABLES` or `NON_PORTABLE`. The new receipt table is absent from both, so backup export fails after the ownership-transfer runtime initializes.
+- **Classification:** concrete integration regression, not a speculative audit point. Receipts are device-local anti-replay evidence and must be explicitly NON_PORTABLE, not included in portable snapshots.
+- **Tracker:** blocker issue #644; finding commented on PR #627. Required fix: explicit NON_PORTABLE allowlist + regression test proving snapshot export succeeds and receipts are not exported/restored while local receipts persist.
+- **Merge gate:** PR #627 is NOT merge-ready despite green Android/JVM/emulator/APK/contracts CI. The CI did not cover this backup integration path. Do not merge until #644 is fixed and exact-head validation passes.
+- **Map update:** queue/store ownership map now records this cross-stream dependency. Documentation PR #643 head is expected to be refreshed after this append; no CI/merge claim yet.
+
+## Acceptance matrix artifact — 2026-11-25 09:26 UTC
+
+- **Work Item:** GLAFIRA-S018-W02 / WBS 1.1.3, 1.3.2, 1.2.2, 1.7.4; tracker #637 under sprint #634.
+- **Artifact:** docs/acceptance/DUAL_CORE_PAIRING_BACKUP_ACCEPTANCE_MATRIX.md defines 18 scenarios across Core transfer, pairing, backup and physical Android↔Windows acceptance.
+- **Evidence honesty:** existing tests are distinguished from missing end-to-end paths. In particular, receiver duplicate/restart and concurrent CAS tests do not prove a 10-minute network partition, sender/receiver ACK, SAS mismatch or physical Android↔Windows acceptance.
+- **Status:** specification artifact only; scenarios not marked implemented are not claimed as passing. Automated harness and physical runs remain open.
+
+## Execution-control sprint pointer — 2026-11-25 09:30 UTC
+
+- Updated `docs/GLAFIRA_EXECUTION_CONTROL.md` with the owner-approved sprint #634, priorities, artifact links and blocker #644. The permanent eleven-workstream hierarchy is unchanged.
+- Current artifact branch now contains the ownership map, license register, 18-scenario acceptance matrix, execution-control pointer and append-only ledger evidence. No Program-150 checkbox was changed.
+
+## DataManager auditor follow-up — 2026-11-25
+- Issue #639 closed NOT_PLANNED after Main code-path inspection: no project rename API or UI exists; DataManagerProjectMigrationInstrumentedTest already verifies accidental built-in name collision repair preserves stable ID. The proposed warning has no current interaction to attach to; retain current behavior and revisit only if rename is introduced.
+
+## Mainline ADR integration checkpoint — 2026-11-25
+
+- Main received owner-approved ADR-0001 at commit ea2647ff99512702f6f584171d8e6159b6ac14b1. This artifact branch is based on that current Main and carries the remaining sprint artifacts without duplicating the ADR file.
