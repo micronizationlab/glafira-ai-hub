@@ -33,8 +33,8 @@ The values below are **provisional proposals** for review. Components should con
 | border.subtle | #DCE4DA | #3A473D | Decorative dividers only; not an interactive control outline |
 | control.outline | #657365 | #7E8D80 | Functional control boundary; 3:1 minimum against adjacent surface |
 | focus.ring | #245EAA | #8DBDFF | Visible keyboard/input focus indicator |
-| control.disabled | #A8B0A8 | #56625A | Disabled control surface/boundary; pair with text.disabled |
-| text.disabled | #6B746C | #A0AAA1 | Disabled labels and values |
+| control.disabled | #7B857B | #748075 | Disabled control boundary only; do not use as a text-bearing fill |
+| text.disabled | #687168 | #A0AAA1 | Disabled labels and values |
 | status.neutral | #66736A | #A5B0A7 | Offline/inactive/unknown neutral state |
 | status.success | #238343 | #62C77E | Completed/healthy |
 | status.warning | #A96708 | #F0B34D | Waiting/attention |
@@ -46,9 +46,42 @@ The values below are **provisional proposals** for review. Components should con
 - Status must include text or an icon plus accessible label; never communicate status by hue alone.
 - Quota exhausted and destructive actions use danger semantics; offline/inactive uses neutral semantics, not danger.
 - Do not use brand green for success if it would make product identity and operational state ambiguous; use a distinct success tone.
-- The provisional action, control.outline and focus.ring pairs above exceed 3:1 against their listed light/dark adjacent surfaces; verify again against actual component surfaces before owner approval.
-- Keep border.subtle for decorative dividers only. Interactive outlines use control.outline; focus uses focus.ring; disabled uses control.disabled and text.disabled.
-- Verify WCAG 2.2 AA contrast for every text/background pairing and non-text control boundary before approving exact values.
+- Primary-action and control-boundary pairings are measured in the contrast evidence tables below. Focus uses an exterior ring separated from the fill by a visible surface gap; an inset focus ring is not an approved treatment. Verify against actual component surfaces before owner approval.
+- Keep border.subtle for decorative dividers only. Interactive outlines use control.outline; focus uses focus.ring. For disabled controls, `control.disabled` is a boundary-only token and must not be used as a fill behind text. Keep the component's actual Canvas/Panel/Raised surface as its fill and use `text.disabled` on that surface; the disabled-label contrast table measures those exact pairings. This avoids an unmeasured disabled-text-on-control.disabled pairing.
+- Verify WCAG 2.2 AA contrast for every text/background pairing and non-text control boundary before approving exact values. The tables below are part of the required PR evidence, not optional examples.
+
+
+### Required contrast evidence — provisional palette
+
+Ratios use the WCAG relative-luminance formula and the exact hex values above. This is proposal evidence, not a substitute for measuring rendered components after implementation. Text threshold: **4.5:1** for normal text. Functional boundaries, focus indicators and status icons: **3:1** against the actual adjacent surface. Status labels default to `text.primary`; a semantic status-colored label is permitted only when its exact foreground/background pairing on the actual rendered surface is measured at ≥4.5:1 and recorded in the platform specification. Status color remains an icon/accent otherwise.
+
+| Light theme · component/state pairing | Canvas | Panel | Raised | Threshold / result |
+|---|---:|---:|---:|---|
+| Body/metadata label · text.primary | 15.29 | 16.67 | 16.67 | 4.5 · PASS |
+| Secondary helper label · text.secondary | 5.66 | 6.18 | 6.18 | 4.5 · PASS |
+| Disabled label · text.disabled on Canvas / Panel / Raised | 4.64 | 5.06 | 5.06 | 4.5 · PASS |
+| Primary action label · brand.onAction / brand.action | 6.00 | — | — | 4.5 · PASS |
+| Identity surface label · brand.onPrimary / brand.primary | 6.90 | — | — | 4.5 · PASS |
+| Primary action boundary · brand.action | 5.50 | 6.00 | 6.00 | 3.0 · PASS |
+| Interactive control outline · control.outline | 4.59 | 5.01 | 5.01 | 3.0 · PASS |
+| Disabled control boundary · control.disabled | 3.51 | 3.83 | 3.83 | 3.0 · PASS |
+| Exterior keyboard focus ring · focus.ring | 5.91 | 6.45 | 6.45 | 3.0 · PASS |
+| Status icons · success / warning / danger / info / neutral | 4.38 / 4.16 / 5.98 / 5.18 / 4.56 | 4.77 / 4.54 / 6.53 / 5.66 / 4.97 | 4.77 / 4.54 / 6.53 / 5.66 / 4.97 | 3.0 · PASS |
+
+| Dark theme · component/state pairing | Canvas | Panel | Raised | Threshold / result |
+|---|---:|---:|---:|---|
+| Body/metadata label · text.primary | 15.99 | 13.86 | 11.88 | 4.5 · PASS |
+| Secondary helper label · text.secondary | 9.38 | 8.13 | 6.97 | 4.5 · PASS |
+| Disabled label · text.disabled on Canvas / Panel / Raised | 7.35 | 6.37 | 5.46 | 4.5 · PASS |
+| Primary action label · brand.onAction / brand.action | 9.45 | — | — | 4.5 · PASS |
+| Identity surface label · brand.onPrimary / brand.primary | 9.45 | — | — | 4.5 · PASS |
+| Primary action boundary · brand.action | 10.02 | 8.68 | 7.44 | 3.0 · PASS |
+| Interactive control outline · control.outline | 5.04 | 4.37 | 3.75 | 3.0 · PASS |
+| Disabled control boundary · control.disabled | 4.27 | 3.70 | 3.17 | 3.0 · PASS |
+| Exterior keyboard focus ring · focus.ring | 9.11 | 7.90 | 6.77 | 3.0 · PASS |
+| Status icons · success / warning / danger / info / neutral | 8.38 / 9.45 / 6.75 / 8.24 / 7.86 | 7.27 / 8.19 / 5.85 / 7.15 / 6.81 | 6.23 / 7.02 / 5.01 / 6.12 / 5.84 | 3.0 · PASS |
+
+Disabled controls retain their real Canvas/Panel/Raised surface fill; the disabled boundary is a separate non-text edge. Therefore no text is rendered on `control.disabled` itself. The primary-button focus treatment is an **exterior** ring with a gap that exposes the button's actual surrounding surface; the measured ring-to-surface ratios above apply. If a platform cannot render this treatment, it must document and measure an alternate indicator against every adjacent color before approval. Never place the ring directly against `brand.action` using the current values.
 
 ## 3. Typography
 
@@ -86,7 +119,7 @@ Shared roles: display, title, section, body, bodyStrong, label, caption, micro, 
 
 Every interactive screen documents: loading, empty, ready, disabled, waiting, offline, stale, error, success, confirmationRequired and recoveryRequired where applicable. Disabled and focus states use the shared semantic tokens above or a documented native equivalent.
 
-Model/provider availability is distinct from connection state and quota. Task state is also reason-aware: WAITING_FOR_OWNER due to a pending approval is labelled “Needs owner approval”; CORE_EXECUTION_OUTCOME_UNKNOWN is labelled “Reconciliation required” with a distinct icon and must not offer generic retry. Do not collapse both into one generic waiting chip.
+Model/provider availability is distinct from connection state and quota. Task state is reason-aware across platforms: WAITING_FOR_OWNER due to a pending approval is labelled “Needs owner approval”; both Android/Core `CORE_EXECUTION_OUTCOME_UNKNOWN` and Windows Hub `HubTaskState.OutcomeUnknown` are labelled “Reconciliation required” with the same distinct semantic icon and must not offer generic retry. Do not collapse either unknown-outcome representation into a generic waiting chip.
 
 Model/provider availability is distinct from connection state and quota:
 - Active/ready — green semantic state plus text.
@@ -122,4 +155,4 @@ Model/provider availability is distinct from connection state and quota:
 
 ## 10. Approval and implementation gate
 
-All colors, dimensions and component recommendations in this document remain proposals until owner review. Platform UX packages #674–#678 and #680 may define information architecture and wireframes while exact visual tokens are marked pending. No implementation lane may treat this file as an accepted UI contract until the owner approves it. This document changes no runtime code, Core authority, permissions, cryptography, Bridge protocol, database schema or backup behavior.
+All colors, dimensions and component recommendations in this document remain proposals until owner review. Platform UX packages #674–#678 and #680 may define information architecture and wireframes while tokens are pending only when the corresponding package issue explicitly states **“visual tokens pending #679”**. Otherwise the package must wait. **No platform may adopt this proposal as its UI contract or finalize visual specifications until this WBS leaf `1.11.1.1.1` is owner-approved and recorded `DONE` in the ledger**. No implementation lane may treat this file as an accepted UI contract until that gate is met. This document changes no runtime code, Core authority, permissions, cryptography, Bridge protocol, database schema or backup behavior.
