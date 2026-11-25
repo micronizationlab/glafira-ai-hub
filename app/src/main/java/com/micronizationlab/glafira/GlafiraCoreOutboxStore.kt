@@ -32,7 +32,6 @@ internal class GlafiraCoreOutboxStore(private val db: SQLiteDatabase, private va
      * This method never starts, commits, or ends a transaction, so task result, Trace and Outbox
      * records can become one atomic unit when a trusted recipient envelope is available.
      */
-    @Synchronized
     internal fun appendInTransaction(d: GlafiraCoreOutboxDraft): GlafiraCoreOutboxAppendResult {
         check(db.inTransaction()) { "CORE_OUTBOX_CALLER_TRANSACTION_REQUIRED" }
         validate(d)
