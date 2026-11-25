@@ -1,6 +1,6 @@
 # GitHub-backed GLAFIRA project coordinator and peer fleet contract
 
-**Status:** proposed normative contract; implementation and platform acceptance are separate release gates.  
+**Status:** SUPERSEDED for runtime coordination by [ADR-0001](../adr/ADR-0001-runtime-coordination-local-core-not-github.md) (owner-approved 2026-11-25). Historical proposal only; do not implement GitHub-backed runtime election or task claims.  
 **Applies to:** Android GLAFIRA, Windows Desktop GLAFIRA, Windows Agent GLAFIRA workers, and iOS GLAFIRA.  
 **Product rule:** every GLAFIRA build produced for this project includes the project participation runtime and enables project participation by default after owner-approved GitHub enrollment. It resumes eligible GitHub work automatically when the host OS permits background execution, without requiring the chat screen to remain open. The owner can pause participation or revoke a node; it must not require repeated manual start commands.
 
