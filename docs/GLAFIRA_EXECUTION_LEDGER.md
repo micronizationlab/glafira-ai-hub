@@ -562,3 +562,15 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Manual acceptance evidence:** (1) review semantic-token mapping for Android/iOS/Windows Desktop/Agent; (2) record light/dark text contrast and ≥3:1 non-text boundary calculations; (3) verify active/offline/waiting/quota/error and recoveryRequired state mappings; (4) record visible text/icon plus accessible label for each critical state; (5) distinguish Needs owner approval from Reconciliation required and prohibit generic retry for unknown outcomes; (6) verify Android 48dp, iOS 44pt and Windows 40px touch targets, keyboard focus, screen-reader labels and reduced motion; (7) capture owner approve/request-changes decision. Record a checklist/table in the PR; CI is separate and cannot prove visual acceptance.
 - **Changed-file inventory for PR #681:** `docs/design/DESIGN_TOKENS.md`; `docs/GLAFIRA_EXECUTION_LEDGER.md`.
 - **Status:** IN_REVIEW on design PR #681, current design-file head `5523dceb4a371521b219f7e2765afa71785a1a8c`; exact-head docs CI, Security Scan and Dispatcher are pending/being rechecked. This design deliverable does not complete any implementation or platform acceptance step.
+
+
+## WBS reservation — coordinator-owned fallback governance — 2026-11-25
+
+- **Work Item / WBS / parent / Program mapping:** `GLAFIRA-GOV-D01` / `1.11.2.1.1` / `1.11.2 — Coordinator execution governance` / issue #685; owner-approved cross-step governance task, no Program 150 completion claim.
+- **Executor / reviewer:** GLAFIRA coordinator / owner review.
+- **Branch / base:** `docs/coordinator-fallback-governance-20261125`, Main `007575058fc4f8b458785e99c1a228973e2e3d17`.
+- **Exclusive files:** `docs/GLAFIRA_EXECUTION_CONTROL.md`, this ledger entry only.
+- **Predecessors / dependencies:** PR #673 merged; no code dependency. This is a governance correction to the merged fallback rule.
+- **Procedure:** (1) make coordinator sole decision-maker for ready-work selection; (2) define dispatcher output as PR/CI evidence only; (3) require manual inspection of non-PR helper intake and ready issues/branches; (4) reconcile default 200-line limit with the narrowly approved 201–300-line exception and >300 split rule; (5) run docs-only exact-head checks and independent review.
+- **Acceptance:** original lane outcome preserved; no skipped lane disguised as PASS; no fallback assignment while higher-priority ready work exists; line/file limits consistent across Sections 4, 6, 12 and PR-size policy; written owner/integrator approval before any 201–300-line exception.
+- **Status:** RESERVED before policy edits. No implementation or Program 150 step is marked complete by this reservation.
