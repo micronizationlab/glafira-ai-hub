@@ -212,3 +212,16 @@ Canonical executable leaf: `1.11.2.1.2.1.1` — document and enforce the eleven-
 - **Procedure:** (1) identify every temp artifact created by rollback recovery; (2) persist ownership metadata binding artifact path, installation, generation and active cleanup lease; (3) acquire the Core maintenance gate before stale cleanup; (4) delete only artifacts whose ownership marker proves they are stale and belong to this installation/generation; (5) retain unknown or actively owned files and fail closed; (6) preserve encrypted journal/key deletion ordering; (7) verify process-death, concurrent coordinator and cleanup-failure cases.
 - **Acceptance:** managed AndroidJUnit4 instrumentation must create active, stale, foreign/unowned and malformed-marker temp files; prove active/foreign/unowned files survive; prove only a confirmed stale owned file is deleted; force concurrent restore and cleanup to prove maintenance-gate serialization; verify no plaintext rollback data or key is exposed; verify cleanup failure leaves Core blocked and does not delete the rollback key or pending marker prematurely. Named JUnit XML and exact-head emulator logs are mandatory.
 - **Status:** RESERVED IN PLAN / NOT DISPATCHED. After the prerequisite PR #720 is accepted, a separate pre-edit leaf-reservation amendment must pin the exact fresh Main SHA and branch before production code edits. This leaf must be DONE before Core cancellation `.4` can start.
+## 15. Global PR validation queue — CI infrastructure follow-up
+
+- `1.7` — CI/CD and Security.
+- `1.7.1` — Validation workflow reliability.
+- `1.7.1.2` — Global PR validation queue.
+- `1.7.1.2.1` — Durable request lifecycle and per-lane serialization.
+- `1.7.1.2.1.1` — Preserve every latest-head validation request and serialize resource-constrained lanes.
+- `1.7.1.2.1.1.1` — Implement and test the durable cross-workflow validation queue (seven hierarchy components).
+- **Work Item:** `GLAFIRA-GOV-CI-W01`; tracker issue #735; explicit cross-step governance/CI task. No Program 150 completion is claimed.
+- **Predecessors:** current PR validation workflows and exact-head check naming audit; do not weaken or bypass existing branch protections.
+- **Acceptance:** preserve every latest-head request; idempotency key includes repository, PR, head/base SHA, workflow, platform/lane and configuration; durable FIFO/priority state; one active build per configured resource lane; restart/recovery; duplicate delivery and superseded-head behavior; truthful per-PR check status; latest-exact-head merge gate; least-privilege token review; operational drain/retry procedure.
+- **Important limitation:** GitHub Actions concurrency alone is not a durable FIFO queue because a newer pending run may replace an older pending run. The project must not claim global serialization until the queue is implemented and its no-request-loss tests pass.
+- **Status:** RESERVED IN PLAN / NOT DISPATCHED. A separate pre-edit reservation amendment must pin exact Main SHA, branch, executor, reviewer and allowed workflow/script files before implementation.
