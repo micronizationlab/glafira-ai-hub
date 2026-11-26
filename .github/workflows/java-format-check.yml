@@ -224,7 +224,7 @@ jobs:
           cp "$fixture_root/formatted/Formatted.java" "$fixture_root/mixed/Formatted.java"
           cp "$fixture_root/formatted/FormattedSecond.java" "$fixture_root/mixed/nested/FormattedSecond.java"
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$fixture_root/mixed/nested/Unformatted.java"
-          cp "$fixture_root/mixed/nested/Unformatted.java" "$fixture_root/single/nested/Unformatted.java"
+          cp "$fixture_root/mixed/nested/Unformatted.java" "$fixture_root/single/nested/Unformatted'Quote.java"
           cp "$fixture_root/formatted/Formatted.java" "$fixture_root/whitespace/With Space.java"
           # Capture the exact source arguments crossing the xargs -> Java handoff.
           java_capture_bin="$fixture_root/java-capture-bin"; mkdir -p "$java_capture_bin"
@@ -287,7 +287,7 @@ jobs:
             exit 1
           fi
           single_expected_manifest="$RUNNER_TEMP/glafira-single.expected.nul"
-          printf '%s\0' "$fixture_root/single/nested/Unformatted.java" > "$single_expected_manifest"
+          printf '%s\0' "$fixture_root/single/nested/Unformatted'Quote.java" > "$single_expected_manifest"
           single_manifest="$RUNNER_TEMP/glafira-single.actual.nul"
           single_stdout="$RUNNER_TEMP/glafira-single.stdout"
           single_stderr="$RUNNER_TEMP/glafira-single.stderr"
@@ -302,7 +302,7 @@ jobs:
             exit 1
           fi
           single_expected="$RUNNER_TEMP/glafira-single.expected"
-          printf '%s\n' "$fixture_root/single/nested/Unformatted.java" > "$single_expected"
+          printf '%s\n' "$fixture_root/single/nested/Unformatted'Quote.java" > "$single_expected"
           if ! cmp -s "$single_expected" "$single_stdout"; then
             echo "::error::Single-file dry-run must report exactly the unformatted source path."
             emit_bounded_diagnostic expected "$single_expected"
@@ -312,7 +312,7 @@ jobs:
           direct_stdout="$RUNNER_TEMP/glafira-single.direct.stdout"
           direct_stderr="$RUNNER_TEMP/glafira-single.direct.stderr"
           set +e
-          java "${java_args[@]}" -jar "$jar" --dry-run --set-exit-if-changed "$fixture_root/single/nested/Unformatted.java" > "$direct_stdout" 2> "$direct_stderr"
+          java "${java_args[@]}" -jar "$jar" --dry-run --set-exit-if-changed "$fixture_root/single/nested/Unformatted'Quote.java" > "$direct_stdout" 2> "$direct_stderr"
           direct_status=$?
           set -e
           if [[ "$direct_status" -ne 1 ]] || [[ -s "$direct_stderr" ]] || ! cmp -s "$single_expected" "$direct_stdout"; then
