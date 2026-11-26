@@ -65,7 +65,7 @@ jobs:
                 [.[] |
                   select(.headSha == $sha) |
                   select($base != "" and any((.pullRequests // [])[]?; .number == $number and (.base.sha // "") != "" and .base.sha == $base)) |
-                  select(not ((.workflowName // .name // "") == "GLAFIRA Java Format Check" and ((.displayTitle // "") | startswith("METADATA_ONLY -")))
+                  select((.workflowName // .name // "") != "GLAFIRA Java Format Check" or ((.displayTitle // "") | startswith("METADATA_ONLY -") | not))
                 ] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])
               ' <<< "$runs")"
               if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
