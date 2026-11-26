@@ -118,3 +118,16 @@ A numbered Program 150 step becomes DONE only after its full acceptance criterio
 ## Mandatory autonomous defect-repair cycle (owner-approved operating rule, 2026-11-24)
 
 Every helper MUST follow [AUTONOMOUS_REPAIR_CYCLE.md](../docs/engineering/AUTONOMOUS_REPAIR_CYCLE.md): capture reproducible evidence; check ledger/PR/branch ownership; fix actionable defects within the reserved scope; add regression coverage; run and inspect relevant tests; repeat after source/test failures; and report exact evidence. If the defect belongs to another component, create/link a specific work item for its named owner and continue independent work. A journal entry alone does not close an actionable defect. This rule grants no additional write, approval, merge, secret or side-effect permissions and does not override execution control, PR limits, serialized CI, owner approval or frozen PR #410.
+
+ 
+## Canonical coordinator and helper assignment rules (2026-11-26)
+
+- The owner retains priority, direct-assignment, override and stop authority. Current order is Core → Backup & Recovery → Bridge/Windows Desktop; Android/Desktop remain primary runtime surfaces but do not displace Core/Backup. Stale dispatcher rankings are subordinate.
+- GLAFIRA coordinates operational selection. Before new implementation, reconcile both engineering Action Pools, Workstream 11 helper intake, issues, PRs, review requests, CI failures, merge-ready work, branches and reservations. Project Dispatcher is PR/CI evidence only.
+- Android Core and Windows Desktop Core remain independent runtime authorities. Workstream 11 is development-time intake/integration, not a second runtime queue.
+- One helper has at most one active assignment. Before reassignment, suspend/transfer the old task, preserve status/reservation and fence the former executor. After three completed passes without substantive evidence, transfer actionable work to GLAFIRA/qualified executor; the returning helper stops editing it. The replacement cannot also receive DESIGN or another task.
+- DESIGN is fallback only after no equal/higher-priority dependency-ready implementation, validation, intake, review, merge or post-merge task remains. Preserve the original lane status; genuine external/owner blockers remain BLOCKED.
+- Reservations use protected Main, exact-SHA compare-and-set and serialized merge-before-dispatch. The current ruleset has no merge queue/strict checks, so coordinator single-flight is procedural; stop and reconcile after any unexpected Main advance or bypass.
+- Build/release lanes are globally serialized by repository/workflow/lane/configuration; PR-specific concurrency groups do not prove serialization. Inspect actual workflow controls; skipped/cancelled/queued/in-progress are not passes.
+
+- PR-size exceptions are approved in writing **before implementation begins**. For 201–300 changed lines, approval at PR submission is retrospective and invalid. A separate file-count-only exception permits 6–10 files for a coherent change of up to 200 lines only with the same prior written approval, exact file list and reason. More than 10 files or more than 300 lines must be split.
