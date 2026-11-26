@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Detect Java source files
         id: java-sources
@@ -37,34 +38,12 @@ jobs:
           fi
 
           mapfile -d '' -t discovered_files < "$source_list"
-          validate_java_path() {
-            local source_path="$1"
-            [[ "$source_path" == ./* && ! "$source_path" =~ [[:space:]] ]]
-          }
-
-          # Exercise option-like, argfile-like and whitespace paths before trusting the
-          # detector. Prefixes keep --version=.java and @A.java as file paths, while
-          # whitespace is rejected because the formatter action tokenizes on spaces.
-          probe_dir="$(mktemp -d)"
-          trap 'rm -rf "$probe_dir"' EXIT
-          touch "$probe_dir/--version=.java" "$probe_dir/@A.java" "$probe_dir/with space.java"
-          (
-            cd "$probe_dir"
-            find . -type f -name '*.java' -print0 > "$probe_dir/probe.nul"
-            mapfile -d '' -t probe_files < "$probe_dir/probe.nul"
-            printf '%s\\n' "${probe_files[@]}" | grep -Fx -- './--version=.java' >/dev/null
-            printf '%s\\n' "${probe_files[@]}" | grep -Fx -- './@A.java' >/dev/null
-            validate_java_path './--version=.java'
-            validate_java_path './@A.java'
-            if validate_java_path './with space.java'; then
-              echo "::error::Whitespace path validation unexpectedly succeeded."
-              exit 1
-            fi
-          )
-
+          # Keep find's ./ prefix: it prevents option-like and @argfile-like names
+          # from being interpreted as formatter arguments. Reject whitespace because
+          # this action tokenizes the files input on spaces.
           java_files=()
           for source in "${discovered_files[@]}"; do
-            if ! validate_java_path "$source"; then
+            if [[ "$source" != ./* || "$source" =~ [[:space:]] ]]; then
               echo "::error::Java source path is unsafe for this formatter action: $source"
               exit 1
             fi
