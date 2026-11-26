@@ -650,3 +650,10 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - Acceptance: register unique hierarchy `1.11.2` → `1.11.2.1` → executable leaf `1.11.2.1.1`; make all five owned files consistent; preserve one-active-item-per-helper, dependency order, file reservation through DONE, DESIGN fallback, owner approval, serialized CI and protected-Main merge gates; exact diff review with no conflicting changes.
 - Validation: inspect exact PR diff; run/reuse Security Scan and docs-only exact-head CI summary; inspect Project Dispatcher outcome and record cancellation/skips honestly. No application-code tests are applicable; skipped platform suites are not passes.
 - This reservation covers governance/instruction alignment only. No application source, scheduler implementation, provider dispatch, build or merge is claimed by this entry.
+
+
+### 2026-11-26 — WBS amendment for GLAFIRA-GOV-BATCH-W01 (owner-approved)
+- Owner explicitly approved moving PR #721 / Work Item `GLAFIRA-GOV-BATCH-W01` from executable leaf `1.11.2.1.1` to sibling leaf `1.11.2.1.2`, retaining the common ancestors `1.11.2` (Batch-cycle coordination) and `1.11.2.1` (Governance and assignment cadence).
+- This amendment preserves the historical reservation above as an append-only record; it does not rewrite or reuse the original identifier. The canonical current assignment is `1.11.2.1.2`. The existing `1.11.2.1.1` hierarchy/descendants used by PR #701 remain unchanged and exclusively retain their prior meaning.
+- Work Item ID, executor, reviewers, allowed five documentation paths, dependencies, acceptance criteria and branch remain unchanged. No application source or runtime behavior is authorized by this numbering correction.
+- PR #721 must be re-reviewed at its resulting exact head; all previous review/CI evidence is invalidated by the new commit. Merge remains blocked until fresh required review, exact-head Security Scan, docs-only CI summary and Project Dispatcher evidence are inspected, with skipped/cancelled checks not counted as passes.
