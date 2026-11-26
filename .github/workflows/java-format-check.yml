@@ -57,7 +57,6 @@ jobs:
             --add-exports jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
             --add-exports jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED
           )
-
           discover_java_sources() {
             local root="$1" output="$2"
             local symlink='' status=0 err="$RUNNER_TEMP/glafira-java-discovery.stderr"
@@ -108,13 +107,11 @@ jobs:
             fi
             printf '%s\n' "${#discovered[@]}"
           }
-
           format_check_manifest() {
             local manifest="$1" stdout_file="$2" stderr_file="$3" status=0
             xargs -0 -r java "${java_args[@]}" -jar "$jar" --dry-run --set-exit-if-changed < "$manifest" > "$stdout_file" 2> "$stderr_file" || status=$?
             return "$status"
           }
-
           emit_bounded_diagnostic() {
             local label="$1" file="$2" bytes
             bytes="$(wc -c < "$file")"
@@ -147,7 +144,6 @@ jobs:
               return "$status"
             fi
           }
-
           # Actual repository gate uses the same discovery, empty-tree decision and manifest formatter as every fixture.
           production_manifest="$RUNNER_TEMP/glafira-java-sources.nul"
           production_stdout="$RUNNER_TEMP/glafira-java-format.stdout"
@@ -168,7 +164,6 @@ jobs:
             fi
             exit "$production_status"
           fi
-
           # Fixtures live only in a unique runner-temp directory; never remove a checkout-owned path.
           fixture_root="$(mktemp -d "$RUNNER_TEMP/glafira-gjf-smoke.XXXXXX")"
           trap 'rm -rf "$fixture_root"' EXIT
@@ -192,7 +187,6 @@ jobs:
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$fixture_root/mixed/nested/Unformatted.java"
           cp "$fixture_root/mixed/nested/Unformatted.java" "$fixture_root/single/nested/Unformatted.java"
           cp "$fixture_root/formatted/Formatted.java" "$fixture_root/whitespace/With Space.java"
-
           # Expected manifests are independently constructed from the exact fixture paths.
           formatted_expected_manifest="$RUNNER_TEMP/glafira-formatted.expected.nul"
           printf '%s\0' "$fixture_root/formatted/Formatted.java" "$fixture_root/formatted/FormattedSecond.java" | sort -z > "$formatted_expected_manifest"
@@ -217,7 +211,6 @@ jobs:
             emit_bounded_diagnostic actual "$formatted_stdout"
             exit 1
           fi
-
           mixed_expected_manifest="$RUNNER_TEMP/glafira-mixed.expected.nul"
           printf '%s\0' "$fixture_root/mixed/Formatted.java" "$fixture_root/mixed/nested/FormattedSecond.java" "$fixture_root/mixed/nested/Unformatted.java" | sort -z > "$mixed_expected_manifest"
           mixed_manifest="$RUNNER_TEMP/glafira-mixed.actual.nul"
@@ -241,7 +234,6 @@ jobs:
             emit_bounded_diagnostic actual "$mixed_stdout"
             exit 1
           fi
-
           single_expected_manifest="$RUNNER_TEMP/glafira-single.expected.nul"
           printf '%s\0' "$fixture_root/single/nested/Unformatted.java" > "$single_expected_manifest"
           single_manifest="$RUNNER_TEMP/glafira-single.actual.nul"
