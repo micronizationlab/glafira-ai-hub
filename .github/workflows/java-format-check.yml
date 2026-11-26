@@ -63,7 +63,8 @@ jobs:
       - name: Report Java formatting not applicable
         if: steps.source-preflight.outputs.source_count == '0'
         shell: bash
-        run: echo "::notice::Google Java Style Validation is NOT_APPLICABLE: no production Java sources were discovered."
+        run: |
+          echo "::notice::Google Java Style Validation is NOT_APPLICABLE: no production Java sources were discovered."
 
       - name: Download and verify pinned Google Java Format
         if: steps.source-preflight.outputs.source_count != '0'
