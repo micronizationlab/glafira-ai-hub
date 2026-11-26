@@ -191,6 +191,13 @@ jobs:
             }
           }
           EOF
+          cat > "$fixture_root/formatted/Backslash\\Name.java" <<'EOF'
+          final class BackslashPath {
+            void run() {
+              System.out.println("backslash path");
+            }
+          }
+          EOF
           cp "$fixture_root/formatted/Formatted.java" "$fixture_root/mixed/Formatted.java"
           cp "$fixture_root/formatted/FormattedSecond.java" "$fixture_root/mixed/nested/FormattedSecond.java"
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$fixture_root/mixed/nested/Unformatted.java"
@@ -209,7 +216,7 @@ jobs:
           chmod +x "$java_capture_bin/java"
           # Expected manifests are independently constructed from the exact fixture paths.
           formatted_expected_manifest="$RUNNER_TEMP/glafira-formatted.expected.nul"
-          printf '%s\0' "$fixture_root/formatted/Formatted.java" "$fixture_root/formatted/FormattedSecond.java" | sort -z > "$formatted_expected_manifest"
+          printf '%s\0' "$fixture_root/formatted/Formatted.java" "$fixture_root/formatted/FormattedSecond.java" "$fixture_root/formatted/Backslash\\Name.java" | sort -z > "$formatted_expected_manifest"
           formatted_manifest="$RUNNER_TEMP/glafira-formatted.actual.nul"
           formatted_stdout="$RUNNER_TEMP/glafira-formatted.stdout"
           formatted_stderr="$RUNNER_TEMP/glafira-formatted.stderr"
