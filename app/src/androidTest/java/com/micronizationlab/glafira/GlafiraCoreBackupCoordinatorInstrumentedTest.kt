@@ -57,7 +57,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 getDatabasePath(name).absolutePath, factory, android.database.sqlite.SQLiteDatabase.CREATE_IF_NECESSARY
             )
         override fun deleteDatabase(name: String): Boolean = getDatabasePath(name).delete()
-        override fun databaseList(): Array<String> = databases.list()?.toTypedArray() ?: emptyArray()
+        override fun databaseList(): Array<String> = databases.list() ?: emptyArray()
         override fun getFilesDir(): File = files; override fun getNoBackupFilesDir(): File = noBackup; override fun getCacheDir(): File = cache
         override fun getSharedPreferences(name: String, mode: Int) =
             super.getSharedPreferences("${root.name}-$name", mode)
