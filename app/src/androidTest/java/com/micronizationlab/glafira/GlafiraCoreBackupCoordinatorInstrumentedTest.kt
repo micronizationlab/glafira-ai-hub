@@ -1,5 +1,4 @@
 package com.micronizationlab.glafira
-
 import android.content.Context
 import android.content.ContextWrapper
 import android.database.sqlite.SQLiteException
@@ -23,7 +22,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-
 @RunWith(AndroidJUnit4::class)
 class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private val appContext: Context = ApplicationProvider.getApplicationContext()
@@ -31,9 +29,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var testRoot: File
     private lateinit var store: GlafiraTaskStore
     private var runtimeWasEnabled = false
-
     @Before
     fun setUp() = runBlocking {
+        org.junit.Assume.assumeTrue(
+            "Requires a disposable emulator: rollback AndroidKeyStore alias is UID-scoped.",
+            android.os.Build.FINGERPRINT.contains("sdk_gphone") || android.os.Build.FINGERPRINT.contains("generic")
+        )
         runtimeWasEnabled = GlafiraCoreRuntimeOwner.get(appContext).isEnabled
         cancelAndAwaitCoreWorkers()
         testRoot = File(appContext.cacheDir, "glafira-backup-test-${UUID.randomUUID()}").apply { check(mkdirs()) }
