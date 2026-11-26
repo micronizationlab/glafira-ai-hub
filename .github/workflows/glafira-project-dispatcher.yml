@@ -225,5 +225,5 @@ jobs:
             echo "|---:|---|---|---|:---:|"
             bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
             echo ""
-            echo "Policy: match workflow runs only to the exact current PR head SHA. Older-head runs are not acceptance evidence. Skipped, cancelled, queued, partial or unknown states are not passes."
+            echo "Policy: when the check rollup is empty, match workflow runs only to the exact PR number, current head SHA and current base SHA. If the API cannot prove that association, report UNKNOWN. Older-head/base runs are not acceptance evidence. Skipped, cancelled, queued, partial or unknown states are not passes."
           } >> "$GITHUB_STEP_SUMMARY"
