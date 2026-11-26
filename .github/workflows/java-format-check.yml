@@ -115,10 +115,17 @@ jobs:
           }
           emit_bounded_diagnostic() {
             local label="$1" file="$2" bytes
-            bytes="$(wc -c < "$file")"
+            if [[ ! -r "$file" ]]; then
+              printf '%s_unavailable=true\n' "$label"
+              return 0
+            fi
+            if ! bytes="$(wc -c < "$file" 2>/dev/null)"; then
+              printf '%s_unavailable=true\n' "$label"
+              return 0
+            fi
             printf '%s_bytes=%s\n' "$label" "$bytes"
             printf '%s_base64=' "$label"
-            head -c 4096 "$file" | base64 -w0
+            head -c 4096 "$file" 2>/dev/null | base64 -w0 || true
             printf '\n'
           }
           write_gate_result() {
@@ -136,6 +143,7 @@ jobs:
             local root="$1" manifest="$2" stdout_file="$3" stderr_file="$4" result_file="$5"
             local count status=0
             : > "$stderr_file"
+            : > "$stdout_file"
             if count="$(discover_java_sources "$root" "$manifest" 2>"$stderr_file")"; then
               :
             else
@@ -183,10 +191,14 @@ jobs:
             esac
           else
             production_status=$?
-            if [[ "$(cat "$production_result")" == "DISCOVERY_ERROR" ]]; then
+            production_result_value=''
+            if [[ -r "$production_result" ]]; then
+              production_result_value="$(cat "$production_result" 2>/dev/null || true)"
+            fi
+            if [[ "$production_result_value" == "DISCOVERY_ERROR" ]]; then
               echo "::error::Java source discovery failed; inspect the bounded base64 diagnostic below."; emit_bounded_diagnostic discovery_stderr "$production_stderr"
             else
-              if [[ "$(cat "$production_result")" == "SOURCE_REJECTION" ]]; then
+              if [[ "$production_result_value" == "SOURCE_REJECTION" ]]; then
                 echo "::error::Google Java Format rejected one or more Java sources (exit=$production_status). Diagnostics are base64-encoded to keep PR source text inert."
               else
                 echo "::error::Google Java Format could not execute or complete reliably (exit=$production_status); source rejection was not established."
@@ -417,4 +429,29 @@ jobs:
           symlinkfail_manifest="$RUNNER_TEMP/glafira-symlink-findfail.nul"; symlinkfail_stdout="$RUNNER_TEMP/glafira-symlink-findfail.stdout"; symlinkfail_stderr="$RUNNER_TEMP/glafira-symlink-findfail.stderr"; symlinkfail_result="$RUNNER_TEMP/glafira-symlink-findfail.result"
           if PATH="$symlink_failure_bin:$PATH" run_format_gate "$fixture_root/formatted" "$symlinkfail_manifest" "$symlinkfail_stdout" "$symlinkfail_stderr" "$symlinkfail_result"; then symlinkfail_status=0; else symlinkfail_status=$?; fi
           if [[ "$symlinkfail_status" -eq 0 ]] || [[ "$(cat "$symlinkfail_result")" != "DISCOVERY_ERROR" ]] || [[ ! -s "$symlinkfail_stderr" ]]; then echo "::error::Symlink-scan-only failure was not rejected by the shared production gate."; exit 1; fi
-                    echo "Formatter regression smoke passed: exact NUL-delimited Java argument handoff, worktree-relative paths, dry-run positive, mixed, singleton, missing-formatter, empty-tree, missing-root, symlink, whitespace-path and partial-find-failure fixtures used the shared production gate; direct singleton oracle confirmed Java exit 1."
+
+          # Parser diagnostics are not style rejections: they must remain execution/parse failures.
+          mkdir -p "$fixture_root/malformed"
+          printf '%s\n' 'final class Malformed {' > "$fixture_root/malformed/Malformed.java"
+          malformed_manifest="$RUNNER_TEMP/glafira-malformed.nul"; malformed_stdout="$RUNNER_TEMP/glafira-malformed.stdout"; malformed_stderr="$RUNNER_TEMP/glafira-malformed.stderr"; malformed_result="$RUNNER_TEMP/glafira-malformed.result"
+          if run_format_gate "$fixture_root/malformed" "$malformed_manifest" "$malformed_stdout" "$malformed_stderr" "$malformed_result"; then malformed_status=0; else malformed_status=$?; fi
+          if [[ "$malformed_status" -eq 0 ]] || [[ "$(cat "$malformed_result")" != "FORMATTER_EXECUTION_ERROR" ]] || [[ ! -s "$malformed_stderr" ]]; then
+            echo "::error::Malformed Java parser diagnostics were not kept distinct from style rejection."
+            exit 1
+          fi
+
+          # A result destination that is a directory must preserve the result-write failure (25).
+          result_write_manifest="$RUNNER_TEMP/glafira-result-write.nul"; result_write_stdout="$RUNNER_TEMP/glafira-result-write.stdout"; result_write_stderr="$RUNNER_TEMP/glafira-result-write.stderr"; result_write_target="$RUNNER_TEMP/glafira-result-write.target"
+          mkdir -p "$result_write_target"
+          if run_format_gate "$fixture_root/formatted" "$result_write_manifest" "$result_write_stdout" "$result_write_stderr" "$result_write_target"; then result_write_status=0; else result_write_status=$?; fi
+          if [[ "$result_write_status" -ne 25 ]]; then
+            echo "::error::Result persistence failure was masked or reclassified (expected 25, got $result_write_status)."
+            exit 1
+          fi
+
+          # Diagnostics for absent optional files must not mask the original gate status.
+          if ! emit_bounded_diagnostic absent_fixture "$RUNNER_TEMP/glafira-file-that-does-not-exist"; then
+            echo "::error::Best-effort diagnostics failed for an absent output file."
+            exit 1
+          fi
+          echo "Formatter regression smoke passed: exact NUL-delimited Java argument handoff, relative paths, formatted/unformatted/parser cases, missing formatter, empty/missing roots, symlink/whitespace/find failures, result-write failure and absent diagnostic files."
