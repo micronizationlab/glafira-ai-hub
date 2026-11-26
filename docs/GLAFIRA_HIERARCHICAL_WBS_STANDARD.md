@@ -188,6 +188,8 @@ This section supersedes all conflicting Section 10 instructions for `.4`, includ
 - **Status:** RESERVED IN PLAN / NOT DISPATCHED. Drafting is blocked until the parent reservation and separate pre-edit leaf-reservation amendment both merge, and the pending-token marker is verified on issue #674.
 ## 13. Eleven-lane batch cadence and non-response handoff
 
+WBS parent `1.11.2.1.1.1` — **WBS Governance Remediation**. Child leaves: `1.11.2.1.1.1.1` — core execution-control/WBS/ledger/contributor rules (`GLAFIRA-GOV-GOV-W01`); `1.11.2.1.1.1.2` — plan/PR-size/dispatcher/handoff policy (`GLAFIRA-GOV-POLICY-W01`). Both are owner-approved cross-step governance items; neither claims a Program 150 step complete.
+
 Canonical executable leaf: `1.11.2.1.2.1.1` — document and enforce the eleven-lane batch-cycle cadence. Parent task: `1.11.2.1.2`; Work Item ID: `GLAFIRA-GOV-BATCH-W01` (explicit owner-approved cross-step governance item). This registration does not claim any Program 150 step complete.
 
 - **Owner authorization:** the owner explicitly instructed on 2026-11-26 to resolve review findings on #701/#717/#721/#718 and continue all eleven workstreams.
@@ -243,3 +245,5 @@ Canonical executable leaf: `1.11.2.1.2.1.1` — document and enforce the eleven-
 - A leaf may be `workStatus=BLOCKED` and `assignmentState=SUSPENDED`; do not replace the original blocker with a new status. Batch reports count work status and assignment state in separate columns.
 - `SUSPENDED` preserves WBS identity, history and file reservation. It frees the executor slot only after the former executor's write access is revoked and branch is quiesced.
 - `CANCELLED`/`SUPERSEDED` reservations release files only after reason, replacement ID (if any), revocation, branch quiescence and terminal evidence are recorded.
+- `reservationState` is separate from work/assignment state: `PENDING_REVIEW`, `ACTIVE`, `REJECTED`, `SUPERSEDED`, `RELEASED`. A ledger PR awaiting merge is `workStatus=READY`, `assignmentState=UNASSIGNED`, `reservationState=PENDING_REVIEW`, `deliveryState=NOT_DISPATCHED`; do not invent a `PENDING_RESERVATION` work status.
+- `deliveryState` is separate from WBS lifecycle and assignment state: `NOT_DISPATCHED`, `DISPATCHED_AWAITING_ACK`, `DISPATCH_ACKNOWLEDGED`, `WORK_COMPLETED`, `STOP_REQUESTED`, `REVOKING`, `REVOKED_FENCED`, `STOPPED`, `RELEASED`.
