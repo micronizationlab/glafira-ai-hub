@@ -109,7 +109,8 @@ jobs:
           }
           format_check_manifest() {
             local manifest="$1" stdout_file="$2" stderr_file="$3" status=0
-            xargs -0 -r java "${java_args[@]}" -jar "$jar" --dry-run --set-exit-if-changed < "$manifest" > "$stdout_file" 2> "$stderr_file" || status=$?
+            local java_bin="${GLAFIRA_JAVA_BIN:-java}"
+            xargs -0 -r "$java_bin" "${java_args[@]}" -jar "$jar" --dry-run --set-exit-if-changed < "$manifest" > "$stdout_file" 2> "$stderr_file" || status=$?
             return "$status"
           }
           emit_bounded_diagnostic() {
@@ -195,6 +196,17 @@ jobs:
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$fixture_root/mixed/nested/Unformatted.java"
           cp "$fixture_root/mixed/nested/Unformatted.java" "$fixture_root/single/nested/Unformatted.java"
           cp "$fixture_root/formatted/Formatted.java" "$fixture_root/whitespace/With Space.java"
+          # Capture the exact source arguments crossing the xargs -> Java handoff.
+          java_capture_bin="$fixture_root/java-capture-bin"; mkdir -p "$java_capture_bin"
+          real_java="$(command -v java)"
+          cat > "$java_capture_bin/java" <<'JAVA'
+          #!/usr/bin/env bash
+          for arg in "$@"; do
+            case "$arg" in *.java) printf '%s\\0' "$arg" >> "$GLAFIRA_JAVA_CAPTURE" ;; esac
+          done
+          exec "$GLAFIRA_REAL_JAVA" "$@"
+          JAVA
+          chmod +x "$java_capture_bin/java"
           # Expected manifests are independently constructed from the exact fixture paths.
           formatted_expected_manifest="$RUNNER_TEMP/glafira-formatted.expected.nul"
           printf '%s\0' "$fixture_root/formatted/Formatted.java" "$fixture_root/formatted/FormattedSecond.java" | sort -z > "$formatted_expected_manifest"
@@ -202,8 +214,9 @@ jobs:
           formatted_stdout="$RUNNER_TEMP/glafira-formatted.stdout"
           formatted_stderr="$RUNNER_TEMP/glafira-formatted.stderr"
           formatted_result="$RUNNER_TEMP/glafira-formatted.result"
-          if run_format_gate "$fixture_root/formatted" "$formatted_manifest" "$formatted_stdout" "$formatted_stderr" "$formatted_result"; then formatted_status=0; else formatted_status=$?; fi
-          if [[ "$formatted_status" -ne 0 ]] || [[ "$(cat "$formatted_result")" != "0" ]] || [[ -s "$formatted_stderr" ]] || ! cmp -s "$formatted_expected_manifest" "$formatted_manifest"; then
+          formatted_java_args="$RUNNER_TEMP/glafira-formatted.java-args.nul"; : > "$formatted_java_args"
+          if GLAFIRA_JAVA_BIN="$java_capture_bin/java" GLAFIRA_JAVA_CAPTURE="$formatted_java_args" GLAFIRA_REAL_JAVA="$real_java" run_format_gate "$fixture_root/formatted" "$formatted_manifest" "$formatted_stdout" "$formatted_stderr" "$formatted_result"; then formatted_status=0; else formatted_status=$?; fi
+          if [[ "$formatted_status" -ne 0 ]] || [[ "$(cat "$formatted_result")" != "0" ]] || [[ -s "$formatted_stderr" ]] || ! cmp -s "$formatted_expected_manifest" "$formatted_manifest" || ! cmp -s "$formatted_expected_manifest" "$formatted_java_args"; then
             echo "::error::Formatted-only manifest was not accepted with the exact two expected sources."
             emit_bounded_diagnostic expected_manifest "$formatted_expected_manifest"
             emit_bounded_diagnostic actual_manifest "$formatted_manifest"
@@ -225,8 +238,9 @@ jobs:
           mixed_stdout="$RUNNER_TEMP/glafira-mixed.stdout"
           mixed_stderr="$RUNNER_TEMP/glafira-mixed.stderr"
           mixed_result="$RUNNER_TEMP/glafira-mixed.result"
-          if run_format_gate "$fixture_root/mixed" "$mixed_manifest" "$mixed_stdout" "$mixed_stderr" "$mixed_result"; then mixed_status=0; else mixed_status=$?; fi
-          if [[ "$mixed_status" -ne 123 ]] || [[ "$(cat "$mixed_result")" != "SOURCE_REJECTION" ]] || [[ -s "$mixed_stderr" ]] || ! cmp -s "$mixed_expected_manifest" "$mixed_manifest"; then
+          mixed_java_args="$RUNNER_TEMP/glafira-mixed.java-args.nul"; : > "$mixed_java_args"
+          if GLAFIRA_JAVA_BIN="$java_capture_bin/java" GLAFIRA_JAVA_CAPTURE="$mixed_java_args" GLAFIRA_REAL_JAVA="$real_java" run_format_gate "$fixture_root/mixed" "$mixed_manifest" "$mixed_stdout" "$mixed_stderr" "$mixed_result"; then mixed_status=0; else mixed_status=$?; fi
+          if [[ "$mixed_status" -ne 123 ]] || [[ "$(cat "$mixed_result")" != "SOURCE_REJECTION" ]] || [[ -s "$mixed_stderr" ]] || ! cmp -s "$mixed_expected_manifest" "$mixed_manifest" || ! cmp -s "$mixed_expected_manifest" "$mixed_java_args"; then
             echo "::error::Mixed manifest did not process the exact three sources and reject the unformatted third file (exit=$mixed_status)."
             emit_bounded_diagnostic expected_manifest "$mixed_expected_manifest"
             emit_bounded_diagnostic actual_manifest "$mixed_manifest"
@@ -322,4 +336,4 @@ jobs:
           findfail_manifest="$RUNNER_TEMP/glafira-findfail.nul"; findfail_stdout="$RUNNER_TEMP/glafira-findfail.stdout"; findfail_stderr="$RUNNER_TEMP/glafira-findfail.stderr"; findfail_result="$RUNNER_TEMP/glafira-findfail.result"
           if PATH="$find_failure_bin:$PATH" GLAFIRA_PARTIAL_JAVA="$fixture_root/formatted/Formatted.java" run_format_gate "$fixture_root/formatted" "$findfail_manifest" "$findfail_stdout" "$findfail_stderr" "$findfail_result"; then findfail_status=0; else findfail_status=$?; fi
           if [[ "$findfail_status" -eq 0 ]] || [[ "$(cat "$findfail_result")" != "DISCOVERY_ERROR" ]] || [[ ! -s "$findfail_stderr" ]]; then echo "::error::Partial regular-file find failure was not rejected by the shared production gate."; exit 1; fi
-                    echo "Formatter regression smoke passed: dry-run positive, mixed, singleton, empty-tree, missing-root, symlink, whitespace-path and partial-find-failure fixtures used the same production discovery and manifest formatter functions; the direct singleton oracle confirmed Java exit 1."
+                    echo "Formatter regression smoke passed: exact NUL-delimited Java argument handoff, dry-run positive, mixed, singleton, empty-tree, missing-root, symlink, whitespace-path and partial-find-failure fixtures used the shared production gate; direct singleton oracle confirmed Java exit 1."
