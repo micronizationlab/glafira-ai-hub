@@ -307,7 +307,7 @@ jobs:
           cat > "$find_failure_bin/find" <<'FIND'
           #!/usr/bin/env bash
           if [[ " $* " == *" -type l "* ]]; then exec /usr/bin/find "$@"; fi
-          if [[ " $* " == *" -type f "* ]]; then printf '%s\0' "$GLAFIRA_PARTIAL_JAVA"; exit 1; fi
+          if [[ " $* " == *" -type f "* ]]; then printf '%s\0' "$GLAFIRA_PARTIAL_JAVA"; echo "synthetic partial regular-file find failure" >&2; exit 1; fi
           exec /usr/bin/find "$@"
           FIND
           chmod +x "$find_failure_bin/find"
