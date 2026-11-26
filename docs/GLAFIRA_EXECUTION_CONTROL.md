@@ -124,7 +124,7 @@ At the end of each work cycle report:
 - ledger update and next action;
 - active blockers and who owns them.
 - a per-lane numeric table: planned / started / DONE / blocked / in-review / CI-passed / merged / post-merge-verified executable-step counts; list WBS IDs behind each nonzero outcome.
-- for every step counted as started or completed, the internal action sequence (change, complete test run, consolidated failure list, grouped fixes, rerun, PR, independent review, exact-head CI, merge and post-merge verification); identify explicitly which sub-actions remain open.
+- for every step counted as started or completed, report **numeric action counts** as `actions_done / actions_planned`, list the numbered action IDs completed with their evidence, and list the action IDs still open. Keep action counts separate from WBS-step counts: five actions inside one step remain one started step, not five steps. The action plan must cover the applicable sequence (inventory, scope/dependencies, reservation, bounded change, complete diff review, full test run, consolidated failure list, grouped fixes, rerun/regression, focused PR, independent review, exact-head CI, safe merge, post-merge Main SHA/checks); mark genuinely inapplicable actions explicitly with a reason rather than silently omitting them.
 
 No vague “done”, no hidden progress, no repeated work, no second build without a reason.
 
