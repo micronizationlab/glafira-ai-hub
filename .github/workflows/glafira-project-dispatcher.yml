@@ -8,6 +8,7 @@ on:
     workflows:
       - GLAFIRA CI — change-aware platform validation
       - GLAFIRA Windows Agent
+      - GLAFIRA Java Format Check
     types: [completed]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
