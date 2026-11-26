@@ -28,7 +28,7 @@ This section is subordinate to the current owner-confirmed priority in the Compl
 5. **P5 — Token/GCU:** non-issuing calculator/specification only unless separately authorized by the owner.
 6. **Cross-cutting integration:** review, CI, merge and post-merge actions for eligible higher-priority items may be selected before lower-priority implementation. This is not a product priority or second runtime queue.
 
-Android and Windows Desktop remain primary runtime surfaces, but no application feature work displaces Core or Backup. When a higher-priority item is blocked, select the highest-priority independent ready task only after recording the blocker and rescanning both Action Pools.
+Android and Windows Desktop remain primary runtime surfaces, but no application feature work displaces Core or Backup. When a higher-priority item is blocked, record the blocker and rescan Pool A immediately. Reconcile Pool B only if it already exists or when Pool A is exhausted and Pool B is due to be created; never delay safe Pool A work or create Pool B prematurely.
 ## 3. Mandatory GitHub visit protocol
 
 At every GitHub visit:
