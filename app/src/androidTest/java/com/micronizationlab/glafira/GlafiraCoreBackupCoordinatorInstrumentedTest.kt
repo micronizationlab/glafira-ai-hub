@@ -54,7 +54,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         override fun getApplicationContext(): Context = this
         override fun getDatabasePath(name: String): File = File(databases, name)
         override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?) =
-            android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name).absolutePath, factory)
+            android.database.sqlite.SQLiteDatabase.openDatabase(
+                getDatabasePath(name).absolutePath, factory, android.database.sqlite.SQLiteDatabase.CREATE_IF_NECESSARY
+            )
         override fun deleteDatabase(name: String): Boolean = getDatabasePath(name).delete()
         override fun databaseList(): Array<String> = databases.list()?.toTypedArray() ?: emptyArray()
         override fun getFilesDir(): File = files
@@ -686,7 +688,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 }
             }
         } finally {
-            passphrase.fill('\\u0000')
+            passphrase.fill('\u0000')
             if (ownsFixture) withFixtureLocks {
                 synchronized(store) {
                     if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
@@ -708,19 +710,17 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Test
     fun successfulRestoreDeletesInstallationLocalRollbackKey() = runBlocking {
-        GlafiraRollbackSnapshotCipher.deleteKey()
+        assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
         store.enqueue(task("rollback-key-lifecycle"))
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
         val passphrase = "GLAFIRA-rollback-key-lifecycle".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             coordinator.restore(archive, passphrase)
-            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            assertFalse("Rollback key must be deleted after the pending journal is cleared", keyStore.containsAlias(keyAlias))
+            assertFalse("Rollback key must be deleted after the pending journal is cleared", rollbackKeyExists())
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
-            GlafiraRollbackSnapshotCipher.deleteKey()
         }
     }
 
@@ -761,12 +761,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
                         assertFalse("Known-good fixture must start absent", knownGood.exists())
                         assertFalse("Mutation fixture must start absent", createdAfterMarker.exists())
-                        owner.writeText(runId, Charsets.UTF_8)
-                        ownsFixture = true
                         knownGood.writeText("known-good-before-marker", Charsets.UTF_8)
                         val task = task("known-good-before-marker")
                         store.enqueue(task)
                         expectedTask = checkNotNull(store.getTask(task.taskId))
+                        owner.writeText(runId, Charsets.UTF_8)
+                        ownsFixture = true
                         try {
                             GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
                             journalOwner.writeText(runId, Charsets.UTF_8)
@@ -820,7 +820,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
                                     check(journal.deleteRecursively())
                                     if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                                } else if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                                } else check(!rollbackKeyExists()) {
+                                    "Refusing to delete a rollback key without its owned journal."
+                                }
                                 check(!knownGood.exists() || knownGood.delete())
                                 check(!createdAfterMarker.exists() || createdAfterMarker.delete())
                                 check(owner.delete())
