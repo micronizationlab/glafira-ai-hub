@@ -1,5 +1,5 @@
 name: GLAFIRA Java Format Check
-run-name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && 'METADATA_ONLY: PR metadata edit' || 'VALIDATION: Java format' }}
+run-name: "${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && 'METADATA_ONLY - PR metadata edit' || 'VALIDATION - Java format' }}"
 
 on:
   pull_request:
