@@ -656,43 +656,23 @@ This append-only entry supersedes contradictory reservation metadata in the earl
 
 ### GLAFIRA-S000-W01 — coordinator fallback and reservation governance
 
-- **WBS / tracker:** executable leaf `1.11.2.1.1.1.1`; issue #685; owner-approved cross-step governance task, no legacy Program 150 step claimed. `S000` is the documented identity token for owner-approved cross-step governance work without a single legacy step.
+- **WBS / tracker:** executable leaf `1.11.2.1.1.1.1`; issue #685; owner-approved cross-step governance task, no legacy Program 150 step claimed. `S000` is the documented identity token for owner-approved cross-step work (including governance or design fallback) without a single legacy Program 150 step.
+- **Reservation branch / exact base SHA:** `governance/wbs-review-reconciliation-20261126` / `cf1017ddf4799b3ab1a2ce00491e09ebc72b0ae5`.
+- **Governance correction:** the current Main ledger did not contain an active reservation for the earlier #687 work when this reconciliation started. The edits in this PR therefore correct a documented process-order deviation; they do not claim that reservation preceded the historical edits. No new helper dispatch is authorized by this correction.
 - **Executor / independent reviewer / owner:** GLAFIRA coordinator / independent reviewer not involved in authorship / project owner.
 - **Allowed files:** `docs/GLAFIRA_EXECUTION_CONTROL.md`, `docs/GLAFIRA_EXECUTION_LEDGER.md`, `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`, `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md`, `docs/engineering/PR_SIZE_AND_MERGE_POLICY.md`.
 - **Predecessor:** PR #673 is merged; no additional predecessor is asserted. The historical PR #687 reservation is superseded by this reconciled record; its five-file scope is transferred here, and the old branch/PR must not be merged.
 - **Canonical ledger ref and concurrency:** protected `main` is the only reservation ledger ref. This record becomes active only after its reservation PR merges against the exact current main SHA. All owner and coordinator reservations use the same ref and compare-and-set parent. One reservation merge at a time; re-read main and scan for duplicate Work Item/WBS/executor/file ownership after each merge.
 - **Handoff acceptance:** every delivery state is durable. `DISPATCHED_AWAITING_ACK` is not releasable on timeout alone; revoke the old assignment capability and commit a higher fencing generation before replacement dispatch. Preserve the old status/history and reject stale-generation writes. A lost ACK never creates a second live assignment.
 - **PR-size acceptance:** written approval before implementation for 201–300 lines; independent file-count exception for 6–10 files and <=200 lines, also approved before implementation; >300 lines or >10 files split.
-- **Status:** PROPOSED IN THIS RECONCILIATION PR; not active until merged; no implementation or Program 150 completion claimed.
+- **Status:** IN_REVIEW — this reservation applies only to the single governance correction PR #738. It is not a batch activation for W02 or W03. After merge, mark DONE only after exact post-merge checks; no separate helper assignment is activated.
 
-### GLAFIRA-S000-W02 — eleven-workstream batch-cycle governance
+### W02 and W03 reservation activation — separate PR gates
 
-- **WBS / tracker:** executable leaf `1.11.2.1.2.1.1`; issue #548; owner-approved cross-step governance task; no Program 150 implementation step claimed.
-- **Executor / reviewer / owner:** GLAFIRA coordinator / independent reviewer / project owner.
-- **Allowed files:** `docs/GLAFIRA_EXECUTION_CONTROL.md`, `docs/GLAFIRA_EXECUTION_LEDGER.md`, `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`, `AGENTS.md`, `.github/copilot-instructions.md`.
-- **Priority and intake:** current order Core → Backup & Recovery → Bridge/Desktop. Both engineering Action Pool and Workstream 11 helper-intake pool must be reconciled. Workstream 11 does not create a second runtime queue. DESIGN is fallback only after all equal/higher-priority ready integration and implementation work is checked.
-- **One active assignment:** suspend/transfer a blocked assignment and fence its former executor before assigning another item. A replacement cannot be assigned DESIGN or another global-ready task while the transferred task remains active. Release reservations only on DONE or authorized terminal CANCELLED/SUPERSEDED.
-- **CI acceptance:** serialize builds globally by repo/workflow/lane/configuration; verify workflow concurrency actually enforces this. Record exact-head results and logs; skipped/cancelled/queued/in-progress are not passes.
-- **Status:** PROPOSED IN THIS RECONCILIATION PR; no runtime scheduler, durable queue or Program 150 completion claimed.
-
-### GLAFIRA-S000-W03 — Windows Desktop / Hub UX design reservation correction
-
-- **WBS / tracker:** executable leaf `1.11.1.1.6.1.1`; issue #674 / umbrella #672; explicitly owner-approved cross-step DESIGN task, not a Program 150 step.
-- **Executor / reviewers / owner:** GLAFIRA coordinator / independent reviewers / project owner.
-- **Exclusive implementation deliverable:** `docs/design/WINDOWS_DESKTOP_HUB_UX.md` only. Reservation files are this ledger and the WBS standard; the ledger itself is append-only and shared by independent reservations, so ownership applies to this entry/append operation, not the whole file.
-- **Predecessors:** shared design token package #679 must be accepted before final token values; issue #674 must explicitly mark visual tokens PENDING before information-architecture drafting. The reservation PR merge is followed by a separate implementation reservation on the exact then-current main SHA before any drafting.
-- **Acceptance:** seven-component executable WBS ID; required ICQ flower; token-pending marker; owner-approved cross-step mapping; source lane, blocker and exact original outcome recorded when used as fallback; implementation branch/base pinned before drafting.
-- **Status:** corrected reservation proposed; no design drafting or implementation is authorized until the reservation and follow-on leaf reservation are merged. No Program 150 completion claimed.
-
-
-### Append-only correction — exact ownership and acceptance mapping for PR #721
-
-- The earlier reservation entry for PR #721 at `1.11.2.1.1` is historical only. The owner-approved numbering amendment moves PR #721 to task `1.11.2.1.2`; its canonical executable leaf is `1.11.2.1.2.1.1` / Work Item `GLAFIRA-S000-W02`. The existing `1.11.2.1.1.1.1` / `GLAFIRA-S000-W01` remains exclusively assigned to PR #701's governance work. PR #721 acceptance applies to `.2.1.1` only; it does not register, reserve or change `.1.1.1.1`.
-- This reconciliation does not rewrite the earlier append-only history or claim that the owner amendment or PR #721 is merged. The corrected WBS registration and this explicit acceptance mapping are the current proposed record; they become canonical only after this reconciliation PR is merged.
-- **Reservation/recovery evidence procedure:** (1) create two competing reservation candidates from the same recorded main SHA and prove only one can commit/merge as active; (2) after the winner advances main, prove the stale candidate is rejected and must re-read/reconcile; (3) interrupt after dispatch before ACK and prove the task remains assigned to the original generation; (4) revoke/fence that generation, verify stale writes are rejected, then prove exactly one replacement may be dispatched; (5) replay the same ACK/reconciliation twice and prove no duplicate reservation, dispatch or lifecycle transition.
-- **Queue architecture acceptance:** the engineering Action Pools and Workstream 11 intake/integration pool are development-time reconciliation views over WBS/GitHub records. Only the existing owning Core's durable queue is authoritative for runtime assignments. The future scheduler UI may project that Core queue read-only; it must not create a second runtime queue or merge independent Core ownership into one queue.
-- **Instruction alignment follow-up:** the current reconciliation PR updates the canonical Control, Plan, Ledger, WBS and PR-size policy. `AGENTS.md` and `.github/copilot-instructions.md` still require a separate focused instruction-alignment PR before Work Item `GLAFIRA-S000-W02` can be marked DONE. This is a documented remaining dependency, not a claim that all instruction surfaces are already synchronized.
-
+- WBS registrations for `GLAFIRA-S000-W02` (PR #721) and `GLAFIRA-S000-W03` (Windows Hub UX) are present in the WBS standard, but **no active ledger reservation is created by PR #738** for either item.
+- W02 requires its own reservation PR after #738, with its own exact Main SHA, branch, allowed files, reviewer, acceptance and status; no dispatch before that PR merges.
+- W03 requires its own reservation PR after #738, with its own exact Main SHA, source-lane blocker/status evidence, token-pending marker, branch and exclusive deliverable; no dispatch or drafting before that PR merges.
+- These are planned follow-ups, not active assignments. This keeps each reservation activation in a separate Main update with a fresh duplicate-ownership scan.
 
 ### Infrastructure caveat — current Main reservation serialization (verified 2026-11-26)
 
