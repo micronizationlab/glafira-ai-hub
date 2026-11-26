@@ -27,7 +27,7 @@
 
 ## 3. Work item identity and ownership
 
-Every task has a stable ID: `GLAFIRA-S<step>-W<sequence>` (example: `GLAFIRA-S016-W01`). A task record must include:
+Every task has a stable ID. Program-step work uses `GLAFIRA-S<step>-W<sequence>` (example: `GLAFIRA-S016-W01`). An explicitly owner-approved cross-step governance/design task may use `GLAFIRA-GOV-<domain>-W<sequence>` (for example, `GLAFIRA-GOV-D01`) only when its approval, WBS parent, tracker and cross-step scope are recorded in the ledger. The exception does not permit an unmapped or unapproved task. Every executable leaf still has a unique WBS ID and unique Work Item ID. A task record must include:
 - Step ID(s), short objective and acceptance criteria;
 - one accountable executor (GLAFIRA or one named helper); reviewers are separate;
 - allowed file paths and explicit out-of-scope paths;
@@ -42,13 +42,13 @@ One logical behavior has one active implementation owner. Helpers may independen
 
 1. **Inventory:** refresh main, PRs, branches, changed files and prior work.
 2. **Define:** write hypothesis, source evidence, smallest change, risks, dependencies and tests.
-3. **Reserve:** register Work Item ID and exclusive file/behavior ownership.
+3. **Reserve:** register Work Item ID, exact WBS leaf, dependencies and exclusive implementation file/behavior ownership in the canonical ledger before editing. A reservation is not active and must not be dispatched until its ledger commit is merged to `main`.
 4. **Implement:** one logical change on one dedicated branch from fresh main (or documented dependency branch).
 5. **Review diff:** verify only intended files changed; compare against all open PRs and main; reject duplicate hunks/behavior.
 6. **Test:** run targeted tests first. Expand only to required project checks.
 7. **Build/CI queue:** enqueue once per unique commit SHA + workflow/lane. Never run parallel builds. Reuse existing completed/in-progress run for the same SHA and workflow.
 8. **Inspect evidence:** read job results and failure logs. Classify source defect, test defect, environment failure, cancellation, timeout or skipped. A rerun requires a written reason and must reuse the same commit SHA unless code changed.
-9. **PR review:** one PR per independent change. Default target 50–150 changed lines, hard ceiling 200; larger work is split before implementation. No duplicate PR for an existing diff.
+9. **PR review:** one PR per independent change. Default target 50–150 changed lines, up to 5 files. Any line-count exception (201–300 lines) and any file-count exception (6–10 files) independently require written owner/integrator approval before implementation begins. More than 300 lines or more than 10 files must be split. No duplicate PR for an existing diff.
 10. **Merge gate:** fresh base; no unresolved overlap/conflict; required review; exact-head checks all passed; required platform tests actually executed; no skipped/cancelled jobs counted as success; dependency PRs merged in order; owner approval where required.
 11. **Merge and verify:** authorized maintainer merges; record merge commit; run/reuse post-merge checks for that exact main SHA; inspect logs.
 12. **Close the loop:** only then mark acceptance criterion DONE, update plan checkbox if the whole numbered step is satisfied, append evidence to ledger, release file ownership and notify helpers.
@@ -103,7 +103,7 @@ A physical-device, two-PC, cloud-provider or owner-approval requirement cannot b
 
 ## 9. Priority and sequencing
 
-Respect current owner priorities: P1 Core; P2 Backup & Recovery; P3 Bridge and Windows Desktop. Android and Desktop are the main runtime surfaces. iOS and specialist-agent feature work follow the foundation. All eleven streams remain active for non-conflicting analysis and documentation, but no stream may bypass dependency order or claim shared file ownership.
+Respect the current owner-approved priority order: P1 Core; P2 Backup & Recovery; P3 Bridge and Windows Desktop. Android and Desktop remain the main runtime surfaces, but do not displace Core or Backup. iOS and specialist-agent feature work follow the foundation. All eleven streams remain active for non-conflicting work. Workstream 11 integration intake/review/merge/post-merge work is checked before assigning implementation fallback. The latest explicit owner decision supersedes historical priority tables and dispatcher rankings; no helper or automated dispatcher may override it.
 
 ## 10. Current baseline and reconciliation
 
@@ -148,7 +148,7 @@ The original implementation/test/acceptance outcome is immutable and must be pre
 - The design packages in issue #672 have separate platform/component ownership and non-overlapping files or document sections.
 - The design foundation/tokens precede dependent visual specifications. A package may begin only when its declared predecessors are ready; information architecture/wireframes may proceed independently if the issue explicitly marks visual tokens as pending. No duplicated edits or competing source-of-truth files.
 - If no dependency-ready design package exists, or every eligible package is already exclusively reserved, the coordinator records a blocked cycle with the actual blocker (missing predecessor or reservation conflict), its owner and the next unblock action. Do not duplicate an assignment, fabricate a deliverable or violate dependency order.
-- Each package has its own branch and focused PR and must follow `docs/engineering/PR_SIZE_AND_MERGE_POLICY.md`: target 50–150 changed lines, up to 5 files; 151–200 lines only for one coherent independently testable unit and up to 5 files; 201–300 only with written justification and explicit owner/integrator approval before implementation or submission and up to 10 files; over 300 must be split. The file limit is independent of the line limit. Tests and required documentation count toward the limits.
+- Each package has its own branch and focused PR and follows `docs/engineering/PR_SIZE_AND_MERGE_POLICY.md`: target 50–150 changed lines and up to 5 files; 151–200 lines only for one coherent independently testable unit and up to 5 files; a 201–300-line exception (up to 10 files) requires written approval before implementation; a 6–10-file exception at 200 lines or fewer also requires written approval before implementation. Line and file exceptions are independent. More than 300 lines or 10 files must be split. Tests and required documentation count toward the limits.
 - When the original lane becomes actionable again (for example, review requests a code correction), the coordinator pauses or hands off the active design package before reactivating the original assignment. The helper never holds two active assignments. Preserve the design package's file reservation during pause/handoff; on terminal closure as DONE, CANCELLED or SUPERSEDED, explicitly release its file reservation while retaining its WBS history and recording any replacement ID.
 - Design proposals require owner review before implementation lanes treat them as accepted. A mockup or design document is not implementation completion.
 - The coordinator still owns cross-lane intake, deduplication, review, CI, merge sequencing and post-merge verification.
@@ -165,3 +165,16 @@ This rule applies whenever a lane would otherwise be idle for a cycle. It does n
 - If the original executor responds after transfer, it must stop editing the transferred implementation. It may contribute review evidence only when explicitly requested by the coordinator.
 - A genuine external dependency, unavailable permission, owner-only acceptance or infrastructure outage is a BLOCKED state, not proof of laziness. The coordinator still transfers actionable work where possible and records the exact blocker; design fallback is assigned only if no higher-priority ready task exists.
 - This escalation rule does not weaken dependency order, exact-head CI, review, owner approval, physical-device acceptance or merge gates. No direct merge to main is authorized by the transfer itself.
+
+## 14. Canonical reservation transaction and interrupted-delivery recovery
+
+The execution ledger on protected `main` is the single canonical development-reservation register. The ledger is shared metadata, never an exclusive implementation file: unrelated work with disjoint implementation paths may proceed while ledger updates are serialized.
+
+1. **One reservation writer:** the coordinator serializes reservation commits. Only one reservation-changing PR may be integrated at a time. Create each reservation branch from the exact current `main` SHA; before merge, refresh its base and reconcile the full ledger for duplicate WBS IDs, Work Item IDs, paths, active owners and dependencies. If `main` or the ledger changes, re-read and regenerate the reservation; do not merge a stale competing reservation.
+2. **Atomic activation:** a reservation becomes active only after its ledger commit is merged to `main`. Before that merge it is `PROPOSED` / `PENDING_RESERVATION`; no implementation branch edits or dispatch are authorized. The owner may directly set priority, choose an executor or override a plan at any time, but the assignment is operationally active only after the same canonical reservation is recorded and merged. Owner authority is not constrained by the coordinator's recommendation.
+3. **Shared ref / compare-and-set:** every reservation names the same canonical ref, `refs/heads/main`, and the exact base SHA read. A merge is accepted only if the branch is refreshed against latest main and the ledger diff still proves that the WBS leaf, Work Item ID and exclusive implementation paths are unreserved. A stale/non-fast-forward update is rejected and must be reconciled; never resolve a ledger conflict by choosing one side blindly.
+4. **Delivery record:** persist a unique `deliveryId`, Work Item ID, executor, assignment generation, payload hash, idempotency key, timestamps, and each state transition in the ledger. Delivery state is separate from work status: `RESERVED_NOT_DISPATCHED`, `DISPATCHED_AWAITING_ACK`, `DISPATCH_ACKNOWLEDGED`, `REVOKING`, `REVOKED_FENCED`, `RELEASED`.
+5. **Lost ACK:** while `DISPATCHED_AWAITING_ACK`, do not dispatch the same work to another executor and do not release its file reservation merely because an ACK timed out. Query/reconcile the same `deliveryId` and idempotency key. A retry to the same executor reuses that key and generation; it must not create a second assignment.
+6. **Safe reassignment:** reassignment is allowed only after the prior executor's lease/grant has been revoked, revocation is confirmed, the old assignment generation is fenced so stale writes are rejected, and the executor is confirmed stopped or its execution environment is terminated. Record evidence, increment generation, transition through `REVOKING` to `REVOKED_FENCED`, then release/transfer the reservation in a new serialized ledger commit. If stop/revocation cannot be proven, keep the task `BLOCKED` and reservation held; do not guess.
+7. **Interrupted handoff:** a new coordinator resumes `RESERVED_NOT_DISPATCHED`; reconciles `DISPATCHED_AWAITING_ACK` by delivery ID; treats `DISPATCH_ACKNOWLEDGED` as active work; and completes or resumes a recorded revocation. Every transition is idempotent and append-only. Never infer task completion from delivery acknowledgement.
+8. **Acceptance walkthroughs:** record (a) two coordinators attempting to reserve the same WBS leaf from the same old SHA, showing only one reservation can activate; (b) a direct owner assignment passing through the same canonical ledger; (c) dispatch interruption before ACK followed by idempotent same-delivery reconciliation; and (d) lost ACK with failed revocation remaining BLOCKED, then successful fenced revocation before reassignment. Docs CI cannot substitute for these manual governance walkthroughs.
