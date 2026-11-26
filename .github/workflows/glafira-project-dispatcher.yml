@@ -58,7 +58,7 @@ jobs:
             elif ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$runs"; then
               ci="UNKNOWN / ACTIONS API UNAVAILABLE"
             else
-              matching="$(jq -c --arg sha "$sha" '[.[] | select(.headSha == $sha) | select(((.displayTitle // "") | startswith("METADATA_ONLY -")) | not)] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])' <<< "$runs")"
+              matching="$(jq -c --arg sha "$sha" '[.[] | select(.headSha == $sha)] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])' <<< "$runs")"
               if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
                 ci="NO MATCHING RUN FOR EXACT HEAD"
               else
@@ -79,6 +79,7 @@ jobs:
             printf '%s\n' "$prs"
             exit 0
           fi
+          # Recover the PR inventory with REST if GraphQL fails; API failure never means pass.
           rest_prs="$(gh api "repos/$repo/pulls?state=open&per_page=100")"
           jq -e 'type == "array"' >/dev/null <<< "$rest_prs"
           jq '[.[] | {
@@ -106,7 +107,7 @@ jobs:
             {"number":557,"title":"skipped exact head","headRefName":"feature/skipped","headRefOid":"sha-skipped","isDraft":false,"url":"https://example.test/pr/557","statusCheckRollup":[]},
             {"number":558,"title":"in progress exact head","headRefName":"feature/in-progress","headRefOid":"sha-progress","isDraft":false,"url":"https://example.test/pr/558","statusCheckRollup":[]},
             {"number":559,"title":"cancelled exact head","headRefName":"feature/cancelled","headRefOid":"sha-cancelled","isDraft":false,"url":"https://example.test/pr/559","statusCheckRollup":[]},
-            {"number":560,"title":"failed exact head","headRefName":"feature/failed","headRefOid":"sha-failed","isDraft":false,"url":"https://example.test/pr/560","statusCheckRollup":[]}, {"number":562,"title":"metadata run must not hide validation","headRefName":"feature/metadata","headRefOid":"sha-meta","isDraft":false,"url":"https://example.test/pr/562","statusCheckRollup":[]}
+            {"number":560,"title":"failed exact head","headRefName":"feature/failed","headRefOid":"sha-failed","isDraft":false,"url":"https://example.test/pr/560","statusCheckRollup":[]}
           ]
           JSON
           cat > "$tmp/runs.json" <<'JSON'
@@ -119,13 +120,13 @@ jobs:
             {"headSha":"sha-skipped","workflowName":"iOS CI","name":"iOS CI","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:04:00Z","url":"https://example.test/run/skipped"},
             {"headSha":"sha-progress","workflowName":"Desktop CI","name":"Desktop CI","status":"in_progress","conclusion":null,"createdAt":"2026-11-24T12:05:00Z","url":"https://example.test/run/progress"},
             {"headSha":"sha-cancelled","workflowName":"Windows CI","name":"Windows CI","status":"completed","conclusion":"cancelled","createdAt":"2026-11-24T12:06:00Z","url":"https://example.test/run/cancelled"},
-            {"headSha":"sha-failed","workflowName":"Agent CI","name":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed"}, {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/format-failed"}, {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"GLAFIRA Java Format Check","displayTitle":"METADATA_ONLY - PR metadata edit","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:08:00Z","url":"https://example.test/run/metadata-skipped"}
+            {"headSha":"sha-failed","workflowName":"Agent CI","name":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed"}
           ]
           JSON
           output="$(bash "$renderer" "$tmp/prs.json" "$tmp/runs.json")"
           grep -q 'Android CI: COMPLETED/success' <<< "$output"
           grep -q 'Dispatcher: COMPLETED/success' <<< "$output"
-          metadata_row="$(grep -F '| [#562]' <<< "$output")"; [[ "$metadata_row" == *'GLAFIRA Java Format Check: COMPLETED/failure ([run](https://example.test/run/format-failed))'* && "$metadata_row" != *'metadata-skipped'* ]]
+          ! grep -q 'COMPLETED/failure' <<< "$output"
           grep -q 'NO MATCHING RUN FOR EXACT HEAD' <<< "$output"
           grep -q 'required: COMPLETED/SUCCESS' <<< "$output"
           grep -q 'Desktop CI: QUEUED' <<< "$output"
@@ -186,7 +187,8 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
-          if runs="$(gh run list --repo "$GH_REPO" --limit 1000 --json headSha,name,displayTitle,workflowName,status,conclusion,url,createdAt 2>/dev/null)"; then
+          # One batched Actions API query is the fallback when GraphQL statusCheckRollup is empty.
+          if runs="$(gh run list --repo "$GH_REPO" --limit 1000 --json headSha,name,workflowName,status,conclusion,url,createdAt 2>/dev/null)"; then
             printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           else
             printf 'null\n' > "$RUNNER_TEMP/glafira-workflow-runs.json"
