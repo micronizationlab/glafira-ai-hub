@@ -304,28 +304,17 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 )
                 assertEquals("created-after-backup", store.getTask("created-after-backup")?.taskId)
                 assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-                assertEquals(
-                    expectedTraceEventIds,
-                    trace.query(
-                        GlafiraCoreTraceQuery("backup-project"),
-                        GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
-                    ).events.map { it.eventId }
-                )
+                assertEquals(expectedTraceEventIds, trace.query(
+                    GlafiraCoreTraceQuery("backup-project"),
+                    GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
+                ).events.map { it.eventId })
                 assertThrows(android.database.sqlite.SQLiteException::class.java) {
-                    store.writableDatabase.delete(
-                        GlafiraCoreTraceStore.TABLE,
-                        "event_id = ?",
-                        arrayOf("restore-failure-trace")
-                    )
+                    store.writableDatabase.delete(GlafiraCoreTraceStore.TABLE, "event_id = ?", arrayOf("restore-failure-trace"))
                 }
-                assertTrue(store.readableDatabase.rawQuery(
-                    "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_created'",
+                assertEquals(2, store.readableDatabase.rawQuery(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name IN ('core_trace_task_created', 'core_trace_task_state_changed')",
                     null
-                ).use { it.moveToFirst() })
-                assertTrue(store.readableDatabase.rawQuery(
-                    "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_state_changed'",
-                    null
-                ).use { it.moveToFirst() })
+                ).use { it.moveToFirst(); it.getInt(0) })
                 store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
             }
         } finally {
@@ -654,20 +643,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         "UPDATE core_task_history SET reason = ? WHERE task_id = ?",
                         arrayOf(canary, taskId)
                     )
-                    assertEquals(
-                        canary,
-                        store.readableDatabase.rawQuery(
-                            "SELECT last_error FROM core_tasks WHERE task_id = ?",
-                            arrayOf(taskId)
-                        ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
-                    )
-                    assertEquals(
-                        canary,
-                        store.readableDatabase.rawQuery(
-                            "SELECT reason FROM core_task_history WHERE task_id = ?",
-                            arrayOf(taskId)
-                        ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
-                    )
+                    assertEquals(listOf(canary, canary), store.readableDatabase.rawQuery(
+                        "SELECT last_error FROM core_tasks WHERE task_id = ? UNION ALL SELECT reason FROM core_task_history WHERE task_id = ?",
+                        arrayOf(taskId, taskId)
+                    ).use { cursor ->
+                        buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+                    })
                     try {
                         GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
                         journalOwner.writeText(runId, Charsets.UTF_8)
