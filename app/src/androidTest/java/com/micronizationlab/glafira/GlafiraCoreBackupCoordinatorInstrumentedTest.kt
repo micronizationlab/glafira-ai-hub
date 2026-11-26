@@ -48,9 +48,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
     private class IsolatedBackupTestContext(base: Context, private val root: File) : ContextWrapper(base) {
         private val databases = File(root, "databases").apply { mkdirs() }
-        private val files = File(root, "files").apply { mkdirs() }
-        private val noBackup = File(root, "no-backup").apply { mkdirs() }
-        private val cache = File(root, "cache").apply { mkdirs() }
+        private val files = File(root, "files").apply { mkdirs() }; private val noBackup = File(root, "no-backup").apply { mkdirs() }; private val cache = File(root, "cache").apply { mkdirs() }
         override fun getApplicationContext(): Context = this
         override fun getDatabasePath(name: String): File = File(databases, name)
         override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?) =
@@ -59,9 +57,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             )
         override fun deleteDatabase(name: String): Boolean = getDatabasePath(name).delete()
         override fun databaseList(): Array<String> = databases.list()?.toTypedArray() ?: emptyArray()
-        override fun getFilesDir(): File = files
-        override fun getNoBackupFilesDir(): File = noBackup
-        override fun getCacheDir(): File = cache
+        override fun getFilesDir(): File = files; override fun getNoBackupFilesDir(): File = noBackup; override fun getCacheDir(): File = cache
         override fun getSharedPreferences(name: String, mode: Int) =
             super.getSharedPreferences("${root.name}-$name", mode)
     }
