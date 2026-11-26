@@ -98,7 +98,26 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           repo="$1"
-          gh api --paginate "repos/$repo/actions/runs?per_page=100" --jq '.workflow_runs[] | {headSha: .head_sha, workflowName: .name, displayTitle: .display_title, status, conclusion, createdAt: .created_at, url: .html_url, pullRequests: [.pull_requests[] | {number, base: {sha: .base.sha}}]}' | jq -s '.'
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          : > "$tmp"
+          # Bound each reconciliation to the newest 1,000 Actions runs.
+          for page in $(seq 1 10); do
+            response="$(gh api "repos/$repo/actions/runs?per_page=100&page=$page")"
+            count="$(jq '.workflow_runs | length' <<< "$response")"
+            jq -c '.workflow_runs[]? | {
+              headSha: .head_sha,
+              workflowName: .name,
+              displayTitle: .display_title,
+              status,
+              conclusion,
+              createdAt: .created_at,
+              url: .html_url,
+              pullRequests: [(.pull_requests // [])[]? | {number, base: {sha: (.base.sha // "")}}]
+            }' <<< "$response" >> "$tmp"
+            [[ "$count" -lt 100 ]] && break
+          done
+          jq -s '.' "$tmp"
           RUNS
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
