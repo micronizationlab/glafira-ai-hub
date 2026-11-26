@@ -19,16 +19,16 @@ Do not interpret "50 actions" as permission to make 50 simultaneous conflicting 
 
 ## 2. Priority and dependency order
 
-1. **P0 — Core correctness, durability, safety and execution foundation.**
-2. **P1 — Android instrumentation suite, Android Core/Bridge conformance and Bridge reliability.** The Android instrumentation suite is explicitly a Priority 1 deliverable; it must exist in `main`, be selected by CI for relevant changes, execute on a managed emulator, and publish non-empty JUnit reports.
-3. **P2 — Windows Desktop control center, authoritative Desktop Hub Bridge host, Desktop ↔ Windows Agent enrollment, scheduling and lifecycle.**
-4. **P3 — Oldest unfinished / abandoned work and release blockers**, ranked immediately after Core and evaluated continuously, not forgotten because newer tasks exist.
-5. **P4 — Android user-facing functionality, backup/council, voice/STT/TTS, iOS and platform reliability.**
-6. **P5 — Specialist agents, connectors, project workspaces, GCU/GLF economics and production integrations.**
-7. **External project research and commercial strategy** (including Project Token/Clover) proceeds in parallel whenever it does not consume a blocking engineering resource or displace P0–P3.
+This section is subordinate to the current owner-confirmed priority in the Completion Plan and Execution Control (2026-11-26). The older P0/P1/P2 ranking is historical and must not be used for active dispatch.
 
-A higher-priority item waiting on CI, review, hardware, a dependency, or a conflicting file is not a reason to idle. Descend the priority list and start the highest-priority independent item available. When a slot opens, restart evaluation at P0.
+1. **P1 — Core:** correctness, durability, ownership/state, bounded execution, dependencies, cancellation, recovery, idempotency, result delivery and audit.
+2. **P2 — Backup & Recovery:** encrypted/versioned backup, integrity, restore, recovery staging, rollback safety and clean-device acceptance.
+3. **P3 — Bridge / Windows Desktop-Hub / Android client integration:** authenticated Bridge contracts, pairing, durable ingress/ACK, fencing, Desktop Hub host and dependent Android pairing/client work. Bridge/Hub prerequisites precede dependent Android pairing.
+4. **P4 — iOS and specialist agents:** protocol alignment, connectors and agent features after the foundation.
+5. **P5 — Token/GCU:** non-issuing calculator/specification only unless separately authorized by the owner.
+6. **Cross-cutting integration:** review, CI, merge and post-merge actions for eligible higher-priority items may be selected before lower-priority implementation. This is not a product priority or second runtime queue.
 
+Android and Windows Desktop remain primary runtime surfaces, but no application feature work displaces Core or Backup. When a higher-priority item is blocked, select the highest-priority independent ready task only after recording the blocker and rescanning both Action Pools.
 ## 3. Mandatory GitHub visit protocol
 
 At every GitHub visit:
