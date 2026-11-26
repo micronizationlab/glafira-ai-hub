@@ -117,7 +117,8 @@ jobs:
           run_format_gate() {
             local root="$1" manifest="$2" stdout_file="$3" stderr_file="$4" result_file="$5"
             local count status=0
-            if count="$(discover_java_sources "$root" "$manifest")"; then
+            : > "$stderr_file"
+            if count="$(discover_java_sources "$root" "$manifest" 2>"$stderr_file")"; then
               :
             else
               status=$?
@@ -150,7 +151,7 @@ jobs:
           else
             production_status=$?
             if [[ "$(cat "$production_result")" == "DISCOVERY_ERROR" ]]; then
-              echo "::error::Java source discovery failed; inspect the base64 diagnostic above."
+              echo "::error::Java source discovery failed; inspect the base64 diagnostic below."; printf "discovery_stderr_base64="; base64 -w0 "$production_stderr"; printf "\n"
             else
               echo "::error::Google Java Format rejected one or more Java sources (exit=$production_status). Diagnostics are base64-encoded to keep PR source text inert."
               printf 'stdout_base64='; base64 -w0 "$production_stdout"; printf '\n'
