@@ -217,7 +217,7 @@ This track may proceed **in parallel at the specification, threat-model and cont
 
 ### Tracked work
 - **#114 — Mother registration, account registry and device enrollment (P0):** authoritative account ID, unique username, passkey/password and recovery, device enrollment/revocation, user isolation.
-- **#115 — Wallet and token ledger (P0):** central double-entry journal, audited issuance, atomic/idempotent transfers and offline recipient synchronization.
+- **#115 — Wallet and token ledger (DEFERRED; P5 owner-approval gate):** central double-entry journal, issuance, transfers and recipient synchronization are not authorized for implementation. Keep this item deferred until separate written owner approval explicitly authorizes the wallet/ledger/issuance scope; calculator/specification work only.
 - **#116 — Distributed compute contribution (P1):** opt-in resource budgets, signed sandboxed tasks, verification, reputation and evidence-based rewards.
 - **#117 — VPN control plane and tariffs (P1):** Mother-managed entitlement/provisioning and token billing; isolated VPN data plane and per-device keys.
 - **#109 — VPN app and self-hosted infrastructure:** client UX, server BOM, deployment, security and connectivity tests.
@@ -233,4 +233,4 @@ This track may proceed **in parallel at the specification, threat-model and cont
 6. Implement VPN token tariffs and provisioning after server cost, capacity, security and jurisdiction reviews.
 7. Open the external project marketplace and inter-owner settlement only after the earlier controls pass acceptance.
 
-Token issuance rates, VPN prices, supply policy and any cash/blockchain redemption remain undecided until owner approval, device/server benchmarks and legal/accounting review. Do not promise guaranteed earnings, cash value, unlimited VPN or zero-cost service.
+Token issuance rates, VPN prices, supply policy and any cash/blockchain redemption remain undecided. Wallet, ledger, issuance, transfers and payment implementation remain DEFERRED until separate written owner approval, device/server benchmarks and legal/accounting review. Do not promise guaranteed earnings, cash value, unlimited VPN or zero-cost service.
