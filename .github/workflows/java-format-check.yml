@@ -184,3 +184,56 @@ jobs:
           args: "--set-exit-if-changed"
           files: "${{ matrix.files }}"
           skip-commit: true
+
+  formatter-smoke:
+    name: Formatter argument and policy smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout submitted source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Create formatted path fixtures
+        shell: bash
+        run: |
+          mkdir -p .ci-java-format-smoke
+          for name in Smoke AtFile OptionLike UnicodeSmoke; do
+            cat > ".ci-java-format-smoke/${name}.java" <<EOF
+          final class ${name} {
+            void run() {
+              System.out.println("formatted");
+            }
+          }
+          EOF
+          done
+          mv .ci-java-format-smoke/AtFile.java .ci-java-format-smoke/@A.java
+          mv .ci-java-format-smoke/OptionLike.java .ci-java-format-smoke/--version=.java
+          mv .ci-java-format-smoke/UnicodeSmoke.java .ci-java-format-smoke/Unicode-λ.java
+
+      - name: Accept option-like, @ and Unicode paths
+        uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
+        with:
+          args: "--set-exit-if-changed"
+          files: "./.ci-java-format-smoke/Smoke.java ./.ci-java-format-smoke/@A.java ./.ci-java-format-smoke/--version=.java ./.ci-java-format-smoke/Unicode-λ.java"
+          skip-commit: true
+
+      - name: Create intentionally unformatted fixture
+        shell: bash
+        run: printf '%s\n' 'final class NeedsFormat{void run(){System.out.println("needs formatting");}}' > .ci-java-format-smoke/NeedsFormat.java
+
+      - name: Require formatter to reject unformatted source
+        id: reject-unformatted
+        continue-on-error: true
+        uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
+        with:
+          args: "--set-exit-if-changed"
+          files: "./.ci-java-format-smoke/NeedsFormat.java"
+          skip-commit: true
+
+      - name: Assert formatting enforcement remains active
+        if: steps.reject-unformatted.outcome != 'failure'
+        run: |
+          echo "::error::Google Java Format did not reject intentionally unformatted source."
+          exit 1
