@@ -267,7 +267,7 @@ jobs:
             if [[ "$i" -eq 1 ]]; then association='[{"number":999,"base":{"sha":"base-999"}}]'; else association='null'; fi
             printf '{"head_sha":"h%s","name":"CI","display_title":"run","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run","pull_requests":%s}' "$page-$i" "$association"
           done
-          printf ']}\\n'
+          printf ']}\n'
           GH
           chmod +x "$tmp/fake-bin/gh"
           capped_runs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_runs" micronizationlab/glafira-ai-hub)"
