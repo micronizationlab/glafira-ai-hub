@@ -152,7 +152,7 @@ jobs:
               url: .html_url,
               pullRequests: [(.pull_requests // [])[]? | {number, base: {sha: (.base.sha // "")}}]
             }' <<< "$response" >> "$tmp"
-            [[ "$count" -lt 100 ]] && break
+            if [[ "$count" -lt 100 ]]; then break; fi
           done
           jq -s '.' "$tmp"
           RUNS
