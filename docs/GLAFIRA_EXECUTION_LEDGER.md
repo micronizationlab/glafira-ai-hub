@@ -677,3 +677,16 @@ This append-only entry supersedes contradictory reservation metadata in the earl
 ### Infrastructure caveat — current Main reservation serialization (verified 2026-11-26)
 
 GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and enforces non-fast-forward protection plus required status contexts, but `strict_required_status_checks_policy` is false, no merge queue is configured, and privileged repository roles have bypass permission. The separate branch-protection endpoint was not readable by the installed integration (403), so no additional protection is claimed. Consequently, single-flight reservation merges and exact-SHA rechecks are currently a coordinator/owner procedure, not a repository-enforced mutex. If a privileged bypass or concurrent merge advances Main, dispatch stops until the ledger is re-read and reconciled. The enforcement follow-up is tracked in issue #744 and remains BLOCKED/unreserved until a WBS leaf and exact-base reservation are approved. It must add a durable non-dropping reservation/merge/build queue or equivalent CAS mechanism; do not represent documentation as runtime enforcement.
+
+
+## 2026-11-26 — Separate parent reservation: Core owner cancellation (Program Step 93)
+
+- **Work Item / WBS:** `GLAFIRA-S093-W01`; parent task `1.1.3.1.1`; issue #669; legacy Program Step 93 remains PARTIAL/OPEN.
+- **Reservation branch / exact base SHA:** `wbs/reserve-core-cancellation-v2-20261126` / `ebca85f8bb794e1bd019db01eb590a48148b94a9` (latest PR #738 head).
+- **Executor / independent reviewer / owner:** GLAFIRA coordinator / independent reviewer / project owner.
+- **Allowed files for this parent reservation PR only:** `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md` and this append-only ledger. Child implementation files are not reserved or editable until their separate leaf-pin amendments merge.
+- **Leaf structure:** .1 storage/state; .2 owner API/Android queue UX after .1; .3 independent policy/instrumentation acceptance after .1/.2; .4 independent restore/cancellation serialization acceptance after .1/.2 plus production PR #703. .3 and .4 use separate instrumentation files; .4 does not depend on .3.
+- **Exact acceptance:** .1 named descendant/fan-out/artifact cases and each allowed waiting state with attemptCount=0 plus unresolved-outcome marker rejected without mutation; .3 repeated-cancellation idempotence with no duplicate history/Trace/dependency/artifact writes; .4 actual maintenance-gate contention, complete restore, unrelated temp preservation and rollback-key retention on journal-delete failure.
+- **External predecessor:** PR #703 is CLOSED UNMERGED; .4 is BLOCKED until a production ownership-aware cleanup implementation is merged. This does not block .1/.2/.3.
+- **Pin policy:** parent reservation merges first. Separate exact-Main-SHA leaf-pin amendments must merge before branch creation: .1 after parent reservation; .2 after .1; .3 after .2; .4 after .2 plus #703. A stale Main advance requires a new pin-refresh amendment. No implementation branch before its pin amendment.
+- **Status:** IN_REVIEW — this is one parent reservation PR only; no implementation leaf is started or authorized. Parent task and Program Step 93 remain OPEN.
