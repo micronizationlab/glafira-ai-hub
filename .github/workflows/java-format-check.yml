@@ -1,4 +1,5 @@
 name: GLAFIRA Java Format Check
+run-name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && 'METADATA_ONLY: PR metadata edit' || 'VALIDATION: Java format' }}
 
 on:
   pull_request:
@@ -159,7 +160,7 @@ jobs:
           else
             production_status=$?
             if [[ "$(cat "$production_result")" == "DISCOVERY_ERROR" ]]; then
-              echo "::error::Java source discovery failed; inspect the base64 diagnostic below."; printf "discovery_stderr_base64="; base64 -w0 "$production_stderr"; printf "\n"
+              echo "::error::Java source discovery failed; inspect the bounded base64 diagnostic below."; emit_bounded_diagnostic discovery_stderr "$production_stderr"
             else
               echo "::error::Google Java Format rejected one or more Java sources (exit=$production_status). Diagnostics are base64-encoded to keep PR source text inert."
               emit_bounded_diagnostic stdout "$production_stdout"
