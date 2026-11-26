@@ -230,10 +230,21 @@ jobs:
           }
           run_format_gate() {
             local root="$1" manifest="$2" stdout_file="$3" stderr_file="$4" result_file="$5"
-            local count status=0
+            local precomputed_manifest="\${6:-}" count status=0
             : > "$stderr_file"
             : > "$stdout_file"
-            if count="$(discover_java_sources "$root" "$manifest" 2>"$stderr_file")"; then
+            if [[ -n "$precomputed_manifest" ]]; then
+              if [[ ! -r "$precomputed_manifest" ]]; then
+                write_gate_result "$result_file" "DISCOVERY_ERROR" || return $?
+                return 27
+              fi
+              manifest="$precomputed_manifest"
+              count="$PRODUCTION_JAVA_SOURCE_COUNT"
+              if [[ ! "$count" =~ ^[0-9]+$ ]] || [[ "$count" -eq 0 ]]; then
+                write_gate_result "$result_file" "DISCOVERY_ERROR" || return $?
+                return 28
+              fi
+            elif count="$(discover_java_sources "$root" "$manifest" 2>"$stderr_file")"; then
               :
             else
               status=$?
@@ -264,10 +275,26 @@ jobs:
             local root="$1" manifest="$2" stdout_file="$3" stderr_file="$4" result_file="$5"
             local production_status=0 production_result_value=''
             if [[ "$PRODUCTION_JAVA_SOURCE_COUNT" == "0" && "$root" == "." ]]; then
-              echo "::notice::Production Java formatting is NOT_APPLICABLE (preflight found no Java sources); formatter smoke checks will still run."
+              write_gate_result "$result_file" "NOT_APPLICABLE" || return $?
+              if ! IFS= read -r production_result_value < "$result_file" || [[ "$production_result_value" != "NOT_APPLICABLE" ]]; then
+                echo "::error::Production NOT_APPLICABLE result could not be verified."
+                return 26
+              fi
+              echo "::notice::Production Java formatting is NOT_APPLICABLE (no Java sources)."
               return 0
             fi
-            if run_format_gate "$root" "$manifest" "$stdout_file" "$stderr_file" "$result_file"; then
+            if [[ "$root" == "." ]]; then
+              if run_format_gate "$root" "$manifest" "$stdout_file" "$stderr_file" "$result_file" "$PRODUCTION_JAVA_SOURCE_MANIFEST"; then
+                :
+              else
+                production_status=$?
+              fi
+            elif run_format_gate "$root" "$manifest" "$stdout_file" "$stderr_file" "$result_file"; then
+              :
+            else
+              production_status=$?
+            fi
+            if [[ "$production_status" -eq 0 ]]; then
               if ! IFS= read -r production_result_value < "$result_file"; then
                 echo "::error::Production formatter result is missing or unreadable."
                 return 1
@@ -275,7 +302,7 @@ jobs:
               case "$production_result_value" in
                 0) return 0 ;;
                 NOT_APPLICABLE)
-                  echo "::notice::Production Java formatting is NOT_APPLICABLE; regression smoke checks are still running."
+                  echo "::notice::Production Java formatting is NOT_APPLICABLE."
                   return 0
                   ;;
                 *)
@@ -283,39 +310,40 @@ jobs:
                   return 1
                   ;;
               esac
+            fi
+            if [[ -r "$result_file" ]]; then
+              production_result_value="$(cat "$result_file" 2>/dev/null || true)"
+            fi
+            if [[ "$production_result_value" == "DISCOVERY_ERROR" ]]; then
+              echo "::error::Java source discovery failed; inspect the bounded base64 diagnostic below."
+              emit_bounded_diagnostic discovery_stderr "$stderr_file"
+            elif [[ "$production_result_value" == "SOURCE_REJECTION" ]]; then
+              echo "::error::Google Java Format rejected source formatting (exit=$production_status)."
+              emit_bounded_diagnostic stdout "$stdout_file"
+              emit_bounded_diagnostic stderr "$stderr_file"
+            elif [[ "$production_result_value" == "SOURCE_SYNTAX_REJECTION" ]]; then
+              echo "::error::Java source parsing failed; correct the syntax diagnostics (exit=$production_status)."
+              emit_bounded_diagnostic stderr "$stderr_file"
             else
-              production_status=$?
-              if [[ -r "$result_file" ]]; then
-                production_result_value="$(cat "$result_file" 2>/dev/null || true)"
-              fi
-              if [[ "$production_result_value" == "DISCOVERY_ERROR" ]]; then
-                echo "::error::Java source discovery failed; inspect the bounded base64 diagnostic below."
-                emit_bounded_diagnostic discovery_stderr "$stderr_file"
-              elif [[ "$production_result_value" == "SOURCE_REJECTION" ]]; then
-                echo "::error::Google Java Format rejected source formatting (exit=$production_status)."
-                emit_bounded_diagnostic stdout "$stdout_file"
-                emit_bounded_diagnostic stderr "$stderr_file"
-              elif [[ "$production_result_value" == "SOURCE_SYNTAX_REJECTION" ]]; then
-                echo "::error::Java source parsing failed; correct the syntax diagnostics (exit=$production_status)."
-                emit_bounded_diagnostic stderr "$stderr_file"
-              else
-                echo "::error::Google Java Format could not execute or persist its result reliably (exit=$production_status)."
-                emit_bounded_diagnostic stdout "$stdout_file"
-                emit_bounded_diagnostic stderr "$stderr_file"
-              fi
-              return "$production_status"
+              echo "::error::Google Java Format could not execute or persist its result reliably (exit=$production_status)."
+              emit_bounded_diagnostic stdout "$stdout_file"
+              emit_bounded_diagnostic stderr "$stderr_file"
+            fi
+            return "$production_status"
+          }
+          run_production_gate_step() {
+            if run_production_gate "$@"; then
+              return 0
+            else
+              local production_status=$?
+              exit "$production_status"
             fi
           }
           production_manifest="$RUNNER_TEMP/glafira-java-sources.nul"
           production_stdout="$RUNNER_TEMP/glafira-java-format.stdout"
           production_stderr="$RUNNER_TEMP/glafira-java-format.stderr"
           production_result="$RUNNER_TEMP/glafira-java-format.result"
-          if run_production_gate . "$production_manifest" "$production_stdout" "$production_stderr" "$production_result"; then
-            :
-          else
-            production_status=$?
-            exit "$production_status"
-          fi
+          run_production_gate_step . "$production_manifest" "$production_stdout" "$production_stderr" "$production_result"
           # Fixtures live only in a unique runner-temp directory; never remove a checkout-owned path.
           fixture_root="$(mktemp -d "$RUNNER_TEMP/glafira-gjf-smoke.XXXXXX")"
           trap 'rm -rf "$fixture_root"' EXIT
