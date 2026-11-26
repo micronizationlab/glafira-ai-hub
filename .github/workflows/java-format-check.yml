@@ -185,7 +185,6 @@ jobs:
           skip-commit: true
 
   formatter-smoke:
-    name: Formatter argument and policy smoke test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout submitted source
