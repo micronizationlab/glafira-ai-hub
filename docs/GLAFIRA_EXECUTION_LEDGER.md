@@ -636,3 +636,15 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - Transfer preserves branch/PR history and exact WBS/dependency/file ownership; no overlapping edits, no skipped acceptance gates, and no automatic merge.
 - The rule distinguishes non-response from genuine owner-only, permission, dependency or infrastructure blockers. Design fallback remains separate and never substitutes for implementation acceptance.
 - This is the initial owner-directed handoff checkpoint. Follow-up work begins with #703 and then the remaining P1/P2 blockers.
+
+## WBS reservation — Java Format workflow no-source guard — 2026-11-26
+
+- **Work Item / WBS / parent:** `GLAFIRA-CI-W01` / `1.7.1.1.1` — make the Google Java Format check safely handle repositories or PRs with no Java source files / parent `1.7.1.1 — Static-analysis workflow reliability`.
+- **Issue / Program mapping:** issue #724; no legacy Program 150 step is claimed.
+- **Executor / reviewer:** GLAFIRA coordinator; independent CodeRabbit/Proofline review; owner-controlled merge.
+- **Reservation branch / base:** `wbs/ci-java-format-no-source-guard-20261126`, Main `35aa416f39133b05bb82d72fd8007da98aeae643`.
+- **Exclusive implementation path after reservation merge:** `.github/workflows/java-format-check.yml` only. Reservation PR changes this ledger only.
+- **Observed defect:** exact-head Google Java Format jobs on PR #720 (run `45713518190`, job `139553681319`) and PR #721 (run `45719572374`, job `139574202565`) failed because the action passed the literal glob `**/*.java` to google-java-format when no Java files existed: `could not read file: **/*.java`. This is a workflow input/empty-match defect, not a source-formatting failure.
+- **Acceptance:** enumerate Java files deterministically before invoking the formatter; when none exist, report an explicit successful no-op with count 0; when files exist, format-check every discovered Java file and fail on formatting differences; do not mask formatter errors or skip actual Java sources. Add workflow-level regression coverage for zero and non-zero matches if the repository's workflow test harness supports it. Exact-head Docs/Workflow CI, Security Scan and Dispatcher must pass; inspect logs; post-merge Main verification required.
+- **Out of scope:** Kotlin formatting, changing Java style rules, changing Jules authentication or treating its failure as a pass, modifying application source, weakening required checks, or changing security permissions.
+- **Status:** RESERVED; implementation is blocked until this reservation PR merges.
