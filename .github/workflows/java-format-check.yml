@@ -6,7 +6,7 @@ on:
     branches: [main]
   workflow_dispatch:
 concurrency:
-  group: glafira-java-format-${{ github.event.pull_request.number || github.ref }}
+  group: glafira-java-format-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 permissions:
   contents: read
