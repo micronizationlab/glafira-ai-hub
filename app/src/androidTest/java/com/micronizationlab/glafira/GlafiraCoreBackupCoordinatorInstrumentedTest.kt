@@ -83,8 +83,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 if (journal.exists()) {
                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
                     check(journal.deleteRecursively())
-                }
-                if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                    if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                } else check(!rollbackKeyExists()) { "Refusing to delete an unowned rollback key." }
                 check(owner.delete())
             }
             check(!journal.exists() && !rollbackKeyExists()) { "Refusing to overwrite unowned recovery state." }
@@ -97,8 +97,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         if (!journalOwner.exists()) journalOwner.writeText(runId, Charsets.UTF_8)
                         check(journalOwner.readText(Charsets.UTF_8) == runId)
                         check(journal.deleteRecursively())
-                    }
-                    if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                        if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                    } else check(!rollbackKeyExists()) { "Refusing to delete an unowned rollback key." }
                     check(owner.delete())
                 }
             }
@@ -689,9 +689,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 "Refusing to delete a journal not proven to belong to this canary generation."
                             }
                             check(journal.deleteRecursively())
-                            if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                        } else if (keyExists()) {
-                            GlafiraRollbackSnapshotCipher.deleteKey()
+                            if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                        } else check(!rollbackKeyExists()) {
+                            "Refusing to delete a rollback key without its owned journal."
                         }
                         check(owner.delete())
                     }
@@ -702,7 +702,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Test
     fun successfulRestoreDeletesInstallationLocalRollbackKey() = runBlocking {
-        val keyAlias = "glafira_core_rollback_v1"
         GlafiraRollbackSnapshotCipher.deleteKey()
         store.enqueue(task("rollback-key-lifecycle"))
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
@@ -731,12 +730,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val knownGood = File(context.filesDir, "v3-reentry-known-good.txt")
             val createdAfterMarker = File(context.filesDir, "v3-reentry-created-after-marker.txt")
             val runId = UUID.randomUUID().toString()
-            val keyAlias = "glafira_core_rollback_v1"
-            val passphrase = "GLAFIRA-${UUID.randomUUID()}-${UUID.randomUUID()}".toCharArray()
+                val passphrase = "GLAFIRA-${UUID.randomUUID()}-${UUID.randomUUID()}".toCharArray()
             var expectedTask: GlafiraTask? = null
             var ownsFixture = false
             var primaryFailure: Throwable? = null
-            fun keyExists() = KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
 
             try {
                 withFixtureLocks {
@@ -746,14 +743,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             if (journal.exists()) {
                                 check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
                                 check(journal.deleteRecursively())
-                                if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                            } else if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                                if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                            } else check(!rollbackKeyExists()) {
+                                "Refusing to delete a rollback key without its owned journal."
+                            }
                             check(!knownGood.exists() || knownGood.delete())
                             check(!createdAfterMarker.exists() || createdAfterMarker.delete())
                             check(owner.delete())
                         }
                         assertFalse("Refuse to overwrite an unowned journal", journal.exists())
-                        assertFalse("Refuse to overwrite an existing rollback key", keyExists())
+                        assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
                         assertFalse("Known-good fixture must start absent", knownGood.exists())
                         assertFalse("Mutation fixture must start absent", createdAfterMarker.exists())
                         owner.writeText(runId, Charsets.UTF_8)
@@ -796,7 +795,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 assertFalse("Files created after the marker must be removed", createdAfterMarker.exists())
                 assertFalse("Successful recovery must clear the pending marker", marker.exists())
                 assertFalse("Successful recovery must remove the rollback journal", journal.exists())
-                assertFalse("Successful recovery must delete the installation-local key", keyExists())
+                assertFalse("Successful recovery must delete the installation-local key", rollbackKeyExists())
                 val remainingTemps = checkNotNull(context.cacheDir.listFiles { file ->
                     file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
                 })
@@ -814,8 +813,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 if (journal.exists()) {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
                                     check(journal.deleteRecursively())
-                                    if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                                } else if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                                    if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                                } else if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
                                 check(!knownGood.exists() || knownGood.delete())
                                 check(!createdAfterMarker.exists() || createdAfterMarker.delete())
                                 check(owner.delete())
