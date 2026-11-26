@@ -627,8 +627,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
                     assertFalse("Refuse to overwrite an existing canary owner marker", owner.exists())
                     // The journal and key were absent under the exclusive maintenance gate.
-                    owner.writeText(runId, Charsets.UTF_8)
-                    ownsFixture = true
                     store.enqueue(task(taskId))
                     store.writableDatabase.execSQL(
                         "UPDATE core_tasks SET last_error = ? WHERE task_id = ?",
@@ -645,6 +643,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
                     })
                     try {
+                    owner.writeText(runId, Charsets.UTF_8)
+                    ownsFixture = true
                         GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
                         journalOwner.writeText(runId, Charsets.UTF_8)
                     } catch (error: Exception) {
