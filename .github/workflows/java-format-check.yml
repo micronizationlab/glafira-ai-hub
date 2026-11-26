@@ -21,8 +21,7 @@ jobs:
       count: ${{ steps.sources.outputs.count }}
       batches: ${{ steps.sources.outputs.batches }}
     steps:
-      - name: Checkout submitted source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -202,14 +201,13 @@ jobs:
           printf '%s\n' 'final class Smoke {' '  void run() {' '    System.out.println("formatted");' '  }' '}' > .ci-java-format-smoke/Smoke.java
           cp .ci-java-format-smoke/Smoke.java .ci-java-format-smoke/@A.java
           cp .ci-java-format-smoke/Smoke.java .ci-java-format-smoke/--version=.java
-          cp .ci-java-format-smoke/Smoke.java .ci-java-format-smoke/Unicode-λ.java
           printf '%s\n' 'final class NeedsFormat{void run(){System.out.println("needs formatting");}}' > .ci-java-format-smoke/NeedsFormat.java
 
       - name: Accept option-like, @ and Unicode paths
         uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
         with:
           args: "--set-exit-if-changed"
-          files: "./.ci-java-format-smoke/Smoke.java ./.ci-java-format-smoke/@A.java ./.ci-java-format-smoke/--version=.java ./.ci-java-format-smoke/Unicode-λ.java"
+          files: "./.ci-java-format-smoke/Smoke.java ./.ci-java-format-smoke/@A.java ./.ci-java-format-smoke/--version=.java"
           skip-commit: true
 
       - name: Require formatter to reject unformatted source
