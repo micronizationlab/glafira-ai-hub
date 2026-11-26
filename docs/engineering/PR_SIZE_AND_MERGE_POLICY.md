@@ -12,12 +12,13 @@ Measure handwritten change size as GitHub's total changed lines: additions + del
 | Tiny | 1–50 | 1–3 preferred | Preferred for isolated fixes |
 | Standard | 51–150 | Up to 5 | Normal target for one focused task |
 | Upper limit | 151–200 | Up to 5 | Allowed only when the change is still one coherent, independently testable unit |
-| Exception | 201–300 | Up to 10 | Requires written justification and explicit owner/integrator approval before implementation or PR submission |
+| Exception — line count | 201–300 | Up to 10 only if separately approved | Written justification and explicit owner/integrator approval before implementation begins |
+| Exception — file count only | 1–200 | 6–10 | Written justification and explicit owner/integrator approval before implementation begins; line-count limit remains unchanged |
 | Oversized | More than 300 | Any | Prohibited as a single ordinary PR; split into smaller PRs |
 
 **Default target: 50–150 changed lines and no more than 5 files. Absolute normal limit: 200 changed lines.** A PR must not exceed 200 lines merely because its author believes the change is convenient. If it does, split it. An exception from 201 to 300 lines is not automatic and must be agreed in advance; a retrospective explanation is not approval.
 
-The file limit is independent of the line limit: a 100-line PR touching 15 unrelated files is still too broad. If a task genuinely needs more than 5 files, split it by dependency or obtain prior approval under the exception rule.
+The file limit is independent of the line limit. A PR of 200 lines or fewer that needs 6–10 files requires a separate written file-count exception before implementation; approval of line count alone does not grant it. A PR of 201–300 lines requires a line-count exception before implementation and may use up to 10 files only if the file-count scope is also justified. More than 10 files or more than 300 lines must be split.
 
 ### What counts
 
@@ -85,10 +86,11 @@ For a historical oversized PR (including #410), freeze the source branch. Extrac
 
 ## 7. Exceptions
 
-An exception is valid only when the owner/integrator approves it in writing before the work is submitted. The PR must explain why the change is indivisible, identify every changed file, provide focused tests and state the review risk.
+An exception is valid only when the owner/integrator approves it in writing before implementation begins. The approval must identify the applicable exception (line count, file count, or both), the WBS item, why the work cannot be split, every expected file, focused tests and review risks. Approval obtained after implementation starts or merely before PR submission is not valid.
 
-- 201–300 changed lines: exceptional approval required.
-- More than 300 changed lines: no ordinary implementation exception; split the work.
+- 201–300 changed lines: prior written line-count approval required; maximum 10 files, subject to a separately justified file scope.
+- 6–10 files at 200 changed lines or fewer: prior written file-count approval required.
+- More than 300 changed lines or more than 10 files: split the work; no ordinary exception.
 - Security, credential, ownership, backup/restore and migration changes should be smaller than the general limits whenever possible, not larger.
 
 **Default decision: split first, ask before exceeding the limit, and prefer the smallest independently testable PR.**
