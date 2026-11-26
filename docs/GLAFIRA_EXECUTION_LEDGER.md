@@ -671,7 +671,7 @@ This append-only entry supersedes contradictory reservation metadata in the earl
 
 - WBS registrations for `GLAFIRA-S000-W02` (PR #721) and `GLAFIRA-S000-W03` (Windows Hub UX) are present in the WBS standard, but **no active ledger reservation is created by PR #738** for either item.
 - W02 requires its own reservation PR after #738, with its own exact Main SHA, branch, allowed files, reviewer, acceptance and status; no dispatch before that PR merges.
-- W03 requires its own reservation PR after #738, with its own exact Main SHA, source-lane blocker/status evidence, token-pending marker, branch and exclusive deliverable; no dispatch or drafting before that PR merges.
+- W03 is registered as a fallback but is currently NOT ACTIVE / NOT ASSIGNED. Source lane #123 is OPEN and its next Core↔Hub implementation slice is READY AFTER the governance/WBS reservation gate, not blocked or idle. Do not create a W03 reservation PR, implementation branch or draft until a later coordinator pass records a concrete #123 blocker and proves no equal/higher-priority ready work remains. At that time, use a separate exact-Main-SHA reservation PR with source-lane status/evidence, token-pending marker, branch and exclusive deliverable.
 - These are planned follow-ups, not active assignments. This keeps each reservation activation in a separate Main update with a fresh duplicate-ownership scan.
 
 ### Infrastructure caveat — current Main reservation serialization (verified 2026-11-26)
