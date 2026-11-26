@@ -48,27 +48,34 @@ jobs:
           fi
           while IFS= read -r pr; do
             number="$(jq -r '.number' <<< "$pr")"
-            title="$(jq -r '.title // ""' <<< "$pr" | tr '|' '/')"
-            branch="$(jq -r '.headRefName // ""' <<< "$pr")"
+            # PR titles and branch names are contributor-controlled: strip Markdown syntax.
+            title="$(jq -r '.title // "" | gsub("[|]"; "/") | gsub("[^[:alnum:] _.,:;!?-]"; " ")' <<< "$pr")"
+            branch="$(jq -r '.headRefName // "" | gsub("[^[:alnum:] _.,:/-]"; " ")' <<< "$pr")"
             sha="$(jq -r '.headRefOid // ""' <<< "$pr")"
             base_sha="$(jq -r '.baseRefOid // ""' <<< "$pr")"
             draft="$(jq -r '.isDraft // false' <<< "$pr")"
             url="$(jq -r '.url // ""' <<< "$pr")"
-            checks="$(jq -c '.statusCheckRollup // []' <<< "$pr")"
+            checks="$(jq -c '[.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)]' <<< "$pr")"
             if [[ "$(jq 'length' <<< "$checks")" -gt 0 ]]; then
-              ci="$(jq -r 'map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")' <<< "$checks")"
+              ci="HEAD-ONLY / BASE NOT VERIFIED: $(jq -r 'map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")' <<< "$checks")"
             elif ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$runs"; then
               ci="UNKNOWN / ACTIONS API UNAVAILABLE"
             else
-              matching="$(jq -c --arg sha "$sha" --arg base "$base_sha" --argjson number "$number" '[.[] | select(.headSha == $sha) | select(any(.pullRequests[]?; .number == $number and (.base.sha // "") == $base)) | select(((.displayTitle // "") | startswith("METADATA_ONLY -")) | not)] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])' <<< "$runs")"
+              matching="$(jq -c --arg sha "$sha" --arg base "$base_sha" --argjson number "$number" '
+                [.[] |
+                  select(.headSha == $sha) |
+                  select($base != "" and any((.pullRequests // [])[]?; .number == $number and (.base.sha // "") != "" and .base.sha == $base)) |
+                  select(not ((.workflowName // .name // "") == "GLAFIRA Java Format Check" and ((.displayTitle // "") | startswith("METADATA_ONLY -")))
+                ] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])
+              ' <<< "$runs")"
               if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
                 ci="NO MATCHING RUN FOR EXACT PR/HEAD/BASE"
               else
                 ci="$(jq -r 'map((.workflowName // .name // "workflow") + ": " + (if .status == "queued" then "QUEUED" elif .status == "in_progress" then "IN_PROGRESS" elif .status == "completed" then ("COMPLETED/" + (.conclusion // "UNKNOWN")) else "UNKNOWN/" + (.status // "missing") end) + " ([run](\(.url // "")))") | join("<br>")' <<< "$matching")"
               fi
             fi
-            short_sha="${sha:0:12}"
-            echo "| [#$number]($url) $title | $branch | <code>$short_sha</code> | $ci | $draft |"
+            short_sha="$(cut -c1-12 <<< "$sha")"
+            echo "| [#$number]($url) $title | <code>$branch</code> | <code>$short_sha</code> | $ci | $draft |"
           done < <(jq -c '.[]' <<< "$prs")
           SCRIPT
 
