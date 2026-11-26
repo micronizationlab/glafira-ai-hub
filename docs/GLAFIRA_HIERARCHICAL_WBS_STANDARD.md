@@ -152,7 +152,7 @@ The parent reservation PR must be merged to Main. A separate leaf-reservation PR
 
 ## 12. Canonical coordinator-governance WBS registrations
 
-The following owner-approved cross-step governance work belongs to Workstream 11. These are governance tasks, not claims that any Program 150 implementation step is complete. For work-item identity, `S000` is reserved for explicitly owner-approved cross-step governance work that has no single legacy Program 150 step; it does not imply legacy Program Step 0.
+The following owner-approved cross-step governance work belongs to Workstream 11. These are governance tasks, not claims that any Program 150 implementation step is complete. For work-item identity, `S000` is reserved for explicitly owner-approved cross-step work (governance, design fallback or another cross-program task) that has no single legacy Program 150 step; it does not imply legacy Program Step 0.
 
 - `1.11.2` — Coordinator execution governance.
 - `1.11.2.1` — Cycle serialization and work assignment.
@@ -168,7 +168,8 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - DESIGN fallback is eligible only after the complete ready-work scan finds no equal- or higher-priority dependency-ready implementation, validation, intake, review, merge or post-merge item.
 - Preserve reservations through active, blocked, suspended and transferred states. Release only on verified DONE or authorized terminal CANCELLED/SUPERSEDED, with reason and replacement recorded.
 - Cross-workstream tasks retain their owning Core/Workstream; they are not collapsed into a single runtime Core queue. Workstream 11 is an integration/intake view, not a second durable assignment queue.
-- Build/release lanes remain globally serialized by repository/workflow/lane/configuration. PR-specific concurrency groups do not prove serialization.
+- Build/release lanes must be globally serialized by repository/workflow/lane/configuration. PR-specific concurrency groups do not prove serialization; current workflows are not yet proven to provide a durable cross-PR FIFO queue, so parallel dispatch remains BLOCKED until a separately reviewed enforcement mechanism is merged.
+- The PR-size policy permits a separate file-count-only exception for one coherent task of up to 200 changed lines and 6–10 files, only with written owner/integrator approval before implementation. This is independent of the 201–300-line exception.
 - The cycle report records numeric counts per lane for planned, started, DONE, blocked, in-review, CI-passed, merged and post-merge-verified leaves. Sub-actions are not separate WBS steps.
 - Acceptance requires consistency across Execution Control, Completion Plan, Ledger, AGENTS.md and Copilot instructions; exact-head docs/security/dispatcher checks; independent review; owner approval; and post-merge verification.
 
