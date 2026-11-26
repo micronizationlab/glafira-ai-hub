@@ -61,13 +61,13 @@ jobs:
             local root="$1"
             local output="$2"
             local symlink
-            symlink="$(find "$root" -type l -name '*.java' -not -path '*/.git/*' -print -quit)"
+            symlink="$(find "$root" -type l -name '*.java' -not -path '*/.git/*' -print -quit)" || return $?
             if [[ -n "$symlink" ]]; then
               echo "::error::Java source symlinks are unsupported and must be handled explicitly."
               return 1
             fi
-            find "$root" -type f -name '*.java' -not -path '*/.git/*' -print0 | sort -z > "$output"
-            mapfile -d '' -t discovered < "$output"
+            find "$root" -type f -name '*.java' -not -path '*/.git/*' -print0 | sort -z > "$output" || return $?
+            mapfile -d '' -t discovered < "$output" || return $?
             for source in "${discovered[@]}"; do
               if [[ "$source" =~ [[:space:]] ]]; then
                 echo "::error::Java source paths containing whitespace are unsupported."
@@ -124,7 +124,24 @@ jobs:
           cp "$fixture_root/formatted/FormattedSecond.java" "$fixture_root/mixed/FormattedSecond.java"
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$fixture_root/mixed/Unformatted.java"
 
-          formatted_manifest="$RUNNER_TEMP/glafira-formatter-formatted.nul"
+          # Discovery failures must propagate through command substitution; a missing root is not an empty source tree.
+          missing_status=0
+          discover_java_sources "$fixture_root/missing" "$RUNNER_TEMP/glafira-formatter-missing.nul" 2> "$RUNNER_TEMP/glafira-formatter-missing.stderr" || missing_status=$?
+          if [[ "$missing_status" -eq 0 ]]; then
+            echo "::error::Discovery unexpectedly accepted a missing source root."
+            exit 1
+          fi
+          # A Java symlink is rejected rather than silently counted as zero sources.
+          mkdir -p "$fixture_root/symlink"
+          ln -s "$fixture_root/formatted/Formatted.java" "$fixture_root/symlink/Linked.java"
+          symlink_status=0
+          discover_java_sources "$fixture_root/symlink" "$RUNNER_TEMP/glafira-formatter-symlink.nul" 2> "$RUNNER_TEMP/glafira-formatter-symlink.stderr" || symlink_status=$?
+          if [[ "$symlink_status" -eq 0 ]]; then
+            echo "::error::Discovery unexpectedly accepted a Java symlink."
+            exit 1
+          fi
+
+                    formatted_manifest="$RUNNER_TEMP/glafira-formatter-formatted.nul"
           formatted_count="$(discover_java_sources "$fixture_root/formatted" "$formatted_manifest")"
           [[ "$formatted_count" == "2" ]]
           formatted_expected="$RUNNER_TEMP/glafira-formatter-formatted.expected"
