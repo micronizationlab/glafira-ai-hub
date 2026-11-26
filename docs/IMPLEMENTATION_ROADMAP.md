@@ -4,16 +4,16 @@ This roadmap records the owner's priority order. Features remain on the roadmap 
 
 ## Owner's active execution order — authoritative
 
-This order was explicitly reconfirmed by the owner on 2026-11-20 and supersedes older priority groupings for active work. The full mandatory dispatcher policy and rolling 50-item action pool are in `docs/ENGINEERING_DISPATCHER_OPERATING_RULE.md` and `docs/ENGINEERING_ACTION_POOL_A.md`.
+The owner reconfirmed the following complete order on 2026-11-26. It supersedes the older 2026-11-20 P0/P1/P2 grouping and any stale dispatcher or collaborator ranking.
 
-1. **P0 — Core kernels and execution foundation:** durable ownership/state, SQLite concurrency, bounded workers, dependency scheduling, cancellation, crash recovery, provider/tool boundaries, idempotency, result delivery and audit.
-2. **P1 — Android instrumentation suite and Bridge:** the suite must exist in `main`, run on a managed emulator for relevant changes, publish non-empty JUnit reports and retain older Core/TaskPlan instrumentation coverage. Bridge requires versioned Task/Result/Lease/Agent contracts, authenticated pairing, durable ingress/delivery, fencing, heartbeats, acknowledgements and reconnect recovery.
-3. **P2 — Windows Desktop and Windows Agent:** laptop-first Desktop control center, authoritative Desktop Hub host, enrollment/revocation, multi-agent scheduling, task lifecycle, Windows Agent service and end-to-end Desktop ↔ Agent acceptance.
-4. **P3 — Oldest unfinished work:** revisit the oldest abandoned PRs/issues and release blockers immediately after Core/Bridge/host foundations; port useful work safely, do not discard it because it is old.
-5. **P4 — Android user-facing and voice/platform work:** backup/council/task queue, Google Drive restore, STT/TTS, Android reliability and iOS parity.
-6. **P5 — Specialist agents, connectors, GCU/GLF and production integrations:** preserve existing specifications and resume implementation after the higher priorities.
-7. **External Project Token/Clover research:** proceed in parallel whenever it does not consume a blocking engineering resource; no token-economy feature may displace P0–P3.
+1. **P1 — GLAFIRA Core:** durable ownership/state, SQLite concurrency, bounded workers, dependency scheduling, cancellation, crash recovery, provider/tool boundaries, idempotency, result delivery, Trace/Audit and policy.
+2. **P2 — Backup & Recovery:** encrypted/versioned backup, integrity verification, safe restore, recovery staging, rollback safety and clean-device acceptance.
+3. **P3 — Bridge / Windows Desktop-Hub / Android client integration:** authenticated Task/Result/Lease protocol, pairing, revocation, durable delivery, ACK, heartbeat, reconnect, authoritative Desktop Hub host and dependent Android pairing/client work. Bridge/Hub prerequisites precede dependent Android pairing work.
+4. **P4 — iOS and specialist-agent feature work:** iOS protocol alignment, agents, connectors and training after Core, Backup and Bridge/Desktop foundations.
+5. **P5 — Token/GCU:** non-issuing calculator/specification only; no issuance, wallet, payments or production economics without separate owner approval.
+6. **Cross-cutting Workstream 11 integration:** reconcile helper intake, review, CI, merge and post-merge actions for eligible higher-priority work. This is not a separate product priority and does not create a second runtime queue.
 
+Android and Windows Desktop remain the primary runtime surfaces, but client feature work does not displace Core or Backup. The feature sections below are a capability catalogue, not an alternative active dispatch order.
 A higher-priority item waiting on CI, hardware, review or a conflicting file is not a reason to idle. Start the highest-priority independent action below it, then rescan from P0 whenever a slot opens. Every GitHub visit requires status refresh, exact-head run/log inspection, test-count verification and immediate dispatch of the next safe action. Never treat a skipped test as a pass.
 
 ## Priority 1 — GLAFIRA Core (the brain and system authority)
@@ -217,7 +217,7 @@ This track may proceed **in parallel at the specification, threat-model and cont
 
 ### Tracked work
 - **#114 — Mother registration, account registry and device enrollment (P0):** authoritative account ID, unique username, passkey/password and recovery, device enrollment/revocation, user isolation.
-- **#115 — Wallet and token ledger (P0):** central double-entry journal, audited issuance, atomic/idempotent transfers and offline recipient synchronization.
+- **#115 — Wallet and token ledger (DEFERRED; P5 owner-approval gate):** central double-entry journal, issuance, transfers and recipient synchronization are not authorized for implementation. Keep this item deferred until separate written owner approval explicitly authorizes the wallet/ledger/issuance scope; calculator/specification work only.
 - **#116 — Distributed compute contribution (P1):** opt-in resource budgets, signed sandboxed tasks, verification, reputation and evidence-based rewards.
 - **#117 — VPN control plane and tariffs (P1):** Mother-managed entitlement/provisioning and token billing; isolated VPN data plane and per-device keys.
 - **#109 — VPN app and self-hosted infrastructure:** client UX, server BOM, deployment, security and connectivity tests.
@@ -233,4 +233,4 @@ This track may proceed **in parallel at the specification, threat-model and cont
 6. Implement VPN token tariffs and provisioning after server cost, capacity, security and jurisdiction reviews.
 7. Open the external project marketplace and inter-owner settlement only after the earlier controls pass acceptance.
 
-Token issuance rates, VPN prices, supply policy and any cash/blockchain redemption remain undecided until owner approval, device/server benchmarks and legal/accounting review. Do not promise guaranteed earnings, cash value, unlimited VPN or zero-cost service.
+Token issuance rates, VPN prices, supply policy and any cash/blockchain redemption remain undecided. Wallet, ledger, issuance, transfers and payment implementation remain DEFERRED until separate written owner approval, device/server benchmarks and legal/accounting review. Do not promise guaranteed earnings, cash value, unlimited VPN or zero-cost service.
