@@ -29,6 +29,11 @@ jobs:
         run: |
           set -euo pipefail
           source_list="$RUNNER_TEMP/glafira-java-sources.nul"
+          java_symlink="$(find . -type l -name '*.java' -not -path './.git/*' -print -quit)"
+          if [[ -n "$java_symlink" ]]; then
+            echo "::error::Java source symlinks are unsupported and must be handled explicitly: $java_symlink"
+            exit 1
+          fi
           find . -type f -name '*.java' -not -path './.git/*' -print0 | sort -z > "$source_list"
           mapfile -d '' -t sources < "$source_list"
           for source in "${sources[@]}"; do
