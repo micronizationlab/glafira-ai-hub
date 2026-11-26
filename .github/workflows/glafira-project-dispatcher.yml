@@ -270,7 +270,10 @@ jobs:
           GH
           chmod +x "$tmp/fake-bin/gh"
           capped_runs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_runs" micronizationlab/glafira-ai-hub)"
-          jq -e 'length == 2 and .[0].pullRequests[0].number == 999 and .[0].pullRequests[0].base.sha == "base-999" and .[0].displayTitle == "METADATA_ONLY - sample title" and .[1].pullRequests == []' <<< "$capped_runs" >/dev/null
+          if ! jq -e 'length == 2 and .[0].pullRequests[0].number == 999 and .[0].pullRequests[0].base.sha == "base-999" and .[0].displayTitle == "METADATA_ONLY - sample title" and .[1].pullRequests == []' <<< "$capped_runs" >/dev/null; then
+            echo "Raw workflow-run projection fixture: $(jq -c '.' <<< "$capped_runs")"
+            exit 1
+          fi
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
