@@ -230,7 +230,7 @@ jobs:
           }
           run_format_gate() {
             local root="$1" manifest="$2" stdout_file="$3" stderr_file="$4" result_file="$5"
-            local precomputed_manifest="\${6:-}" count status=0
+            local precomputed_manifest="${6:-}" count status=0
             : > "$stderr_file"
             : > "$stdout_file"
             if [[ -n "$precomputed_manifest" ]]; then
