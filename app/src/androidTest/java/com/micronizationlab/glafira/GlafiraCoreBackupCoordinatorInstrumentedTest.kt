@@ -77,37 +77,24 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-    /**
-     * Owns the fixed rollback journal for a failure-path restore test. A generation marker is
-     * written only after proving the journal and installation-local rollback key are absent.
-     * Cleanup can therefore recover artifacts left by a prior failed run without deleting
-     * unowned recovery state.
-     */
     private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val journalOwner = File(journal, "test-owner")
         val owner = File(context.noBackupFilesDir, "glafira-portable-restore-test-owner")
         val runId = UUID.randomUUID().toString()
-        val keyAlias = "glafira_core_rollback_v1"
-        fun keyExists() = KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
-
         withFixtureLocks {
             if (owner.exists()) {
                 val previous = owner.readText(Charsets.UTF_8)
                 if (journal.exists()) {
                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
                     check(journal.deleteRecursively())
-                    if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                } else if (keyExists()) {
-                    GlafiraRollbackSnapshotCipher.deleteKey()
                 }
+                if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
                 check(owner.delete())
             }
-            check(!journal.exists()) { "Refusing to overwrite an unowned rollback journal." }
-            check(!keyExists()) { "Refusing to overwrite an unowned rollback key." }
+            check(!journal.exists() && !rollbackKeyExists()) { "Refusing to overwrite unowned recovery state." }
             owner.writeText(runId, Charsets.UTF_8)
         }
-
         try {
             return block()
         } finally {
@@ -115,17 +102,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
                     if (journal.exists()) {
                         if (!journalOwner.exists()) journalOwner.writeText(runId, Charsets.UTF_8)
-                        check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
+                        check(journalOwner.readText(Charsets.UTF_8) == runId)
                         check(journal.deleteRecursively())
-                        if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                    } else if (keyExists()) {
-                        GlafiraRollbackSnapshotCipher.deleteKey()
                     }
+                    if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
                     check(owner.delete())
                 }
             }
         }
     }
+
+    private fun rollbackKeyExists(): Boolean =
+        KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias("glafira_core_rollback_v1") }
 
     private fun task(id: String) = GlafiraTask(
         taskId = id,
@@ -652,16 +640,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val journalOwner = File(journal, "test-owner")
         val owner = File(context.noBackupFilesDir, "glafira-rollback-canary-owner")
         val runId = UUID.randomUUID().toString()
-        val keyAlias = "glafira_core_rollback_v1"
         val passphrase = "GLAFIRA-rollback-canary-test-2026".toCharArray()
         var ownsFixture = false
-        fun keyExists() = KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
 
         try {
             withFixtureLocks {
                 synchronized(store) {
                     assertFalse("Refuse to overwrite an unowned rollback journal", journal.exists())
-                    assertFalse("Refuse to overwrite an existing rollback key", keyExists())
+                    assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
                     assertFalse("Refuse to overwrite an existing canary owner marker", owner.exists())
                     // The journal and key were absent under the exclusive maintenance gate.
                     owner.writeText(runId, Charsets.UTF_8)
