@@ -19,6 +19,9 @@ This repository contains a multi-platform, owner-controlled system. Correctness,
 
 ## Required implementation evidence
 
+All contributors MUST follow [`docs/GLAFIRA_CODEX.md`](docs/GLAFIRA_CODEX.md). A defect discovered by a participant with write authority is to be repaired in the same cycle, not merely commented on or reported. Batch related defects into one register and one coherent implementation; add only necessary regression evidence. A cycle report records completed corrections and real blockers, not a list of findings left for someone else.
+
+
 Every behavior change must include the smallest relevant regression test and, where appropriate, integration, fault-injection or platform acceptance tests. The PR must state:
 
 - the reproduced problem and expected behavior;
