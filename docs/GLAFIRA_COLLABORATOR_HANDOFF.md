@@ -34,7 +34,7 @@ Berestovkon (and every future helper) must acknowledge this startup instruction 
 3. [Core autonomy, tools and credential security](GLAFIRA_CORE_SECURITY_AND_TOOLS.md) — permissions, credential broker and safe external actions.
 4. [Backup & Recovery](GLAFIRA_BACKUP_AND_RECOVERY.md) — encrypted backup, restore and recovery constraints.
 5. [Account Auth and Identity](ACCOUNT_AUTH_AND_IDENTITY.md) — account isolation, auth and connected services; read together with the newer Mother decision below.
-6. [Commercial Network, Mother, token economy and VPN](GLAFIRA_NETWORK_BUSINESS_AND_TOKEN_ECONOMY.md) — business model, Mother, registration, wallet, token transfers, compute contribution, VPN tariffs and launch gates.
+6. [Commercial Network, Mother, token economy and VPN](GLAFIRA_NETWORK_BUSINESS_AND_TOKEN_ECONOMY.md) — business model, Mother and network design; wallet, token transfers, compute rewards and VPN tariffs remain deferred until separate owner approval.
 7. [Voice Assistant Plugin](VOICE_ASSISTANT_PLUGIN.md) — optional voice architecture.
 8. [HR Intelligence Agent Training](HR_INTELLIGENCE_AGENT_TRAINING.md) — deferred specialist role Кадровик.
 
@@ -44,13 +44,13 @@ GLAFIRA is a commercial distributed AI + VPN ecosystem. The owner's business ben
 
 - Owner-operated **GLAFIRA-Mother** is hosted on the owner's server and is the initial authoritative network registry, control plane and token issuer.
 - User installs a client, registers with Mother and receives an immutable account ID, unique public username and revocable device identity.
-- The initial token is an internal utility/accounting unit. Start with a central authoritative ledger; blockchain is a future compatibility option, not the first implementation.
+- Token remains a concept only. No authoritative wallet, ledger, issuance, transfer or blockchain implementation is authorized without separate written owner approval.
 - Users earn tokens for verified, accepted contribution, spend them on AI and VPN services, and can transfer tokens to another user by unique username.
-- Recipient may be offline: Mother posts the transfer in the central ledger and the recipient client synchronizes it on next connection.
+- Offline username transfers are deferred with the wallet/ledger scope; do not implement synchronization or settlement before owner approval.
 - Smartphone contribution ceiling: 10% of available compute, Wi-Fi only, never cellular. Apply battery, thermal, charging and OS limits.
 - Windows Desktop contribution: dynamic 20–100% of available capacity when idle, always yielding to owner activity.
 - Contribution is voluntary, visible, per-device, pausable and revocable. Do not silently consume device resources.
-- VPN may have daily and monthly token tariffs. Prices and fair-use limits are not decided until capacity/cost and legal review.
+- VPN token tariffs and billing are deferred until owner approval, capacity/cost benchmarks and legal review.
 - Mother control plane and VPN data plane must be isolated. VPN traffic must not reach Mother database/admin interfaces.
 - Independent GLAFIRA owners remain autonomous. No cross-owner access to memory, credentials, projects or files without explicit scoped approval.
 
@@ -97,10 +97,10 @@ These are snapshot statuses, not permanent truths. Always fetch current PR metad
 
 ## 6. New commercial-network work items
 
-- **#114 (P0):** Mother registration, account registry and device enrollment.
-- **#115 (P0):** authoritative wallet, double-entry ledger, issuance and offline username transfers.
-- **#116 (P1):** opt-in distributed compute contribution, sandboxing, verification and rewards.
-- **#117 (P1):** VPN control plane, token tariffs, per-device provisioning and isolated VPN nodes.
+- **#114 (P1 Core):** Mother registration, account registry and device enrollment, only where required by the Core identity roadmap.
+- **#115 (DEFERRED, P5):** wallet, double-entry ledger, issuance and offline username transfers; no implementation until separate written owner approval.
+- **#116 (DEFERRED, P5):** distributed compute rewards and contribution marketplace; specification only until separate owner approval.
+- **#117 (DEFERRED, P5):** VPN token billing/tariffs and production provisioning; no implementation until separate owner approval, capacity/security and legal review.
 - Related existing work: **#106** shared project workspaces; **#107** AI-provider/energy-token research; **#109** VPN app/self-hosted infrastructure; **#110** native iOS and Windows Desktop; **#112** account-owned replication/recovery; **#113** trusted cooperation between independently owned GLAFIRAs.
 
 ## Mandatory PR size rules
@@ -109,7 +109,7 @@ Every contributor and AI helper, including Berestovkon, must follow [PR Size and
 
 - Target **50–150 changed lines** and **no more than 5 files** per PR.
 - **200 changed lines is the normal hard ceiling.**
-- **201–300 lines** is an exception only with the owner's/integrator's written approval obtained before implementation; maximum 10 files.
+- **6–10 files** is a separate file-count exception only for a coherent change of <=200 lines with written owner/integrator approval before implementation, rationale and exact file list. **201–300 lines** requires a separate prior written owner/integrator line-count approval. If both conditions apply, both approvals and rationales are required. More than 300 lines or more than 10 files must be split.
 - **More than 300 lines is prohibited** for an ordinary implementation PR and must be split.
 - Count additions + deletions, not net changes. Tests/docs count too. Generated artifacts must be identified separately and cannot conceal broad handwritten changes.
 - One PR = one logical change. Split Android, iOS, Windows, Core, Backup and Bridge work into dependency-ordered PRs. Check current main, active PRs and file overlaps first.
