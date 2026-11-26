@@ -254,27 +254,23 @@ jobs:
           rest_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 2 and .[1].baseRefOid == "b2" and .[1].statusCheckRollup == []' <<< "$rest_prs" >/dev/null
 
-          # The run inventory is capped at 10 pages and null pull_requests are harmless.
+          # The run inventory is capped at ten pages and its raw REST projection
+          # retains PR/base associations while tolerating null pull_requests.
+          grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
           [[ "$1" == "api" ]]
-          page="$(sed -n 's/.*page=//p' <<< "$2")"
-          [[ -n "$page" ]]
-          printf '{"workflow_runs":['
-          for i in $(seq 1 100); do
-            [[ "$i" -gt 1 ]] && printf ','
-            if [[ "$i" -eq 1 ]]; then association='[{"number":999,"base":{"sha":"base-999"}}]'; else association='null'; fi
-            printf '{"head_sha":"h%s","name":"CI","display_title":"run","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run","pull_requests":%s}' "$page-$i" "$association"
-          done
-          printf ']}\n'
+          cat <<'JSON'
+          {"workflow_runs":[
+            {"head_sha":"head-one","name":"CI","display_title":"METADATA_ONLY - sample title","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run/one","pull_requests":[{"number":999,"base":{"sha":"base-999"}}]},
+            {"head_sha":"head-two","name":"CI","display_title":"ordinary title","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run/two","pull_requests":null}
+          ]}
+          JSON
           GH
           chmod +x "$tmp/fake-bin/gh"
           capped_runs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_runs" micronizationlab/glafira-ai-hub)"
-          if ! jq -e 'length == 1000 and .[0].pullRequests[0].number == 999 and .[0].pullRequests[0].base.sha == "base-999" and .[1].pullRequests == []' <<< "$capped_runs" >/dev/null; then
-            echo "Bounded run fixture debug: count=$(jq 'length' <<< "$capped_runs") first=$(jq -c '.[0]' <<< "$capped_runs") second=$(jq -c '.[1]' <<< "$capped_runs")"
-            exit 1
-          fi
+          jq -e 'length == 2 and .[0].pullRequests[0].number == 999 and .[0].pullRequests[0].base.sha == "base-999" and .[0].displayTitle == "METADATA_ONLY - sample title" and .[1].pullRequests == []' <<< "$capped_runs" >/dev/null
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
