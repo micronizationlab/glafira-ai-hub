@@ -48,54 +48,60 @@ jobs:
 
           build_batches() {
             local list="$1" records="$2" count_file="$3"
-            local -a paths=()
-            local batch="" batch_bytes=0 path path_bytes separator_bytes
-            local count=0 batch_index=0
-            : > "$records"
-            mapfile -d '' -t paths < "$list"
+            python3 - "$list" "$records" "$count_file" <<'PY'
+          import json
+          import pathlib
+          import sys
 
-            for path in "${paths[@]}"; do
-              # The formatter action accepts a space-delimited string. Reject paths
-              # that cannot cross that boundary losslessly instead of dropping them.
-              if ! printf '%s' "$path" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
-                return 1
-              fi
-              if [[ "$path" != ./* || "$path" =~ [[:space:]] ]]; then
-                return 1
-              fi
+          list_path, records_path, count_path = map(pathlib.Path, sys.argv[1:])
+          raw = list_path.read_bytes()
+          if raw and not raw.endswith(b"\\0"):
+              print("Java source list is not NUL-terminated.", file=sys.stderr)
+              raise SystemExit(1)
 
-              path_bytes=$(LC_ALL=C printf '%s' "$path" | wc -c)
-              path_bytes="${path_bytes//[[:space:]]/}"
-              if (( path_bytes > 49152 )); then
-                return 1
-              fi
+          paths = raw[:-1].split(b"\\0") if raw else []
+          batches = []
+          current = []
+          current_bytes = 0
+          limit = 48 * 1024
 
-              separator_bytes=0
-              if [[ -n "$batch" ]]; then
-                separator_bytes=1
-              fi
-              if (( batch_bytes + separator_bytes + path_bytes > 49152 )); then
-                jq -cn --arg files "$batch" --argjson index "$batch_index" '{files:$files,index:$index}' >> "$records"
-                ((batch_index += 1))
-                batch=""
-                batch_bytes=0
-              fi
+          for encoded_path in paths:
+              try:
+                  path = encoded_path.decode("utf-8", errors="strict")
+              except UnicodeDecodeError:
+                  print("A Java source path is not valid UTF-8.", file=sys.stderr)
+                  raise SystemExit(1)
+              if not path.startswith("./") or any(char.isspace() for char in path):
+                  print("A Java source path cannot be passed safely to the formatter.", file=sys.stderr)
+                  raise SystemExit(1)
+              path_bytes = len(encoded_path)
+              if path_bytes > limit:
+                  print("A Java source path exceeds the formatter batch limit.", file=sys.stderr)
+                  raise SystemExit(1)
 
-              if [[ -n "$batch" ]]; then
-                batch+=" "
-                ((batch_bytes += 1))
-              fi
-              batch+="$path"
-              ((batch_bytes += path_bytes))
-              ((count += 1))
-            done
+              extra = path_bytes + (1 if current else 0)
+              if current and current_bytes + extra > limit:
+                  batches.append(" ".join(current))
+                  current = []
+                  current_bytes = 0
+              if current:
+                  current_bytes += 1
+              current.append(path)
+              current_bytes += path_bytes
 
-            if [[ -n "$batch" ]]; then
-              jq -cn --arg files "$batch" --argjson index "$batch_index" '{files:$files,index:$index}' >> "$records"
-            fi
-            printf '%s' "$count" > "$count_file"
+          if current:
+              batches.append(" ".join(current))
+
+          with records_path.open("w", encoding="utf-8", newline="\\n") as records:
+              for index, files in enumerate(batches):
+                  records.write(json.dumps(
+                      {"files": files, "index": index},
+                      ensure_ascii=False,
+                      separators=(",", ":"),
+                  ) + "\\n")
+          count_path.write_text(str(len(paths)), encoding="ascii")
+          PY
           }
-
           # Exercise the same production functions against hostile and large fixtures.
           smoke_root="$RUNNER_TEMP/java-discovery-smoke"
           mkdir -p "$smoke_root"
