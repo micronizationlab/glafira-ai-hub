@@ -697,3 +697,31 @@ This append-only entry supersedes contradictory reservation metadata in the earl
 ### Infrastructure caveat — current Main reservation serialization (verified 2026-11-26)
 
 GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and enforces non-fast-forward protection plus required status contexts, but `strict_required_status_checks_policy` is false, no merge queue is configured, and privileged repository roles have bypass permission. The separate branch-protection endpoint was not readable by the installed integration (403), so no additional protection is claimed. Consequently, single-flight reservation merges and exact-SHA rechecks are currently a coordinator/owner procedure, not a repository-enforced mutex. If a privileged bypass or concurrent merge advances Main, dispatch stops until the ledger is re-read and reconciled. A future enforcement task must add a durable non-dropping reservation/merge queue or equivalent CAS mechanism; do not represent documentation as runtime enforcement.
+
+
+## 2026-11-26 — Append-only correction for PR #717: Core owner-cancellation leaves
+
+Supersedes the conflicting reservation snapshot in PR #717; history remains intact. No source branch is authorized and no Program Step 93 completion is claimed.
+
+- Parent: task `1.1.3.1.1` / `GLAFIRA-S093-W01` / issue #669 / Program Step 93 partial.
+- Seven-component leaves: .1 `1.1.3.1.1.1.1`; .2 `1.1.3.1.1.1.2`; .3 `1.1.3.1.1.1.3`; .4 `1.1.3.1.1.1.4`.
+- Exclusive files: .3 owns only `GlafiraTaskCancellationInstrumentedTest.kt`; .4 owns only `GlafiraTaskRestoreCancellationInstrumentedTest.kt`. .3/.4 are sibling leaves after .1/.2, not stacked or shared-file owners.
+- Predecessors: .1 none; .2 after .1 DONE; .3 after .1/.2 DONE; .4 after .1/.2 DONE and production PR #703 recovery-temp ownership isolation DONE. #703 does not gate .3.
+- .1 emulator XML must prove same-project fan-out, bounded SQLite batches, artifact preservation, and each allowed waiting state with attemptCount=0 plus unresolved outcome marker rejects without mutation.
+- .3 emulator XML must prove repeated cancellation is idempotent with no duplicate history, Trace, dependency or artifact writes.
+- .4 emulator XML must prove the controlled maintenance-gate interleaving, complete task/file restore, unrelated temp preservation and rollback-key retention on journal-delete failure. The unowned-temp case is blocked until #703 merges.
+- Reservation merge requires exact-head Docs CI, Security Scan, Dispatcher, all independent CodeRabbit/Proofline findings resolved and owner approval. Emulator acceptance belongs to implementation leaves, not this docs-only reservation.
+- Separate merged pin amendments record exact Main SHA before branch creation: .1 after parent reservation; .2 after .1; .3 after .2; .4 after .2 plus #703. If Main advances incompatibly, merge a new exact-SHA refresh amendment first. Never predict a reservation's own future merge SHA or create a branch before the pin amendment.
+- **Status:** correction proposed only; implementation leaves NOT STARTED/BLOCKED pending reservation merge, pins and predecessors.
+
+## 2026-11-26 — Append-only correction for PR #718: Windows Desktop / Hub UX design
+
+Supersedes the historical W02 reservation's wrong-depth ID and generic fallback eligibility. No design drafting is claimed.
+
+- Work Item `GLAFIRA-S000-W03`; parent task `1.11.1.1.6`; subtask `1.11.1.1.6.1`; executable leaf `1.11.1.1.6.1.1`; issue #674 / #672. Explicit owner-approved cross-step DESIGN task; no legacy Program 150 step. S000 is the documented cross-step identity token, not Program Step 0.
+- Exclusive implementation deliverable: `docs/design/WINDOWS_DESKTOP_HUB_UX.md`. Ledger append/WBS registration do not reserve the whole shared ledger file.
+- Fallback source lane, original work item, exact implementation/test/acceptance status, concrete blocker and evidence must be recorded for the applicable cycle. Current source-lane assignment is NOT VERIFIED; no automatic Token/GCU assignment. Preserve the original lane status.
+- Issue #674 already carries `VISUAL_TOKENS_STATUS: PENDING (blocked on owner acceptance of #679)`; coordinator verifies this before early IA/wireframe drafting. Final token values wait for #679 acceptance.
+- ICQ flower is mandatory.
+- After reservation merge, a separate pre-edit leaf reservation must record exact current Main SHA, implementation branch, executor, independent reviewer, file, predecessor, procedure and acceptance before branch creation or drafting.
+- **Status:** corrected reservation proposed; fallback remains NOT VERIFIED/BLOCKED until source-lane evidence and token-pending marker are checked. No design document, runtime implementation or Program 150 completion claimed.
