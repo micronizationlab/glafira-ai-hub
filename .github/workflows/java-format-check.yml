@@ -176,7 +176,6 @@ jobs:
     if: needs.discover.outputs.workflow_changed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Create isolated formatter fixtures
         shell: bash
         run: |
           dir="$RUNNER_TEMP/glafira-java-format-smoke-$GITHUB_RUN_ID"
@@ -186,15 +185,12 @@ jobs:
           cp "$dir/Smoke.java" "$dir/--version=.java"
           cp "$dir/Smoke.java" "$dir/Unicode-λ.java"
           cp "$dir/Smoke.java" "$dir/NeedsFormat-λ.java"
-      - name: Accept option-like, @ and Unicode paths
         uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
         with:
           args: "--set-exit-if-changed"
           files: "${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/Smoke.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/@A.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/--version=.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/Unicode-λ.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/NeedsFormat-λ.java"
           skip-commit: true
-      - name: Make Unicode fixture intentionally unformatted
         run: printf '%s\n' 'final class NeedsFormat{void run(){System.out.println("needs formatting");}}' > "$RUNNER_TEMP/glafira-java-format-smoke-$GITHUB_RUN_ID/NeedsFormat-λ.java"
-      - name: Require formatter to reject Unicode source after a formatted first file
         id: reject-unformatted
         continue-on-error: true
         uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
