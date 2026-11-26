@@ -6,7 +6,7 @@ on:
     branches: [main]
   workflow_dispatch:
 concurrency:
-  group: glafira-java-format-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 permissions:
   contents: read
@@ -22,8 +22,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
+          fetch-depth: 1
+          persist-credentials: true
       - name: Discover, validate and batch Java paths
         id: sources
         shell: bash
@@ -34,8 +34,10 @@ jobs:
           set -euo pipefail
           workflow_changed=false
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then workflow_changed=true
-          elif [[ -n "$BASE_SHA" ]] && git cat-file -e "$BASE_SHA^{commit}"; then
-            git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- .github/workflows/java-format-check.yml | grep -q . && workflow_changed=true
+          else
+            if [[ "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then BASE_SHA="$(git hash-object -t tree -w /dev/null)"
+            elif [[ -n "$BASE_SHA" ]]; then git fetch --no-tags --depth=1 origin "$BASE_SHA"; fi
+            if [[ -n "$BASE_SHA" ]] && git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- .github/workflows/java-format-check.yml | grep -q .; then workflow_changed=true; fi
           fi
           echo "workflow_changed=$workflow_changed" >> "$GITHUB_OUTPUT"
           collect_java_sources() {
