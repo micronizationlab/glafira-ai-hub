@@ -56,24 +56,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-    private suspend fun <T> withFixtureLocks(block: () -> T): T =
-        withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
-            GlafiraCoreMaintenanceGate.withExclusive {
-                PendingDeliveryRuntime.withPaused {
-                    GlafiraFileMaintenance.withExclusive(block)
-                }
-            }
+    private suspend fun <T> withFixtureLocks(block: () -> T): T = withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
+        GlafiraCoreMaintenanceGate.withExclusive {
+            PendingDeliveryRuntime.withPaused { GlafiraFileMaintenance.withExclusive(block) }
         }
+    }
 
     private fun cancelAndAwaitCoreWorkers() {
         val workManager = WorkManager.getInstance(context)
         CORE_WORK_NAMES.forEach { name ->
             workManager.cancelUniqueWork(name).result.get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            assertTrue(
-                "Core worker $name must stop before fixture mutation",
+            assertTrue("Core worker $name must stop before fixture mutation",
                 workManager.getWorkInfosForUniqueWork(name)
-                    .get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS).all { it.state.isFinished }
-            )
+                    .get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS).all { it.state.isFinished })
         }
     }
 
@@ -95,9 +90,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             check(!journal.exists() && !rollbackKeyExists()) { "Refusing to overwrite unowned recovery state." }
             owner.writeText(runId, Charsets.UTF_8)
         }
-        try {
-            return block()
-        } finally {
+        try { return block() } finally {
             withFixtureLocks {
                 if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
                     if (journal.exists()) {
