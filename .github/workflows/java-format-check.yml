@@ -4,6 +4,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  workflow_dispatch:
 concurrency:
   group: glafira-java-format-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -32,7 +33,8 @@ jobs:
         run: |
           set -euo pipefail
           workflow_changed=false
-          if [[ -n "$BASE_SHA" ]] && git cat-file -e "$BASE_SHA^{commit}"; then
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then workflow_changed=true
+          elif [[ -n "$BASE_SHA" ]] && git cat-file -e "$BASE_SHA^{commit}"; then
             git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- .github/workflows/java-format-check.yml | grep -q . && workflow_changed=true
           fi
           echo "workflow_changed=$workflow_changed" >> "$GITHUB_OUTPUT"
@@ -141,7 +143,6 @@ jobs:
             python3 -c 'import json,pathlib,sys; d=dict(x.split("=",1) for x in pathlib.Path(sys.argv[2]).read_text().splitlines()); a=[p for b in json.loads(d["batches"])["include"] for p in b["files"].split(" ")]; e=[p.decode("utf-8") for p in sorted(pathlib.Path(sys.argv[1]+".raw").read_bytes().split(b"\0")[:-1])]; assert a == e' "$RUNNER_TEMP/smoke-large.nul" "$RUNNER_TEMP/smoke-large-output"
           )
           fi
-          echo "Java source discovery regression checks passed."
           source_list="$RUNNER_TEMP/java-sources.nul"
           symlink_list="$RUNNER_TEMP/java-symlinks.nul"
           if ! collect_java_sources . "$source_list" "$symlink_list"; then
@@ -150,7 +151,6 @@ jobs:
           fi
           validate_and_batch "$source_list" "$GITHUB_OUTPUT"
           count="$(awk -F= '$1=="count" { print $2; exit }' "$GITHUB_OUTPUT")"
-          echo "Production checkout contains $count Java source file(s)."
           [[ "$count" != "0" ]] || echo "No Java sources exist in this checkout; Google Java Format is not applicable."
   java-format:
     name: Google Java Style Validation batch ${{ matrix.index }}
@@ -175,7 +175,7 @@ jobs:
           skip-commit: true
   formatter-smoke:
     needs: discover
-    if: needs.discover.outputs.workflow_changed == 'true'
+    if: needs.discover.outputs.workflow_changed == 'true' && (needs.discover.outputs.count != '0' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - shell: bash
