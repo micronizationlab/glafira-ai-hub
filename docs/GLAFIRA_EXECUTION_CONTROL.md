@@ -27,7 +27,7 @@
 
 ## 3. Work item identity and ownership
 
-Every task has a stable ID. Program-step work uses `GLAFIRA-S<step>-W<sequence>` (example: `GLAFIRA-S016-W01`). An explicitly owner-approved cross-step governance/design task may use `GLAFIRA-GOV-<domain>-W<sequence>` (for example, `GLAFIRA-GOV-D01`) only when its approval, WBS parent, tracker and cross-step scope are recorded in the ledger. The exception does not permit an unmapped or unapproved task. Every executable leaf still has a unique WBS ID and unique Work Item ID. A task record must include:
+Every task has a stable ID. Program-step work uses `GLAFIRA-S<step>-W<sequence>` (example: `GLAFIRA-S016-W01`). An explicitly owner-approved cross-step governance/design task may use `GLAFIRA-GOV-<domain>-W<sequence>` (for example, `GLAFIRA-GOV-GOV-W01`) only when its approval, WBS parent, tracker and cross-step scope are recorded in the ledger. The exception does not permit an unmapped or unapproved task. Every executable leaf still has a unique WBS ID and unique Work Item ID. A task record must include:
 - Step ID(s), short objective and acceptance criteria;
 - one accountable executor (GLAFIRA or one named helper); reviewers are separate;
 - allowed file paths and explicit out-of-scope paths;
