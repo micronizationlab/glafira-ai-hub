@@ -1,7 +1,7 @@
 # GLAFIRA — ordered 150-step completion plan
 
 **Reconciliation baseline for this control revision:** `f2b5e4b087d4f2357e0354ec0cc56c228c0ed1ec` (actual `main` SHA observed on 2026-11-24 before the governance branch).
-**Owner priority (latest instruction, 2026-11-26):** P1 — GLAFIRA Core; P2 — Backup & Recovery; P3 — Bridge and Windows Desktop. This order supersedes historical dispatcher tables and older Android-first snapshots below. Workstream 11 checks ready helper intake, review, merge and post-merge actions before implementation fallback. The owner retains direct assignment and override authority. Keep all eleven workstreams active without bypassing dependencies or exclusive file reservations.  
+**Owner priority (current, 2026-11-26):** P1 — GLAFIRA Core; P2 — Backup & Recovery; P3 — Bridge and Windows Desktop; P4 — Android and iOS clients; P5 — Windows Agent and specialist/agent work; P6 — Multi-model and Token/economics; P7 — GLAFIRA DESIGN fallback. CI/Security checks are cross-cutting gates at every tier. Workstream 11 is integration support, not a product-priority tier. This order supersedes every older Android-first/P0/P1 snapshot below; the owner retains direct assignment and override authority.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
 **Control notice (2026-11-24):** the previous mainline/PR/CI snapshot below this heading was superseded when the live repository check found `main=f2b5e4b087d4f2357e0354ec0cc56c228c0ed1ec`. Treat all older PR numbers, run states, and merge-base claims in this historical plan as snapshots only. Refresh GitHub before acting. The canonical execution rules and append-only status journal are `docs/GLAFIRA_EXECUTION_CONTROL.md` and `docs/GLAFIRA_EXECUTION_LEDGER.md`; issue #548 is the control issue. The last literal checklist audit found 27 checked of the original 150 and 27 of 200 total entries; this count is not re-certified for the new baseline until reconciliation is complete.
@@ -552,9 +552,9 @@ The initial repair commit `be0bf7ffa47868e85de55767d0b7023529c9ad82` removed the
 - **Formal count:** original Program 150 = **27/150 (18%)**; expanded 200-item ledger = **27/200 (13.5%)**. The 50 extension items (151–200) are all unchecked. No new numbered milestone is checked by PR #426 or #427; they are partial implementation evidence toward existing acceptance gates.
 
 
-## Owner priority and verification update — 2026-11-22 (latest instruction)
+## Historical owner priority snapshot — 2026-11-22 (superseded 2026-11-26)
 
-The owner has since refined the execution order. This order supersedes earlier priority lines in this ledger:
+This section is retained as an archival snapshot only. Its priority order is superseded by the current owner-approved order at the top of this plan and in execution control Section 9:
 
 1. **Integrate helper contributions first:** inspect helper PRs/files, reconcile overlaps against current `main`, integrate bounded slices, run exact-head validation, and notify the helper after every change. The helper must refresh from current `main` before starting another slice.
 2. **Android app:** complete the ordinary-chat → intent → Core task → preview → fresh owner approval → execution → result/Trace loop, then validate voice, backup and device behavior.
