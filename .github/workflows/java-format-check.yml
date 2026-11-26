@@ -190,7 +190,7 @@ jobs:
           formatted_stderr="$RUNNER_TEMP/glafira-formatted.stderr"
           formatted_result="$RUNNER_TEMP/glafira-formatted.result"
           if run_format_gate "$fixture_root/formatted" "$formatted_manifest" "$formatted_stdout" "$formatted_stderr" "$formatted_result"; then formatted_status=0; else formatted_status=$?; fi
-          if [[ "$formatted_status" -ne 0 ]] || [[ "$(cat "$formatted_result")" != "0" ]] || ! cmp -s "$formatted_expected_manifest" "$formatted_manifest"; then
+          if [[ "$formatted_status" -ne 0 ]] || [[ "$(cat "$formatted_result")" != "0" ]] || [[ -s "$formatted_stderr" ]] || ! cmp -s "$formatted_expected_manifest" "$formatted_manifest"; then
             echo "::error::Formatted-only manifest was not accepted with the exact two expected sources."
             printf 'expected_manifest_base64='; base64 -w0 "$formatted_expected_manifest"; printf '\n'
             printf 'actual_manifest_base64='; base64 -w0 "$formatted_manifest"; printf '\n'
@@ -273,7 +273,7 @@ jobs:
           missing_stderr="$RUNNER_TEMP/glafira-missing.stderr"
           missing_result="$RUNNER_TEMP/glafira-missing.result"
           if run_format_gate "$fixture_root/missing" "$missing_manifest" "$missing_stdout" "$missing_stderr" "$missing_result"; then missing_status=0; else missing_status=$?; fi
-          if [[ "$missing_status" -eq 0 ]] || [[ "$(cat "$missing_result")" != "DISCOVERY_ERROR" ]]; then
+          if [[ "$missing_status" -eq 0 ]] || [[ "$(cat "$missing_result")" != "DISCOVERY_ERROR" ]] || [[ ! -s "$missing_stderr" ]]; then
             echo "::error::Missing-root discovery failure was incorrectly treated as an empty source tree."
             exit 1
           fi
@@ -284,7 +284,7 @@ jobs:
           symlink_stderr="$RUNNER_TEMP/glafira-symlink.stderr"
           symlink_result="$RUNNER_TEMP/glafira-symlink.result"
           if run_format_gate "$fixture_root/symlink" "$symlink_manifest" "$symlink_stdout" "$symlink_stderr" "$symlink_result"; then symlink_status=0; else symlink_status=$?; fi
-          if [[ "$symlink_status" -eq 0 ]] || [[ "$(cat "$symlink_result")" != "DISCOVERY_ERROR" ]]; then
+          if [[ "$symlink_status" -eq 0 ]] || [[ "$(cat "$symlink_result")" != "DISCOVERY_ERROR" ]] || ! grep -Fq "Java source symlink detected" "$symlink_stderr"; then
             echo "::error::Symlink-only discovery was incorrectly treated as an empty source tree."
             exit 1
           fi
