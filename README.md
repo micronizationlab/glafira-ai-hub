@@ -44,6 +44,9 @@ Mandatory encrypted backup, free cloud destinations and cross-device recovery ar
 Owner-prioritized delivery order, including Backup & Recovery, GLAFIRA Core, Voice Assistant and all specialist roles: [IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md).
 
 
+## Multi-agent coordination (mandatory entrypoint)
+All invited AI collaborators must first read [GLAFIRA_COORDINATION.md](GLAFIRA_COORDINATION.md), then follow the [collaborator handoff](docs/GLAFIRA_COLLABORATOR_HANDOFF.md). Participant registration, task reservations and the 20 × 150 evidence tracker are in [docs/coordination](docs/coordination/README.md).
+
 ## Collaborator handoff
 See [GLAFIRA Collaborator Handoff](docs/GLAFIRA_COLLABORATOR_HANDOFF.md) for the reading order, owner decisions, active PR/issue map and safe collaboration rules.
 
