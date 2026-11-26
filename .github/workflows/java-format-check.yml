@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}-${{ github.event.pull_request.base.sha || 'push' }}-${{ github.event.action || 'push' }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'validation' }}
+  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'validation' }}
   cancel-in-progress: false
 
 permissions:
@@ -121,6 +121,17 @@ jobs:
             head -c 4096 "$file" | base64 -w0
             printf '\n'
           }
+          write_gate_result() {
+            local result_file="$1" value="$2" recorded=''
+            if ! printf '%s\\n' "$value" > "$result_file"; then
+              printf 'Could not persist formatter gate result.\\n' >&2
+              return 25
+            fi
+            if ! IFS= read -r recorded < "$result_file" || [[ "$recorded" != "$value" ]]; then
+              printf 'Formatter gate result could not be read back exactly.\\n' >&2
+              return 26
+            fi
+          }
           run_format_gate() {
             local root="$1" manifest="$2" stdout_file="$3" stderr_file="$4" result_file="$5"
             local count status=0
@@ -129,22 +140,22 @@ jobs:
               :
             else
               status=$?
-              printf 'DISCOVERY_ERROR\n' > "$result_file"
+              write_gate_result "$result_file" "DISCOVERY_ERROR" || return $?
               return "$status"
             fi
             if [[ "$count" == "0" ]]; then
-              printf 'NOT_APPLICABLE\n' > "$result_file"
+              write_gate_result "$result_file" "NOT_APPLICABLE" || return $?
               return 0
             fi
             if format_check_manifest "$manifest" "$stdout_file" "$stderr_file"; then
-              printf '0\n' > "$result_file"
+              write_gate_result "$result_file" "0" || return $?
               return 0
             else
               status=$?
               if [[ "$status" -eq 123 && -s "$stdout_file" && ! -s "$stderr_file" ]]; then
-                printf 'SOURCE_REJECTION\n' > "$result_file"
+                write_gate_result "$result_file" "SOURCE_REJECTION" || return $?
               else
-                printf 'FORMATTER_EXECUTION_ERROR\n' > "$result_file"
+                write_gate_result "$result_file" "FORMATTER_EXECUTION_ERROR" || return $?
               fi
               return "$status"
             fi
@@ -155,9 +166,21 @@ jobs:
           production_stderr="$RUNNER_TEMP/glafira-java-format.stderr"
           production_result="$RUNNER_TEMP/glafira-java-format.result"
           if run_format_gate . "$production_manifest" "$production_stdout" "$production_stderr" "$production_result"; then
-            if [[ "$(cat "$production_result")" == "NOT_APPLICABLE" ]]; then
-              echo "::notice::Production Java formatting is NOT_APPLICABLE (no Java sources); regression smoke checks are still running."
+            production_result_value=''
+            if ! IFS= read -r production_result_value < "$production_result"; then
+              echo "::error::Production formatter result is missing or unreadable."
+              exit 1
             fi
+            case "$production_result_value" in
+              0) ;;
+              NOT_APPLICABLE)
+                echo "::notice::Production Java formatting is NOT_APPLICABLE (no Java sources); regression smoke checks are still running."
+                ;;
+              *)
+                echo "::error::Production formatter result is unrecognized; refusing to pass."
+                exit 1
+                ;;
+            esac
           else
             production_status=$?
             if [[ "$(cat "$production_result")" == "DISCOVERY_ERROR" ]]; then
@@ -297,6 +320,20 @@ jobs:
             emit_bounded_diagnostic expected "$single_expected"
             emit_bounded_diagnostic actual "$direct_stdout"
             emit_bounded_diagnostic stderr "$direct_stderr"
+            exit 1
+          fi
+
+          # A missing formatter artifact is an execution failure, not a Java source rejection.
+          real_jar="$jar"
+          jar="$fixture_root/missing-google-java-format.jar"
+          launch_manifest="$RUNNER_TEMP/glafira-launch-failure.nul"
+          launch_stdout="$RUNNER_TEMP/glafira-launch-failure.stdout"
+          launch_stderr="$RUNNER_TEMP/glafira-launch-failure.stderr"
+          launch_result="$RUNNER_TEMP/glafira-launch-failure.result"
+          if run_format_gate "$fixture_root/formatted" "$launch_manifest" "$launch_stdout" "$launch_stderr" "$launch_result"; then launch_status=0; else launch_status=$?; fi
+          jar="$real_jar"
+          if [[ "$launch_status" -eq 0 ]] || [[ "$(cat "$launch_result")" != "FORMATTER_EXECUTION_ERROR" ]] || [[ ! -s "$launch_stderr" ]]; then
+            echo "::error::A missing formatter artifact was not classified as a formatter execution failure."
             exit 1
           fi
 
