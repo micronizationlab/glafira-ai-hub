@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: glafira-java-format-${{ github.event_name }}-${{ github.event.action == 'edited' && github.event.changes.base != null && 'base-edit' || github.event.action == 'edited' && 'metadata-edit' || 'standard' }}-${{ github.event.pull_request.number || github.ref }}
+  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata' || 'validation' }}
   cancel-in-progress: true
 
 permissions:
@@ -16,7 +16,7 @@ permissions:
 jobs:
   java-format-gate:
     if: github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base != null
-    name: Google Java Style Validation
+    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'PR metadata edit — formatter not run' || 'Google Java Style Validation' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -24,33 +24,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-
-      - name: Discover Java sources deterministically
-        id: sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_list="$RUNNER_TEMP/glafira-java-sources.nul"
-          java_symlink="$(find . -type l -name '*.java' -not -path './.git/*' -print -quit)"
-          if [[ -n "$java_symlink" ]]; then
-            echo "::error::Java source symlinks are unsupported and must be handled explicitly."
-            exit 1
-          fi
-          find . -type f -name '*.java' -not -path './.git/*' -print0 | sort -z > "$source_list"
-          mapfile -d '' -t sources < "$source_list"
-          for source in "${sources[@]}"; do
-            if [[ "$source" =~ [[:space:]] ]]; then
-              echo "::error::Java source paths containing whitespace are unsupported."
-              exit 1
-            fi
-            if ! printf '%s' "$source" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
-              echo "::error::Java source paths must round-trip through UTF-8 before invoking the formatter."
-              exit 1
-            fi
-          done
-          echo "count=${#sources[@]}" >> "$GITHUB_OUTPUT"
-          echo "source_list=$source_list" >> "$GITHUB_OUTPUT"
-          echo "Discovered ${#sources[@]} Java source file(s) in deterministic order."
 
       - name: Download and verify pinned Google Java Format
         shell: bash
@@ -71,11 +44,8 @@ jobs:
           grep -Fq "Version 2.0.0" <<< "$version"
           echo "Verified $version"
 
-      - name: Check Google Java Style or report not applicable
+      - name: Discover, validate and format-check Java sources
         shell: bash
-        env:
-          SOURCE_COUNT: ${{ steps.sources.outputs.count }}
-          SOURCE_LIST: ${{ steps.sources.outputs.source_list }}
         run: |
           set -euo pipefail
           jar="$RUNNER_TEMP/google-java-format-2.0.0-all-deps.jar"
@@ -86,104 +56,127 @@ jobs:
             --add-exports jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
             --add-exports jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED
           )
-          if [[ "$SOURCE_COUNT" == "0" ]]; then
+
+          discover_java_sources() {
+            local root="$1"
+            local output="$2"
+            local symlink
+            symlink="$(find "$root" -type l -name '*.java' -not -path '*/.git/*' -print -quit)"
+            if [[ -n "$symlink" ]]; then
+              echo "::error::Java source symlinks are unsupported and must be handled explicitly."
+              return 1
+            fi
+            find "$root" -type f -name '*.java' -not -path '*/.git/*' -print0 | sort -z > "$output"
+            mapfile -d '' -t discovered < "$output"
+            for source in "${discovered[@]}"; do
+              if [[ "$source" =~ [[:space:]] ]]; then
+                echo "::error::Java source paths containing whitespace are unsupported."
+                return 1
+              fi
+              if ! printf '%s' "$source" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
+                echo "::error::Java source paths must round-trip through UTF-8 before invoking the formatter."
+                return 1
+              fi
+            done
+            printf '%s\n' "${#discovered[@]}"
+          }
+
+          # Production discovery and handoff.
+          source_list="$RUNNER_TEMP/glafira-java-sources.nul"
+          source_count="$(discover_java_sources . "$source_list")"
+          if [[ "$source_count" == "0" ]]; then
             echo "::notice::Google Java Format: NOT_APPLICABLE (no Java source files discovered)."
           else
-            xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$SOURCE_LIST"
+            production_stdout="$RUNNER_TEMP/glafira-java-format.stdout"
+            production_stderr="$RUNNER_TEMP/glafira-java-format.stderr"
+            set +e
+            xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$source_list" > "$production_stdout" 2> "$production_stderr"
+            production_status=$?
+            set -e
+            if [[ "$production_status" -ne 0 ]]; then
+              echo "::error::Google Java Format rejected one or more Java sources (exit=$production_status). Diagnostics are base64-encoded to keep PR source text inert."
+              printf 'stdout_base64='; base64 -w0 "$production_stdout"; printf '\n'
+              printf 'stderr_base64='; base64 -w0 "$production_stderr"; printf '\n'
+              exit "$production_status"
+            fi
           fi
 
-      - name: Verify formatter accepts and rejects production manifests
-        shell: bash
-        run: |
-          set -euo pipefail
-          jar="$RUNNER_TEMP/google-java-format-2.0.0-all-deps.jar"
-          java_args=(
-            --add-exports jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED
-            --add-exports jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED
-            --add-exports jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
-            --add-exports jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
-            --add-exports jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED
-          )
-          fixture_dir="$(mktemp -d "$GITHUB_WORKSPACE/.gjf-smoke.XXXXXX")"
-          trap 'rm -rf "$fixture_dir"' EXIT
-          formatted="$fixture_dir/Formatted.java"
-          formatted_second="$fixture_dir/FormattedSecond.java"
-          unformatted="$fixture_dir/Unformatted.java"
-          cat > "$formatted" <<'EOF'
+          # Fixtures use the same discovery function and xargs production handoff.
+          fixture_root="$GITHUB_WORKSPACE/.gjf-smoke"
+          rm -rf "$fixture_root"
+          mkdir -p "$fixture_root/formatted" "$fixture_root/mixed"
+          trap 'rm -rf "$fixture_root"' EXIT
+          cat > "$fixture_root/formatted/Formatted.java" <<'EOF'
           final class Formatted {
             void run() {
               System.out.println("formatted");
             }
           }
           EOF
-          cat > "$formatted_second" <<'EOF'
+          cat > "$fixture_root/formatted/FormattedSecond.java" <<'EOF'
           final class FormattedSecond {
             void run() {
               System.out.println("second formatted file");
             }
           }
           EOF
-          printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$unformatted"
+          cp "$fixture_root/formatted/Formatted.java" "$fixture_root/mixed/Formatted.java"
+          cp "$fixture_root/formatted/FormattedSecond.java" "$fixture_root/mixed/FormattedSecond.java"
+          printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$fixture_root/mixed/Unformatted.java"
 
-          # The formatted-only manifest must pass and process every entry.
-          formatted_sources="$RUNNER_TEMP/glafira-formatter-formatted.nul"
-          printf '%s\0' "$formatted" "$formatted_second" | sort -z > "$formatted_sources"
-          mapfile -d '' -t formatted_files < "$formatted_sources"
-          [[ "${#formatted_files[@]}" -eq 2 ]]
-          formatted_expected="$fixture_dir/formatted.expected"
-          formatted_output="$fixture_dir/formatted.stdout"
+          formatted_manifest="$RUNNER_TEMP/glafira-formatter-formatted.nul"
+          formatted_count="$(discover_java_sources "$fixture_root/formatted" "$formatted_manifest")"
+          [[ "$formatted_count" == "2" ]]
+          formatted_expected="$RUNNER_TEMP/glafira-formatter-formatted.expected"
+          formatted_actual="$RUNNER_TEMP/glafira-formatter-formatted.actual"
           : > "$formatted_expected"
-          for source in "${formatted_files[@]}"; do
+          while IFS= read -r -d '' source; do
             java "${java_args[@]}" -jar "$jar" "$source" >> "$formatted_expected"
-          done
-          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$formatted_sources" > "$formatted_output"
-          if ! cmp -s "$formatted_expected" "$formatted_output"; then
-            echo "::error::Formatted production manifest was not fully accepted or one of its sources was skipped."
-            diff -u "$formatted_expected" "$formatted_output" || true
+          done < "$formatted_manifest"
+          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$formatted_manifest" > "$formatted_actual"
+          if ! cmp -s "$formatted_expected" "$formatted_actual"; then
+            echo "::error::Formatted-only production manifest was rejected or a source was skipped. Expected/actual output is base64-encoded."
+            printf 'expected_base64='; base64 -w0 "$formatted_expected"; printf '\n'
+            printf 'actual_base64='; base64 -w0 "$formatted_actual"; printf '\n'
             exit 1
           fi
 
-          # The mixed manifest follows the exact sorted NUL-discovery + xargs production handoff.
-          smoke_sources="$RUNNER_TEMP/glafira-formatter-smoke.nul"
-          find "$fixture_dir" -type f -name '*.java' -print0 | sort -z > "$smoke_sources"
-          mapfile -d '' -t smoke_files < "$smoke_sources"
-          [[ "${#smoke_files[@]}" -eq 3 ]]
-          [[ "${smoke_files[0]}" == "$formatted" ]]
-          [[ "${smoke_files[1]}" == "$formatted_second" ]]
-          [[ "${smoke_files[2]}" == "$unformatted" ]]
-          mixed_expected="$fixture_dir/mixed.expected"
-          mixed_output="$fixture_dir/mixed.stdout"
-          mixed_error="$fixture_dir/mixed.stderr"
+          mixed_manifest="$RUNNER_TEMP/glafira-formatter-mixed.nul"
+          mixed_count="$(discover_java_sources "$fixture_root/mixed" "$mixed_manifest")"
+          [[ "$mixed_count" == "3" ]]
+          mixed_expected="$RUNNER_TEMP/glafira-formatter-mixed.expected"
+          mixed_actual="$RUNNER_TEMP/glafira-formatter-mixed.actual"
+          mixed_stderr="$RUNNER_TEMP/glafira-formatter-mixed.stderr"
           : > "$mixed_expected"
-          for source in "${smoke_files[@]}"; do
+          while IFS= read -r -d '' source; do
             java "${java_args[@]}" -jar "$jar" "$source" >> "$mixed_expected"
-          done
+          done < "$mixed_manifest"
           set +e
-          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$smoke_sources" > "$mixed_output" 2> "$mixed_error"
+          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$mixed_manifest" > "$mixed_actual" 2> "$mixed_stderr"
           mixed_status=$?
           set -e
-          if [[ "$mixed_status" -ne 123 ]] || ! cmp -s "$mixed_expected" "$mixed_output"; then
-            echo "::error::Production formatter handoff did not process the complete mixed manifest and reject its unformatted third entry (xargs exit=$mixed_status)."
-            cat "$mixed_error"
-            diff -u "$mixed_expected" "$mixed_output" || true
+          if [[ "$mixed_status" -ne 123 ]] || ! cmp -s "$mixed_expected" "$mixed_actual"; then
+            echo "::error::Mixed production manifest did not process all sources and reject its unformatted third entry (xargs exit=$mixed_status). Diagnostics are base64-encoded."
+            printf 'expected_base64='; base64 -w0 "$mixed_expected"; printf '\n'
+            printf 'actual_base64='; base64 -w0 "$mixed_actual"; printf '\n'
+            printf 'stderr_base64='; base64 -w0 "$mixed_stderr"; printf '\n'
             exit 1
           fi
 
-          # Keep a single-file oracle for the expected formatter rejection behavior.
-          expected="$fixture_dir/single.expected"
-          actual="$fixture_dir/single.actual"
-          formatter_error="$fixture_dir/formatter.stderr"
-          java "${java_args[@]}" -jar "$jar" "$unformatted" > "$expected"
-          if java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$unformatted" > "$actual" 2> "$formatter_error"; then
-            echo "::error::Google Java Format unexpectedly accepted the unformatted fixture."
+          # Independent single-file oracle: expected style rejection must be exit 1, not an unrelated error.
+          single_expected="$RUNNER_TEMP/glafira-formatter-single.expected"
+          single_actual="$RUNNER_TEMP/glafira-formatter-single.actual"
+          single_stderr="$RUNNER_TEMP/glafira-formatter-single.stderr"
+          java "${java_args[@]}" -jar "$jar" "$fixture_root/mixed/Unformatted.java" > "$single_expected"
+          set +e
+          java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$fixture_root/mixed/Unformatted.java" > "$single_actual" 2> "$single_stderr"
+          single_status=$?
+          set -e
+          if [[ "$single_status" -ne 1 ]] || [[ -s "$single_stderr" ]] || ! cmp -s "$single_expected" "$single_actual"; then
+            echo "::error::Single-file formatter oracle did not produce the expected style rejection (exit=$single_status). Diagnostics are base64-encoded."
+            printf 'expected_base64='; base64 -w0 "$single_expected"; printf '\n'
+            printf 'actual_base64='; base64 -w0 "$single_actual"; printf '\n'
+            printf 'stderr_base64='; base64 -w0 "$single_stderr"; printf '\n'
             exit 1
-          else
-            status=$?
           fi
-          if [[ "$status" -ne 1 ]] || [[ -s "$formatter_error" ]] || ! cmp -s "$expected" "$actual"; then
-            echo "::error::Formatter did not produce the expected formatted output and exit code (exit=$status)."
-            cat "$formatter_error"
-            diff -u "$expected" "$actual" || true
-            exit 1
-          fi
-          echo "Formatter regression smoke passed: formatted-only manifest accepted, every mixed-manifest source processed, and the unformatted third entry rejected."
+          echo "Formatter regression smoke passed: positive manifest accepted; mixed production manifest processed every file and rejected the unformatted source; singleton oracle confirmed the expected style exit."
