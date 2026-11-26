@@ -26,20 +26,18 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class GlafiraCoreBackupCoordinatorInstrumentedTest {
-    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val appContext: Context = ApplicationProvider.getApplicationContext()
+    private lateinit var context: Context
+    private lateinit var testRoot: File
     private lateinit var store: GlafiraTaskStore
 
     @Before
     fun setUp() = runBlocking {
-        val runtime = GlafiraCoreRuntimeOwner.get(context)
+        val runtime = GlafiraCoreRuntimeOwner.get(appContext)
         assertEquals(GlafiraCoreRuntimeEnablementMutation.PAUSED, runtime.setEnabled(false))
         cancelAndAwaitCoreWorkers()
-        withFixtureLocks {
-            synchronized(runtime.taskStore) {
-                runtime.taskStore.close()
-                context.deleteDatabase(DATABASE_NAME)
-            }
-        }
+        testRoot = File(appContext.cacheDir, "glafira-backup-test-${UUID.randomUUID()}").apply { check(mkdirs()) }
+        context = IsolatedBackupTestContext(appContext, testRoot)
         store = GlafiraTaskStore(context)
     }
 
@@ -47,13 +45,25 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     fun tearDown(): Unit = runBlocking<Unit> {
         if (::store.isInitialized) store.close()
         cancelAndAwaitCoreWorkers()
-        val runtime = GlafiraCoreRuntimeOwner.get(context)
-        withFixtureLocks {
-            synchronized(runtime.taskStore) {
-                runtime.taskStore.close()
-                context.deleteDatabase(DATABASE_NAME)
-            }
-        }
+        check(testRoot.deleteRecursively())
+    }
+
+    private class IsolatedBackupTestContext(base: Context, private val root: File) : ContextWrapper(base) {
+        private val databases = File(root, "databases").apply { mkdirs() }
+        private val files = File(root, "files").apply { mkdirs() }
+        private val noBackup = File(root, "no-backup").apply { mkdirs() }
+        private val cache = File(root, "cache").apply { mkdirs() }
+        override fun getApplicationContext(): Context = this
+        override fun getDatabasePath(name: String): File = File(databases, name)
+        override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?) =
+            android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name).absolutePath, factory)
+        override fun deleteDatabase(name: String): Boolean = getDatabasePath(name).delete()
+        override fun databaseList(): Array<String> = databases.list()?.toTypedArray() ?: emptyArray()
+        override fun getFilesDir(): File = files
+        override fun getNoBackupFilesDir(): File = noBackup
+        override fun getCacheDir(): File = cache
+        override fun getSharedPreferences(name: String, mode: Int) =
+            super.getSharedPreferences("${root.name}-$name", mode)
     }
 
     private suspend fun <T> withFixtureLocks(block: () -> T): T = withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
@@ -63,7 +73,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     private fun cancelAndAwaitCoreWorkers() {
-        val workManager = WorkManager.getInstance(context)
+        val workManager = WorkManager.getInstance(appContext)
         CORE_WORK_NAMES.forEach { name ->
             workManager.cancelUniqueWork(name).result.get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             assertTrue("Core worker $name must stop before fixture mutation",
@@ -829,7 +839,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
     companion object {
         private val V3_REENTRY_TEST_LOCK = Any()
-        private const val DATABASE_NAME = "glafira_core_tasks.db"
         private const val MAINTENANCE_TIMEOUT_MILLIS = 10_000L
         private const val WORKER_STOP_TIMEOUT_SECONDS = 10L
         private val CORE_WORK_NAMES = listOf("glafira-core-queue-drain", "glafira-core-queue-retry", "glafira-core-queue-network")
