@@ -76,23 +76,53 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           repo="$1"
-          if prs="$(gh pr list --repo "$repo" --state open --limit 100 --json number,title,headRefName,headRefOid,baseRefOid,isDraft,url,statusCheckRollup 2>/dev/null)"; then
-            jq -e 'type == "array"' >/dev/null <<< "$prs"
-            printf '%s\n' "$prs"
+          query='query($endCursor: String) {
+            repository(owner: "micronizationlab", name: "glafira-ai-hub") {
+              pullRequests(first: 100, after: $endCursor, states: OPEN) {
+                pageInfo { hasNextPage endCursor }
+                nodes {
+                  number title headRefName headRefOid baseRefOid isDraft url
+                  statusCheckRollup { contexts(first: 100) { nodes {
+                    __typename
+                    ... on CheckRun { name status conclusion detailsUrl }
+                    ... on StatusContext { context state targetUrl }
+                  } } }
+                }
+              }
+            }
+          }'
+          if pages="$(gh api graphql --paginate -f query="$query" 2>/dev/null)"; then
+            jq -s '[
+              .[].data.repository.pullRequests.nodes[] |
+              {
+                number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
+                statusCheckRollup: [
+                  .statusCheckRollup.contexts.nodes[]? |
+                  {
+                    name: (.name // .context // "check"),
+                    status: (.status // .state // "unknown"),
+                    conclusion: (.conclusion // null),
+                    detailsUrl: (.detailsUrl // .targetUrl // "")
+                  }
+                ]
+              }
+            ]' <<< "$pages"
             exit 0
           fi
-          rest_prs="$(gh api "repos/$repo/pulls?state=open&per_page=100")"
-          jq -e 'type == "array"' >/dev/null <<< "$rest_prs"
-          jq '[.[] | {
-            number: .number,
-            title: .title,
-            headRefName: .head.ref,
-            headRefOid: .head.sha,
-            baseRefOid: .base.sha,
-            isDraft: .draft,
-            url: .html_url,
-            statusCheckRollup: []
-          }]' <<< "$rest_prs"
+          # REST fallback retains exact head/base identity and paginates all open PRs.
+          rest_pages="$(gh api --paginate "repos/$repo/pulls?state=open&per_page=100")"
+          jq -s '[
+            add[] |
+            {
+              number, title,
+              headRefName: .head.ref,
+              headRefOid: .head.sha,
+              baseRefOid: .base.sha,
+              isDraft: .draft,
+              url: .html_url,
+              statusCheckRollup: []
+            }
+          ]' <<< "$rest_pages"
           FETCH
           cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
           #!/usr/bin/env bash
