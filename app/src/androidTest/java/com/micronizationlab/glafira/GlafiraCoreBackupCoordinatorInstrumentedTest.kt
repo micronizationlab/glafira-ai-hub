@@ -39,6 +39,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         testRoot = File(appContext.cacheDir, "glafira-backup-test-${UUID.randomUUID()}").apply { check(mkdirs()) }
         context = IsolatedBackupTestContext(appContext, testRoot)
         store = GlafiraTaskStore(context)
+        check(store.writableDatabase.path == File(File(testRoot, "databases"), "glafira_core_tasks.db").absolutePath) {
+            "Backup instrumentation store must be isolated from the app database."
+        }
     }
     @After
     fun tearDown(): Unit = runBlocking<Unit> {
@@ -52,9 +55,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         private val files = File(root, "files").apply { mkdirs() }; private val noBackup = File(root, "no-backup").apply { mkdirs() }; private val cache = File(root, "cache").apply { mkdirs() }
         override fun getApplicationContext(): Context = this
         override fun getDatabasePath(name: String): File = File(databases, name)
-        override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?) =
+        override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?, errorHandler: android.database.DatabaseErrorHandler?) =
             android.database.sqlite.SQLiteDatabase.openDatabase(
-                getDatabasePath(name).absolutePath, factory, android.database.sqlite.SQLiteDatabase.CREATE_IF_NECESSARY
+                getDatabasePath(name).absolutePath, factory, android.database.sqlite.SQLiteDatabase.CREATE_IF_NECESSARY, errorHandler
             )
         override fun deleteDatabase(name: String): Boolean = getDatabasePath(name).delete()
         override fun databaseList(): Array<String> = databases.list() ?: emptyArray()
