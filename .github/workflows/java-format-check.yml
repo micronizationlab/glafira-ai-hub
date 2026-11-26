@@ -44,7 +44,7 @@ jobs:
           grep -Fq "Version 2.0.0" <<< "$version"
           echo "Verified $version"
 
-      - name: Discover, validate and format-check Java sources
+      - name: Discover and validate Java sources with shared production gate
         shell: bash
         run: |
           set -euo pipefail
@@ -58,54 +58,111 @@ jobs:
           )
 
           discover_java_sources() {
-            local root="$1"
-            local output="$2"
-            local symlink
-            symlink="$(find "$root" -type l -name '*.java' -not -path '*/.git/*' -print -quit)" || return $?
-            if [[ -n "$symlink" ]]; then
-              echo "::error::Java source symlinks are unsupported and must be handled explicitly."
-              return 1
+            local root="$1" output="$2"
+            local symlink='' status=0 err="$RUNNER_TEMP/glafira-java-discovery.stderr"
+            : > "$err"
+            set +e
+            symlink="$(find "$root" -type l -name '*.java' -not -path '*/.git/*' -print -quit 2>"$err")"
+            status=$?
+            set -e
+            if [[ "$status" -ne 0 ]]; then
+              printf 'Java symlink discovery failed; diagnostic_base64=' >&2
+              base64 -w0 "$err" >&2
+              printf '\n' >&2
+              return "$status"
             fi
-            find "$root" -type f -name '*.java' -not -path '*/.git/*' -print0 | sort -z > "$output" || return $?
-            mapfile -d '' -t discovered < "$output" || return $?
+            if [[ -n "$symlink" ]]; then
+              printf 'Java source symlink detected; source path redacted.\n' >&2
+              return 21
+            fi
+            : > "$err"
+            set +e
+            find "$root" -type f -name '*.java' -not -path '*/.git/*' -print0 2>"$err" | sort -z > "$output"
+            status=$?
+            set -e
+            if [[ "$status" -ne 0 ]]; then
+              printf 'Java source discovery/sort failed; diagnostic_base64=' >&2
+              base64 -w0 "$err" >&2
+              printf '\n' >&2
+              return "$status"
+            fi
+            local -a discovered=()
+            if ! mapfile -d '' -t discovered < "$output"; then
+              printf 'Java source manifest could not be read.\n' >&2
+              return 22
+            fi
+            local source
             for source in "${discovered[@]}"; do
               if [[ "$source" =~ [[:space:]] ]]; then
-                echo "::error::Java source paths containing whitespace are unsupported."
-                return 1
-              fi
-              if ! printf '%s' "$source" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
-                echo "::error::Java source paths must round-trip through UTF-8 before invoking the formatter."
-                return 1
+                printf 'Java source path contains unsupported whitespace; source path redacted.\n' >&2
+                return 23
               fi
             done
+            : > "$err"
+            if ! iconv -f UTF-8 -t UTF-8 < "$output" > /dev/null 2>"$err"; then
+              printf 'Java source manifest is not valid UTF-8; diagnostic_base64=' >&2
+              base64 -w0 "$err" >&2
+              printf '\n' >&2
+              return 24
+            fi
             printf '%s\n' "${#discovered[@]}"
           }
 
-          # Production discovery and handoff.
-          source_list="$RUNNER_TEMP/glafira-java-sources.nul"
-          source_count="$(discover_java_sources . "$source_list")"
-          if [[ "$source_count" == "0" ]]; then
-            echo "::notice::Google Java Format: NOT_APPLICABLE (no Java source files discovered)."
+          format_check_manifest() {
+            local manifest="$1" stdout_file="$2" stderr_file="$3" status=0
+            xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$manifest" > "$stdout_file" 2> "$stderr_file" || status=$?
+            return "$status"
+          }
+
+          run_format_gate() {
+            local root="$1" manifest="$2" stdout_file="$3" stderr_file="$4" result_file="$5"
+            local count status=0
+            if count="$(discover_java_sources "$root" "$manifest")"; then
+              :
+            else
+              status=$?
+              printf 'DISCOVERY_ERROR\n' > "$result_file"
+              return "$status"
+            fi
+            if [[ "$count" == "0" ]]; then
+              printf 'NOT_APPLICABLE\n' > "$result_file"
+              return 0
+            fi
+            if format_check_manifest "$manifest" "$stdout_file" "$stderr_file"; then
+              printf '0\n' > "$result_file"
+              return 0
+            else
+              status=$?
+              printf '%s\n' "$status" > "$result_file"
+              return "$status"
+            fi
+          }
+
+          # Actual repository gate uses the same discovery, empty-tree decision and manifest formatter as every fixture.
+          production_manifest="$RUNNER_TEMP/glafira-java-sources.nul"
+          production_stdout="$RUNNER_TEMP/glafira-java-format.stdout"
+          production_stderr="$RUNNER_TEMP/glafira-java-format.stderr"
+          production_result="$RUNNER_TEMP/glafira-java-format.result"
+          if run_format_gate . "$production_manifest" "$production_stdout" "$production_stderr" "$production_result"; then
+            if [[ "$(cat "$production_result")" == "NOT_APPLICABLE" ]]; then
+              echo "::notice::Google Java Format: NOT_APPLICABLE (no Java source files discovered); the validation job itself completed."
+            fi
           else
-            production_stdout="$RUNNER_TEMP/glafira-java-format.stdout"
-            production_stderr="$RUNNER_TEMP/glafira-java-format.stderr"
-            set +e
-            xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$source_list" > "$production_stdout" 2> "$production_stderr"
             production_status=$?
-            set -e
-            if [[ "$production_status" -ne 0 ]]; then
+            if [[ "$(cat "$production_result")" == "DISCOVERY_ERROR" ]]; then
+              echo "::error::Java source discovery failed; inspect the base64 diagnostic above."
+            else
               echo "::error::Google Java Format rejected one or more Java sources (exit=$production_status). Diagnostics are base64-encoded to keep PR source text inert."
               printf 'stdout_base64='; base64 -w0 "$production_stdout"; printf '\n'
               printf 'stderr_base64='; base64 -w0 "$production_stderr"; printf '\n'
-              exit "$production_status"
             fi
+            exit "$production_status"
           fi
 
-          # Fixtures use the same discovery function and xargs production handoff.
-          fixture_root="$GITHUB_WORKSPACE/.gjf-smoke"
-          rm -rf "$fixture_root"
-          mkdir -p "$fixture_root/formatted" "$fixture_root/mixed"
+          # Fixtures live only in a unique runner-temp directory; never remove a checkout-owned path.
+          fixture_root="$(mktemp -d "$RUNNER_TEMP/glafira-gjf-smoke.XXXXXX")"
           trap 'rm -rf "$fixture_root"' EXIT
+          mkdir -p "$fixture_root/formatted" "$fixture_root/mixed" "$fixture_root/single" "$fixture_root/empty" "$fixture_root/symlink"
           cat > "$fixture_root/formatted/Formatted.java" <<'EOF'
           final class Formatted {
             void run() {
@@ -123,77 +180,113 @@ jobs:
           cp "$fixture_root/formatted/Formatted.java" "$fixture_root/mixed/Formatted.java"
           cp "$fixture_root/formatted/FormattedSecond.java" "$fixture_root/mixed/FormattedSecond.java"
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$fixture_root/mixed/Unformatted.java"
+          cp "$fixture_root/mixed/Unformatted.java" "$fixture_root/single/Unformatted.java"
 
-          # Discovery failures must propagate through command substitution; a missing root is not an empty source tree.
-          missing_status=0
-          discover_java_sources "$fixture_root/missing" "$RUNNER_TEMP/glafira-formatter-missing.nul" 2> "$RUNNER_TEMP/glafira-formatter-missing.stderr" || missing_status=$?
-          if [[ "$missing_status" -eq 0 ]]; then
-            echo "::error::Discovery unexpectedly accepted a missing source root."
+          # Expected manifests are independently constructed from the exact fixture paths.
+          formatted_expected_manifest="$RUNNER_TEMP/glafira-formatted.expected.nul"
+          printf '%s\0' "$fixture_root/formatted/Formatted.java" "$fixture_root/formatted/FormattedSecond.java" | sort -z > "$formatted_expected_manifest"
+          formatted_manifest="$RUNNER_TEMP/glafira-formatted.actual.nul"
+          formatted_stdout="$RUNNER_TEMP/glafira-formatted.stdout"
+          formatted_stderr="$RUNNER_TEMP/glafira-formatted.stderr"
+          formatted_result="$RUNNER_TEMP/glafira-formatted.result"
+          if run_format_gate "$fixture_root/formatted" "$formatted_manifest" "$formatted_stdout" "$formatted_stderr" "$formatted_result"; then formatted_status=0; else formatted_status=$?; fi
+          if [[ "$formatted_status" -ne 0 ]] || [[ "$(cat "$formatted_result")" != "0" ]] || ! cmp -s "$formatted_expected_manifest" "$formatted_manifest"; then
+            echo "::error::Formatted-only manifest was not accepted with the exact two expected sources."
+            printf 'expected_manifest_base64='; base64 -w0 "$formatted_expected_manifest"; printf '\n'
+            printf 'actual_manifest_base64='; base64 -w0 "$formatted_manifest"; printf '\n'
+            printf 'stdout_base64='; base64 -w0 "$formatted_stdout"; printf '\n'
+            printf 'stderr_base64='; base64 -w0 "$formatted_stderr"; printf '\n'
             exit 1
           fi
-          # A Java symlink is rejected rather than silently counted as zero sources.
-          mkdir -p "$fixture_root/symlink"
-          ln -s "$fixture_root/formatted/Formatted.java" "$fixture_root/symlink/Linked.java"
-          symlink_status=0
-          discover_java_sources "$fixture_root/symlink" "$RUNNER_TEMP/glafira-formatter-symlink.nul" 2> "$RUNNER_TEMP/glafira-formatter-symlink.stderr" || symlink_status=$?
-          if [[ "$symlink_status" -eq 0 ]]; then
-            echo "::error::Discovery unexpectedly accepted a Java symlink."
-            exit 1
-          fi
-
-                    formatted_manifest="$RUNNER_TEMP/glafira-formatter-formatted.nul"
-          formatted_count="$(discover_java_sources "$fixture_root/formatted" "$formatted_manifest")"
-          [[ "$formatted_count" == "2" ]]
-          formatted_expected="$RUNNER_TEMP/glafira-formatter-formatted.expected"
-          formatted_actual="$RUNNER_TEMP/glafira-formatter-formatted.actual"
+          formatted_expected="$RUNNER_TEMP/glafira-formatted.expected"
           : > "$formatted_expected"
-          while IFS= read -r -d '' source; do
-            java "${java_args[@]}" -jar "$jar" "$source" >> "$formatted_expected"
-          done < "$formatted_manifest"
-          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$formatted_manifest" > "$formatted_actual"
-          if ! cmp -s "$formatted_expected" "$formatted_actual"; then
-            echo "::error::Formatted-only production manifest was rejected or a source was skipped. Expected/actual output is base64-encoded."
+          java "${java_args[@]}" -jar "$jar" "$fixture_root/formatted/Formatted.java" >> "$formatted_expected"
+          java "${java_args[@]}" -jar "$jar" "$fixture_root/formatted/FormattedSecond.java" >> "$formatted_expected"
+          if ! cmp -s "$formatted_expected" "$formatted_stdout"; then
+            echo "::error::Formatted-only manifest output differs from independently formatted fixtures."
             printf 'expected_base64='; base64 -w0 "$formatted_expected"; printf '\n'
-            printf 'actual_base64='; base64 -w0 "$formatted_actual"; printf '\n'
+            printf 'actual_base64='; base64 -w0 "$formatted_stdout"; printf '\n'
             exit 1
           fi
 
-          mixed_manifest="$RUNNER_TEMP/glafira-formatter-mixed.nul"
-          mixed_count="$(discover_java_sources "$fixture_root/mixed" "$mixed_manifest")"
-          [[ "$mixed_count" == "3" ]]
-          mixed_expected="$RUNNER_TEMP/glafira-formatter-mixed.expected"
-          mixed_actual="$RUNNER_TEMP/glafira-formatter-mixed.actual"
-          mixed_stderr="$RUNNER_TEMP/glafira-formatter-mixed.stderr"
-          : > "$mixed_expected"
-          while IFS= read -r -d '' source; do
-            java "${java_args[@]}" -jar "$jar" "$source" >> "$mixed_expected"
-          done < "$mixed_manifest"
-          set +e
-          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$mixed_manifest" > "$mixed_actual" 2> "$mixed_stderr"
-          mixed_status=$?
-          set -e
-          if [[ "$mixed_status" -ne 123 ]] || [[ -s "$mixed_stderr" ]] || ! cmp -s "$mixed_expected" "$mixed_actual"; then
-            echo "::error::Mixed production manifest did not process all sources and reject its unformatted third entry (xargs exit=$mixed_status). Diagnostics are base64-encoded."
-            printf 'expected_base64='; base64 -w0 "$mixed_expected"; printf '\n'
-            printf 'actual_base64='; base64 -w0 "$mixed_actual"; printf '\n'
+          mixed_expected_manifest="$RUNNER_TEMP/glafira-mixed.expected.nul"
+          printf '%s\0' "$fixture_root/mixed/Formatted.java" "$fixture_root/mixed/FormattedSecond.java" "$fixture_root/mixed/Unformatted.java" | sort -z > "$mixed_expected_manifest"
+          mixed_manifest="$RUNNER_TEMP/glafira-mixed.actual.nul"
+          mixed_stdout="$RUNNER_TEMP/glafira-mixed.stdout"
+          mixed_stderr="$RUNNER_TEMP/glafira-mixed.stderr"
+          mixed_result="$RUNNER_TEMP/glafira-mixed.result"
+          if run_format_gate "$fixture_root/mixed" "$mixed_manifest" "$mixed_stdout" "$mixed_stderr" "$mixed_result"; then mixed_status=0; else mixed_status=$?; fi
+          if [[ "$mixed_status" -ne 123 ]] || [[ "$(cat "$mixed_result")" != "123" ]] || [[ -s "$mixed_stderr" ]] || ! cmp -s "$mixed_expected_manifest" "$mixed_manifest"; then
+            echo "::error::Mixed manifest did not process the exact three sources and reject the unformatted third file (exit=$mixed_status)."
+            printf 'expected_manifest_base64='; base64 -w0 "$mixed_expected_manifest"; printf '\n'
+            printf 'actual_manifest_base64='; base64 -w0 "$mixed_manifest"; printf '\n'
+            printf 'stdout_base64='; base64 -w0 "$mixed_stdout"; printf '\n'
             printf 'stderr_base64='; base64 -w0 "$mixed_stderr"; printf '\n'
             exit 1
           fi
+          mixed_expected="$RUNNER_TEMP/glafira-mixed.expected"
+          : > "$mixed_expected"
+          java "${java_args[@]}" -jar "$jar" "$fixture_root/mixed/Formatted.java" >> "$mixed_expected"
+          java "${java_args[@]}" -jar "$jar" "$fixture_root/mixed/FormattedSecond.java" >> "$mixed_expected"
+          java "${java_args[@]}" -jar "$jar" "$fixture_root/mixed/Unformatted.java" >> "$mixed_expected"
+          if ! cmp -s "$mixed_expected" "$mixed_stdout"; then
+            echo "::error::Mixed manifest output differs from independently formatted fixtures; a source may have been skipped."
+            printf 'expected_base64='; base64 -w0 "$mixed_expected"; printf '\n'
+            printf 'actual_base64='; base64 -w0 "$mixed_stdout"; printf '\n'
+            exit 1
+          fi
 
-          # Independent single-file oracle: expected style rejection must be exit 1, not an unrelated error.
-          single_expected="$RUNNER_TEMP/glafira-formatter-single.expected"
-          single_actual="$RUNNER_TEMP/glafira-formatter-single.actual"
-          single_stderr="$RUNNER_TEMP/glafira-formatter-single.stderr"
-          java "${java_args[@]}" -jar "$jar" "$fixture_root/mixed/Unformatted.java" > "$single_expected"
-          set +e
-          java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$fixture_root/mixed/Unformatted.java" > "$single_actual" 2> "$single_stderr"
-          single_status=$?
-          set -e
-          if [[ "$single_status" -ne 1 ]] || [[ -s "$single_stderr" ]] || ! cmp -s "$single_expected" "$single_actual"; then
-            echo "::error::Single-file formatter oracle did not produce the expected style rejection (exit=$single_status). Diagnostics are base64-encoded."
-            printf 'expected_base64='; base64 -w0 "$single_expected"; printf '\n'
-            printf 'actual_base64='; base64 -w0 "$single_actual"; printf '\n'
+          single_expected_manifest="$RUNNER_TEMP/glafira-single.expected.nul"
+          printf '%s\0' "$fixture_root/single/Unformatted.java" > "$single_expected_manifest"
+          single_manifest="$RUNNER_TEMP/glafira-single.actual.nul"
+          single_stdout="$RUNNER_TEMP/glafira-single.stdout"
+          single_stderr="$RUNNER_TEMP/glafira-single.stderr"
+          single_result="$RUNNER_TEMP/glafira-single.result"
+          if run_format_gate "$fixture_root/single" "$single_manifest" "$single_stdout" "$single_stderr" "$single_result"; then single_status=0; else single_status=$?; fi
+          if [[ "$single_status" -ne 123 ]] || [[ "$(cat "$single_result")" != "123" ]] || [[ -s "$single_stderr" ]] || ! cmp -s "$single_expected_manifest" "$single_manifest"; then
+            echo "::error::Single-file manifest did not produce the expected style rejection (exit=$single_status)."
+            printf 'expected_manifest_base64='; base64 -w0 "$single_expected_manifest"; printf '\n'
+            printf 'actual_manifest_base64='; base64 -w0 "$single_manifest"; printf '\n'
+            printf 'stdout_base64='; base64 -w0 "$single_stdout"; printf '\n'
             printf 'stderr_base64='; base64 -w0 "$single_stderr"; printf '\n'
             exit 1
           fi
-          echo "Formatter regression smoke passed: positive manifest accepted; mixed production manifest processed every file and rejected the unformatted source; singleton oracle confirmed the expected style exit."
+          single_expected="$RUNNER_TEMP/glafira-single.expected"
+          java "${java_args[@]}" -jar "$jar" "$fixture_root/single/Unformatted.java" > "$single_expected"
+          if ! cmp -s "$single_expected" "$single_stdout"; then
+            echo "::error::Single-file formatter output differs from independent canonical output."
+            printf 'expected_base64='; base64 -w0 "$single_expected"; printf '\n'
+            printf 'actual_base64='; base64 -w0 "$single_stdout"; printf '\n'
+            exit 1
+          fi
+
+          # The production caller must distinguish an empty tree from discovery failure.
+          empty_manifest="$RUNNER_TEMP/glafira-empty.nul"
+          empty_stdout="$RUNNER_TEMP/glafira-empty.stdout"
+          empty_stderr="$RUNNER_TEMP/glafira-empty.stderr"
+          empty_result="$RUNNER_TEMP/glafira-empty.result"
+          if run_format_gate "$fixture_root/empty" "$empty_manifest" "$empty_stdout" "$empty_stderr" "$empty_result"; then empty_status=0; else empty_status=$?; fi
+          [[ "$empty_status" -eq 0 && "$(cat "$empty_result")" == "NOT_APPLICABLE" && ! -s "$empty_manifest" && ! -s "$empty_stdout" ]]
+
+          missing_manifest="$RUNNER_TEMP/glafira-missing.nul"
+          missing_stdout="$RUNNER_TEMP/glafira-missing.stdout"
+          missing_stderr="$RUNNER_TEMP/glafira-missing.stderr"
+          missing_result="$RUNNER_TEMP/glafira-missing.result"
+          if run_format_gate "$fixture_root/missing" "$missing_manifest" "$missing_stdout" "$missing_stderr" "$missing_result"; then missing_status=0; else missing_status=$?; fi
+          if [[ "$missing_status" -eq 0 ]] || [[ "$(cat "$missing_result")" != "DISCOVERY_ERROR" ]]; then
+            echo "::error::Missing-root discovery failure was incorrectly treated as an empty source tree."
+            exit 1
+          fi
+
+          ln -s "$fixture_root/formatted/Formatted.java" "$fixture_root/symlink/Linked.java"
+          symlink_manifest="$RUNNER_TEMP/glafira-symlink.nul"
+          symlink_stdout="$RUNNER_TEMP/glafira-symlink.stdout"
+          symlink_stderr="$RUNNER_TEMP/glafira-symlink.stderr"
+          symlink_result="$RUNNER_TEMP/glafira-symlink.result"
+          if run_format_gate "$fixture_root/symlink" "$symlink_manifest" "$symlink_stdout" "$symlink_stderr" "$symlink_result"; then symlink_status=0; else symlink_status=$?; fi
+          if [[ "$symlink_status" -eq 0 ]] || [[ "$(cat "$symlink_result")" != "DISCOVERY_ERROR" ]]; then
+            echo "::error::Symlink-only discovery was incorrectly treated as an empty source tree."
+            exit 1
+          fi
+
+          echo "Formatter regression smoke passed: exact positive, mixed, singleton, empty-tree, missing-root and symlink fixtures used the same production discovery and manifest formatter functions."
