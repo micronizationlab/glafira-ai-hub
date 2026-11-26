@@ -32,6 +32,15 @@ jobs:
         run: |
           set -euo pipefail
           source_list="$RUNNER_TEMP/java-sources.nul"
+          symlink_list="$RUNNER_TEMP/java-symlinks.nul"
+          if ! find . -type l -name '*.java' -not -path './.git/*' -print0 > "$symlink_list"; then
+            echo "::error::Unable to enumerate Java source symlinks; refusing to skip formatting."
+            exit 1
+          fi
+          if [[ -s "$symlink_list" ]]; then
+            echo "::error::Java source symlinks are not supported; replace them with regular source files."
+            exit 1
+          fi
           if ! find . -type f -name '*.java' -not -path './.git/*' -print0 > "$source_list"; then
             echo "::error::Unable to enumerate Java source files; refusing to skip formatting."
             exit 1
@@ -63,7 +72,7 @@ jobs:
 
       - name: Check Google Java Style
         if: steps.java-sources.outputs.count != '0'
-        uses: ryanbascom/googlejavaformat@v5
+        uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c # v5
         with:
           args: "--set-exit-if-changed"
           files: "${{ steps.java-sources.outputs.files }}"
