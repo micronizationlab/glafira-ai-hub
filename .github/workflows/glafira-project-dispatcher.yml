@@ -50,6 +50,7 @@ jobs:
             title="$(jq -r '.title // ""' <<< "$pr" | tr '|' '/')"
             branch="$(jq -r '.headRefName // ""' <<< "$pr")"
             sha="$(jq -r '.headRefOid // ""' <<< "$pr")"
+            base_sha="$(jq -r '.baseRefOid // ""' <<< "$pr")"
             draft="$(jq -r '.isDraft // false' <<< "$pr")"
             url="$(jq -r '.url // ""' <<< "$pr")"
             checks="$(jq -c '.statusCheckRollup // []' <<< "$pr")"
@@ -58,9 +59,9 @@ jobs:
             elif ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$runs"; then
               ci="UNKNOWN / ACTIONS API UNAVAILABLE"
             else
-              matching="$(jq -c --arg sha "$sha" '[.[] | select(.headSha == $sha)] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])' <<< "$runs")"
+              matching="$(jq -c --arg sha "$sha" --arg base "$base_sha" --argjson number "$number" '[.[] | select(.headSha == $sha) | select(any(.pullRequests[]?; .number == $number and (.base.sha // "") == $base)) | select(((.displayTitle // "") | startswith("METADATA_ONLY -")) | not)] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])' <<< "$runs")"
               if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
-                ci="NO MATCHING RUN FOR EXACT HEAD"
+                ci="NO MATCHING RUN FOR EXACT PR/HEAD/BASE"
               else
                 ci="$(jq -r 'map((.workflowName // .name // "workflow") + ": " + (if .status == "queued" then "QUEUED" elif .status == "in_progress" then "IN_PROGRESS" elif .status == "completed" then ("COMPLETED/" + (.conclusion // "UNKNOWN")) else "UNKNOWN/" + (.status // "missing") end) + " ([run](\(.url // "")))") | join("<br>")' <<< "$matching")"
               fi
@@ -74,12 +75,11 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           repo="$1"
-          if prs="$(gh pr list --repo "$repo" --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,url,statusCheckRollup 2>/dev/null)"; then
+          if prs="$(gh pr list --repo "$repo" --state open --limit 100 --json number,title,headRefName,headRefOid,baseRefOid,isDraft,url,statusCheckRollup 2>/dev/null)"; then
             jq -e 'type == "array"' >/dev/null <<< "$prs"
             printf '%s\n' "$prs"
             exit 0
           fi
-          # Recover the PR inventory with REST if GraphQL fails; API failure never means pass.
           rest_prs="$(gh api "repos/$repo/pulls?state=open&per_page=100")"
           jq -e 'type == "array"' >/dev/null <<< "$rest_prs"
           jq '[.[] | {
@@ -87,11 +87,18 @@ jobs:
             title: .title,
             headRefName: .head.ref,
             headRefOid: .head.sha,
+            baseRefOid: .base.sha,
             isDraft: .draft,
             url: .html_url,
             statusCheckRollup: []
           }]' <<< "$rest_prs"
           FETCH
+          cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          repo="$1"
+          gh api --paginate "repos/$repo/actions/runs?per_page=100" --jq '.workflow_runs[] | {headSha: .head_sha, workflowName: .name, displayTitle: .display_title, status, conclusion, createdAt: .created_at, url: .html_url, pullRequests: [.pull_requests[] | {number, base: {sha: .base.sha}}]}' | jq -s '.'
+          RUNS
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -100,34 +107,34 @@ jobs:
           trap 'rm -rf "$tmp"' EXIT
           cat > "$tmp/prs.json" <<'JSON'
           [
-            {"number":553,"title":"current exact head","headRefName":"docs/reconcile","headRefOid":"sha-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
+            {"number":553,"title":"current exact head","headRefName":"docs/reconcile","headRefOid":"sha-current","baseRefOid":"base-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
             {"number":554,"title":"stale only","headRefName":"feature/stale","headRefOid":"sha-new","isDraft":true,"url":"https://example.test/pr/554","statusCheckRollup":[]},
             {"number":555,"title":"rollup preferred","headRefName":"feature/rollup","headRefOid":"sha-rollup","isDraft":false,"url":"https://example.test/pr/555","statusCheckRollup":[{"name":"required","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]},
-            {"number":556,"title":"queued exact head","headRefName":"feature/queued","headRefOid":"sha-queued","isDraft":false,"url":"https://example.test/pr/556","statusCheckRollup":[]},
-            {"number":557,"title":"skipped exact head","headRefName":"feature/skipped","headRefOid":"sha-skipped","isDraft":false,"url":"https://example.test/pr/557","statusCheckRollup":[]},
-            {"number":558,"title":"in progress exact head","headRefName":"feature/in-progress","headRefOid":"sha-progress","isDraft":false,"url":"https://example.test/pr/558","statusCheckRollup":[]},
-            {"number":559,"title":"cancelled exact head","headRefName":"feature/cancelled","headRefOid":"sha-cancelled","isDraft":false,"url":"https://example.test/pr/559","statusCheckRollup":[]},
-            {"number":560,"title":"failed exact head","headRefName":"feature/failed","headRefOid":"sha-failed","isDraft":false,"url":"https://example.test/pr/560","statusCheckRollup":[]}
+            {"number":556,"title":"queued exact head","headRefName":"feature/queued","headRefOid":"sha-queued","baseRefOid":"base-queued","isDraft":false,"url":"https://example.test/pr/556","statusCheckRollup":[]},
+            {"number":557,"title":"skipped exact head","headRefName":"feature/skipped","headRefOid":"sha-skipped","baseRefOid":"base-skipped","isDraft":false,"url":"https://example.test/pr/557","statusCheckRollup":[]},
+            {"number":558,"title":"in progress exact head","headRefName":"feature/in-progress","headRefOid":"sha-progress","baseRefOid":"base-progress","isDraft":false,"url":"https://example.test/pr/558","statusCheckRollup":[]},
+            {"number":559,"title":"cancelled exact head","headRefName":"feature/cancelled","headRefOid":"sha-cancelled","baseRefOid":"base-cancelled","isDraft":false,"url":"https://example.test/pr/559","statusCheckRollup":[]},
+            {"number":560,"title":"failed exact head","headRefName":"feature/failed","headRefOid":"sha-failed","baseRefOid":"base-failed","isDraft":false,"url":"https://example.test/pr/560","statusCheckRollup":[]}, {"number":562,"title":"metadata run must not hide validation","headRefName":"feature/metadata","headRefOid":"sha-meta","baseRefOid":"base-meta-562","isDraft":false,"url":"https://example.test/pr/562","statusCheckRollup":[]}, {"number":563,"title":"same head different base","headRefName":"feature/other-base","headRefOid":"sha-meta","baseRefOid":"base-meta-563","isDraft":false,"url":"https://example.test/pr/563","statusCheckRollup":[]}
           ]
           JSON
           cat > "$tmp/runs.json" <<'JSON'
           [
-            {"headSha":"sha-current","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:00:00Z","url":"https://example.test/run/1"},
-            {"headSha":"sha-current","workflowName":"Dispatcher","name":"Dispatcher","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:01:00Z","url":"https://example.test/run/2"},
+            {"headSha":"sha-current","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:00:00Z","url":"https://example.test/run/1","pullRequests":[{"number":553,"base":{"sha":"base-current"}}]},
+            {"headSha":"sha-current","workflowName":"Dispatcher","name":"Dispatcher","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:01:00Z","url":"https://example.test/run/2","pullRequests":[{"number":553,"base":{"sha":"base-current"}}]},
             {"headSha":"sha-current","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T11:00:00Z","url":"https://example.test/run/old"},
             {"headSha":"sha-other","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:02:00Z","url":"https://example.test/run/stale"},
-            {"headSha":"sha-queued","workflowName":"Desktop CI","name":"Desktop CI","status":"queued","conclusion":null,"createdAt":"2026-11-24T12:03:00Z","url":"https://example.test/run/queued"},
-            {"headSha":"sha-skipped","workflowName":"iOS CI","name":"iOS CI","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:04:00Z","url":"https://example.test/run/skipped"},
-            {"headSha":"sha-progress","workflowName":"Desktop CI","name":"Desktop CI","status":"in_progress","conclusion":null,"createdAt":"2026-11-24T12:05:00Z","url":"https://example.test/run/progress"},
-            {"headSha":"sha-cancelled","workflowName":"Windows CI","name":"Windows CI","status":"completed","conclusion":"cancelled","createdAt":"2026-11-24T12:06:00Z","url":"https://example.test/run/cancelled"},
-            {"headSha":"sha-failed","workflowName":"Agent CI","name":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed"}
+            {"headSha":"sha-queued","workflowName":"Desktop CI","name":"Desktop CI","status":"queued","conclusion":null,"createdAt":"2026-11-24T12:03:00Z","url":"https://example.test/run/queued","pullRequests":[{"number":556,"base":{"sha":"base-queued"}}]},
+            {"headSha":"sha-skipped","workflowName":"iOS CI","name":"iOS CI","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:04:00Z","url":"https://example.test/run/skipped","pullRequests":[{"number":557,"base":{"sha":"base-skipped"}}]},
+            {"headSha":"sha-progress","workflowName":"Desktop CI","name":"Desktop CI","status":"in_progress","conclusion":null,"createdAt":"2026-11-24T12:05:00Z","url":"https://example.test/run/progress","pullRequests":[{"number":558,"base":{"sha":"base-progress"}}]},
+            {"headSha":"sha-cancelled","workflowName":"Windows CI","name":"Windows CI","status":"completed","conclusion":"cancelled","createdAt":"2026-11-24T12:06:00Z","url":"https://example.test/run/cancelled","pullRequests":[{"number":559,"base":{"sha":"base-cancelled"}}]},
+            {"headSha":"sha-failed","workflowName":"Agent CI","name":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed","pullRequests":[{"number":560,"base":{"sha":"base-failed"}}]}, {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/format-failed","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]}, {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"GLAFIRA Java Format Check","displayTitle":"METADATA_ONLY - PR metadata edit","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:08:00Z","url":"https://example.test/run/metadata-skipped","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]}, {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - other PR base","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:09:00Z","url":"https://example.test/run/other-base-success","pullRequests":[{"number":563,"base":{"sha":"base-meta-563"}}]}
           ]
           JSON
           output="$(bash "$renderer" "$tmp/prs.json" "$tmp/runs.json")"
           grep -q 'Android CI: COMPLETED/success' <<< "$output"
           grep -q 'Dispatcher: COMPLETED/success' <<< "$output"
-          ! grep -q 'COMPLETED/failure' <<< "$output"
-          grep -q 'NO MATCHING RUN FOR EXACT HEAD' <<< "$output"
+          metadata_row="$(grep -F '| [#562]' <<< "$output")"; [[ "$metadata_row" == *'GLAFIRA Java Format Check: COMPLETED/failure ([run](https://example.test/run/format-failed))'* && "$metadata_row" != *'metadata-skipped'* ]]; other_base_row="$(grep -F '| [#563]' <<< "$output")"; [[ "$other_base_row" == *'GLAFIRA Java Format Check: COMPLETED/success ([run](https://example.test/run/other-base-success))'* && "$other_base_row" != *'format-failed'* ]]
+          grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$output"
           grep -q 'required: COMPLETED/SUCCESS' <<< "$output"
           grep -q 'Desktop CI: QUEUED' <<< "$output"
           grep -q 'iOS CI: COMPLETED/skipped' <<< "$output"
@@ -145,7 +152,7 @@ jobs:
           fi
           if [[ "$1" == "api" ]]; then
             cat <<'JSON'
-          [{"number":561,"title":"REST fallback","draft":true,"html_url":"https://example.test/pr/561","head":{"ref":"rest/fallback","sha":"sha-rest"}}]
+          [{"number":561,"title":"REST fallback","draft":true,"html_url":"https://example.test/pr/561","head":{"ref":"rest/fallback","sha":"sha-rest"},"base":{"sha":"sha-rest-base"}}]
           JSON
             exit 0
           fi
@@ -153,7 +160,15 @@ jobs:
           GH
           chmod +x "$tmp/fake-bin/gh"
           rest_output="$(PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/fetch-open-prs.sh" micronizationlab/glafira-ai-hub)"
-          jq -e 'length == 1 and .[0].headRefOid == "sha-rest" and .[0].statusCheckRollup == []' <<< "$rest_output" >/dev/null
+          jq -e 'length == 1 and .[0].headRefOid == "sha-rest" and .[0].baseRefOid == "sha-rest-base" and .[0].statusCheckRollup == []' <<< "$rest_output" >/dev/null
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          [[ "$1" == "api" && "$2" == --paginate ]]
+          printf '%s\n' '{"workflow_runs":[{"head_sha":"sha-rest","name":"Dispatcher","display_title":"Validation","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run/rest","pull_requests":[{"number":561,"base":{"sha":"sha-rest-base"}}]}]}'
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          rest_runs="$(PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/fetch-workflow-runs.sh" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 1 and .[0].headSha == "sha-rest" and .[0].displayTitle == "Validation" and .[0].pullRequests[0].number == 561 and .[0].pullRequests[0].base.sha == "sha-rest-base"' <<< "$rest_runs" >/dev/null
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           echo "all PR inventory APIs unavailable" >&2
@@ -187,8 +202,7 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
-          # One batched Actions API query is the fallback when GraphQL statusCheckRollup is empty.
-          if runs="$(gh run list --repo "$GH_REPO" --limit 1000 --json headSha,name,workflowName,status,conclusion,url,createdAt 2>/dev/null)"; then
+          if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then
             printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           else
             printf 'null\n' > "$RUNNER_TEMP/glafira-workflow-runs.json"
@@ -211,5 +225,5 @@ jobs:
             echo "|---:|---|---|---|:---:|"
             bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
             echo ""
-            echo "Policy: match workflow runs only to the exact current PR head SHA. Older-head runs are not acceptance evidence. Skipped, cancelled, queued, partial or unknown states are not passes."
+            echo "Policy: when the check rollup is empty, match workflow runs only to the exact PR number, current head SHA and current base SHA. If the API cannot prove that association, report UNKNOWN. Older-head/base runs are not acceptance evidence. Skipped, cancelled, queued, partial or unknown states are not passes."
           } >> "$GITHUB_STEP_SUMMARY"
