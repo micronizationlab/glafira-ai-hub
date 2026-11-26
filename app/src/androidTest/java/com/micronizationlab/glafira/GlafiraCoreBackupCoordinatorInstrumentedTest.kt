@@ -77,6 +77,56 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
+    /**
+     * Owns the fixed rollback journal for a failure-path restore test. A generation marker is
+     * written only after proving the journal and installation-local rollback key are absent.
+     * Cleanup can therefore recover artifacts left by a prior failed run without deleting
+     * unowned recovery state.
+     */
+    private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val journalOwner = File(journal, "test-owner")
+        val owner = File(context.noBackupFilesDir, "glafira-portable-restore-test-owner")
+        val runId = UUID.randomUUID().toString()
+        val keyAlias = "glafira_core_rollback_v1"
+        fun keyExists() = KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias(keyAlias) }
+
+        withFixtureLocks {
+            if (owner.exists()) {
+                val previous = owner.readText(Charsets.UTF_8)
+                if (journal.exists()) {
+                    check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
+                    check(journal.deleteRecursively())
+                    if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                } else if (keyExists()) {
+                    GlafiraRollbackSnapshotCipher.deleteKey()
+                }
+                check(owner.delete())
+            }
+            check(!journal.exists()) { "Refusing to overwrite an unowned rollback journal." }
+            check(!keyExists()) { "Refusing to overwrite an unowned rollback key." }
+            owner.writeText(runId, Charsets.UTF_8)
+        }
+
+        try {
+            return block()
+        } finally {
+            withFixtureLocks {
+                if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
+                    if (journal.exists()) {
+                        if (!journalOwner.exists()) journalOwner.writeText(runId, Charsets.UTF_8)
+                        check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
+                        check(journal.deleteRecursively())
+                        if (keyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                    } else if (keyExists()) {
+                        GlafiraRollbackSnapshotCipher.deleteKey()
+                    }
+                    check(owner.delete())
+                }
+            }
+        }
+    }
+
     private fun task(id: String) = GlafiraTask(
         taskId = id,
         projectId = "backup-project",
@@ -264,7 +314,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             """.trimIndent())
 
             assertThrows(Exception::class.java) {
-                runBlocking { coordinator.restore(archive, passphrase) }
+                runBlocking {
+                    withOwnedRestoreJournal { coordinator.restore(archive, passphrase) }
+                }
             }
 
             assertEquals(
@@ -445,7 +497,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             assertThrows(Exception::class.java) {
                 runBlocking {
-                    GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
+                    withOwnedRestoreJournal {
+                        GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
+                    }
                 }
             }
             assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
