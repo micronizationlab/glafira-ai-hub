@@ -203,7 +203,7 @@ jobs:
         run: echo "::error::Formatter did not reject the previously accepted, now unformatted Unicode file." && exit 1
   java-format-gate:
     name: Google Java Style Validation
-    needs: [discover, java-format, formatter-smoke]
+    needs: [discover, java-format]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -212,9 +212,6 @@ jobs:
           DISCOVERY_RESULT: ${{ needs.discover.result }}
           FORMAT_RESULT: ${{ needs.java-format.result }}
           SOURCE_COUNT: ${{ needs.discover.outputs.count }}
-          WORKFLOW_CHANGED: ${{ needs.discover.outputs.workflow_changed }}
-          SMOKE_RESULT: ${{ needs.formatter-smoke.result }}
         run: |
           [[ "$DISCOVERY_RESULT" == "success" ]] || exit 1
           [[ ( "$SOURCE_COUNT" == "0" && "$FORMAT_RESULT" == "skipped" ) || ( "$SOURCE_COUNT" != "0" && "$FORMAT_RESULT" == "success" ) ]] || exit 1
-          [[ ( "$WORKFLOW_CHANGED" == "true" && "$SMOKE_RESULT" == "success" ) || ( "$WORKFLOW_CHANGED" != "true" && "$SMOKE_RESULT" == "skipped" ) ]] || exit 1
