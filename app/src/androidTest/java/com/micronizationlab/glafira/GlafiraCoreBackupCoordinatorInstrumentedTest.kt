@@ -121,7 +121,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         updatedAtMillis = 1_000L,
         idempotencyKey = "backup-project:$id"
     )
-
     @Test
     fun coordinatorArchiveContainsCoreDatabaseSnapshot() = runBlocking {
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
@@ -136,7 +135,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             passphrase.fill('\u0000')
         }
     }
-
     @Test
     fun legacyArchiveWithoutCoreDatabaseIsRejectedBeforeRestore() = runBlocking {
         store.enqueue(task("existing-task"))
@@ -154,7 +152,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             passphrase.fill('\u0000')
         }
     }
-
     @Test
     fun restoreReturnsCoreTaskStateAndEncryptedResultFromSnapshot() = runBlocking {
         store.enqueue(task("backup-result-task"))
