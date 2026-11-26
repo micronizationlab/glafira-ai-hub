@@ -155,7 +155,7 @@ jobs:
           xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$mixed_manifest" > "$mixed_actual" 2> "$mixed_stderr"
           mixed_status=$?
           set -e
-          if [[ "$mixed_status" -ne 123 ]] || ! cmp -s "$mixed_expected" "$mixed_actual"; then
+          if [[ "$mixed_status" -ne 123 ]] || [[ -s "$mixed_stderr" ]] || ! cmp -s "$mixed_expected" "$mixed_actual"; then
             echo "::error::Mixed production manifest did not process all sources and reject its unformatted third entry (xargs exit=$mixed_status). Diagnostics are base64-encoded."
             printf 'expected_base64='; base64 -w0 "$mixed_expected"; printf '\n'
             printf 'actual_base64='; base64 -w0 "$mixed_actual"; printf '\n'
