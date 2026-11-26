@@ -68,7 +68,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
     private fun cancelAndAwaitCoreWorkers() {
         val workManager = WorkManager.getInstance(appContext)
-        CORE_WORK_NAMES.forEach { name ->
+        (CORE_WORK_NAMES + listOf(BackupScheduler.DAILY_WORK_NAME, BackupScheduler.MANUAL_WORK_NAME)).forEach { name ->
             workManager.cancelUniqueWork(name).result.get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             assertTrue("Core worker $name must stop before fixture mutation",
                 workManager.getWorkInfosForUniqueWork(name)
