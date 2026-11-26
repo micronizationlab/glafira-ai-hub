@@ -101,6 +101,7 @@ jobs:
           fixture_dir="$(mktemp -d "$GITHUB_WORKSPACE/.gjf-smoke.XXXXXX")"
           trap 'rm -rf "$fixture_dir"' EXIT
           formatted="$fixture_dir/Formatted.java"
+          formatted_second="$fixture_dir/FormattedSecond.java"
           unformatted="$fixture_dir/Unformatted.java"
           cat > "$formatted" <<'EOF'
           final class Formatted {
@@ -109,7 +110,17 @@ jobs:
             }
           }
           EOF
-          java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$formatted"
+          cat > "$formatted_second" <<'EOF'
+          final class FormattedSecond {
+            void run() {
+              System.out.println("second formatted file");
+            }
+          }
+          EOF
+          smoke_sources="$RUNNER_TEMP/glafira-formatter-smoke.nul"
+          printf '%s\\0' "$formatted" "$formatted_second" | sort -z > "$smoke_sources"
+          [[ "$(tr -cd '\\0' < "$smoke_sources" | wc -c)" -eq 2 ]]
+          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$smoke_sources"
 
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$unformatted"
           if output="$(java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$unformatted" 2>&1)"; then
