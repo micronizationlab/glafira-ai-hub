@@ -69,14 +69,15 @@ GLAFIRA is a commercial distributed AI + VPN ecosystem. The owner's business ben
 
 ## 4. Active implementation order
 
-The owner's engineering priority order remains:
+The complete current owner-approved priority order, reconfirmed on 2026-11-26 and superseding the older 2026-11-20 grouping, is:
 
-1. **Core:** durable queue, concurrency, dependencies, cancellation, recovery, shared executor, audit and policy.
-2. **Bridge:** versioned authenticated Task/Result/Lease protocol, pairing, revocation, durable delivery, ACK, heartbeat, reconnect and offline recovery.
-3. **Applications:** Android, native iOS, Windows Desktop and Windows Agent; shared contracts and end-to-end acceptance.
-4. **Agents and training:** Кадровик and specialist agent catalog after the foundations are ready.
+1. **P1 Core:** durable ownership/state, SQLite concurrency, bounded workers, dependencies, cancellation, crash recovery, idempotency, result delivery, audit and policy.
+2. **P2 Backup & Recovery:** encrypted/versioned backup, integrity, safe restore, recovery staging and clean-device acceptance.
+3. **P3 Bridge / Windows Desktop-Hub / Android client integration:** authenticated Task/Result/Lease protocol, pairing, revocation, durable delivery, ACK, heartbeat, reconnect, authoritative Desktop Hub host and dependent Android pairing/client work. Bridge/Hub prerequisites precede dependent Android pairing work.
+4. **P4 iOS and specialist-agent feature work:** protocol alignment, agents, connectors and training after the foundations are ready.
+5. **P5 Token/GCU:** non-issuing calculator/specification only; no issuance, wallet or payment without separate owner approval.
 
-The commercial Network work can proceed in parallel at the specification, threat-model and contract-definition level. Do not leapfrog Core/Bridge dependencies for production implementation.
+Android and Windows Desktop remain the primary runtime surfaces, but client features do not displace Core or Backup. Workstream 11 is cross-cutting intake/integration, not a separate product priority; it may perform required review, CI, merge and post-merge work for eligible higher-priority items. Stale P0/P1/P2 rankings elsewhere are subordinate to this current owner order.
 
 ## 5. Current PR stack and status snapshot
 
