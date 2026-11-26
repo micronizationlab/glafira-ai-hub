@@ -49,6 +49,7 @@ A workstream may contain many chapters, sections, tasks, subtasks and steps. The
 4. A split creates new child IDs beneath the original parent; it does not erase the original history.
 5. Existing Program 150 acceptance IDs (for example `S016`) remain valid legacy acceptance references. Map each one to one or more WBS IDs in the plan/ledger; do not silently renumber or pretend the two namespaces are identical.
 6. Every issue, branch, PR, commit, test report and ledger entry must include its WBS ID(s), plus any legacy Program Step ID(s).
+7. Work Item IDs for Program-step tasks use `GLAFIRA-S<step>-W<sequence>`. Explicitly owner-approved cross-step governance/design tasks may use `GLAFIRA-GOV-<domain>-W<sequence>` only when the ledger records the approving owner decision, canonical WBS parent, issue/tracker and scope. This is a narrow identity-format exception, not an exemption from a unique executable WBS leaf.
 
 ## 4. Mandatory step-by-step execution
 
@@ -69,6 +70,8 @@ Every participant MUST work in this order:
 
 - Default execution within a task is sequential: `step N` before `step N+1`.
 - Parallel work is allowed only for explicitly independent sibling tasks whose dependency graph, files, APIs, schemas and resources do not overlap.
+- Independent siblings may share a predecessor already accepted as `DONE`; a common completed predecessor does not make siblings dependent on one another. Every unfinished predecessor must be DONE before its dependent leaf starts.
+- Reservation writes are serialized against canonical `refs/heads/main`. A reservation is active only after its ledger commit merges to latest main; stale-base reservations must refresh and revalidate before dispatch. The ledger is shared metadata, not an exclusive implementation path.
 - Every parallel item needs its own WBS leaf ID, owner, branch, file reservation and acceptance criteria.
 - One logical behavior or shared file set has one active implementation owner. Reviewers may inspect but must not create competing implementations.
 - The eleventh workstream must collect helper work, map it to WBS IDs, deduplicate it and reserve ownership before integration.
