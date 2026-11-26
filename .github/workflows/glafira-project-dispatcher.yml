@@ -258,12 +258,6 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
-          if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then
-            printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
-          else
-            printf 'null\n' > "$RUNNER_TEMP/glafira-workflow-runs.json"
-          fi
           count="$(jq 'length' <<< "$prs")"
           if [[ "$count" -eq 0 ]]; then
             {
@@ -273,6 +267,25 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
+          runs='[]'
+          if jq -e 'any(.[]; ((.statusCheckRollup // []) | length) == 0)' >/dev/null <<< "$prs"; then
+            if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then :; else runs='null'; fi
+          fi
+          printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
+          # Re-read PR refs after run collection. If head/base moved, render against
+          # the latest identity so older runs cannot be displayed as current.
+          if latest_prs="$(bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO")"; then
+            if ! jq -e --argjson latest "$latest_prs" '
+              all(.[] as $old; any($latest[]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
+            ' >/dev/null <<< "$prs"; then
+              echo "PR head/base inventory changed during reconciliation; latest refs are used and exact matching is required." >> "$GITHUB_STEP_SUMMARY"
+            fi
+            prs="$latest_prs"
+          else
+            echo "WARNING: second PR inventory read failed; initial snapshot retained." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.latest.json"
           {
             echo "# GLAFIRA Project Dispatcher"
             echo ""
@@ -280,7 +293,7 @@ jobs:
             echo ""
             echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
             echo "|---:|---|---|---|:---:|"
-            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
+            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
             echo ""
-            echo "Policy: when the check rollup is empty, match workflow runs only to the exact PR number, current head SHA and current base SHA. If the API cannot prove that association, report UNKNOWN. Older-head/base runs are not acceptance evidence. Skipped, cancelled, queued, partial or unknown states are not passes."
+            echo "Policy: fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Formatter metadata-only runs are excluded only for the Java formatter workflow. Rollup checks are head-associated and labelled base-unverified. Workflow history is capped at 1,000 recent runs and fetched only when fallback is needed. No matching evidence is UNKNOWN/not a pass; skipped, cancelled, queued, partial or unknown states are not acceptance passes."
           } >> "$GITHUB_STEP_SUMMARY"
