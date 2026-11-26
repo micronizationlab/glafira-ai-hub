@@ -22,8 +22,8 @@ permissions:
   actions: read
 
 concurrency:
-  # Keep PR renderer tests separate from global reconciliation runs.
-  group: ${{ github.event_name == 'pull_request' && format('glafira-project-dispatcher-pr-{0}', github.event.pull_request.number) || 'glafira-project-dispatcher-reconcile' }}
+  # Never let a later event replace a pending PR test or workflow-completion reconciliation.
+  group: ${{ github.event_name == 'pull_request' && format('glafira-project-dispatcher-pr-{0}', github.event.pull_request.number) || github.event_name == 'workflow_run' && format('glafira-project-dispatcher-workflow-run-{0}', github.event.workflow_run.id) || format('glafira-project-dispatcher-run-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
