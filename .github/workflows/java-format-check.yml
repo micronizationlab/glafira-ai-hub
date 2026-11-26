@@ -107,7 +107,8 @@ jobs:
             [[ "$(cat "$RUNNER_TEMP/smoke-valid-count")" == "4" ]]
 
             touch -- './with space.java'
-            if build_batches "$RUNNER_TEMP/smoke-valid.nul" "$RUNNER_TEMP/smoke-invalid.jsonl" "$RUNNER_TEMP/smoke-invalid-count"; then
+            collect_java_sources . "$RUNNER_TEMP/smoke-whitespace.nul" "$RUNNER_TEMP/smoke-whitespace-links.nul"
+            if build_batches "$RUNNER_TEMP/smoke-whitespace.nul" "$RUNNER_TEMP/smoke-invalid.jsonl" "$RUNNER_TEMP/smoke-invalid-count"; then
               echo "Whitespace-path regression was not rejected." >&2
               exit 1
             fi
@@ -128,6 +129,12 @@ jobs:
               exit 1
             fi
             rm -- './Linked.java'
+
+            mkdir -p empty
+            collect_java_sources ./empty "$RUNNER_TEMP/smoke-empty.nul" "$RUNNER_TEMP/smoke-empty-links.nul"
+            build_batches "$RUNNER_TEMP/smoke-empty.nul" "$RUNNER_TEMP/smoke-empty.jsonl" "$RUNNER_TEMP/smoke-empty-count"
+            [[ "$(cat "$RUNNER_TEMP/smoke-empty-count")" == "0" ]]
+            [[ "$(jq -s 'length' "$RUNNER_TEMP/smoke-empty.jsonl")" == "0" ]]
 
             mkdir -p many
             for number in $(seq 1 1800); do
