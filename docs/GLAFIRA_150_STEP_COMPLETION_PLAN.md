@@ -632,3 +632,14 @@ Current `main` now registers `AgentDiagnosticsSnapshotTaskHandler` in `windows-a
 - **Provider PR #449 CI diagnosis:** old exact-head run `45096541638` passed Android JVM and APK packaging but failed managed emulator on `BackupSettingsSmokeTest.manualBackupActionRemainsEnabledAndExplainsMissingFolder` (one failure among 115 tests). The changed files are provider/UI files; the failure is a stale backup UI expectation later corrected in #450 and passed on a subsequent clean mainline run. PR #449 still needs fresh exact-head validation on current main; finding recorded in comment 7099209826.
 - **Voice, Agent and multi-device coordination:** Agent's single bounded read-only `diagnostics.snapshot` handler and exact artifact ACK remain implemented; do not describe it as a general Windows coding agent. Android voice auto-speak/microphone acceptance still requires the owner's physical Realme 8i Android 13 test and Logcat evidence (#401). Coordination contracts remain normative documents, not production GitHub CAS election/lease runtime (#452).
 - **Program count unchanged:** 27/150 primary acceptance steps (18%) and 27/200 expanded ledger items (13.5%). No numbered step is checked by this audit, comments, or documentation changes. Physical-device and end-to-end gates remain open.
+
+
+## Coordinator governance clarification — owner authority and current priority order (2026-11-26)
+
+The owner retains ultimate authority to set priorities, directly assign or reserve work, approve cross-priority exceptions, override or stop assignments. GLAFIRA performs operational reconciliation, selection and dispatch within the owner's current decisions; the Project Dispatcher is PR/CI evidence only and cannot select or assign tasks.
+
+The current owner-approved order is **P1 Core → P2 Backup & Recovery → P3 Bridge and Windows Desktop**. Android and Desktop remain the primary runtime surfaces but do not displace Core or Backup. iOS, specialist agents and Token/GCU implementation follow the foundation; Token/GCU remains non-issuing absent separate owner approval. Workstream 11 integration/review/CI/merge work may be selected when it is the required action for an eligible higher-priority item.
+
+This priority order supersedes stale dispatcher rankings (including P0-first or Android/Bridge-first rankings) until the owner explicitly changes it. Before assigning fallback/design work, reconcile both the engineering dispatcher Action Pool and Workstream 11 helper-intake/integration pool, plus issues, PRs, branches, reservations, reviews and CI/post-merge actions. The complete queue is not limited to items already represented by a PR or issue.
+
+Owner direct assignments are binding and must be recorded in the same canonical ledger as coordinator assignments. A helper cannot self-assign. Reservation becomes active only after its exact-main-SHA ledger record is committed; stale concurrent reservations are rejected and reconciled before dispatch.
