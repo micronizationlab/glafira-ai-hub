@@ -40,14 +40,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         context = IsolatedBackupTestContext(appContext, testRoot)
         store = GlafiraTaskStore(context)
     }
-
     @After
     fun tearDown(): Unit = runBlocking<Unit> {
         if (::store.isInitialized) store.close()
         cancelAndAwaitCoreWorkers()
-        check(testRoot.deleteRecursively())
+        if (::testRoot.isInitialized) check(testRoot.deleteRecursively())
     }
-
     private class IsolatedBackupTestContext(base: Context, private val root: File) : ContextWrapper(base) {
         private val databases = File(root, "databases").apply { mkdirs() }
         private val files = File(root, "files").apply { mkdirs() }
@@ -65,13 +63,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         override fun getSharedPreferences(name: String, mode: Int) =
             super.getSharedPreferences("${root.name}-$name", mode)
     }
-
     private suspend fun <T> withFixtureLocks(block: () -> T): T = withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
         GlafiraCoreMaintenanceGate.withExclusive {
             PendingDeliveryRuntime.withPaused { GlafiraFileMaintenance.withExclusive(block) }
         }
     }
-
     private fun cancelAndAwaitCoreWorkers() {
         val workManager = WorkManager.getInstance(appContext)
         CORE_WORK_NAMES.forEach { name ->
