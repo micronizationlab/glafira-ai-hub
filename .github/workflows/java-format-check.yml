@@ -193,7 +193,7 @@ jobs:
       - run: printf '%s\n' 'final class NeedsFormat{void run(){System.out.println("needs formatting");}}' > "$RUNNER_TEMP/glafira-java-format-smoke-$GITHUB_RUN_ID/NeedsFormat-λ.java"
       - id: reject-unformatted
         continue-on-error: true
-      - uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
+        uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
         with:
           args: "--set-exit-if-changed"
           files: "${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/Smoke.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/NeedsFormat-λ.java"
