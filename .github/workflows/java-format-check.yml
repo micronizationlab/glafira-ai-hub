@@ -328,7 +328,7 @@ jobs:
           mkdir -p "$relative_root/src"
           cp "$fixture_root/formatted/Formatted.java" "$relative_root/src/Relative.java"
           relative_expected_manifest="$RUNNER_TEMP/glafira-relative.expected.nul"
-          printf '%s\\0' './src/Relative.java' > "$relative_expected_manifest"
+          printf '%s\0' './src/Relative.java' > "$relative_expected_manifest"
           relative_manifest="$RUNNER_TEMP/glafira-relative.actual.nul"
           relative_stdout="$RUNNER_TEMP/glafira-relative.stdout"
           relative_stderr="$RUNNER_TEMP/glafira-relative.stderr"
@@ -405,4 +405,4 @@ jobs:
           findfail_manifest="$RUNNER_TEMP/glafira-findfail.nul"; findfail_stdout="$RUNNER_TEMP/glafira-findfail.stdout"; findfail_stderr="$RUNNER_TEMP/glafira-findfail.stderr"; findfail_result="$RUNNER_TEMP/glafira-findfail.result"
           if PATH="$find_failure_bin:$PATH" GLAFIRA_PARTIAL_JAVA="$fixture_root/formatted/Formatted.java" run_format_gate "$fixture_root/formatted" "$findfail_manifest" "$findfail_stdout" "$findfail_stderr" "$findfail_result"; then findfail_status=0; else findfail_status=$?; fi
           if [[ "$findfail_status" -eq 0 ]] || [[ "$(cat "$findfail_result")" != "DISCOVERY_ERROR" ]] || [[ ! -s "$findfail_stderr" ]]; then echo "::error::Partial regular-file find failure was not rejected by the shared production gate."; exit 1; fi
-                    echo "Formatter regression smoke passed: exact NUL-delimited Java argument handoff, dry-run positive, mixed, singleton, empty-tree, missing-root, symlink, whitespace-path and partial-find-failure fixtures used the shared production gate; direct singleton oracle confirmed Java exit 1."
+                    echo "Formatter regression smoke passed: exact NUL-delimited Java argument handoff, worktree-relative paths, dry-run positive, mixed, singleton, missing-formatter, empty-tree, missing-root, symlink, whitespace-path and partial-find-failure fixtures used the shared production gate; direct singleton oracle confirmed Java exit 1."
