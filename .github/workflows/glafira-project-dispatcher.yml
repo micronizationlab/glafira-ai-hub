@@ -160,87 +160,118 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
+          fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
+          fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           cat > "$tmp/prs.json" <<'JSON'
           [
-            {"number":553,"title":"current exact head","headRefName":"docs/reconcile","headRefOid":"sha-current","baseRefOid":"base-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
-            {"number":554,"title":"stale only","headRefName":"feature/stale","headRefOid":"sha-new","isDraft":true,"url":"https://example.test/pr/554","statusCheckRollup":[]},
-            {"number":555,"title":"rollup preferred","headRefName":"feature/rollup","headRefOid":"sha-rollup","isDraft":false,"url":"https://example.test/pr/555","statusCheckRollup":[{"name":"required","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]},
+            {"number":553,"title":"current [link](https://evil.test) | title","headRefName":"docs/reconcile","headRefOid":"sha-current","baseRefOid":"base-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
+            {"number":554,"title":"stale only","headRefName":"feature/stale","headRefOid":"sha-new","baseRefOid":"base-new","isDraft":true,"url":"https://example.test/pr/554","statusCheckRollup":[]},
+            {"number":555,"title":"rollup preferred","headRefName":"feature/rollup","headRefOid":"sha-rollup","baseRefOid":"base-rollup","isDraft":false,"url":"https://example.test/pr/555","statusCheckRollup":[{"name":"required","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]},
             {"number":556,"title":"queued exact head","headRefName":"feature/queued","headRefOid":"sha-queued","baseRefOid":"base-queued","isDraft":false,"url":"https://example.test/pr/556","statusCheckRollup":[]},
             {"number":557,"title":"skipped exact head","headRefName":"feature/skipped","headRefOid":"sha-skipped","baseRefOid":"base-skipped","isDraft":false,"url":"https://example.test/pr/557","statusCheckRollup":[]},
             {"number":558,"title":"in progress exact head","headRefName":"feature/in-progress","headRefOid":"sha-progress","baseRefOid":"base-progress","isDraft":false,"url":"https://example.test/pr/558","statusCheckRollup":[]},
             {"number":559,"title":"cancelled exact head","headRefName":"feature/cancelled","headRefOid":"sha-cancelled","baseRefOid":"base-cancelled","isDraft":false,"url":"https://example.test/pr/559","statusCheckRollup":[]},
-            {"number":560,"title":"failed exact head","headRefName":"feature/failed","headRefOid":"sha-failed","baseRefOid":"base-failed","isDraft":false,"url":"https://example.test/pr/560","statusCheckRollup":[]}, {"number":562,"title":"metadata run must not hide validation","headRefName":"feature/metadata","headRefOid":"sha-meta","baseRefOid":"base-meta-562","isDraft":false,"url":"https://example.test/pr/562","statusCheckRollup":[]}, {"number":563,"title":"same head different base","headRefName":"feature/other-base","headRefOid":"sha-meta","baseRefOid":"base-meta-563","isDraft":false,"url":"https://example.test/pr/563","statusCheckRollup":[]}
+            {"number":560,"title":"failed exact head","headRefName":"feature/failed","headRefOid":"sha-failed","baseRefOid":"base-failed","isDraft":false,"url":"https://example.test/pr/560","statusCheckRollup":[]},
+            {"number":562,"title":"metadata run must not hide validation","headRefName":"feature/metadata","headRefOid":"sha-meta","baseRefOid":"base-meta-562","isDraft":false,"url":"https://example.test/pr/562","statusCheckRollup":[]},
+            {"number":563,"title":"same head different base","headRefName":"feature/other-base","headRefOid":"sha-meta","baseRefOid":"base-meta-563","isDraft":false,"url":"https://example.test/pr/563","statusCheckRollup":[]},
+            {"number":564,"title":"same head and base different PR","headRefName":"feature/other-pr","headRefOid":"sha-meta","baseRefOid":"base-meta-562","isDraft":false,"url":"https://example.test/pr/564","statusCheckRollup":[]},
+            {"number":565,"title":"metadata-looking commit title","headRefName":"feature/title","headRefOid":"sha-title","baseRefOid":"base-title","isDraft":false,"url":"https://example.test/pr/565","statusCheckRollup":[]},
+            {"number":566,"title":"metadata rollup falls back","headRefName":"feature/metadata-rollup","headRefOid":"sha-meta-rollup","baseRefOid":"base-meta-rollup","isDraft":false,"url":"https://example.test/pr/566","statusCheckRollup":[{"name":"PR metadata edit — formatter not run","status":"COMPLETED","conclusion":"SKIPPED","detailsUrl":"https://example.test/metadata"}]}
           ]
           JSON
           cat > "$tmp/runs.json" <<'JSON'
           [
-            {"headSha":"sha-current","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:00:00Z","url":"https://example.test/run/1","pullRequests":[{"number":553,"base":{"sha":"base-current"}}]},
-            {"headSha":"sha-current","workflowName":"Dispatcher","name":"Dispatcher","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:01:00Z","url":"https://example.test/run/2","pullRequests":[{"number":553,"base":{"sha":"base-current"}}]},
-            {"headSha":"sha-current","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T11:00:00Z","url":"https://example.test/run/old"},
-            {"headSha":"sha-other","workflowName":"Android CI","name":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:02:00Z","url":"https://example.test/run/stale"},
-            {"headSha":"sha-queued","workflowName":"Desktop CI","name":"Desktop CI","status":"queued","conclusion":null,"createdAt":"2026-11-24T12:03:00Z","url":"https://example.test/run/queued","pullRequests":[{"number":556,"base":{"sha":"base-queued"}}]},
-            {"headSha":"sha-skipped","workflowName":"iOS CI","name":"iOS CI","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:04:00Z","url":"https://example.test/run/skipped","pullRequests":[{"number":557,"base":{"sha":"base-skipped"}}]},
-            {"headSha":"sha-progress","workflowName":"Desktop CI","name":"Desktop CI","status":"in_progress","conclusion":null,"createdAt":"2026-11-24T12:05:00Z","url":"https://example.test/run/progress","pullRequests":[{"number":558,"base":{"sha":"base-progress"}}]},
-            {"headSha":"sha-cancelled","workflowName":"Windows CI","name":"Windows CI","status":"completed","conclusion":"cancelled","createdAt":"2026-11-24T12:06:00Z","url":"https://example.test/run/cancelled","pullRequests":[{"number":559,"base":{"sha":"base-cancelled"}}]},
-            {"headSha":"sha-failed","workflowName":"Agent CI","name":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed","pullRequests":[{"number":560,"base":{"sha":"base-failed"}}]}, {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/format-failed","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]}, {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"GLAFIRA Java Format Check","displayTitle":"METADATA_ONLY - PR metadata edit","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:08:00Z","url":"https://example.test/run/metadata-skipped","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]}, {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - other PR base","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:09:00Z","url":"https://example.test/run/other-base-success","pullRequests":[{"number":563,"base":{"sha":"base-meta-563"}}]}
+            {"headSha":"sha-current","workflowName":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:00:00Z","url":"https://example.test/run/android-new","pullRequests":[{"number":553,"base":{"sha":"base-current"}}]},
+            {"headSha":"sha-current","workflowName":"Android CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T11:00:00Z","url":"https://example.test/run/android-old","pullRequests":[{"number":553,"base":{"sha":"base-current"}}]},
+            {"headSha":"sha-current","workflowName":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T13:00:00Z","url":"https://example.test/run/wrong-base","pullRequests":[{"number":553,"base":{"sha":"other-base"}}]},
+            {"headSha":"sha-current","workflowName":"Android CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T14:00:00Z","url":"https://example.test/run/wrong-pr","pullRequests":[{"number":564,"base":{"sha":"base-current"}}]},
+            {"headSha":"sha-other","workflowName":"Android CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:02:00Z","url":"https://example.test/run/stale","pullRequests":[{"number":553,"base":{"sha":"base-current"}}]},
+            {"headSha":"sha-queued","workflowName":"Desktop CI","status":"queued","conclusion":null,"createdAt":"2026-11-24T12:03:00Z","url":"https://example.test/run/queued","pullRequests":[{"number":556,"base":{"sha":"base-queued"}}]},
+            {"headSha":"sha-skipped","workflowName":"iOS CI","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:04:00Z","url":"https://example.test/run/skipped","pullRequests":[{"number":557,"base":{"sha":"base-skipped"}}]},
+            {"headSha":"sha-progress","workflowName":"Desktop CI","status":"in_progress","conclusion":null,"createdAt":"2026-11-24T12:05:00Z","url":"https://example.test/run/progress","pullRequests":[{"number":558,"base":{"sha":"base-progress"}}]},
+            {"headSha":"sha-cancelled","workflowName":"Windows CI","status":"completed","conclusion":"cancelled","createdAt":"2026-11-24T12:06:00Z","url":"https://example.test/run/cancelled","pullRequests":[{"number":559,"base":{"sha":"base-cancelled"}}]},
+            {"headSha":"sha-failed","workflowName":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed","pullRequests":[{"number":560,"base":{"sha":"base-failed"}}]},
+            {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/format-failed","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]},
+            {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","displayTitle":"METADATA_ONLY - PR metadata edit","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:08:00Z","url":"https://example.test/run/metadata-skipped","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]},
+            {"headSha":"sha-meta","workflowName":"Security Scan","displayTitle":"METADATA_ONLY - commit subject","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:09:00Z","url":"https://example.test/run/security-valid","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]},
+            {"headSha":"sha-title","workflowName":"Security Scan","displayTitle":"METADATA_ONLY - ordinary commit title","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:10:00Z","url":"https://example.test/run/title-valid","pullRequests":[{"number":565,"base":{"sha":"base-title"}}]},
+            {"headSha":"sha-meta-rollup","workflowName":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:11:00Z","url":"https://example.test/run/format-rollup-fallback","pullRequests":[{"number":566,"base":{"sha":"base-meta-rollup"}}]},
+            {"headSha":"sha-unassociated","workflowName":"No PR association","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:12:00Z","url":"https://example.test/run/no-pr","pullRequests":[]}
           ]
           JSON
           output="$(bash "$renderer" "$tmp/prs.json" "$tmp/runs.json")"
-          grep -q 'Android CI: COMPLETED/success' <<< "$output"
-          grep -q 'Dispatcher: COMPLETED/success' <<< "$output"
-          metadata_row="$(grep -F '| [#562]' <<< "$output")"; [[ "$metadata_row" == *'GLAFIRA Java Format Check: COMPLETED/failure ([run](https://example.test/run/format-failed))'* && "$metadata_row" != *'metadata-skipped'* ]]; other_base_row="$(grep -F '| [#563]' <<< "$output")"; [[ "$other_base_row" == *'GLAFIRA Java Format Check: COMPLETED/success ([run](https://example.test/run/other-base-success))'* && "$other_base_row" != *'format-failed'* ]]
-          grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$output"
-          grep -q 'required: COMPLETED/SUCCESS' <<< "$output"
-          grep -q 'Desktop CI: QUEUED' <<< "$output"
-          grep -q 'iOS CI: COMPLETED/skipped' <<< "$output"
-          grep -q 'Desktop CI: IN_PROGRESS' <<< "$output"
-          grep -q 'Windows CI: COMPLETED/cancelled' <<< "$output"
-          grep -q 'Agent CI: COMPLETED/failure' <<< "$output"
-          # Simulate GraphQL failure and confirm the PR inventory falls back to REST.
+          row553="$(grep -F '| [#553]' <<< "$output")"
+          [[ "$row553" == *'Android CI: COMPLETED/success ([run](https://example.test/run/android-new))'* && "$row553" != *'android-old'* && "$row553" != *'wrong-base'* ]]
+          grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#554]' <<< "$output")"
+          grep -q 'HEAD-ONLY / BASE NOT VERIFIED: required: COMPLETED/SUCCESS' <<< "$(grep -F '| [#555]' <<< "$output")"
+          grep -q 'Desktop CI: QUEUED' <<< "$(grep -F '| [#556]' <<< "$output")"
+          grep -q 'iOS CI: COMPLETED/skipped' <<< "$(grep -F '| [#557]' <<< "$output")"
+          grep -q 'Desktop CI: IN_PROGRESS' <<< "$(grep -F '| [#558]' <<< "$output")"
+          grep -q 'Windows CI: COMPLETED/cancelled' <<< "$(grep -F '| [#559]' <<< "$output")"
+          grep -q 'Agent CI: COMPLETED/failure' <<< "$(grep -F '| [#560]' <<< "$output")"
+          row562="$(grep -F '| [#562]' <<< "$output")"
+          [[ "$row562" == *'GLAFIRA Java Format Check: COMPLETED/failure ([run](https://example.test/run/format-failed))'* && "$row562" == *'Security Scan: COMPLETED/success ([run](https://example.test/run/security-valid))'* && "$row562" != *'metadata-skipped'* ]]
+          grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#563]' <<< "$output")"
+          grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#564]' <<< "$output")"
+          grep -q 'Security Scan: COMPLETED/success ([run](https://example.test/run/title-valid))' <<< "$(grep -F '| [#565]' <<< "$output")"
+          grep -q 'GLAFIRA Java Format Check: COMPLETED/success' <<< "$(grep -F '| [#566]' <<< "$output")"
+          ! grep -q 'evil.test' <<< "$output"
+          ! grep -q '\[link\]' <<< "$output"
+
           mkdir -p "$tmp/fake-bin"
+          # GraphQL pagination preserves base SHA and check-rollup data.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
-          if [[ "$1" == "pr" ]]; then
-            echo "GraphQL unavailable" >&2
-            exit 1
-          fi
-          if [[ "$1" == "api" ]]; then
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             cat <<'JSON'
-          [{"number":561,"title":"REST fallback","draft":true,"html_url":"https://example.test/pr/561","head":{"ref":"rest/fallback","sha":"sha-rest"},"base":{"sha":"sha-rest-base"}}]
+          {"data":{"repository":{"pullRequests":{"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"nodes":[{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
             exit 0
           fi
           exit 2
           GH
           chmod +x "$tmp/fake-bin/gh"
-          rest_output="$(PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/fetch-open-prs.sh" micronizationlab/glafira-ai-hub)"
-          jq -e 'length == 1 and .[0].headRefOid == "sha-rest" and .[0].baseRefOid == "sha-rest-base" and .[0].statusCheckRollup == []' <<< "$rest_output" >/dev/null
+          gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup[0].name == "Android CI" and .[1].number == 2' <<< "$gql_prs" >/dev/null
+
+          # REST fallback also paginates the open PR inventory.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
-          [[ "$1" == "api" && "$2" == --paginate ]]
-          printf '%s\n' '{"headSha":"sha-rest","workflowName":"Dispatcher","displayTitle":"Validation","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:00:00Z","url":"https://example.test/run/rest","pullRequests":[{"number":561,"base":{"sha":"sha-rest-base"}}]}'
-          GH
-          chmod +x "$tmp/fake-bin/gh"
-          rest_runs="$(PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/fetch-workflow-runs.sh" micronizationlab/glafira-ai-hub)"
-          jq -e 'length == 1 and .[0].headSha == "sha-rest" and .[0].displayTitle == "Validation" and .[0].pullRequests[0].number == 561 and .[0].pullRequests[0].base.sha == "sha-rest-base"' <<< "$rest_runs" >/dev/null
-          cat > "$tmp/fake-bin/gh" <<'GH'
-          #!/usr/bin/env bash
-          echo "all PR inventory APIs unavailable" >&2
-          exit 1
-          GH
-          chmod +x "$tmp/fake-bin/gh"
-          if PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/fetch-open-prs.sh" micronizationlab/glafira-ai-hub >/dev/null 2>&1; then
-            echo "expected PR inventory fallback to fail closed" >&2
-            exit 1
+          set -euo pipefail
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then exit 1; fi
+          if [[ "$1" == "api" && "$2" == "--paginate" ]]; then
+            printf '%s\n' '[{"number":1,"title":"one","head":{"ref":"a","sha":"h1"},"base":{"sha":"b1"},"draft":false,"html_url":"https://example.test/1"}]'
+            printf '%s\n' '[{"number":2,"title":"two","head":{"ref":"b","sha":"h2"},"base":{"sha":"b2"},"draft":true,"html_url":"https://example.test/2"}]'
+            exit 0
           fi
-          unknown_output="$(bash "$renderer" "$tmp/prs.json" <(printf 'null'))"
-          grep -q 'UNKNOWN / ACTIONS API UNAVAILABLE' <<< "$unknown_output"
-          empty_output="$(bash "$renderer" <(printf '[]') "$tmp/runs.json")"
-          [[ -z "$empty_output" ]]
-          echo "dispatcher status renderer fixtures: PASS"
+          exit 2
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          rest_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 2 and .[1].baseRefOid == "b2" and .[1].statusCheckRollup == []' <<< "$rest_prs" >/dev/null
+
+          # The run inventory is capped at 10 pages and null pull_requests are harmless.
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [[ "$1" == "api" ]]
+          page="$(sed -n 's/.*page=//p' <<< "$2")"
+          [[ -n "$page" ]]
+          printf '{"workflow_runs":['
+          for i in $(seq 1 100); do
+            [[ "$i" -gt 1 ]] && printf ','
+            printf '{"head_sha":"h%s","name":"CI","display_title":"run","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run","pull_requests":null}' "$page-$i"
+          done
+          printf ']}\\n'
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          capped_runs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_runs" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 1000 and all(.[]; .pullRequests == [])' <<< "$capped_runs" >/dev/null
+          echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
       - name: Build cross-workstream status report
