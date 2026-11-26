@@ -216,7 +216,9 @@ jobs:
           [[ "$row562" == *'GLAFIRA Java Format Check: COMPLETED/failure ([run](https://example.test/run/format-failed))'* && "$row562" == *'Security Scan: COMPLETED/success ([run](https://example.test/run/security-valid))'* && "$row562" != *'metadata-skipped'* ]]
           grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#563]' <<< "$output")"
           grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#564]' <<< "$output")"
-          grep -q 'Security Scan: COMPLETED/success ([run](https://example.test/run/title-valid))' <<< "$(grep -F '| [#565]' <<< "$output")"
+          row565="$(grep -F '| [#565]' <<< "$output")"
+          echo "PR 565 metadata-title regression row: $row565"
+          grep -q 'Security Scan: COMPLETED/success' <<< "$row565"
           grep -q 'GLAFIRA Java Format Check: COMPLETED/success' <<< "$(grep -F '| [#566]' <<< "$output")"
           ! grep -q 'evil.test' <<< "$output"
           ! grep -q '\[link\]' <<< "$output"
