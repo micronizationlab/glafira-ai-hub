@@ -23,7 +23,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Detect Java source files
+        id: java-sources
+        shell: bash
+        run: |
+          count="$(find . -type f -name '*.java' -not -path './.git/*' -print | wc -l | tr -d '[:space:]')"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Discovered $count Java source file(s)."
+          if [[ "$count" == "0" ]]; then
+            echo "No Java sources exist in this checkout; Google Java Format is not applicable."
+          fi
+
       - name: Check Google Java Style
+        if: steps.java-sources.outputs.count != '0'
         uses: ryanbascom/googlejavaformat@v5
         with:
           args: "--set-exit-if-changed"
