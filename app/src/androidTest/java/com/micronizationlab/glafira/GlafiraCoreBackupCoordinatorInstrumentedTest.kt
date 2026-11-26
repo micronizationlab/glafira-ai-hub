@@ -313,42 +313,42 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 END
             """.trimIndent())
 
-            assertThrows(Exception::class.java) {
-                runBlocking {
-                    withOwnedRestoreJournal { coordinator.restore(archive, passphrase) }
+            withOwnedRestoreJournal {
+                assertThrows(Exception::class.java) {
+                    runBlocking { coordinator.restore(archive, passphrase) }
                 }
-            }
-
-            assertEquals(
-                "known-good-result",
-                store.coreTaskResult("backup-result-task", "backup-project")?.result
-            )
-            assertEquals("created-after-backup", store.getTask("created-after-backup")?.taskId)
-            assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-            assertEquals(
-                expectedTraceEventIds,
-                trace.query(
-                    GlafiraCoreTraceQuery("backup-project"),
-                    GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
-                ).events.map { it.eventId }
-            )
-            assertThrows(android.database.sqlite.SQLiteException::class.java) {
-                store.writableDatabase.delete(
-                    GlafiraCoreTraceStore.TABLE,
-                    "event_id = ?",
-                    arrayOf("restore-failure-trace")
+                assertEquals(
+                    "known-good-result",
+                    store.coreTaskResult("backup-result-task", "backup-project")?.result
                 )
+                assertEquals("created-after-backup", store.getTask("created-after-backup")?.taskId)
+                assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+                assertEquals(
+                    expectedTraceEventIds,
+                    trace.query(
+                        GlafiraCoreTraceQuery("backup-project"),
+                        GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
+                    ).events.map { it.eventId }
+                )
+                assertThrows(android.database.sqlite.SQLiteException::class.java) {
+                    store.writableDatabase.delete(
+                        GlafiraCoreTraceStore.TABLE,
+                        "event_id = ?",
+                        arrayOf("restore-failure-trace")
+                    )
+                }
+                assertTrue(store.readableDatabase.rawQuery(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_created'",
+                    null
+                ).use { it.moveToFirst() })
+                assertTrue(store.readableDatabase.rawQuery(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_state_changed'",
+                    null
+                ).use { it.moveToFirst() })
+                store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
             }
-            assertTrue(store.readableDatabase.rawQuery(
-                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_created'",
-                null
-            ).use { it.moveToFirst() })
-            assertTrue(store.readableDatabase.rawQuery(
-                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_state_changed'",
-                null
-            ).use { it.moveToFirst() })
-            store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
         } finally {
+            store.writableDatabase.execSQL("DROP TRIGGER IF EXISTS inject_portable_restore_result_failure")
             archive.delete()
             passphrase.fill('\u0000')
         }
@@ -495,16 +495,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
 
         try {
-            assertThrows(Exception::class.java) {
-                runBlocking {
-                    withOwnedRestoreJournal {
+            withOwnedRestoreJournal {
+                assertThrows(Exception::class.java) {
+                    runBlocking {
                         GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
                     }
                 }
+                assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
+                assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+                assertEquals(0, File(context.noBackupFilesDir, "glafira-restore-journal").listFiles()?.size ?: 0)
             }
-            assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
-            assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-            assertEquals(0, File(context.noBackupFilesDir, "glafira-restore-journal").listFiles()?.size ?: 0)
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
