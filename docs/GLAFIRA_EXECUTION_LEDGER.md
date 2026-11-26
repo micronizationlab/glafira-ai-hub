@@ -708,3 +708,10 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Acceptance:** persist ownership metadata for each rollback temp (path, installation/generation, owner/lease); acquire the maintenance gate; delete only proven stale artifacts owned by that generation; retain active, unknown and foreign artifacts and fail closed. Managed AndroidJUnit4 tests must cover active/stale/foreign/malformed markers, concurrent restore, process death and cleanup failure; verify encrypted journal/key ordering and Core remains blocked on uncertainty.
 - **Dependency for Core cancellation `.4`:** `.4` requires `.1` and `.2` DONE, Backup re-entry `1.2.1.2.1` DONE, and this production cleanup leaf DONE. `.3` is not a predecessor. PR #703 is closed unmerged and is not accepted as evidence.
 - **Status:** RESERVED IN PLAN / NOT DISPATCHED. Wait for PR #720 to merge and validate, then merge a separate exact-base pin amendment before creating the implementation branch. No source code has been changed by this reservation.
+## CI global validation queue — follow-up issue #735 — 2026-11-26
+
+- **WBS / Work Item:** `1.7.1.2.1.1.1` / `GLAFIRA-GOV-CI-W01`; tracker issue #735.
+- **Problem:** PR-triggered platform workflows use separate concurrency groups and can overlap. A single GitHub Actions concurrency group does not preserve an arbitrary number of pending runs; do not claim global build serialization.
+- **Required design:** durable idempotent request keyed by repo, PR, head/base SHA, workflow, platform/lane and configuration; retain every latest-head request; FIFO/priority states; one active build per resource lane; restart/recovery; exact-head result for every PR; no silent queue loss.
+- **Boundaries:** CI orchestration only. This does not create a second persisted GLAFIRA Core runtime queue and does not combine Android Core and Windows Desktop Core authority.
+- **Status:** RESERVED IN PLAN / NOT DISPATCHED. Exact-base reservation amendment, executor, reviewer, allowed workflow files and branch must be recorded and merged before implementation.
