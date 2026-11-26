@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}-${{ github.event.pull_request.base.sha || 'push' }}-${{ github.event.action || 'push' }}
+  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}-${{ github.event.pull_request.base.sha || 'push' }}-${{ github.event.action || 'push' }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'validation' }}
   cancel-in-progress: false
 
 permissions:
@@ -140,7 +140,11 @@ jobs:
               return 0
             else
               status=$?
-              printf '%s\n' "$status" > "$result_file"
+              if [[ "$status" -eq 123 && -s "$stdout_file" && ! -s "$stderr_file" ]]; then
+                printf 'SOURCE_REJECTION\n' > "$result_file"
+              else
+                printf 'FORMATTER_EXECUTION_ERROR\n' > "$result_file"
+              fi
               return "$status"
             fi
           }
@@ -158,7 +162,11 @@ jobs:
             if [[ "$(cat "$production_result")" == "DISCOVERY_ERROR" ]]; then
               echo "::error::Java source discovery failed; inspect the bounded base64 diagnostic below."; emit_bounded_diagnostic discovery_stderr "$production_stderr"
             else
-              echo "::error::Google Java Format rejected one or more Java sources (exit=$production_status). Diagnostics are base64-encoded to keep PR source text inert."
+              if [[ "$(cat "$production_result")" == "SOURCE_REJECTION" ]]; then
+                echo "::error::Google Java Format rejected one or more Java sources (exit=$production_status). Diagnostics are base64-encoded to keep PR source text inert."
+              else
+                echo "::error::Google Java Format could not execute or complete reliably (exit=$production_status); source rejection was not established."
+              fi
               emit_bounded_diagnostic stdout "$production_stdout"
               emit_bounded_diagnostic stderr "$production_stderr"
             fi
