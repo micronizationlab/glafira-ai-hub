@@ -159,7 +159,10 @@ The following owner-approved cross-step governance work belongs to Workstream 11
 - `1.11.2.1.1` — Design fallback and ready-work governance; subtask `1.11.2.1.1.1`; executable leaf `1.11.2.1.1.1.1`; Work Item `GLAFIRA-S000-W01`; issue #685. This is the canonical corrected registration for PR #701.
 - `1.11.2.1.2` — Eleven-workstream batch-cycle governance; subtask `1.11.2.1.2.1`; executable leaf `1.11.2.1.2.1.1`; Work Item `GLAFIRA-S000-W02`; issue #548. This is the canonical corrected registration for PR #721.
 
-For both leaves, the owner is the priority/override authority; GLAFIRA is the operational coordinator; independent review is separate from authorship; the allowed files and exact base SHA must be recorded in the canonical ledger before edits. Dispatcher output is evidence only. Both Action Pools, issues, PRs, helper intake, branches and reservations must be reconciled.
+For both leaves, the owner is the priority/override authority; GLAFIRA is the operational coordinator; independent review is separate from authorship; the allowed files and exact base SHA must be recorded in the canonical ledger before edits. Dispatcher output is evidence only. Action Pool A, issues, PRs, helper intake, branches and reservations must always be reconciled. Pool B is checked only if it exists or when Pool A is exhausted and Pool B is due to be created.
+
+- `1.11.2.1.4` — Action Pool A priority and readiness reconciliation; subtask `1.11.2.1.4.1`; executable leaf `1.11.2.1.4.1.1`; Work Item `GLAFIRA-S000-W04`; issue #548. This is a WBS registration only; no active reservation or file edit is authorized until a separate exact-SHA reservation PR merges.
+- `1.11.2.1.5` — contributor PR-size exception policy alignment; subtask `1.11.2.1.5.1`; executable leaf `1.11.2.1.5.1.1`; Work Item `GLAFIRA-S000-W05`; issue #548. This is a WBS registration only; `CONTRIBUTING.md` remains unreserved and must not be edited until its separate exact-SHA reservation PR merges.
 
 ### Batch-cycle acceptance and sequencing
 
