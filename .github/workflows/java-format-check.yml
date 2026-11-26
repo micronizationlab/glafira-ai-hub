@@ -26,7 +26,47 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Discover production Java sources before formatter provisioning
+        id: source-preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/glafira-java-preflight.nul"
+          symlinks="$RUNNER_TEMP/glafira-java-symlinks.txt"
+          if ! find . -type l -name '*.java' -not -path './.git/*' -print > "$symlinks"; then
+            echo "::error::Java symlink discovery failed."
+            exit 1
+          fi
+          if [[ -s "$symlinks" ]]; then
+            echo "::error::Java source symlinks are not supported."
+            exit 1
+          fi
+          if ! find . -type f -name '*.java' -not -path './.git/*' -print0 | sort -z > "$manifest"; then
+            echo "::error::Java source discovery failed."
+            exit 1
+          fi
+          if ! iconv -f UTF-8 -t UTF-8 < "$manifest" > /dev/null; then
+            echo "::error::Java source manifest is not valid UTF-8."
+            exit 1
+          fi
+          count=0
+          while IFS= read -r -d '' source; do
+            if [[ "$source" =~ [[:space:]] ]]; then
+              echo "::error::Java source paths containing whitespace are not supported."
+              exit 1
+            fi
+            count=$((count + 1))
+          done < "$manifest"
+          echo "source_count=$count" >> "$GITHUB_OUTPUT"
+          echo "Discovered $count production Java source file(s)."
+
+      - name: Report Java formatting not applicable
+        if: steps.source-preflight.outputs.source_count == '0'
+        shell: bash
+        run: echo "::notice::Google Java Style Validation is NOT_APPLICABLE: no production Java sources were discovered."
+
       - name: Download and verify pinned Google Java Format
+        if: steps.source-preflight.outputs.source_count != '0'
         shell: bash
         run: |
           set -euo pipefail
@@ -46,6 +86,7 @@ jobs:
           echo "Verified $version"
 
       - name: Discover and validate Java sources with shared production gate
+        if: steps.source-preflight.outputs.source_count != '0'
         shell: bash
         run: |
           set -euo pipefail
