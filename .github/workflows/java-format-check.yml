@@ -226,7 +226,7 @@ jobs:
           mixed_stderr="$RUNNER_TEMP/glafira-mixed.stderr"
           mixed_result="$RUNNER_TEMP/glafira-mixed.result"
           if run_format_gate "$fixture_root/mixed" "$mixed_manifest" "$mixed_stdout" "$mixed_stderr" "$mixed_result"; then mixed_status=0; else mixed_status=$?; fi
-          if [[ "$mixed_status" -ne 123 ]] || [[ "$(cat "$mixed_result")" != "123" ]] || [[ -s "$mixed_stderr" ]] || ! cmp -s "$mixed_expected_manifest" "$mixed_manifest"; then
+          if [[ "$mixed_status" -ne 123 ]] || [[ "$(cat "$mixed_result")" != "SOURCE_REJECTION" ]] || [[ -s "$mixed_stderr" ]] || ! cmp -s "$mixed_expected_manifest" "$mixed_manifest"; then
             echo "::error::Mixed manifest did not process the exact three sources and reject the unformatted third file (exit=$mixed_status)."
             emit_bounded_diagnostic expected_manifest "$mixed_expected_manifest"
             emit_bounded_diagnostic actual_manifest "$mixed_manifest"
@@ -249,7 +249,7 @@ jobs:
           single_stderr="$RUNNER_TEMP/glafira-single.stderr"
           single_result="$RUNNER_TEMP/glafira-single.result"
           if run_format_gate "$fixture_root/single" "$single_manifest" "$single_stdout" "$single_stderr" "$single_result"; then single_status=0; else single_status=$?; fi
-          if [[ "$single_status" -ne 123 ]] || [[ "$(cat "$single_result")" != "123" ]] || [[ -s "$single_stderr" ]] || ! cmp -s "$single_expected_manifest" "$single_manifest"; then
+          if [[ "$single_status" -ne 123 ]] || [[ "$(cat "$single_result")" != "SOURCE_REJECTION" ]] || [[ -s "$single_stderr" ]] || ! cmp -s "$single_expected_manifest" "$single_manifest"; then
             echo "::error::Single-file manifest did not produce the expected style rejection (exit=$single_status)."
             emit_bounded_diagnostic expected_manifest "$single_expected_manifest"
             emit_bounded_diagnostic actual_manifest "$single_manifest"
