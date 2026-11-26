@@ -124,15 +124,20 @@ jobs:
           xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$smoke_sources"
 
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$unformatted"
-          if output="$(java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$unformatted" 2>&1)"; then
+          expected="$fixture_dir/expected.java"
+          actual="$fixture_dir/actual.java"
+          formatter_error="$fixture_dir/formatter.stderr"
+          java "${java_args[@]}" -jar "$jar" "$unformatted" > "$expected"
+          if java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$unformatted" > "$actual" 2> "$formatter_error"; then
             echo "::error::Google Java Format unexpectedly accepted the unformatted fixture."
             exit 1
           else
             status=$?
           fi
-          if [[ "$status" -ne 1 ]] || ! grep -Eq '^(---|\+\+\+|@@)' <<< "$output"; then
-            echo "::error::Formatter failure was not the expected formatting-diff rejection (exit=$status)."
-            printf '%s\n' "$output"
+          if [[ "$status" -ne 1 ]] || [[ -s "$formatter_error" ]] || ! cmp -s "$expected" "$actual"; then
+            echo "::error::Formatter did not produce the expected formatted output and exit code (exit=$status)."
+            cat "$formatter_error"
+            diff -u "$expected" "$actual" || true
             exit 1
           fi
-          echo "Formatter regression smoke passed: formatted input accepted; unformatted input rejected with a diff."
+          echo "Formatter regression smoke passed: formatted input accepted; unformatted input rejected with the expected output."
