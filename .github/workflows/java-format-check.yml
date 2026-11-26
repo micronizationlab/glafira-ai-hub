@@ -53,7 +53,7 @@ jobs:
           java_files=()
           for source in "${discovered_files[@]}"; do
             if [[ "$source" != ./* || "$source" =~ [[:space:]] ]]; then
-              echo "::error::Java source path is unsafe for this formatter action: $source"
+              echo "::error::A Java source path is unsafe for this formatter action; whitespace and non-relative paths are not supported."
               exit 1
             fi
             java_files+=("$source")
