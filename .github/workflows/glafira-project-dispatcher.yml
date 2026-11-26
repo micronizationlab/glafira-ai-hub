@@ -164,7 +164,7 @@ jobs:
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           [[ "$1" == "api" && "$2" == --paginate ]]
-          printf '%s\n' '{"workflow_runs":[{"head_sha":"sha-rest","name":"Dispatcher","display_title":"Validation","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run/rest","pull_requests":[{"number":561,"base":{"sha":"sha-rest-base"}}]}]}'
+          printf '%s\n' '{"headSha":"sha-rest","workflowName":"Dispatcher","displayTitle":"Validation","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:00:00Z","url":"https://example.test/run/rest","pullRequests":[{"number":561,"base":{"sha":"sha-rest-base"}}]}'
           GH
           chmod +x "$tmp/fake-bin/gh"
           rest_runs="$(PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/fetch-workflow-runs.sh" micronizationlab/glafira-ai-hub)"
