@@ -119,3 +119,12 @@ All manual exports, cloud backups and restores must pass through `GlafiraCoreBac
 - DPAPI/Android Keystore keys are not portable backup material; users must re-authenticate/re-enter device-bound credentials after restoring to a new device.
 
 The instrumentation suite covers Core snapshot inclusion, legacy archive rejection, task result recovery, truncated AES-GCM tag rejection, cross-application archive rejection and traversal-path rejection. No backup/restore feature is considered accepted until the managed-emulator suite passes and a real-device Google Drive round trip is checked.
+
+
+## Password Vault and banking credentials
+
+The default app backup deliberately excludes live credentials and vault secrets. This is a backup/export policy, not a prohibition on storing bank passwords in GLAFIRA's local Password Vault. The owner may keep bank credentials in the unified encrypted vault and use supported, owner-authorized autofill flows.
+
+A portable Password Vault backup is a separate feature and must never be silently included in ordinary app backups. If implemented, require a separate explicit export action, a user-held recovery secret independent of the source device's Keystore/DPAPI key, authenticated encryption, archive versioning, clear contents preview, restore verification on a clean device and safe failure/rollback. Never export plaintext vault data or place a recovery secret beside the archive.
+
+The LLM/cloud boundary remains strict: no plaintext vault record, bank password, OTP, passkey secret or recovery code enters prompts, provider requests, task payloads, logs, telemetry, crash reports or ordinary backup archives. Biometric vault unlock is not authorization for a financial transaction; every high-impact transaction requires a separate confirmation of its exact details. Unsupported bank automation must stop rather than bypass bank controls. See issue #383.
