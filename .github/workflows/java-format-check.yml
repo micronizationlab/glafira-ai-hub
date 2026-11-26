@@ -120,7 +120,7 @@ jobs:
           smoke_sources="$RUNNER_TEMP/glafira-formatter-smoke.nul"
           printf '%s\0' "$formatted" "$formatted_second" | sort -z > "$smoke_sources"
           mapfile -d '' -t smoke_files < "$smoke_sources"
-          [[ "\${#smoke_files[@]}" -eq 2 ]]
+          [[ "${#smoke_files[@]}" -eq 2 ]]
           xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$smoke_sources"
 
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$unformatted"
