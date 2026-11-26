@@ -433,7 +433,7 @@ jobs:
           production_fixture_stdout="$RUNNER_TEMP/glafira-production-entrypoint.stdout"
           production_fixture_stderr="$RUNNER_TEMP/glafira-production-entrypoint.stderr"
           production_fixture_result="$RUNNER_TEMP/glafira-production-entrypoint.result"
-          if run_production_gate "$fixture_root/mixed" "$production_fixture_manifest" "$production_fixture_stdout" "$production_fixture_stderr" "$production_fixture_result"; then production_entry_status=0; else production_entry_status=$?; fi
+          if ( run_production_gate_step "$fixture_root/mixed" "$production_fixture_manifest" "$production_fixture_stdout" "$production_fixture_stderr" "$production_fixture_result" ); then production_entry_status=0; else production_entry_status=$?; fi
           if [[ "$production_entry_status" -ne 123 ]] || [[ "$(cat "$production_fixture_result")" != "SOURCE_REJECTION" ]]; then
             echo "::error::Production formatter entrypoint did not propagate the unformatted-source failure (status=$production_entry_status)."
             exit 1
@@ -485,10 +485,11 @@ jobs:
 
           # Exercise the production-style worktree-relative root: find . emits ./ paths.
           relative_root="$fixture_root/relative-worktree"
-          mkdir -p "$relative_root/src"
+          mkdir -p "$relative_root/src/nested"
           cp "$fixture_root/formatted/Formatted.java" "$relative_root/src/Relative.java"
+          cp "$fixture_root/formatted/FormattedSecond.java" "$relative_root/src/nested/RelativeSecond.java"
           relative_expected_manifest="$RUNNER_TEMP/glafira-relative.expected.nul"
-          printf '%s\0' './src/Relative.java' > "$relative_expected_manifest"
+          printf '%s\0' './src/Relative.java' './src/nested/RelativeSecond.java' | sort -z > "$relative_expected_manifest"
           relative_manifest="$RUNNER_TEMP/glafira-relative.actual.nul"
           relative_stdout="$RUNNER_TEMP/glafira-relative.stdout"
           relative_stderr="$RUNNER_TEMP/glafira-relative.stderr"
@@ -585,6 +586,20 @@ jobs:
           if run_format_gate "$fixture_root/malformed" "$malformed_manifest" "$malformed_stdout" "$malformed_stderr" "$malformed_result"; then malformed_status=0; else malformed_status=$?; fi
           if [[ "$malformed_status" -eq 0 ]] || [[ "$(cat "$malformed_result")" != "SOURCE_SYNTAX_REJECTION" ]] || ! grep -Eq '(^|[[:space:]])error:' "$malformed_stderr"; then
             echo "::error::Malformed Java parser diagnostics were not classified as source syntax rejection."
+            exit 1
+          fi
+
+          # The production entrypoint must persist NOT_APPLICABLE on an empty checkout.
+          empty_production_manifest="$RUNNER_TEMP/glafira-production-empty.nul"; empty_production_stdout="$RUNNER_TEMP/glafira-production-empty.stdout"; empty_production_stderr="$RUNNER_TEMP/glafira-production-empty.stderr"; empty_production_result="$RUNNER_TEMP/glafira-production-empty.result"
+          if PRODUCTION_JAVA_SOURCE_COUNT=0 run_production_gate . "$empty_production_manifest" "$empty_production_stdout" "$empty_production_stderr" "$empty_production_result"; then empty_production_status=0; else empty_production_status=$?; fi
+          if [[ "$empty_production_status" -ne 0 ]] || [[ "$(cat "$empty_production_result")" != "NOT_APPLICABLE" ]]; then
+            echo "::error::Empty production checkout did not persist NOT_APPLICABLE."
+            exit 1
+          fi
+          empty_write_target="$RUNNER_TEMP/glafira-empty-result-write.target"; mkdir -p "$empty_write_target"
+          if PRODUCTION_JAVA_SOURCE_COUNT=0 run_production_gate . "$empty_production_manifest" "$empty_production_stdout" "$empty_production_stderr" "$empty_write_target"; then empty_write_status=0; else empty_write_status=$?; fi
+          if [[ "$empty_write_status" -ne 25 ]]; then
+            echo "::error::Empty-tree result persistence failure was masked (expected 25, got $empty_write_status)."
             exit 1
           fi
 
