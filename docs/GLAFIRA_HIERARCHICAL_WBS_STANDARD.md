@@ -180,3 +180,44 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - This is an explicitly owner-approved cross-step DESIGN fallback task, not a Program 150 implementation step. It may be assigned only when the source lane has no eligible equal- or higher-priority ready work; its source lane's BLOCKED/NOT RUN/other outcome remains unchanged.
 - The six-component subtask is not itself an executable leaf. The seven-component ID above is the only executable reservation target. Drafting requires a separate pre-edit implementation reservation recording the exact current main SHA, implementation branch, executor, independent reviewer, exclusive file and acceptance.
 - Shared visual tokens remain PENDING until #679 is accepted. Information architecture may proceed only if issue #674 explicitly records the token-pending marker. Retain the ICQ flower in the product identity and acceptance criteria.
+
+
+## 13. Reservation corrections — Core cancellation leaves and Windows Hub UX design
+
+This section supersedes conflicting reservation snapshots in PRs #717 and #718. It does not claim either reservation is merged or any implementation is complete.
+
+### Core owner-cancellation leaves — Program Step 93
+
+Parent task `1.1.3.1.1` / Work Item `GLAFIRA-S093-W01` / issue #669. Seven-component executable leaves:
+- `1.1.3.1.1.1.1` — .1 storage/state primitive.
+- `1.1.3.1.1.1.2` — .2 owner-authenticated API/Android queue UX; predecessor .1 DONE.
+- `1.1.3.1.1.1.3` — .3 policy/instrumentation acceptance; predecessors .1 and .2 DONE.
+- `1.1.3.1.1.1.4` — .4 restore/cancellation serialization; predecessors .1 and .2 DONE plus production recovery-temp isolation PR #703 merged/DONE. .4 does not depend on .3.
+
+Exclusive files: .3 owns only `GlafiraTaskCancellationInstrumentedTest.kt`; .4 owns only `GlafiraTaskRestoreCancellationInstrumentedTest.kt`. They are independent sibling leaves after .1/.2, not stacked and not sequential owners of one file.
+
+#### .1 exact emulator evidence
+
+The exact managed-emulator JUnit XML must contain named passing cases for same-project descendant fan-out, bounded SQLite batches, artifact preservation, and separate negative cases for each of `QUEUED`, `WAITING_FOR_NETWORK`, and `WAITING_FOR_OWNER` with `attemptCount == 0` **and** an unresolved execution-outcome marker. Each negative case must prove rejection and no mutation. A non-empty XML or unrelated tests are insufficient.
+
+#### .3 idempotence
+
+The exact JUnit XML must contain a named repeated-cancellation case (e.g. `repeatedOwnerCancellationIsIdempotent`) proving a second identical cancellation adds no task-history, Trace, dependency or artifact writes and does not change terminal state.
+
+#### .4 real maintenance-gate contention
+
+Use a controlled interleaving: cancellation passes its initial precheck; restore acquires and holds the maintenance gate and publishes its journal marker; cancellation attempts the held gate and is demonstrably blocked; after release, cancellation rechecks under the gate, rejects because restore is pending, and leaves task/history/Trace/artifacts unchanged. Exact JUnit XML must also prove complete task/file restore, preservation of unrelated recovery temps and rollback-key retention on journal-delete failure. Unowned temp preservation is blocked until production PR #703 is merged; no test-only workaround.
+
+#### Pin and branch sequence
+
+A reservation cannot know its own future merge SHA. Merge the parent reservation only after exact-head Docs CI, Security Scan, Dispatcher, independent CodeRabbit/Proofline finding resolution and owner approval. Then merge a separate pin amendment recording the exact resulting Main SHA before creating any implementation branch. Separate pins: .1 after parent reservation; .2 after .1; .3 after .2; .4 after .2 plus #703. .3 is not gated on #703. If Main advances incompatibly, merge a new pin-refresh amendment recording exact current Main SHA and full predecessor set before branch creation. Do not create even an empty branch before its pin amendment merges. The WBS reservation checklist includes full independent review resolution.
+
+### Windows Desktop / Hub UX — GLAFIRA DESIGN fallback
+
+- Parent task `1.11.1.1.6`; subtask `1.11.1.1.6.1`; executable leaf `1.11.1.1.6.1.1`; Work Item `GLAFIRA-S000-W03`; issue #674 / #672.
+- Explicit owner-approved cross-step DESIGN task, no legacy Program 150 mapping. Six-component ID is subtask, not executable leaf.
+- Before fallback activation, record source lane, exact original work item, implementation/test/acceptance status, concrete blocker/evidence, coordinator-cycle date and proof no equal/higher-priority work is ready. Until then source-lane eligibility is NOT VERIFIED and fallback remains BLOCKED; do not presume Token/GCU is blocked or assign it automatically.
+- Before IA/wireframes while #679 is pending, issue #674 must carry `VISUAL_TOKENS_STATUS: PENDING (blocked on owner acceptance of #679)`; coordinator verifies this exact marker. Final visual values remain blocked until #679 is accepted.
+- ICQ flower is mandatory in objective and acceptance.
+- Reservation PR merges first; then a separate pre-edit leaf reservation must merge with exact current Main SHA, implementation branch, executor, independent reviewer, exclusive deliverable `docs/design/WINDOWS_DESKTOP_HUB_UX.md`, predecessors and acceptance. No drafting or branch creation before that reservation merges.
+- Design acceptance never substitutes for Windows build, Bridge, security, physical-device or owner acceptance.
