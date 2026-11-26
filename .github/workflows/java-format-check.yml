@@ -27,10 +27,32 @@ jobs:
         id: java-sources
         shell: bash
         run: |
-          count="$(find . -type f -name '*.java' -not -path './.git/*' -print | wc -l | tr -d '[:space:]')"
+          set -euo pipefail
+          source_list="$RUNNER_TEMP/java-sources.nul"
+          if ! find . -type f -name '*.java' -not -path './.git/*' -print0 > "$source_list"; then
+            echo "::error::Unable to enumerate Java source files; refusing to skip formatting."
+            exit 1
+          fi
+
+          mapfile -d '' -t discovered_files < "$source_list"
+          java_files=()
+          for source in "${discovered_files[@]}"; do
+            source="${source#./}"
+            if [[ "$source" =~ [[:space:]] ]]; then
+              echo "::error::Java source paths containing whitespace cannot be passed safely to this formatter action: $source"
+              exit 1
+            fi
+            java_files+=("$source")
+          done
+
+          count="${#java_files[@]}"
           echo "count=$count" >> "$GITHUB_OUTPUT"
+          if (( count > 0 )); then
+            printf -v files_output '%s ' "${java_files[@]}"
+            echo "files=${files_output% }" >> "$GITHUB_OUTPUT"
+          fi
           echo "Discovered $count Java source file(s)."
-          if [[ "$count" == "0" ]]; then
+          if (( count == 0 )); then
             echo "No Java sources exist in this checkout; Google Java Format is not applicable."
           fi
 
@@ -39,5 +61,5 @@ jobs:
         uses: ryanbascom/googlejavaformat@v5
         with:
           args: "--set-exit-if-changed"
-          files: "**/*.java"
+          files: "${{ steps.java-sources.outputs.files }}"
           skip-commit: true
