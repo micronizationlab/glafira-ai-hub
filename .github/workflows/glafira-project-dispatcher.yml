@@ -269,7 +269,12 @@ jobs:
           JSON
           GH
           chmod +x "$tmp/fake-bin/gh"
-          capped_runs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_runs" micronizationlab/glafira-ai-hub)"
+          if capped_runs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_runs" micronizationlab/glafira-ai-hub 2>"$tmp/fetch-runs.stderr")"; then
+            :
+          else
+            echo "fetch-workflow-runs failed: $(cat "$tmp/fetch-runs.stderr")"
+            exit 1
+          fi
           if ! jq -e 'length == 2 and .[0].pullRequests[0].number == 999 and .[0].pullRequests[0].base.sha == "base-999" and .[0].displayTitle == "METADATA_ONLY - sample title" and .[1].pullRequests == []' <<< "$capped_runs" >/dev/null; then
             echo "Raw workflow-run projection fixture: $(jq -c '.' <<< "$capped_runs")"
             exit 1
