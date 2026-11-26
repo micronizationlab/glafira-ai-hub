@@ -20,7 +20,6 @@ jobs:
     outputs:
       count: ${{ steps.sources.outputs.count }}
       batches: ${{ steps.sources.outputs.batches }}
-
     steps:
       - name: Checkout submitted source
         uses: actions/checkout@v4
@@ -28,7 +27,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
-      - name: Validate discovery and build deterministic batches
+      - name: Discover, validate and batch Java paths
         id: sources
         shell: bash
         run: |
@@ -39,46 +38,42 @@ jobs:
             if ! find "$root" -type l -name '*.java' -not -path "$root/.git/*" -print0 > "$symlinks"; then
               return 1
             fi
-            [[ ! -s "$symlinks" ]] || return 1
+            if [[ -s "$symlinks" ]]; then
+              return 1
+            fi
             if ! find "$root" -type f -name '*.java' -not -path "$root/.git/*" -print0 > "$raw"; then
               return 1
             fi
             LC_ALL=C sort -z "$raw" -o "$output"
           }
 
-          build_batches() {
-            local list="$1" records="$2" count_file="$3"
-            python3 - "$list" "$records" "$count_file" <<'PY'
+          validate_and_batch() {
+            python3 - "$1" "$2" <<'PY'
           import json
           import pathlib
           import sys
 
-          list_path, records_path, count_path = map(pathlib.Path, sys.argv[1:])
-          raw = list_path.read_bytes()
+          raw = pathlib.Path(sys.argv[1]).read_bytes()
           if raw and not raw.endswith(b"\0"):
-              print("Java source list is not NUL-terminated.", file=sys.stderr)
-              raise SystemExit(1)
+              raise SystemExit("Java source list is not NUL-terminated.")
+          encoded_paths = raw[:-1].split(b"\0") if raw else []
+          paths = []
+          for encoded in encoded_paths:
+              try:
+                  path = encoded.decode("utf-8", errors="strict")
+              except UnicodeDecodeError:
+                  raise SystemExit("A Java source path is not valid UTF-8.")
+              if not path.startswith("./") or any(char.isspace() for char in path):
+                  raise SystemExit("A Java source path cannot be passed safely to the formatter.")
+              paths.append((path, len(encoded)))
 
-          paths = raw[:-1].split(b"\0") if raw else []
           batches = []
           current = []
           current_bytes = 0
           limit = 48 * 1024
-
-          for encoded_path in paths:
-              try:
-                  path = encoded_path.decode("utf-8", errors="strict")
-              except UnicodeDecodeError:
-                  print("A Java source path is not valid UTF-8.", file=sys.stderr)
-                  raise SystemExit(1)
-              if not path.startswith("./") or any(char.isspace() for char in path):
-                  print("A Java source path cannot be passed safely to the formatter.", file=sys.stderr)
-                  raise SystemExit(1)
-              path_bytes = len(encoded_path)
+          for path, path_bytes in paths:
               if path_bytes > limit:
-                  print("A Java source path exceeds the formatter batch limit.", file=sys.stderr)
-                  raise SystemExit(1)
-
+                  raise SystemExit("A Java source path exceeds the formatter batch limit.")
               extra = path_bytes + (1 if current else 0)
               if current and current_bytes + extra > limit:
                   batches.append(" ".join(current))
@@ -88,53 +83,52 @@ jobs:
                   current_bytes += 1
               current.append(path)
               current_bytes += path_bytes
-
           if current:
               batches.append(" ".join(current))
 
-          with records_path.open("w", encoding="utf-8", newline="\n") as records:
-              for index, files in enumerate(batches):
-                  records.write(json.dumps(
-                      {"files": files, "index": index},
-                      ensure_ascii=False,
-                      separators=(",", ":"),
-                  ) + "\n")
-          count_path.write_text(str(len(paths)), encoding="ascii")
+          payload = {"include": [
+              {"files": files, "index": index}
+              for index, files in enumerate(batches)
+          ]}
+          encoded_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+          if len(encoded_payload.encode("utf-8")) > 700_000:
+              raise SystemExit("The formatter batch manifest exceeds the GitHub Actions output safety limit.")
+          output = pathlib.Path(sys.argv[2])
+          with output.open("a", encoding="utf-8", newline="\n") as stream:
+              stream.write(f"count={len(paths)}\n")
+              stream.write(f"batches={encoded_payload}\n")
+          print(f"Discovered {len(paths)} Java source file(s) in {len(batches)} deterministic batch(es).")
+          if not paths:
+              print("No Java sources exist in this checkout; Google Java Format is not applicable.")
           PY
           }
 
-          # Exercise the same production functions against hostile and large fixtures.
+          # Regression tests exercise the same path validator used for production.
           smoke_root="$RUNNER_TEMP/java-discovery-smoke"
           mkdir -p "$smoke_root"
           (
             cd "$smoke_root"
             touch -- './Good.java' './--version=.java' './@A.java' './Unicode-λ.java'
             collect_java_sources . "$RUNNER_TEMP/smoke-valid.nul" "$RUNNER_TEMP/smoke-valid-links.nul"
-            build_batches "$RUNNER_TEMP/smoke-valid.nul" "$RUNNER_TEMP/smoke-valid.jsonl" "$RUNNER_TEMP/smoke-valid-count"
-            [[ "$(cat "$RUNNER_TEMP/smoke-valid-count")" == "4" ]]
+            validate_and_batch "$RUNNER_TEMP/smoke-valid.nul" "$RUNNER_TEMP/smoke-valid-output"
+            grep -q '^count=4$' "$RUNNER_TEMP/smoke-valid-output"
 
             touch -- './with space.java'
-            collect_java_sources . "$RUNNER_TEMP/smoke-whitespace.nul" "$RUNNER_TEMP/smoke-whitespace-links.nul"
-            if build_batches "$RUNNER_TEMP/smoke-whitespace.nul" "$RUNNER_TEMP/smoke-invalid.jsonl" "$RUNNER_TEMP/smoke-invalid-count"; then
+            collect_java_sources . "$RUNNER_TEMP/smoke-space.nul" "$RUNNER_TEMP/smoke-space-links.nul"
+            if validate_and_batch "$RUNNER_TEMP/smoke-space.nul" "$RUNNER_TEMP/smoke-space-output"; then
               echo "Whitespace-path regression was not rejected." >&2
               exit 1
             fi
             rm -- './with space.java'
 
-            python3 - <<'PY'
-          import os
-          fd = os.open(b"./invalid-\xff.java", os.O_CREAT | os.O_WRONLY, 0o600)
-          os.close(fd)
-          PY
+            bad_path=$'./invalid-\xff.java'
+            touch -- "$bad_path"
             collect_java_sources . "$RUNNER_TEMP/smoke-invalid-utf8.nul" "$RUNNER_TEMP/smoke-invalid-utf8-links.nul"
-            if build_batches "$RUNNER_TEMP/smoke-invalid-utf8.nul" "$RUNNER_TEMP/smoke-invalid-utf8.jsonl" "$RUNNER_TEMP/smoke-invalid-utf8-count"; then
+            if validate_and_batch "$RUNNER_TEMP/smoke-invalid-utf8.nul" "$RUNNER_TEMP/smoke-invalid-utf8-output"; then
               echo "Non-UTF-8 path regression was not rejected." >&2
               exit 1
             fi
-            python3 - <<'PY'
-          import os
-          os.unlink(b"./invalid-\xff.java")
-          PY
+            rm -- "$bad_path"
 
             ln -s './Good.java' './Linked.java'
             if collect_java_sources . "$RUNNER_TEMP/smoke-symlink.nul" "$RUNNER_TEMP/smoke-symlink-links.nul"; then
@@ -145,9 +139,8 @@ jobs:
 
             mkdir -p empty
             collect_java_sources ./empty "$RUNNER_TEMP/smoke-empty.nul" "$RUNNER_TEMP/smoke-empty-links.nul"
-            build_batches "$RUNNER_TEMP/smoke-empty.nul" "$RUNNER_TEMP/smoke-empty.jsonl" "$RUNNER_TEMP/smoke-empty-count"
-            [[ "$(cat "$RUNNER_TEMP/smoke-empty-count")" == "0" ]]
-            [[ "$(jq -s 'length' "$RUNNER_TEMP/smoke-empty.jsonl")" == "0" ]]
+            validate_and_batch "$RUNNER_TEMP/smoke-empty.nul" "$RUNNER_TEMP/smoke-empty-output"
+            grep -q '^count=0$' "$RUNNER_TEMP/smoke-empty-output"
 
             mkdir -p many
             for number in $(seq 1 1800); do
@@ -155,41 +148,19 @@ jobs:
               : > "$file_name"
             done
             collect_java_sources . "$RUNNER_TEMP/smoke-large.nul" "$RUNNER_TEMP/smoke-large-links.nul"
-            build_batches "$RUNNER_TEMP/smoke-large.nul" "$RUNNER_TEMP/smoke-large.jsonl" "$RUNNER_TEMP/smoke-large-count"
-            [[ "$(cat "$RUNNER_TEMP/smoke-large-count")" -ge 1804 ]]
-            [[ "$(jq -s 'length' "$RUNNER_TEMP/smoke-large.jsonl")" -ge 2 ]]
+            validate_and_batch "$RUNNER_TEMP/smoke-large.nul" "$RUNNER_TEMP/smoke-large-output"
+            grep -q '^count=1804$' "$RUNNER_TEMP/smoke-large-output"
+            grep -q '"index":1' "$RUNNER_TEMP/smoke-large-output"
           )
-          echo "Discovery regression checks passed."
+          echo "Java source discovery regression checks passed."
 
           source_list="$RUNNER_TEMP/java-sources.nul"
           symlink_list="$RUNNER_TEMP/java-symlinks.nul"
-          records="$RUNNER_TEMP/java-source-batches.jsonl"
-          count_file="$RUNNER_TEMP/java-source-count"
-
           if ! collect_java_sources . "$source_list" "$symlink_list"; then
             echo "::error::Java source discovery failed or found unsupported Java symlinks; refusing to skip formatting."
             exit 1
           fi
-          if ! build_batches "$source_list" "$records" "$count_file"; then
-            echo "::error::A Java source path is unsupported or cannot be passed safely to the formatter."
-            exit 1
-          fi
-
-          count="$(cat "$count_file")"
-          batches="$(jq -cs '{include: .}' "$records")"
-          batch_payload_bytes=$(LC_ALL=C printf '%s' "$batches" | wc -c)
-          batch_payload_bytes="${batch_payload_bytes//[[:space:]]/}"
-          if (( batch_payload_bytes > 700000 )); then
-            echo "::error::The Java formatter batch manifest exceeds the GitHub Actions output safety limit."
-            exit 1
-          fi
-
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "batches=$batches" >> "$GITHUB_OUTPUT"
-          echo "Discovered $count Java source file(s) in $(jq -s 'length' "$records") deterministic batches."
-          if (( count == 0 )); then
-            echo "No Java sources exist in this checkout; Google Java Format is not applicable."
-          fi
+          validate_and_batch "$source_list" "$GITHUB_OUTPUT"
 
   java-format:
     name: Google Java Style Validation batch ${{ matrix.index }}
@@ -200,7 +171,6 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix: ${{ fromJSON(needs.discover.outputs.batches) }}
-
     steps:
       - name: Checkout submitted source
         uses: actions/checkout@v4
