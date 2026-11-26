@@ -8,8 +8,8 @@ on:
     branches: [main]
 
 concurrency:
-  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'validation' }}
-  cancel-in-progress: false
+  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'synchronize' && 'sync' || github.event.action == 'edited' && github.event.changes.base != null && format('retarget-{0}', github.event.pull_request.merge_commit_sha) || github.event.action == 'edited' && 'metadata-only' || github.event.action || 'push' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 
 permissions:
   contents: read
@@ -123,7 +123,7 @@ jobs:
           }
           write_gate_result() {
             local result_file="$1" value="$2" recorded=''
-            if ! printf '%s\\n' "$value" > "$result_file"; then
+            if ! printf '%s\n' "$value" > "$result_file"; then
               printf 'Could not persist formatter gate result.\\n' >&2
               return 25
             fi
