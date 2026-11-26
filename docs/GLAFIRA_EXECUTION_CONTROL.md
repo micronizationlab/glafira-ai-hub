@@ -62,7 +62,7 @@ One logical behavior has one active implementation owner. Helpers may independen
 - New commit SHA: new validation is required because the artifact changed.
 - Different workflow/lane or materially different configuration: separate check is valid, but must be explicitly registered.
 - Never create a second APK/installer for the same source SHA/configuration just to have another artifact. Record artifact SHA-256, version, source SHA and workflow run.
-- CI concurrency is serialized globally for release/build lanes; work on non-overlapping code may proceed independently, but builds do not run in parallel.
+- Global cross-PR CI/build serialization is NOT IMPLEMENTED. Android is PR-keyed, iOS is ref-keyed and Windows workflows lack a shared queue. Issue #744 tracks the durable non-dropping FIFO queue/lock. Until it is implemented and verified, parallel platform build dispatch is BLOCKED; do not claim builds are globally serialized.
 - Never call a cancelled, skipped, queued, in-progress or partial workflow a pass.
 
 ## 6. PR and branch rules
