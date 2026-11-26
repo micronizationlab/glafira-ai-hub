@@ -15,6 +15,8 @@ This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CO
 
 ## Work-item registry
 
+| GLAFIRA-CODEX-W01 | `1.7.1.1.1.1.1` | GLAFIRA | Project-wide immediate repair-on-discovery Codex; all eleven workstreams and all write-enabled helpers | IN_REVIEW | PR #761; `docs/GLAFIRA_CODEX.md`; one-pass defect register and repair report; pending exact-head CI/review/merge |
+
 | Work Item ID | Step | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|
 | GLAFIRA-GOV-W01 | Governance | GLAFIRA | Establish this control, update helper instructions and reconcile plan baseline | IN_PROGRESS | Branch `governance/program-150-single-source-of-truth`; PR to be opened after doc consistency check |
@@ -648,3 +650,5 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Acceptance:** enumerate Java files deterministically before invoking the formatter; when none exist, report an explicit successful no-op with count 0; when files exist, format-check every discovered Java file and fail on formatting differences; do not mask formatter errors or skip actual Java sources. Add workflow-level regression coverage for zero and non-zero matches if the repository's workflow test harness supports it. Exact-head Docs/Workflow CI, Security Scan and Dispatcher must pass; inspect logs; post-merge Main verification required.
 - **Out of scope:** Kotlin formatting, changing Java style rules, changing Jules authentication or treating its failure as a pass, modifying application source, weakening required checks, or changing security permissions.
 - **Status:** RESERVED; implementation is blocked until this reservation PR merges.
+
+- WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.
