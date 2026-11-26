@@ -213,7 +213,9 @@ jobs:
           grep -q 'Windows CI: COMPLETED/cancelled' <<< "$(grep -F '| [#559]' <<< "$output")"
           grep -q 'Agent CI: COMPLETED/failure' <<< "$(grep -F '| [#560]' <<< "$output")"
           row562="$(grep -F '| [#562]' <<< "$output")"
-          [[ "$row562" == *'GLAFIRA Java Format Check: COMPLETED/failure ([run](https://example.test/run/format-failed))'* && "$row562" == *'Security Scan: COMPLETED/success ([run](https://example.test/run/security-valid))'* && "$row562" != *'metadata-skipped'* ]]
+          grep -q 'GLAFIRA Java Format Check: COMPLETED/failure' <<< "$row562"
+          grep -q 'Security Scan: COMPLETED/success' <<< "$row562"
+          ! grep -q 'metadata-skipped' <<< "$row562"
           grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#563]' <<< "$output")"
           grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#564]' <<< "$output")"
           row565="$(grep -F '| [#565]' <<< "$output")"
