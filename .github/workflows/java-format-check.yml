@@ -72,7 +72,7 @@ jobs:
 
       - name: Check Google Java Style
         if: steps.java-sources.outputs.count != '0'
-        uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c # v5
+        uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
         with:
           args: "--set-exit-if-changed"
           files: "${{ steps.java-sources.outputs.files }}"
