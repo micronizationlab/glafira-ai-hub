@@ -58,7 +58,7 @@ jobs:
             elif ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$runs"; then
               ci="UNKNOWN / ACTIONS API UNAVAILABLE"
             else
-              matching="$(jq -c --arg sha "$sha" '[.[] | select(.headSha == $sha)] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])' <<< "$runs")"
+              matching="$(jq -c --arg sha "$sha" '[.[] | select(.headSha == $sha) | select(((.name // "") | startswith("METADATA_ONLY:")) | not)] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])' <<< "$runs")"
               if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
                 ci="NO MATCHING RUN FOR EXACT HEAD"
               else
@@ -107,7 +107,8 @@ jobs:
             {"number":557,"title":"skipped exact head","headRefName":"feature/skipped","headRefOid":"sha-skipped","isDraft":false,"url":"https://example.test/pr/557","statusCheckRollup":[]},
             {"number":558,"title":"in progress exact head","headRefName":"feature/in-progress","headRefOid":"sha-progress","isDraft":false,"url":"https://example.test/pr/558","statusCheckRollup":[]},
             {"number":559,"title":"cancelled exact head","headRefName":"feature/cancelled","headRefOid":"sha-cancelled","isDraft":false,"url":"https://example.test/pr/559","statusCheckRollup":[]},
-            {"number":560,"title":"failed exact head","headRefName":"feature/failed","headRefOid":"sha-failed","isDraft":false,"url":"https://example.test/pr/560","statusCheckRollup":[]}
+            {"number":560,"title":"failed exact head","headRefName":"feature/failed","headRefOid":"sha-failed","isDraft":false,"url":"https://example.test/pr/560","statusCheckRollup":[]},
+            {"number":562,"title":"metadata run must not hide validation","headRefName":"feature/metadata","headRefOid":"sha-meta","isDraft":false,"url":"https://example.test/pr/562","statusCheckRollup":[]}
           ]
           JSON
           cat > "$tmp/runs.json" <<'JSON'
@@ -120,13 +121,16 @@ jobs:
             {"headSha":"sha-skipped","workflowName":"iOS CI","name":"iOS CI","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:04:00Z","url":"https://example.test/run/skipped"},
             {"headSha":"sha-progress","workflowName":"Desktop CI","name":"Desktop CI","status":"in_progress","conclusion":null,"createdAt":"2026-11-24T12:05:00Z","url":"https://example.test/run/progress"},
             {"headSha":"sha-cancelled","workflowName":"Windows CI","name":"Windows CI","status":"completed","conclusion":"cancelled","createdAt":"2026-11-24T12:06:00Z","url":"https://example.test/run/cancelled"},
-            {"headSha":"sha-failed","workflowName":"Agent CI","name":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed"}
+            {"headSha":"sha-failed","workflowName":"Agent CI","name":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed"},
+            {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"VALIDATION: Java format","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/format-failed"},
+            {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","name":"METADATA_ONLY: PR metadata edit","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:08:00Z","url":"https://example.test/run/metadata-skipped"}
           ]
           JSON
           output="$(bash "$renderer" "$tmp/prs.json" "$tmp/runs.json")"
           grep -q 'Android CI: COMPLETED/success' <<< "$output"
           grep -q 'Dispatcher: COMPLETED/success' <<< "$output"
-          ! grep -q 'COMPLETED/failure' <<< "$output"
+          grep -q 'GLAFIRA Java Format Check: COMPLETED/failure' <<< "$output"
+          ! grep -q 'METADATA_ONLY' <<< "$output"
           grep -q 'NO MATCHING RUN FOR EXACT HEAD' <<< "$output"
           grep -q 'required: COMPLETED/SUCCESS' <<< "$output"
           grep -q 'Desktop CI: QUEUED' <<< "$output"
