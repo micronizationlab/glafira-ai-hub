@@ -39,9 +39,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         testRoot = File(appContext.cacheDir, "glafira-backup-test-${UUID.randomUUID()}").apply { check(mkdirs()) }
         context = IsolatedBackupTestContext(appContext, testRoot)
         store = GlafiraTaskStore(context)
-        check(store.writableDatabase.path == File(File(testRoot, "databases"), "glafira_core_tasks.db").absolutePath) {
-            "Backup instrumentation store must be isolated from the app database."
-        }
+        assertEquals(File(testRoot, "databases/glafira_core_tasks.db").absolutePath, store.writableDatabase.path)
     }
     @After
     fun tearDown(): Unit = runBlocking<Unit> {
@@ -628,7 +626,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val runId = UUID.randomUUID().toString()
         val passphrase = "GLAFIRA-rollback-canary-test-2026".toCharArray()
         var ownsFixture = false
-
         try {
             withFixtureLocks {
                 synchronized(store) {
