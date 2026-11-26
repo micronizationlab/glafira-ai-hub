@@ -124,11 +124,11 @@ jobs:
           write_gate_result() {
             local result_file="$1" value="$2" recorded=''
             if ! printf '%s\n' "$value" > "$result_file"; then
-              printf 'Could not persist formatter gate result.\\n' >&2
+              printf 'Could not persist formatter gate result.\n' >&2
               return 25
             fi
             if ! IFS= read -r recorded < "$result_file" || [[ "$recorded" != "$value" ]]; then
-              printf 'Formatter gate result could not be read back exactly.\\n' >&2
+              printf 'Formatter gate result could not be read back exactly.\n' >&2
               return 26
             fi
           }
@@ -322,6 +322,31 @@ jobs:
             emit_bounded_diagnostic stderr "$direct_stderr"
             exit 1
           fi
+
+          # Exercise the production-style worktree-relative root: find . emits ./ paths.
+          relative_root="$fixture_root/relative-worktree"
+          mkdir -p "$relative_root/src"
+          cp "$fixture_root/formatted/Formatted.java" "$relative_root/src/Relative.java"
+          relative_expected_manifest="$RUNNER_TEMP/glafira-relative.expected.nul"
+          printf '%s\\0' './src/Relative.java' > "$relative_expected_manifest"
+          relative_manifest="$RUNNER_TEMP/glafira-relative.actual.nul"
+          relative_stdout="$RUNNER_TEMP/glafira-relative.stdout"
+          relative_stderr="$RUNNER_TEMP/glafira-relative.stderr"
+          relative_result="$RUNNER_TEMP/glafira-relative.result"
+          relative_java_args="$RUNNER_TEMP/glafira-relative.java-args.nul"; : > "$relative_java_args"
+          (
+            cd "$relative_root"
+            if GLAFIRA_JAVA_BIN="$java_capture_bin/java" GLAFIRA_JAVA_CAPTURE="$relative_java_args" GLAFIRA_REAL_JAVA="$real_java" run_format_gate . "$relative_manifest" "$relative_stdout" "$relative_stderr" "$relative_result"; then relative_status=0; else relative_status=$?; fi
+            if [[ "$relative_status" -ne 0 ]] || [[ "$(cat "$relative_result")" != "0" ]] || [[ -s "$relative_stderr" ]] || ! cmp -s "$relative_expected_manifest" "$relative_manifest" || ! cmp -s "$relative_expected_manifest" "$relative_java_args"; then
+              echo "::error::Worktree-relative Java source paths were dropped or rewritten before formatter invocation."
+              emit_bounded_diagnostic expected_manifest "$relative_expected_manifest"
+              emit_bounded_diagnostic actual_manifest "$relative_manifest"
+              emit_bounded_diagnostic java_arguments "$relative_java_args"
+              emit_bounded_diagnostic stdout "$relative_stdout"
+              emit_bounded_diagnostic stderr "$relative_stderr"
+              exit 1
+            fi
+          )
 
           # A missing formatter artifact is an execution failure, not a Java source rejection.
           real_jar="$jar"
