@@ -648,3 +648,38 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Acceptance:** enumerate Java files deterministically before invoking the formatter; when none exist, report an explicit successful no-op with count 0; when files exist, format-check every discovered Java file and fail on formatting differences; do not mask formatter errors or skip actual Java sources. Add workflow-level regression coverage for zero and non-zero matches if the repository's workflow test harness supports it. Exact-head Docs/Workflow CI, Security Scan and Dispatcher must pass; inspect logs; post-merge Main verification required.
 - **Out of scope:** Kotlin formatting, changing Java style rules, changing Jules authentication or treating its failure as a pass, modifying application source, weakening required checks, or changing security permissions.
 - **Status:** RESERVED; implementation is blocked until this reservation PR merges.
+
+
+## 2026-11-26 — Canonical WBS governance reservation reconciliation
+
+This append-only entry supersedes contradictory reservation metadata in the earlier PR #701 and PR #721 branch snapshots; it does not rewrite historical entries or claim either PR merged.
+
+### GLAFIRA-S000-W01 — coordinator fallback and reservation governance
+
+- **WBS / tracker:** executable leaf `1.11.2.1.1.1.1`; issue #685; owner-approved cross-step governance task, no legacy Program 150 step claimed. `S000` is the documented identity token for owner-approved cross-step governance work without a single legacy step.
+- **Executor / independent reviewer / owner:** GLAFIRA coordinator / independent reviewer not involved in authorship / project owner.
+- **Allowed files:** `docs/GLAFIRA_EXECUTION_CONTROL.md`, `docs/GLAFIRA_EXECUTION_LEDGER.md`, `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`, `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md`, `docs/engineering/PR_SIZE_AND_MERGE_POLICY.md`.
+- **Predecessor:** PR #673 is merged; no additional predecessor is asserted. The historical PR #687 reservation is superseded by this reconciled record; its five-file scope is transferred here, and the old branch/PR must not be merged.
+- **Canonical ledger ref and concurrency:** protected `main` is the only reservation ledger ref. This record becomes active only after its reservation PR merges against the exact current main SHA. All owner and coordinator reservations use the same ref and compare-and-set parent. One reservation merge at a time; re-read main and scan for duplicate Work Item/WBS/executor/file ownership after each merge.
+- **Handoff acceptance:** every delivery state is durable. `DISPATCHED_AWAITING_ACK` is not releasable on timeout alone; revoke the old assignment capability and commit a higher fencing generation before replacement dispatch. Preserve the old status/history and reject stale-generation writes. A lost ACK never creates a second live assignment.
+- **PR-size acceptance:** written approval before implementation for 201–300 lines; independent file-count exception for 6–10 files and <=200 lines, also approved before implementation; >300 lines or >10 files split.
+- **Status:** PROPOSED IN THIS RECONCILIATION PR; not active until merged; no implementation or Program 150 completion claimed.
+
+### GLAFIRA-S000-W02 — eleven-workstream batch-cycle governance
+
+- **WBS / tracker:** executable leaf `1.11.2.1.2.1.1`; issue #548; owner-approved cross-step governance task; no Program 150 implementation step claimed.
+- **Executor / reviewer / owner:** GLAFIRA coordinator / independent reviewer / project owner.
+- **Allowed files:** `docs/GLAFIRA_EXECUTION_CONTROL.md`, `docs/GLAFIRA_EXECUTION_LEDGER.md`, `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`, `AGENTS.md`, `.github/copilot-instructions.md`.
+- **Priority and intake:** current order Core → Backup & Recovery → Bridge/Desktop. Both engineering Action Pool and Workstream 11 helper-intake pool must be reconciled. Workstream 11 does not create a second runtime queue. DESIGN is fallback only after all equal/higher-priority ready integration and implementation work is checked.
+- **One active assignment:** suspend/transfer a blocked assignment and fence its former executor before assigning another item. A replacement cannot be assigned DESIGN or another global-ready task while the transferred task remains active. Release reservations only on DONE or authorized terminal CANCELLED/SUPERSEDED.
+- **CI acceptance:** serialize builds globally by repo/workflow/lane/configuration; verify workflow concurrency actually enforces this. Record exact-head results and logs; skipped/cancelled/queued/in-progress are not passes.
+- **Status:** PROPOSED IN THIS RECONCILIATION PR; no runtime scheduler, durable queue or Program 150 completion claimed.
+
+### GLAFIRA-S000-W03 — Windows Desktop / Hub UX design reservation correction
+
+- **WBS / tracker:** executable leaf `1.11.1.1.6.1.1`; issue #674 / umbrella #672; explicitly owner-approved cross-step DESIGN task, not a Program 150 step.
+- **Executor / reviewers / owner:** GLAFIRA coordinator / independent reviewers / project owner.
+- **Exclusive implementation deliverable:** `docs/design/WINDOWS_DESKTOP_HUB_UX.md` only. Reservation files are this ledger and the WBS standard; the ledger itself is append-only and shared by independent reservations, so ownership applies to this entry/append operation, not the whole file.
+- **Predecessors:** shared design token package #679 must be accepted before final token values; issue #674 must explicitly mark visual tokens PENDING before information-architecture drafting. The reservation PR merge is followed by a separate implementation reservation on the exact then-current main SHA before any drafting.
+- **Acceptance:** seven-component executable WBS ID; required ICQ flower; token-pending marker; owner-approved cross-step mapping; source lane, blocker and exact original outcome recorded when used as fallback; implementation branch/base pinned before drafting.
+- **Status:** corrected reservation proposed; no design drafting or implementation is authorized until the reservation and follow-on leaf reservation are merged. No Program 150 completion claimed.
