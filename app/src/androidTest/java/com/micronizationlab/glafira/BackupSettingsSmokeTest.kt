@@ -90,6 +90,10 @@ class BackupSettingsSmokeTest {
                 "Missing-folder guidance was not shown after the manual backup action",
                 guidance
             )
+            assertTrue(
+                "Missing-folder guidance is not visible to the owner",
+                requireNotNull(guidance).visibleBounds.let { it.width() > 0 && it.height() > 0 }
+            )
         } finally {
             scenario.close()
         }
