@@ -7,120 +7,115 @@ on:
     branches: [main]
 
 concurrency:
-  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  discover:
-    name: Discover Java sources
+  java-format-gate:
+    name: Google Java Style Validation
     runs-on: ubuntu-latest
-    outputs:
-      count: ${{ steps.sources.outputs.count }}
-      files: ${{ steps.sources.outputs.files }}
     steps:
       - name: Checkout merge result or pushed commit
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Discover Java sources safely
+
+      - name: Discover Java sources deterministically
         id: sources
         shell: bash
         run: |
           set -euo pipefail
           source_list="$RUNNER_TEMP/glafira-java-sources.nul"
-          find . -type f -name '*.java' -not -path './.git/*' -print0 > "$source_list"
-          mapfile -d '' sources < "$source_list"
+          find . -type f -name '*.java' -not -path './.git/*' -print0 | sort -z > "$source_list"
+          mapfile -d '' -t sources < "$source_list"
           for source in "${sources[@]}"; do
             if [[ "$source" =~ [[:space:]] ]]; then
-              echo "::error::Java source paths containing whitespace are unsupported by the formatter action: $source"
+              echo "::error::Java source paths containing whitespace are unsupported: $source"
               exit 1
             fi
           done
-          printf -v files '%s ' "${sources[@]}"
           echo "count=${#sources[@]}" >> "$GITHUB_OUTPUT"
-          echo "files=$files" >> "$GITHUB_OUTPUT"
-          if (("${#sources[@]}" == 0)); then
-            echo "No Java sources found; Google Java Format is not applicable."
-          else
-            echo "Discovered ${#sources[@]} Java source file(s)."
-          fi
+          echo "source_list=$source_list" >> "$GITHUB_OUTPUT"
+          echo "Discovered ${#sources[@]} Java source file(s) in deterministic order."
 
-  java-format:
-    name: Format Java sources
-    needs: discover
-    if: needs.discover.outputs.count != '0'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout merge result or pushed commit
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Check Google Java Style
-        uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
-        with:
-          args: "--set-exit-if-changed"
-          files: "${{ needs.discover.outputs.files }}"
-          skip-commit: true
-
-  formatter-smoke:
-    name: Formatter regression smoke test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create formatted fixture
+      - name: Download and verify pinned Google Java Format
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/glafira-formatter-smoke"
-          cat > "$RUNNER_TEMP/glafira-formatter-smoke/Smoke.java" <<'EOF'
-          final class Smoke {
+          jar="$RUNNER_TEMP/google-java-format-2.0.0-all-deps.jar"
+          curl --fail --show-error --location --retry 3 \
+            "https://github.com/google/google-java-format/releases/download/v2.0.0/google-java-format-2.0.0-all-deps.jar" \
+            --output "$jar"
+          echo "c78feb48c549fa7114b7ea11db3b456808f7b371ffe84e6643a44dd2f9588639  $jar" | sha256sum --check
+          version="$(java \
+            --add-exports jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED \
+            --add-exports jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED \
+            --add-exports jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED \
+            --add-exports jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED \
+            --add-exports jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED \
+            -jar "$jar" --version)"
+          [[ "$version" == "google-java-format: Version 2.0.0" ]]
+          echo "Verified $version"
+
+      - name: Check Google Java Style or report not applicable
+        shell: bash
+        env:
+          SOURCE_COUNT: ${{ steps.sources.outputs.count }}
+          SOURCE_LIST: ${{ steps.sources.outputs.source_list }}
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/google-java-format-2.0.0-all-deps.jar"
+          java_args=(
+            --add-exports jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED
+            --add-exports jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED
+            --add-exports jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
+            --add-exports jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
+            --add-exports jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED
+          )
+          if [[ "$SOURCE_COUNT" == "0" ]]; then
+            echo "::notice::Google Java Format: NOT_APPLICABLE (no Java source files discovered)."
+          else
+            xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$SOURCE_LIST"
+          fi
+
+      - name: Verify formatter accepts and rejects fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/google-java-format-2.0.0-all-deps.jar"
+          java_args=(
+            --add-exports jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED
+            --add-exports jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED
+            --add-exports jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
+            --add-exports jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
+            --add-exports jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED
+          )
+          fixture_dir="$(mktemp -d "$GITHUB_WORKSPACE/.gjf-smoke.XXXXXX")"
+          trap 'rm -rf "$fixture_dir"' EXIT
+          formatted="$fixture_dir/Formatted.java"
+          unformatted="$fixture_dir/Unformatted.java"
+          cat > "$formatted" <<'EOF'
+          final class Formatted {
             void run() {
               System.out.println("formatted");
             }
           }
           EOF
-      - name: Confirm formatter accepts formatted Java
-        uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
-        with:
-          args: "--set-exit-if-changed"
-          files: "${{ runner.temp }}/glafira-formatter-smoke/Smoke.java"
-          skip-commit: true
-      - name: Make fixture intentionally unformatted
-        shell: bash
-        run: |
-          printf '%s\n' 'final class Smoke{void run(){System.out.println("unformatted");}}' > "$RUNNER_TEMP/glafira-formatter-smoke/Smoke.java"
-      - name: Confirm formatter rejects unformatted Java
-        id: reject-unformatted
-        continue-on-error: true
-        uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
-        with:
-          args: "--set-exit-if-changed"
-          files: "${{ runner.temp }}/glafira-formatter-smoke/Smoke.java"
-          skip-commit: true
-      - name: Enforce formatter regression result
-        if: steps.reject-unformatted.outcome != 'failure'
-        run: echo "::error::Google Java Format did not reject unformatted source." && exit 1
+          java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$formatted"
 
-  java-format-gate:
-    name: Google Java Style Validation
-    needs: [discover, java-format, formatter-smoke]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Enforce discovery, formatting and smoke results
-        env:
-          DISCOVERY_RESULT: ${{ needs.discover.result }}
-          FORMAT_RESULT: ${{ needs.java-format.result }}
-          SMOKE_RESULT: ${{ needs.formatter-smoke.result }}
-          SOURCE_COUNT: ${{ needs.discover.outputs.count }}
-        run: |
-          set -euo pipefail
-          [[ "$DISCOVERY_RESULT" == "success" ]]
-          [[ "$SMOKE_RESULT" == "success" ]]
-          if [[ "$SOURCE_COUNT" == "0" ]]; then
-            [[ "$FORMAT_RESULT" == "skipped" ]]
+          printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$unformatted"
+          if output="$(java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$unformatted" 2>&1)"; then
+            echo "::error::Google Java Format unexpectedly accepted the unformatted fixture."
+            exit 1
           else
-            [[ "$FORMAT_RESULT" == "success" ]]
+            status=$?
           fi
+          if [[ "$status" -ne 1 ]] || ! grep -Eq '^(---|\+\+\+|@@)' <<< "$output"; then
+            echo "::error::Formatter failure was not the expected formatting-diff rejection (exit=$status)."
+            printf '%s\n' "$output"
+            exit 1
+          fi
+          echo "Formatter regression smoke passed: formatted input accepted; unformatted input rejected with a diff."
