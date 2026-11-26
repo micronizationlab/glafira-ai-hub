@@ -79,3 +79,6 @@ For each active workstream keep a concise record:
 - Next safe action
 
 This rule applies across GLAFIRA repositories and external project research. It is mandatory for all subsequent project planning and execution.
+
+
+Global cross-PR platform build serialization is NOT IMPLEMENTED; Android is PR-keyed, iOS is ref-keyed, and Windows workflows lack a shared queue. Issue #744 tracks the durable non-dropping FIFO queue/lock. Until it is implemented and verified, parallel platform build dispatch is BLOCKED; do not describe separate PR runs as serialized.
