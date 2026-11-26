@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: glafira-java-format-${{ github.event_name }}-${{ github.event.action == 'edited' && github.event.changes.base != null && 'base-edit' || github.event.action == 'edited' && 'metadata-edit' || 'standard' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -15,8 +15,10 @@ permissions:
 
 jobs:
   java-format-gate:
+    if: github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base != null
     name: Google Java Style Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout merge result or pushed commit
         uses: actions/checkout@v4
@@ -41,6 +43,10 @@ jobs:
               echo "::error::Java source paths containing whitespace are unsupported."
               exit 1
             fi
+            if ! printf '%s' "$source" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
+              echo "::error::Java source paths must round-trip through UTF-8 before invoking the formatter."
+              exit 1
+            fi
           done
           echo "count=${#sources[@]}" >> "$GITHUB_OUTPUT"
           echo "source_list=$source_list" >> "$GITHUB_OUTPUT"
@@ -51,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           jar="$RUNNER_TEMP/google-java-format-2.0.0-all-deps.jar"
-          curl --fail --show-error --location --retry 3 \
+          curl --fail --show-error --location --connect-timeout 15 --max-time 90 --retry 3 --retry-delay 2 \
             "https://github.com/google/google-java-format/releases/download/v2.0.0/google-java-format-2.0.0-all-deps.jar" \
             --output "$jar"
           echo "c78feb48c549fa7114b7ea11db3b456808f7b371ffe84e6643a44dd2f9588639  $jar" | sha256sum --check
@@ -86,7 +92,7 @@ jobs:
             xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$SOURCE_LIST"
           fi
 
-      - name: Verify formatter accepts and rejects fixtures through the production handoff
+      - name: Verify formatter accepts and rejects production manifests
         shell: bash
         run: |
           set -euo pipefail
@@ -119,7 +125,25 @@ jobs:
           EOF
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$unformatted"
 
-          # Exercise the exact NUL-delimited discovery + xargs handoff used above.
+          # The formatted-only manifest must pass and process every entry.
+          formatted_sources="$RUNNER_TEMP/glafira-formatter-formatted.nul"
+          printf '%s\0' "$formatted" "$formatted_second" | sort -z > "$formatted_sources"
+          mapfile -d '' -t formatted_files < "$formatted_sources"
+          [[ "${#formatted_files[@]}" -eq 2 ]]
+          formatted_expected="$fixture_dir/formatted.expected"
+          formatted_output="$fixture_dir/formatted.stdout"
+          : > "$formatted_expected"
+          for source in "${formatted_files[@]}"; do
+            java "${java_args[@]}" -jar "$jar" "$source" >> "$formatted_expected"
+          done
+          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$formatted_sources" > "$formatted_output"
+          if ! cmp -s "$formatted_expected" "$formatted_output"; then
+            echo "::error::Formatted production manifest was not fully accepted or one of its sources was skipped."
+            diff -u "$formatted_expected" "$formatted_output" || true
+            exit 1
+          fi
+
+          # The mixed manifest follows the exact sorted NUL-discovery + xargs production handoff.
           smoke_sources="$RUNNER_TEMP/glafira-formatter-smoke.nul"
           find "$fixture_dir" -type f -name '*.java' -print0 | sort -z > "$smoke_sources"
           mapfile -d '' -t smoke_files < "$smoke_sources"
@@ -130,7 +154,10 @@ jobs:
           mixed_expected="$fixture_dir/mixed.expected"
           mixed_output="$fixture_dir/mixed.stdout"
           mixed_error="$fixture_dir/mixed.stderr"
-          xargs -0 -r java "${java_args[@]}" -jar "$jar" < "$smoke_sources" > "$mixed_expected"
+          : > "$mixed_expected"
+          for source in "${smoke_files[@]}"; do
+            java "${java_args[@]}" -jar "$jar" "$source" >> "$mixed_expected"
+          done
           set +e
           xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$smoke_sources" > "$mixed_output" 2> "$mixed_error"
           mixed_status=$?
@@ -142,9 +169,9 @@ jobs:
             exit 1
           fi
 
-          # Keep a single-file oracle so an unrelated xargs/runtime error cannot satisfy the smoke.
-          expected="$fixture_dir/expected.java"
-          actual="$fixture_dir/actual.java"
+          # Keep a single-file oracle for the expected formatter rejection behavior.
+          expected="$fixture_dir/single.expected"
+          actual="$fixture_dir/single.actual"
           formatter_error="$fixture_dir/formatter.stderr"
           java "${java_args[@]}" -jar "$jar" "$unformatted" > "$expected"
           if java "${java_args[@]}" -jar "$jar" --set-exit-if-changed "$unformatted" > "$actual" 2> "$formatter_error"; then
@@ -159,5 +186,4 @@ jobs:
             diff -u "$expected" "$actual" || true
             exit 1
           fi
-          echo "Formatter regression smoke passed: the production manifest handoff rejects a later unformatted file, and the singleton oracle confirms the expected formatter output."
-
+          echo "Formatter regression smoke passed: formatted-only manifest accepted, every mixed-manifest source processed, and the unformatted third entry rejected."
