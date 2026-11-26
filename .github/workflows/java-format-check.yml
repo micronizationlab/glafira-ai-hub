@@ -1,18 +1,14 @@
 name: GLAFIRA Java Format Check
-
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
-
 concurrency:
   group: glafira-java-format-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
 permissions:
   contents: read
-
 jobs:
   discover:
     name: Discover Java sources
@@ -20,28 +16,31 @@ jobs:
     outputs:
       count: ${{ steps.sources.outputs.count }}
       batches: ${{ steps.sources.outputs.batches }}
+      workflow_changed: ${{ steps.sources.outputs.workflow_changed }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
-
       - name: Discover, validate and batch Java paths
         id: sources
         shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
+          workflow_changed=false
+          if [[ -n "$BASE_SHA" ]] && git cat-file -e "$BASE_SHA^{commit}"; then
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- .github/workflows/java-format-check.yml | grep -q . && workflow_changed=true
+          fi
+          echo "workflow_changed=$workflow_changed" >> "$GITHUB_OUTPUT"
           collect_java_sources() {
             local root="$1" output="$2" symlinks="$3" raw="${2}.raw"
-            if ! find "$root" -type l -name '*.java' -not -path "$root/.git/*" -print0 > "$symlinks"; then
-              return 1
-            fi
-            if [[ -s "$symlinks" ]]; then
-              return 1
-            fi
-            if ! find "$root" -type f -name '*.java' -not -path "$root/.git/*" -print0 > "$raw"; then
-              return 1
-            fi
+            find "$root" -type l -name '*.java' -not -path "$root/.git/*" -print0 > "$symlinks" || return 1
+            [[ ! -s "$symlinks" ]] || return 1
+            find "$root" -type f -name '*.java' -not -path "$root/.git/*" -print0 > "$raw" || return 1
             LC_ALL=C sort -z "$raw" -o "$output"
           }
           validate_and_batch() {
@@ -112,27 +111,18 @@ jobs:
             collect_java_sources . "$RUNNER_TEMP/smoke-valid.nul" "$RUNNER_TEMP/smoke-valid-links.nul"
             validate_and_batch "$RUNNER_TEMP/smoke-valid.nul" "$RUNNER_TEMP/smoke-valid-output" smoke
             grep -q '^count=4$' "$RUNNER_TEMP/smoke-valid-output"
-            python3 -c 'import json,pathlib,sys; d=dict(x.split("=",1) for x in pathlib.Path(sys.argv[2]).read_text().splitlines()); a=[p for b in json.loads(d["batches"])["include"] for p in b["files"].split(" ")]; e=[p.decode("utf-8") for p in pathlib.Path(sys.argv[1]).read_bytes().split(b"\0")[:-1]]; assert a == e' "$RUNNER_TEMP/smoke-valid.nul" "$RUNNER_TEMP/smoke-valid-output"
+            python3 -c 'import json,pathlib,sys; d=dict(x.split("=",1) for x in pathlib.Path(sys.argv[2]).read_text().splitlines()); a=[p for b in json.loads(d["batches"])["include"] for p in b["files"].split(" ")]; e=[p.decode("utf-8") for p in sorted(pathlib.Path(sys.argv[1]+".raw").read_bytes().split(b"\0")[:-1])]; assert a == e' "$RUNNER_TEMP/smoke-valid.nul" "$RUNNER_TEMP/smoke-valid-output"
             touch -- './with space.java'
             collect_java_sources . "$RUNNER_TEMP/smoke-space.nul" "$RUNNER_TEMP/smoke-space-links.nul"
-            if validate_and_batch "$RUNNER_TEMP/smoke-space.nul" "$RUNNER_TEMP/smoke-space-output"; then
-              echo "Whitespace-path regression was not rejected." >&2
-              exit 1
-            fi
+            validate_and_batch "$RUNNER_TEMP/smoke-space.nul" "$RUNNER_TEMP/smoke-space-output" && exit 1
             rm -- './with space.java'
             bad_path=$'./invalid-\xff.java'
             touch -- "$bad_path"
             collect_java_sources . "$RUNNER_TEMP/smoke-invalid-utf8.nul" "$RUNNER_TEMP/smoke-invalid-utf8-links.nul"
-            if validate_and_batch "$RUNNER_TEMP/smoke-invalid-utf8.nul" "$RUNNER_TEMP/smoke-invalid-utf8-output"; then
-              echo "Non-UTF-8 path regression was not rejected." >&2
-              exit 1
-            fi
+            validate_and_batch "$RUNNER_TEMP/smoke-invalid-utf8.nul" "$RUNNER_TEMP/smoke-invalid-utf8-output" && exit 1
             rm -- "$bad_path"
             ln -s './Good.java' './Linked.java'
-            if collect_java_sources . "$RUNNER_TEMP/smoke-symlink.nul" "$RUNNER_TEMP/smoke-symlink-links.nul"; then
-              echo "Java symlink regression was not rejected." >&2
-              exit 1
-            fi
+            collect_java_sources . "$RUNNER_TEMP/smoke-symlink.nul" "$RUNNER_TEMP/smoke-symlink-links.nul" && exit 1
             rm -- './Linked.java'
             mkdir -p empty
             collect_java_sources ./empty "$RUNNER_TEMP/smoke-empty.nul" "$RUNNER_TEMP/smoke-empty-links.nul"
@@ -147,7 +137,7 @@ jobs:
             validate_and_batch "$RUNNER_TEMP/smoke-large.nul" "$RUNNER_TEMP/smoke-large-output"
             grep -q '^count=1804$' "$RUNNER_TEMP/smoke-large-output"
             grep -q '"index":1' "$RUNNER_TEMP/smoke-large-output"
-            python3 -c 'import json,pathlib,sys; d=dict(x.split("=",1) for x in pathlib.Path(sys.argv[2]).read_text().splitlines()); a=[p for b in json.loads(d["batches"])["include"] for p in b["files"].split(" ")]; e=[p.decode("utf-8") for p in pathlib.Path(sys.argv[1]).read_bytes().split(b"\0")[:-1]]; assert a == e' "$RUNNER_TEMP/smoke-large.nul" "$RUNNER_TEMP/smoke-large-output"
+            python3 -c 'import json,pathlib,sys; d=dict(x.split("=",1) for x in pathlib.Path(sys.argv[2]).read_text().splitlines()); a=[p for b in json.loads(d["batches"])["include"] for p in b["files"].split(" ")]; e=[p.decode("utf-8") for p in sorted(pathlib.Path(sys.argv[1]+".raw").read_bytes().split(b"\0")[:-1])]; assert a == e' "$RUNNER_TEMP/smoke-large.nul" "$RUNNER_TEMP/smoke-large-output"
           )
           echo "Java source discovery regression checks passed."
           source_list="$RUNNER_TEMP/java-sources.nul"
@@ -175,49 +165,60 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-
       - name: Check Google Java Style
         uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
         with:
           args: "--set-exit-if-changed"
           files: "${{ matrix.files }}"
           skip-commit: true
-
   formatter-smoke:
+    needs: discover
+    if: needs.discover.outputs.workflow_changed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout submitted source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-
-      - name: Create formatted and unformatted fixtures
+      - name: Create isolated formatter fixtures
         shell: bash
         run: |
-          mkdir -p .ci-java-format-smoke
-          printf '%s\n' 'final class Smoke {' '  void run() {' '    System.out.println("formatted");' '  }' '}' > .ci-java-format-smoke/Smoke.java
-          cp .ci-java-format-smoke/Smoke.java .ci-java-format-smoke/@A.java
-          cp .ci-java-format-smoke/Smoke.java .ci-java-format-smoke/--version=.java
-          printf '%s\n' 'final class NeedsFormat{void run(){System.out.println("needs formatting");}}' > .ci-java-format-smoke/NeedsFormat.java
+          dir="$RUNNER_TEMP/glafira-java-format-smoke-$GITHUB_RUN_ID"
+          mkdir -m 700 "$dir"
+          printf '%s\n' 'final class Smoke {' '  void run() {' '    System.out.println("formatted");' '  }' '}' > "$dir/Smoke.java"
+          cp "$dir/Smoke.java" "$dir/@A.java"
+          cp "$dir/Smoke.java" "$dir/--version=.java"
+          cp "$dir/Smoke.java" "$dir/Unicode-λ.java"
+          cp "$dir/Smoke.java" "$dir/NeedsFormat-λ.java"
       - name: Accept option-like, @ and Unicode paths
         uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
         with:
           args: "--set-exit-if-changed"
-          files: "./.ci-java-format-smoke/Smoke.java ./.ci-java-format-smoke/@A.java ./.ci-java-format-smoke/--version=.java"
+          files: "${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/Smoke.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/@A.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/--version=.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/Unicode-λ.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/NeedsFormat-λ.java"
           skip-commit: true
-
-      - name: Require formatter to reject unformatted source
+      - name: Make Unicode fixture intentionally unformatted
+        run: printf '%s\n' 'final class NeedsFormat{void run(){System.out.println("needs formatting");}}' > "$RUNNER_TEMP/glafira-java-format-smoke-$GITHUB_RUN_ID/NeedsFormat-λ.java"
+      - name: Require formatter to reject Unicode source after a formatted first file
         id: reject-unformatted
         continue-on-error: true
         uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
         with:
           args: "--set-exit-if-changed"
-          files: "./.ci-java-format-smoke/NeedsFormat.java"
+          files: "${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/Smoke.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/NeedsFormat-λ.java"
           skip-commit: true
-
       - name: Assert formatting enforcement remains active
         if: steps.reject-unformatted.outcome != 'failure'
+        run: echo "::error::Formatter did not reject the previously accepted, now unformatted Unicode file." && exit 1
+  java-format-gate:
+    name: Google Java Style Validation
+    needs: [discover, java-format, formatter-smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce stable aggregate check
+        env:
+          DISCOVERY_RESULT: ${{ needs.discover.result }}
+          FORMAT_RESULT: ${{ needs.java-format.result }}
+          SOURCE_COUNT: ${{ needs.discover.outputs.count }}
+          WORKFLOW_CHANGED: ${{ needs.discover.outputs.workflow_changed }}
+          SMOKE_RESULT: ${{ needs.formatter-smoke.result }}
         run: |
-          echo "::error::Google Java Format did not reject intentionally unformatted source."
-          exit 1
+          [[ "$DISCOVERY_RESULT" == "success" ]] || exit 1
+          [[ ( "$SOURCE_COUNT" == "0" && "$FORMAT_RESULT" == "skipped" ) || ( "$SOURCE_COUNT" != "0" && "$FORMAT_RESULT" == "success" ) ]] || exit 1
+          [[ ( "$WORKFLOW_CHANGED" == "true" && "$SMOKE_RESULT" == "success" ) || ( "$WORKFLOW_CHANGED" != "true" && "$SMOKE_RESULT" == "skipped" ) ]] || exit 1
