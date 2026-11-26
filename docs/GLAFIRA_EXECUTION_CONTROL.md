@@ -123,6 +123,8 @@ At the end of each work cycle report:
 - merge SHA and post-merge CI (if merged);
 - ledger update and next action;
 - active blockers and who owns them.
+- a per-lane numeric table: planned / started / DONE / blocked / in-review / CI-passed / merged / post-merge-verified executable-step counts; list WBS IDs behind each nonzero outcome.
+- for every step counted as started or completed, the internal action sequence (change, complete test run, consolidated failure list, grouped fixes, rerun, PR, independent review, exact-head CI, merge and post-merge verification); identify explicitly which sub-actions remain open.
 
 No vague “done”, no hidden progress, no repeated work, no second build without a reason.
 
