@@ -157,3 +157,17 @@ The parent reservation PR must be merged to Main. A separate leaf-reservation PR
 - `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
 - `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
+
+
+## 12. WBS reservation uniqueness and strict-main merge safety
+
+The repository remains owned by the personal GitHub account. Native GitHub Merge Queue and organization transfer are explicitly out of scope. The selected control is the owner-configured `Protect main` ruleset requiring branches to be up to date before merge, combined with a required pull-request status check that validates reservation uniqueness against the current PR merge candidate.
+
+- `1.7.1.3` — PR reservation and merge safety.
+- `1.7.1.3.1` — Validate active WBS reservations against the protected Main ledger.
+- `1.7.1.3.1.1` — Implement strict-main reservation uniqueness check.
+- `1.7.1.3.1.1.1` — Add the required `GLAFIRA WBS Reservation Uniqueness` PR check, parser and regression fixtures (Work Item `GLAFIRA-GOV-WBS-W01`, issue #736).
+
+This leaf has no legacy Program 150 mapping. Its implementation reservation is recorded in the execution ledger before source edits. The checker must fail closed on malformed or ambiguous active records; reject duplicate active WBS leaf IDs, Work Item IDs and overlapping exclusive implementation paths; and ignore only correctly terminal, quiesced reservations with recorded access revocation. It must report the exact base and head SHAs checked.
+
+**Serialization premise and limit:** after one PR merges, another PR based on the old Main SHA must be blocked by the required up-to-date branch rule. Updating the second branch triggers a fresh uniqueness check against the new Main ledger. This is a protected-branch serial merge protocol, not an atomic Merge Queue. A privileged branch-protection bypass remains outside the guarantee and requires stop-and-reconcile.

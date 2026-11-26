@@ -652,3 +652,17 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Status:** RESERVED; implementation is blocked until this reservation PR merges.
 
 - WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.
+
+
+## WBS reservation — strict-main WBS reservation uniqueness check — 2026-11-26
+
+- **Work Item / WBS / parent / tracker:** `GLAFIRA-GOV-WBS-W01` / `1.7.1.3.1.1.1` / parent `1.7.1.3.1.1` — implement the required `GLAFIRA WBS Reservation Uniqueness` pull-request check / issue #736. No legacy Program 150 step is claimed.
+- **Owner authorization:** the owner explicitly chose to keep the repository under the personal account and use the existing `Protect main` ruleset with Require branches to be up to date before merging. The owner rejected organization transfer and native Merge Queue. Issue #736 now records this selected alternative.
+- **Executor / reviewer:** GLAFIRA coordinator / independent CodeRabbit and Proofline; final merge remains subject to owner approval and protected Main.
+- **Reservation branch / base:** `wbs/reserve-strict-main-wbs-uniqueness-20261126`, Main `afaefb624f10084067452c269e15636fbc7e6bb3`.
+- **Reservation-only paths:** `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md` and `docs/GLAFIRA_EXECUTION_LEDGER.md`. No implementation source is included in this reservation PR.
+- **Exclusive implementation paths after reservation merges:** `.github/workflows/wbs-reservation-uniqueness.yml`; `.github/scripts/validate_wbs_reservations.py`; `.github/scripts/tests/test_validate_wbs_reservations.py`. Confirm these paths remain unreserved and unused on the fresh Main SHA before creating the implementation branch.
+- **Procedure:** (1) parse the active reservation records from the PR merge candidate's canonical ledger; (2) validate unique active WBS leaf IDs and Work Item IDs; (3) normalize and compare exclusive implementation paths for overlap; (4) allow disjoint reservations; (5) ignore a terminal reservation only when terminal state, quiesced branch and revoked write access are all recorded; (6) fail closed on malformed, missing or ambiguous data; (7) publish the exact base SHA and head SHA checked; (8) run on PR opened/synchronize/reopened/ready_for_review; (9) configure the named check as required on protected Main; (10) prove the two-PR same-base scenario: first merges, second becomes stale, after update the duplicate check fails.
+- **Acceptance:** parser unit fixtures for duplicate WBS, duplicate Work Item, overlapping path, disjoint path, valid terminal reservation, non-quiesced terminal reservation, malformed/missing ledger and path normalization; workflow integration proves the check uses the PR merge candidate and reports base/head identity; exact-head Docs/Workflow CI, Security Scan and Project Dispatcher; independent review; owner confirmation that the required check is enabled; post-merge Main validation. This protocol is not described as Merge Queue or as protection against privileged bypass.
+- **Dependency / gate:** this reservation-only PR must merge before any implementation edit. The implementation branch must then be created from the resulting Main SHA, and its exact base and exclusive paths recorded before source work. No implementation or Program 150 completion is claimed by this reservation.
+- **Status:** RESERVED; implementation BLOCKED until this reservation merges and the post-merge Main SHA is verified.
