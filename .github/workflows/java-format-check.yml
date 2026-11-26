@@ -31,39 +31,87 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          discover_preflight_sources() {
+            local root="$1" manifest="$2" symlinks="$3" count=0 source
+            if ! find "$root" -type l -name '*.java' -not -path '*/.git/*' -print > "$symlinks"; then
+              echo "::error::Java symlink discovery failed."
+              return 31
+            fi
+            if [[ -s "$symlinks" ]]; then
+              echo "::error::Java source symlinks are not supported."
+              return 32
+            fi
+            if ! find "$root" -type f -name '*.java' -not -path '*/.git/*' -print0 | sort -z > "$manifest"; then
+              echo "::error::Java source discovery failed."
+              return 33
+            fi
+            while IFS= read -r -d '' source; do
+              if [[ "$source" =~ [[:space:]] ]]; then
+                echo "::error::Java source paths containing whitespace are not supported."
+                return 34
+              fi
+              count=$((count + 1))
+            done < "$manifest"
+            if ! iconv -f UTF-8 -t UTF-8 < "$manifest" > /dev/null; then
+              echo "::error::Java source manifest is not valid UTF-8."
+              return 35
+            fi
+            printf '%s\n' "$count"
+          }
+
           manifest="$RUNNER_TEMP/glafira-java-preflight.nul"
           symlinks="$RUNNER_TEMP/glafira-java-symlinks.txt"
-          if ! find . -type l -name '*.java' -not -path './.git/*' -print > "$symlinks"; then
-            echo "::error::Java symlink discovery failed."
+          count="$(discover_preflight_sources . "$manifest" "$symlinks")"
+
+          # Guard the zero-count decision with an independent two-file fixture so a
+          # broken discovery pipeline cannot silently classify a populated checkout empty.
+          fixture="$(mktemp -d "$RUNNER_TEMP/glafira-preflight-fixture.XXXXXX")"
+          trap 'rm -rf "$fixture"' EXIT
+          mkdir -p "$fixture/src/nested"
+          : > "$fixture/src/First.java"
+          : > "$fixture/src/nested/Second.java"
+          fixture_manifest="$RUNNER_TEMP/glafira-preflight-fixture.nul"
+          fixture_symlinks="$RUNNER_TEMP/glafira-preflight-fixture-symlinks.txt"
+          fixture_count="$(discover_preflight_sources "$fixture" "$fixture_manifest" "$fixture_symlinks")"
+          if [[ "$fixture_count" -ne 2 ]]; then
+            echo "::error::Java preflight fixture lost files (expected 2, got $fixture_count)."
             exit 1
           fi
-          if [[ -s "$symlinks" ]]; then
-            echo "::error::Java source symlinks are not supported."
-            exit 1
-          fi
-          if ! find . -type f -name '*.java' -not -path './.git/*' -print0 | sort -z > "$manifest"; then
-            echo "::error::Java source discovery failed."
-            exit 1
-          fi
-          if ! iconv -f UTF-8 -t UTF-8 < "$manifest" > /dev/null; then
-            echo "::error::Java source manifest is not valid UTF-8."
-            exit 1
-          fi
-          count=0
-          while IFS= read -r -d '' source; do
-            if [[ "$source" =~ [[:space:]] ]]; then
-              echo "::error::Java source paths containing whitespace are not supported."
-              exit 1
-            fi
-            count=$((count + 1))
-          done < "$manifest"
+
           echo "source_count=$count" >> "$GITHUB_OUTPUT"
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
           echo "Discovered $count production Java source file(s)."
           if [[ "$count" -eq 0 ]]; then
+            result="$RUNNER_TEMP/glafira-java-format.result"
+            if ! printf '%s\n' 'NOT_APPLICABLE' > "$result"; then
+              echo "::error::Could not persist NOT_APPLICABLE formatter result."
+              exit 25
+            fi
+            recorded=''
+            if ! IFS= read -r recorded < "$result" || [[ "$recorded" != "NOT_APPLICABLE" ]]; then
+              echo "::error::Could not read back NOT_APPLICABLE formatter result."
+              exit 26
+            fi
             echo "Production Java formatting: NOT_APPLICABLE (no Java sources)." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+          # Invalid UTF-8 source names must fail discovery rather than being mistaken for an empty tree.
+          invalid_fixture="$fixture/invalid-utf8"
+          mkdir -p "$invalid_fixture"
+          python3 - "$invalid_fixture" <<'PY'
+          import os
+          import sys
+          root = os.fsencode(sys.argv[1])
+          fd = os.open(root + b"/Invalid-\xff.java", os.O_CREAT | os.O_WRONLY, 0o600)
+          os.close(fd)
+          PY
+          if discover_preflight_sources "$invalid_fixture" "$RUNNER_TEMP/glafira-invalid-utf8.nul" "$RUNNER_TEMP/glafira-invalid-utf8.links" >/dev/null 2>&1; then
+            echo "::error::Invalid UTF-8 source path was accepted."
+            exit 1
+          fi
+
       - name: Download and verify pinned Google Java Format
+        if: steps.source-preflight.outputs.source_count != '0'
         shell: bash
         run: |
           set -euo pipefail
@@ -83,9 +131,11 @@ jobs:
           echo "Verified $version"
 
       - name: Discover and validate Java sources with shared production gate
+        if: steps.source-preflight.outputs.source_count != '0'
         shell: bash
         env:
           PRODUCTION_JAVA_SOURCE_COUNT: ${{ steps.source-preflight.outputs.source_count }}
+          PRODUCTION_JAVA_SOURCE_MANIFEST: ${{ steps.source-preflight.outputs.manifest }}
         run: |
           set -euo pipefail
           jar="$RUNNER_TEMP/google-java-format-2.0.0-all-deps.jar"
