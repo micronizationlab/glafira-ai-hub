@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'synchronize' && 'sync' || github.event.action == 'edited' && github.event.changes.base != null && format('retarget-{0}', github.event.pull_request.merge_commit_sha) || github.event.action == 'edited' && 'metadata-only' || github.event.action || 'push' }}
+  group: glafira-java-format-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'synchronize' && 'sync' || github.event.action == 'edited' && github.event.changes.base != null && format('retarget-{0}', github.sha) || github.event.action == 'edited' && 'metadata-only' || github.event.action || 'push' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 
 permissions:
@@ -405,4 +405,16 @@ jobs:
           findfail_manifest="$RUNNER_TEMP/glafira-findfail.nul"; findfail_stdout="$RUNNER_TEMP/glafira-findfail.stdout"; findfail_stderr="$RUNNER_TEMP/glafira-findfail.stderr"; findfail_result="$RUNNER_TEMP/glafira-findfail.result"
           if PATH="$find_failure_bin:$PATH" GLAFIRA_PARTIAL_JAVA="$fixture_root/formatted/Formatted.java" run_format_gate "$fixture_root/formatted" "$findfail_manifest" "$findfail_stdout" "$findfail_stderr" "$findfail_result"; then findfail_status=0; else findfail_status=$?; fi
           if [[ "$findfail_status" -eq 0 ]] || [[ "$(cat "$findfail_result")" != "DISCOVERY_ERROR" ]] || [[ ! -s "$findfail_stderr" ]]; then echo "::error::Partial regular-file find failure was not rejected by the shared production gate."; exit 1; fi
+
+          # Fail only the symlink scan; a regular-file scan must not mask this discovery error.
+          symlink_failure_bin="$fixture_root/symlink-find-failure-bin"; mkdir -p "$symlink_failure_bin"
+          cat > "$symlink_failure_bin/find" <<'SYMLINK_FIND'
+          #!/usr/bin/env bash
+          if [[ " $* " == *" -type l "* ]]; then echo "synthetic symlink scan failure" >&2; exit 1; fi
+          exec /usr/bin/find "$@"
+          SYMLINK_FIND
+          chmod +x "$symlink_failure_bin/find"
+          symlinkfail_manifest="$RUNNER_TEMP/glafira-symlink-findfail.nul"; symlinkfail_stdout="$RUNNER_TEMP/glafira-symlink-findfail.stdout"; symlinkfail_stderr="$RUNNER_TEMP/glafira-symlink-findfail.stderr"; symlinkfail_result="$RUNNER_TEMP/glafira-symlink-findfail.result"
+          if PATH="$symlink_failure_bin:$PATH" run_format_gate "$fixture_root/formatted" "$symlinkfail_manifest" "$symlinkfail_stdout" "$symlinkfail_stderr" "$symlinkfail_result"; then symlinkfail_status=0; else symlinkfail_status=$?; fi
+          if [[ "$symlinkfail_status" -eq 0 ]] || [[ "$(cat "$symlinkfail_result")" != "DISCOVERY_ERROR" ]] || ! grep -Fq "synthetic symlink scan failure" "$symlinkfail_stderr"; then echo "::error::Symlink-scan-only failure was not rejected by the shared production gate."; exit 1; fi
                     echo "Formatter regression smoke passed: exact NUL-delimited Java argument handoff, worktree-relative paths, dry-run positive, mixed, singleton, missing-formatter, empty-tree, missing-root, symlink, whitespace-path and partial-find-failure fixtures used the shared production gate; direct singleton oracle confirmed Java exit 1."
