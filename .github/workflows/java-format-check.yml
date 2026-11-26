@@ -63,12 +63,6 @@ jobs:
             echo "Production Java formatting: NOT_APPLICABLE (no Java sources)." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Report Java formatting not applicable
-        if: steps.source-preflight.outputs.source_count == '0'
-        shell: bash
-        run: |
-          echo "::notice::Google Java Style Validation is NOT_APPLICABLE: no production Java sources were discovered."
-
       - name: Download and verify pinned Google Java Format
         shell: bash
         run: |
@@ -215,49 +209,61 @@ jobs:
               return "$status"
             fi
           }
-          # Preflight classifies the checkout before provisioning; the formatter is still
-          # provisioned above because the independent smoke fixtures always require it.
+          # The same production entrypoint is used for the real checkout and the failure fixture.
+          run_production_gate() {
+            local root="$1" manifest="$2" stdout_file="$3" stderr_file="$4" result_file="$5"
+            local production_status=0 production_result_value=''
+            if [[ "$PRODUCTION_JAVA_SOURCE_COUNT" == "0" && "$root" == "." ]]; then
+              echo "::notice::Production Java formatting is NOT_APPLICABLE (preflight found no Java sources); formatter smoke checks will still run."
+              return 0
+            fi
+            if run_format_gate "$root" "$manifest" "$stdout_file" "$stderr_file" "$result_file"; then
+              if ! IFS= read -r production_result_value < "$result_file"; then
+                echo "::error::Production formatter result is missing or unreadable."
+                return 1
+              fi
+              case "$production_result_value" in
+                0) return 0 ;;
+                NOT_APPLICABLE)
+                  echo "::notice::Production Java formatting is NOT_APPLICABLE; regression smoke checks are still running."
+                  return 0
+                  ;;
+                *)
+                  echo "::error::Production formatter result is unrecognized; refusing to pass."
+                  return 1
+                  ;;
+              esac
+            else
+              production_status=$?
+              if [[ -r "$result_file" ]]; then
+                production_result_value="$(cat "$result_file" 2>/dev/null || true)"
+              fi
+              if [[ "$production_result_value" == "DISCOVERY_ERROR" ]]; then
+                echo "::error::Java source discovery failed; inspect the bounded base64 diagnostic below."
+                emit_bounded_diagnostic discovery_stderr "$stderr_file"
+              elif [[ "$production_result_value" == "SOURCE_REJECTION" ]]; then
+                echo "::error::Google Java Format rejected source formatting (exit=$production_status)."
+                emit_bounded_diagnostic stdout "$stdout_file"
+                emit_bounded_diagnostic stderr "$stderr_file"
+              elif [[ "$production_result_value" == "SOURCE_SYNTAX_REJECTION" ]]; then
+                echo "::error::Java source parsing failed; correct the syntax diagnostics (exit=$production_status)."
+                emit_bounded_diagnostic stderr "$stderr_file"
+              else
+                echo "::error::Google Java Format could not execute or persist its result reliably (exit=$production_status)."
+                emit_bounded_diagnostic stdout "$stdout_file"
+                emit_bounded_diagnostic stderr "$stderr_file"
+              fi
+              return "$production_status"
+            fi
+          }
           production_manifest="$RUNNER_TEMP/glafira-java-sources.nul"
           production_stdout="$RUNNER_TEMP/glafira-java-format.stdout"
           production_stderr="$RUNNER_TEMP/glafira-java-format.stderr"
           production_result="$RUNNER_TEMP/glafira-java-format.result"
-          if [[ "$PRODUCTION_JAVA_SOURCE_COUNT" == "0" ]]; then
-            echo "::notice::Production Java formatting is NOT_APPLICABLE (preflight found no Java sources); formatter smoke checks will still run."
-          elif run_format_gate . "$production_manifest" "$production_stdout" "$production_stderr" "$production_result"; then
-            production_result_value=''
-            if ! IFS= read -r production_result_value < "$production_result"; then
-              echo "::error::Production formatter result is missing or unreadable."
-              exit 1
-            fi
-            case "$production_result_value" in
-              0) ;;
-              NOT_APPLICABLE)
-                echo "::notice::Production Java formatting is NOT_APPLICABLE (no Java sources); regression smoke checks are still running."
-                ;;
-              *)
-                echo "::error::Production formatter result is unrecognized; refusing to pass."
-                exit 1
-                ;;
-            esac
+          if run_production_gate . "$production_manifest" "$production_stdout" "$production_stderr" "$production_result"; then
+            :
           else
             production_status=$?
-            production_result_value=''
-            if [[ -r "$production_result" ]]; then
-              production_result_value="$(cat "$production_result" 2>/dev/null || true)"
-            fi
-            if [[ "$production_result_value" == "DISCOVERY_ERROR" ]]; then
-              echo "::error::Java source discovery failed; inspect the bounded base64 diagnostic below."; emit_bounded_diagnostic discovery_stderr "$production_stderr"
-            else
-              if [[ "$production_result_value" == "SOURCE_REJECTION" ]]; then
-                echo "::error::Google Java Format rejected source formatting (exit=$production_status)."
-              elif [[ "$production_result_value" == "SOURCE_SYNTAX_REJECTION" ]]; then
-                echo "::error::Java source parsing failed; correct the syntax diagnostics (exit=$production_status)."
-              else
-                echo "::error::Google Java Format could not execute or complete reliably (exit=$production_status); source rejection was not established."
-              fi
-              emit_bounded_diagnostic stdout "$production_stdout"
-              emit_bounded_diagnostic stderr "$production_stderr"
-            fi
             exit "$production_status"
           fi
           # Fixtures live only in a unique runner-temp directory; never remove a checkout-owned path.
@@ -340,6 +346,18 @@ jobs:
             emit_bounded_diagnostic actual_manifest "$mixed_manifest"
             emit_bounded_diagnostic stdout "$mixed_stdout"
             emit_bounded_diagnostic stderr "$mixed_stderr"
+            exit 1
+          fi
+
+          # Exercise the actual production entrypoint on an unformatted fixture; it must propagate
+          # the formatter's nonzero status rather than allowing later smoke checks to hide it.
+          production_fixture_manifest="$RUNNER_TEMP/glafira-production-entrypoint.nul"
+          production_fixture_stdout="$RUNNER_TEMP/glafira-production-entrypoint.stdout"
+          production_fixture_stderr="$RUNNER_TEMP/glafira-production-entrypoint.stderr"
+          production_fixture_result="$RUNNER_TEMP/glafira-production-entrypoint.result"
+          if run_production_gate "$fixture_root/mixed" "$production_fixture_manifest" "$production_fixture_stdout" "$production_fixture_stderr" "$production_fixture_result"; then production_entry_status=0; else production_entry_status=$?; fi
+          if [[ "$production_entry_status" -ne 123 ]] || [[ "$(cat "$production_fixture_result")" != "SOURCE_REJECTION" ]]; then
+            echo "::error::Production formatter entrypoint did not propagate the unformatted-source failure (status=$production_entry_status)."
             exit 1
           fi
           mixed_expected="$RUNNER_TEMP/glafira-mixed.expected"
