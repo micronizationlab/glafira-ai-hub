@@ -92,3 +92,14 @@ An exception is valid only when the owner/integrator approves it in writing befo
 - Security, credential, ownership, backup/restore and migration changes should be smaller than the general limits whenever possible, not larger.
 
 **Default decision: split first, ask before exceeding the limit, and prefer the smallest independently testable PR.**
+
+
+## 8. File-count-only exception and approval timing
+
+The file limit is independent of the line limit. A PR with 1–200 changed lines that needs 6–10 files is not automatically allowed by the 201–300-line exception row.
+
+- A **file-count-only exception** may be approved only for one coherent, independently testable change with no more than 200 changed lines and 6–10 explicitly listed files.
+- Written owner/integrator approval must be recorded **before implementation begins**. The request must state why the files cannot be split, list every path, name the executor/reviewer, and identify the focused validation.
+- This exception does not permit 201–300 lines unless the separate line-count exception is also approved before implementation. If both limits are exceeded, both conditions must be satisfied in one written approval.
+- More than 10 files or more than 300 changed lines must be split; no exception is available under this policy.
+- Approval at PR submission, after implementation, or after review is retrospective and invalid. Execution-control, WBS, branch, helper and design-fallback documents must repeat this same pre-implementation deadline without alternative wording.
