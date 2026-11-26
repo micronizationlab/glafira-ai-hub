@@ -31,10 +31,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private var runtimeWasEnabled = false
     @Before
     fun setUp() = runBlocking {
-        org.junit.Assume.assumeTrue(
-            "Requires a disposable emulator: rollback AndroidKeyStore alias is UID-scoped.",
-            android.os.Build.FINGERPRINT.contains("sdk_gphone") || android.os.Build.FINGERPRINT.contains("generic")
-        )
+        org.junit.Assume.assumeTrue(android.os.Build.FINGERPRINT.contains("sdk_gphone"))
         runtimeWasEnabled = GlafiraCoreRuntimeOwner.get(appContext).isEnabled
         cancelAndAwaitCoreWorkers()
         testRoot = File(appContext.cacheDir, "glafira-backup-test-${UUID.randomUUID()}").apply { check(mkdirs()) }
