@@ -110,10 +110,18 @@ jobs:
 
           format_check_manifest() {
             local manifest="$1" stdout_file="$2" stderr_file="$3" status=0
-            xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$manifest" > "$stdout_file" 2> "$stderr_file" || status=$?
+            xargs -0 -r java "${java_args[@]}" -jar "$jar" --dry-run --set-exit-if-changed < "$manifest" > "$stdout_file" 2> "$stderr_file" || status=$?
             return "$status"
           }
 
+          emit_bounded_diagnostic() {
+            local label="$1" file="$2" bytes
+            bytes="$(wc -c < "$file")"
+            printf '%s_bytes=%s\n' "$label" "$bytes"
+            printf '%s_base64=' "$label"
+            head -c 4096 "$file" | base64 -w0
+            printf '\n'
+          }
           run_format_gate() {
             local root="$1" manifest="$2" stdout_file="$3" stderr_file="$4" result_file="$5"
             local count status=0
@@ -154,8 +162,8 @@ jobs:
               echo "::error::Java source discovery failed; inspect the base64 diagnostic below."; printf "discovery_stderr_base64="; base64 -w0 "$production_stderr"; printf "\n"
             else
               echo "::error::Google Java Format rejected one or more Java sources (exit=$production_status). Diagnostics are base64-encoded to keep PR source text inert."
-              printf 'stdout_base64='; base64 -w0 "$production_stdout"; printf '\n'
-              printf 'stderr_base64='; base64 -w0 "$production_stderr"; printf '\n'
+              emit_bounded_diagnostic stdout "$production_stdout"
+              emit_bounded_diagnostic stderr "$production_stderr"
             fi
             exit "$production_status"
           fi
@@ -193,20 +201,18 @@ jobs:
           if run_format_gate "$fixture_root/formatted" "$formatted_manifest" "$formatted_stdout" "$formatted_stderr" "$formatted_result"; then formatted_status=0; else formatted_status=$?; fi
           if [[ "$formatted_status" -ne 0 ]] || [[ "$(cat "$formatted_result")" != "0" ]] || [[ -s "$formatted_stderr" ]] || ! cmp -s "$formatted_expected_manifest" "$formatted_manifest"; then
             echo "::error::Formatted-only manifest was not accepted with the exact two expected sources."
-            printf 'expected_manifest_base64='; base64 -w0 "$formatted_expected_manifest"; printf '\n'
-            printf 'actual_manifest_base64='; base64 -w0 "$formatted_manifest"; printf '\n'
-            printf 'stdout_base64='; base64 -w0 "$formatted_stdout"; printf '\n'
-            printf 'stderr_base64='; base64 -w0 "$formatted_stderr"; printf '\n'
+            emit_bounded_diagnostic expected_manifest "$formatted_expected_manifest"
+            emit_bounded_diagnostic actual_manifest "$formatted_manifest"
+            emit_bounded_diagnostic stdout "$formatted_stdout"
+            emit_bounded_diagnostic stderr "$formatted_stderr"
             exit 1
           fi
           formatted_expected="$RUNNER_TEMP/glafira-formatted.expected"
           : > "$formatted_expected"
-          java "${java_args[@]}" -jar "$jar" "$fixture_root/formatted/Formatted.java" >> "$formatted_expected"
-          java "${java_args[@]}" -jar "$jar" "$fixture_root/formatted/FormattedSecond.java" >> "$formatted_expected"
           if ! cmp -s "$formatted_expected" "$formatted_stdout"; then
-            echo "::error::Formatted-only manifest output differs from independently formatted fixtures."
-            printf 'expected_base64='; base64 -w0 "$formatted_expected"; printf '\n'
-            printf 'actual_base64='; base64 -w0 "$formatted_stdout"; printf '\n'
+            echo "::error::Formatted-only dry-run should report no changed paths."
+            emit_bounded_diagnostic expected "$formatted_expected"
+            emit_bounded_diagnostic actual "$formatted_stdout"
             exit 1
           fi
 
@@ -226,14 +232,11 @@ jobs:
             exit 1
           fi
           mixed_expected="$RUNNER_TEMP/glafira-mixed.expected"
-          : > "$mixed_expected"
-          java "${java_args[@]}" -jar "$jar" "$fixture_root/mixed/Formatted.java" >> "$mixed_expected"
-          java "${java_args[@]}" -jar "$jar" "$fixture_root/mixed/FormattedSecond.java" >> "$mixed_expected"
-          java "${java_args[@]}" -jar "$jar" "$fixture_root/mixed/Unformatted.java" >> "$mixed_expected"
+          printf '%s\n' "$fixture_root/mixed/Unformatted.java" > "$mixed_expected"
           if ! cmp -s "$mixed_expected" "$mixed_stdout"; then
-            echo "::error::Mixed manifest output differs from independently formatted fixtures; a source may have been skipped."
-            printf 'expected_base64='; base64 -w0 "$mixed_expected"; printf '\n'
-            printf 'actual_base64='; base64 -w0 "$mixed_stdout"; printf '\n'
+            echo "::error::Mixed dry-run must report exactly the unformatted third source; this also detects skipped or duplicated manifest entries."
+            emit_bounded_diagnostic expected "$mixed_expected"
+            emit_bounded_diagnostic actual "$mixed_stdout"
             exit 1
           fi
 
@@ -253,11 +256,24 @@ jobs:
             exit 1
           fi
           single_expected="$RUNNER_TEMP/glafira-single.expected"
-          java "${java_args[@]}" -jar "$jar" "$fixture_root/single/Unformatted.java" > "$single_expected"
+          printf '%s\n' "$fixture_root/single/Unformatted.java" > "$single_expected"
           if ! cmp -s "$single_expected" "$single_stdout"; then
-            echo "::error::Single-file formatter output differs from independent canonical output."
-            printf 'expected_base64='; base64 -w0 "$single_expected"; printf '\n'
-            printf 'actual_base64='; base64 -w0 "$single_stdout"; printf '\n'
+            echo "::error::Single-file dry-run must report exactly the unformatted source path."
+            emit_bounded_diagnostic expected "$single_expected"
+            emit_bounded_diagnostic actual "$single_stdout"
+            exit 1
+          fi
+          direct_stdout="$RUNNER_TEMP/glafira-single.direct.stdout"
+          direct_stderr="$RUNNER_TEMP/glafira-single.direct.stderr"
+          set +e
+          java "${java_args[@]}" -jar "$jar" --dry-run --set-exit-if-changed "$fixture_root/single/Unformatted.java" > "$direct_stdout" 2> "$direct_stderr"
+          direct_status=$?
+          set -e
+          if [[ "$direct_status" -ne 1 ]] || [[ -s "$direct_stderr" ]] || ! cmp -s "$single_expected" "$direct_stdout"; then
+            echo "::error::Direct single-file oracle must return Java exit 1 for a style violation, not a parse/runtime error."
+            emit_bounded_diagnostic expected "$single_expected"
+            emit_bounded_diagnostic actual "$direct_stdout"
+            emit_bounded_diagnostic stderr "$direct_stderr"
             exit 1
           fi
 
@@ -290,4 +306,4 @@ jobs:
             exit 1
           fi
 
-          echo "Formatter regression smoke passed: exact positive, mixed, singleton, empty-tree, missing-root and symlink fixtures used the same production discovery and manifest formatter functions."
+          echo "Formatter regression smoke passed: dry-run positive, mixed, singleton, empty-tree, missing-root and symlink fixtures used the same production discovery and manifest formatter functions; the direct singleton oracle confirmed Java exit 1."
