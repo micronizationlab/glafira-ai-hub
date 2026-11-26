@@ -165,3 +165,52 @@ This rule applies whenever a lane would otherwise be idle for a cycle. It does n
 - If the original executor responds after transfer, it must stop editing the transferred implementation. It may contribute review evidence only when explicitly requested by the coordinator.
 - A genuine external dependency, unavailable permission, owner-only acceptance or infrastructure outage is a BLOCKED state, not proof of laziness. The coordinator still transfers actionable work where possible and records the exact blocker; design fallback is assigned only if no higher-priority ready task exists.
 - This escalation rule does not weaken dependency order, exact-head CI, review, owner approval, physical-device acceptance or merge gates. No direct merge to main is authorized by the transfer itself.
+
+## 14. Canonical reconciliation — owner authority, reservations, batch dispatch and recovery
+
+This section is the controlling clarification wherever earlier wording in this file, the completion plan, WBS standard, ledger, helper instructions or dispatcher guidance conflicts.
+
+### Owner authority and priority
+
+- The owner alone sets or changes priorities, directly assigns/reserves work, approves cross-priority exceptions, overrides assignments and stops work. GLAFIRA is the operational coordinator and performs queue reconciliation, selection and dispatch within the owner's current decisions. Neither a helper nor Project Dispatcher may assign work independently.
+- Current owner priority is: **P1 Core → P2 Backup & Recovery → P3 Bridge and Windows Desktop**. Android and Desktop remain the primary runtime surfaces but do not outrank Core or Backup. iOS and specialist/agent feature work follow the foundation. Token/GCU implementation remains non-issuing and lower priority. Workstream 11 integration work may take precedence when it is the required review/CI/merge/post-merge action for an already eligible higher-priority item; it does not create a new product priority.
+- A stale P0/P1/P4 ranking in an engineering dispatcher document is subordinate to this current owner-approved order until the owner changes it. The coordinator records the exact owner decision and its date when changing priority.
+
+### Complete ready-work reconciliation
+
+- Before every assignment, inspect both the engineering dispatcher Action Pool and the Workstream 11 helper-intake/integration pool, plus issues, PRs, review requests, branches, reservations, CI failures, queued/running jobs and post-merge actions. An Action Pool item remains actionable even if it has no issue, PR, branch or ledger reservation yet; register it before dispatch.
+- The dispatcher is evidence only for PR/CI state. It is not the canonical queue, selector, reservation service or assignment authority. Workstream 11 is an intake/reconciliation view over existing GitHub/WBS records, not a second persisted runtime queue or Core authority.
+- Dispatch the highest-ranked dependency-ready item under the owner priority order. Do not send a helper to DESIGN while equal- or higher-priority implementation, validation, intake, review, merge or post-merge work is ready. A lower-priority item may be selected only when no higher-priority eligible item exists and the assignment is recorded as such.
+
+### Atomic reservation and single-flight dispatch
+
+- The canonical reservation ledger is the append-only ledger on protected `refs/heads/main`. A reservation is not active and no work may be dispatched until its reservation record is merged into the current mainline ledger.
+- All reservations, including direct owner assignments and overrides, use the same ledger-ref and the same compare-and-set rule: read the exact main SHA and ledger blob, prepare one reservation update, and submit it against that exact parent. If main advances or the expected blob/parent differs, reject the stale write, re-read and reconcile. Never accept two reservations based on the same stale ledger snapshot.
+- Reservation commits are serialized: one reservation/integration merge at a time; after each merge, re-read main and scan for duplicate WBS IDs, Work Item IDs, executors and file/behavior ownership before the next reservation or dispatch. A stale branch or a green check on an old base is not a reservation.
+- The reservation record must identify the canonical WBS executable leaf, owner-approved cross-step mapping where applicable, Work Item ID, predecessor(s), accountable executor, independent reviewer, exact allowed files, branch, base SHA, acceptance and status. File ownership is scoped to the listed paths/behavior; recording a ledger entry does not reserve the entire ledger file against unrelated append-only reservations.
+
+### Durable handoff and lost acknowledgement
+
+- Persist every delivery transition in the ledger/assignment record: `RESERVED_NOT_DISPATCHED`, `DISPATCHED_AWAITING_ACK`, `DISPATCH_ACKNOWLEDGED`, `SUSPENDED`, `TRANSFERRED`, and terminal `DONE`, `CANCELLED` or `SUPERSEDED`. Each transition records actor, timestamp, exact task/WBS identity, generation/fencing token, recipient and evidence.
+- For `RESERVED_NOT_DISPATCHED`, resume the same reservation or release it with a reason before selecting another item. For `DISPATCHED_AWAITING_ACK`, do not blindly retry, release or reassign: first reconcile with the recipient. If the recipient cannot be reached, revoke its assignment lease/capability and advance the monotonic fencing generation in the canonical record; all subsequent writes from the old generation must be rejected. Only after revocation/fencing is durably committed may a replacement receive the work. An ACK alone is not proof of stop; it must identify the exact assignment and generation.
+- Delivery retries are idempotent and retain the same assignment identity/idempotency key. Never create a second active assignment while the first generation remains valid. An unresolved or unknown handoff remains BLOCKED/IN_FLIGHT, not silently released.
+- A coordinator restart must resolve every nonterminal delivery state from the durable record before issuing new work. Recovery is idempotent; repeated reconciliation cannot create duplicate assignments.
+
+### One active assignment, transfer and DESIGN fallback
+
+- Each helper has at most one active bounded assignment. A planned successor is not an assignment. Before a blocked assignment is suspended or transferred, record its original status and blocker, transfer its exclusive reservation, and fence the former executor from editing. Only then may the replacement receive one new item.
+- After three completed coordinator passes without substantive, verifiable progress, GLAFIRA may take over the actionable implementation task. Preserve the original task's status and history; the returning helper must stop editing it. The helper receives a distinct DESIGN assignment only after the transfer is complete and only if it has no other active assignment.
+- A helper that takes over a transferred task must not also receive a DESIGN fallback or a second global-ready task in the same cycle. Re-evaluate its slot only after the transferred task is completed or formally suspended/handed off.
+- Keep reservations while work is active, blocked, suspended or transferred. Release a reservation only after verified `DONE` or authorized terminal `CANCELLED`/`SUPERSEDED`; record the reason and replacement ID for the latter two. Never release merely because an executor missed an ACK or a task is temporarily blocked.
+
+### Eleven-workstream cycle and build serialization
+
+- Every cycle reconciles all eleven workstreams, but the 3–5 leaf target is aspirational and never a quota. Count only genuine executable leaves. Record numeric counts of planned, started, DONE, blocked, in-review, CI-passed, merged and post-merge-verified steps per lane; sub-actions are evidence within a leaf, not extra steps.
+- Work may proceed concurrently only for independent leaves with separate WBS IDs, executors, branches and non-overlapping files/behavior. Build/release lanes are globally serialized by repository + workflow + lane + configuration; distinct PR event concurrency groups do not authorize simultaneous platform builds. Workflow concurrency must enforce the serialization, and a documentation rule alone is not evidence that it does.
+- A leaf reaches DONE only after acceptance, independent review of the exact head, exact-head CI, authorized merge and post-merge checks. A PR, comment, started job, skipped job or partial green suite is not DONE.
+
+### PR-size exceptions — one consistent approval deadline
+
+- The binding size policy is `docs/engineering/PR_SIZE_AND_MERGE_POLICY.md`. Any 201–300-line exception requires written owner/integrator approval **before implementation starts**; approval at PR submission is too late. More than 300 changed lines must be split.
+- The five-file limit is independent of line count. A file-count-only exception for 6–10 files and no more than 200 changed lines requires the same written approval before implementation, a single coherent change, exact file list and reason. It is not automatically granted by a line-count exception. More than 10 files must be split.
+- All mandatory review steps, design fallback instructions and branch guidance must use these same deadlines and limits. No local wording may weaken or delay the binding approval gate.
