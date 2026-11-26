@@ -1,6 +1,6 @@
 ## Mandatory eleventh workstream: helper intake and PR integration
 
-At the start of every session, follow `docs/engineering/ELEVENTH_WORKSTREAM_PR_INTEGRATION.md`: inspect all helper/contributor work and all open PRs, collect completed work, review it against current main, and integrate suitable changes as soon as exact-head checks, review, dependencies, approvals and branch protection permit. PR collection and safe merging are the coordinator's primary responsibility; the other ten workstreams are prioritized around it. Never merge stale or unverified work, bypass protections, or claim skipped/cancelled checks passed.
+At the start of every session, follow `docs/engineering/ELEVENTH_WORKSTREAM_PR_INTEGRATION.md`: inspect helper/contributor work and all open PRs, collect completed work, review it against current main, and integrate suitable changes when exact-head checks, independent review, dependencies, approvals and branch protection permit. Workstream 11 provides integration support across the eleven lanes; it does not override the owner's product priority order or displace Core/Backup implementation. Check ready intake/review/merge/post-merge actions before DESIGN fallback. Never merge stale or unverified work, bypass protections, or claim skipped/cancelled checks passed.
 
 # GitHub Copilot collaboration rules for GLAFIRA
 
@@ -63,7 +63,8 @@ All contributors and AI helpers, including Berestovkon, must obey docs/engineeri
 
 - Target 50–150 changed lines and at most 5 files per PR.
 - 200 changed lines is the normal hard ceiling.
-- 201–300 lines requires the owner's/integrator's written approval before implementation; maximum 10 files.
+- 201–300 lines requires the owner's/integrator's written approval before implementation; maximum 10 files only with separately justified file scope.
+- 6–10 files at 200 lines or fewer requires a separate written file-count approval before implementation. Line and file exceptions are independent.
 - More than 300 changed lines is prohibited for an ordinary implementation PR: split it.
 - Count additions + deletions. Tests and docs count; generated artifacts must be disclosed separately.
 - One PR = one logical, independently testable change. Check current main, existing PRs and changed-file overlaps before coding.
@@ -111,10 +112,20 @@ Use Russian when communicating with Валерий unless he asks for another la
 
 Before accepting or starting any task, every coordinator and helper MUST read `docs/GLAFIRA_EXECUTION_CONTROL.md`, `docs/GLAFIRA_EXECUTION_LEDGER.md`, and `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md`, then refresh live GitHub state. Reserve a unique Work Item ID, Program Step ID, one accountable executor, and exclusive file/behavior scope in the ledger before editing. Search main, open PRs, branches and helper work for equivalent behavior and overlapping files; reuse existing implementation or PR instead of duplicating it. Do not create a second branch/PR/build for the same logical change.
 
-Builds are serialized: identify a build by repository + commit SHA + workflow + lane + configuration. Reuse queued/running/completed evidence for the same identity. Do not launch parallel builds or rerun without a documented log-based reason. A new source SHA requires fresh exact-head validation. Read actual job logs; skipped/cancelled/queued/in-progress checks are not passes.
+Identify a build by repository + commit SHA + workflow + lane + configuration. Reuse queued/running/completed evidence for the same identity and do not launch duplicate manual runs without a documented reason. Cross-workflow/PR global build serialization is not guaranteed unless workflows share a verified queue/concurrency group; current PR-triggered workflows may overlap. Do not claim global serialization until a queue preserving every PR validation request is implemented and tested. A new source SHA requires fresh exact-head validation. Read actual job logs; skipped/cancelled/queued/in-progress checks are not passes.
 
 A numbered Program 150 step becomes DONE only after its full acceptance criterion is implemented, required tests and exact-head checks pass, review/dependencies are resolved, it is merged by an authorized maintainer, post-merge checks pass for the resulting main SHA, and evidence is recorded. A PR, green partial CI or APK alone is not completion. No direct pushes to main, no blind merges, and no reopening frozen PR #410. Workstream 11 owns helper intake/deduplication before integration. These rules are mandatory and supersede any informal or older workflow wording.
 
 ## Mandatory autonomous defect-repair cycle (owner-approved operating rule, 2026-11-24)
 
 Every helper MUST follow [AUTONOMOUS_REPAIR_CYCLE.md](../docs/engineering/AUTONOMOUS_REPAIR_CYCLE.md): capture reproducible evidence; check ledger/PR/branch ownership; fix actionable defects within the reserved scope; add regression coverage; run and inspect relevant tests; repeat after source/test failures; and report exact evidence. If the defect belongs to another component, create/link a specific work item for its named owner and continue independent work. A journal entry alone does not close an actionable defect. This rule grants no additional write, approval, merge, secret or side-effect permissions and does not override execution control, PR limits, serialized CI, owner approval or frozen PR #410.
+
+## Eleven-lane dispatch and ownership rules
+
+Follow Sections 12–15 of `docs/GLAFIRA_EXECUTION_CONTROL.md` as the single dispatch algorithm. The owner retains direct assignment and priority authority; latest order is Core → Backup & Recovery → Bridge/Windows Desktop → Android/iOS → Windows Agent/specialists → Multi-model/Token → DESIGN. CI/Security gates are cross-cutting. Reconcile engineering intake/reviews/merge/post-merge and the GLAFIRA DESIGN/helper Action Pool before DESIGN fallback.
+
+One executor holds one active executable leaf. A blocked leaf must be formally suspended before its slot is reused; keep its original status and file reservation and revoke the former executor's write rights. After three evidenced unanswered passes, initiate transfer to GLAFIRA by default, but activate it only after confirmed process stop, grant revocation and generation fencing. If fencing cannot be proven, keep the task BLOCKED and reservation held. GLAFIRA must suspend/handoff its current active leaf before accepting the transferred leaf. The former helper may receive a distinct DESIGN leaf only after revocation and the full ready-work scan. A returning helper must notify the coordinator and must not resume the transferred branch.
+
+The Workstream 11 development view is metadata reconciled from WBS, issues, PRs, branches and reservations; it is not a second durable Core queue. Runtime queues remain owned by independent Android Core and Windows Desktop Core. Independent cross-lane leaves may proceed in parallel only with unique IDs, executors and exclusive files and no unfinished dependencies or shared API/schema/resource conflicts.
+
+Do not claim global build serialization. PR-triggered workflows may run concurrently across separate workflow concurrency groups until a shared queue that preserves every validation request is implemented and verified.
