@@ -59,6 +59,9 @@ jobs:
           done < "$manifest"
           echo "source_count=$count" >> "$GITHUB_OUTPUT"
           echo "Discovered $count production Java source file(s)."
+          if [[ "$count" -eq 0 ]]; then
+            echo "Production Java formatting: NOT_APPLICABLE (no Java sources)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Report Java formatting not applicable
         if: steps.source-preflight.outputs.source_count == '0'
@@ -67,7 +70,6 @@ jobs:
           echo "::notice::Google Java Style Validation is NOT_APPLICABLE: no production Java sources were discovered."
 
       - name: Download and verify pinned Google Java Format
-        if: steps.source-preflight.outputs.source_count != '0'
         shell: bash
         run: |
           set -euo pipefail
@@ -87,8 +89,9 @@ jobs:
           echo "Verified $version"
 
       - name: Discover and validate Java sources with shared production gate
-        if: steps.source-preflight.outputs.source_count != '0'
         shell: bash
+        env:
+          PRODUCTION_JAVA_SOURCE_COUNT: ${{ steps.source-preflight.outputs.source_count }}
         run: |
           set -euo pipefail
           jar="$RUNNER_TEMP/google-java-format-2.0.0-all-deps.jar"
@@ -202,7 +205,9 @@ jobs:
               return 0
             else
               status=$?
-              if [[ "$status" -eq 123 && -s "$stdout_file" && ! -s "$stderr_file" ]]; then
+              if [[ "$status" -eq 123 ]] && grep -Eq '(^|[[:space:]])error:' "$stderr_file"; then
+                write_gate_result "$result_file" "SOURCE_SYNTAX_REJECTION" || return $?
+              elif [[ "$status" -eq 123 && -s "$stdout_file" && ! -s "$stderr_file" ]]; then
                 write_gate_result "$result_file" "SOURCE_REJECTION" || return $?
               else
                 write_gate_result "$result_file" "FORMATTER_EXECUTION_ERROR" || return $?
@@ -210,12 +215,15 @@ jobs:
               return "$status"
             fi
           }
-          # Actual repository gate uses the same discovery, empty-tree decision and manifest formatter as every fixture.
+          # Preflight classifies the checkout before provisioning; the formatter is still
+          # provisioned above because the independent smoke fixtures always require it.
           production_manifest="$RUNNER_TEMP/glafira-java-sources.nul"
           production_stdout="$RUNNER_TEMP/glafira-java-format.stdout"
           production_stderr="$RUNNER_TEMP/glafira-java-format.stderr"
           production_result="$RUNNER_TEMP/glafira-java-format.result"
-          if run_format_gate . "$production_manifest" "$production_stdout" "$production_stderr" "$production_result"; then
+          if [[ "$PRODUCTION_JAVA_SOURCE_COUNT" == "0" ]]; then
+            echo "::notice::Production Java formatting is NOT_APPLICABLE (preflight found no Java sources); formatter smoke checks will still run."
+          elif run_format_gate . "$production_manifest" "$production_stdout" "$production_stderr" "$production_result"; then
             production_result_value=''
             if ! IFS= read -r production_result_value < "$production_result"; then
               echo "::error::Production formatter result is missing or unreadable."
@@ -241,7 +249,9 @@ jobs:
               echo "::error::Java source discovery failed; inspect the bounded base64 diagnostic below."; emit_bounded_diagnostic discovery_stderr "$production_stderr"
             else
               if [[ "$production_result_value" == "SOURCE_REJECTION" ]]; then
-                echo "::error::Google Java Format rejected one or more Java sources (exit=$production_status). Diagnostics are base64-encoded to keep PR source text inert."
+                echo "::error::Google Java Format rejected source formatting (exit=$production_status)."
+              elif [[ "$production_result_value" == "SOURCE_SYNTAX_REJECTION" ]]; then
+                echo "::error::Java source parsing failed; correct the syntax diagnostics (exit=$production_status)."
               else
                 echo "::error::Google Java Format could not execute or complete reliably (exit=$production_status); source rejection was not established."
               fi
@@ -477,15 +487,15 @@ jobs:
           printf '%s\n' 'final class Malformed {' > "$fixture_root/malformed/Malformed.java"
           malformed_manifest="$RUNNER_TEMP/glafira-malformed.nul"; malformed_stdout="$RUNNER_TEMP/glafira-malformed.stdout"; malformed_stderr="$RUNNER_TEMP/glafira-malformed.stderr"; malformed_result="$RUNNER_TEMP/glafira-malformed.result"
           if run_format_gate "$fixture_root/malformed" "$malformed_manifest" "$malformed_stdout" "$malformed_stderr" "$malformed_result"; then malformed_status=0; else malformed_status=$?; fi
-          if [[ "$malformed_status" -eq 0 ]] || [[ "$(cat "$malformed_result")" != "FORMATTER_EXECUTION_ERROR" ]] || [[ ! -s "$malformed_stderr" ]]; then
-            echo "::error::Malformed Java parser diagnostics were not kept distinct from style rejection."
+          if [[ "$malformed_status" -eq 0 ]] || [[ "$(cat "$malformed_result")" != "SOURCE_SYNTAX_REJECTION" ]] || ! grep -Eq '(^|[[:space:]])error:' "$malformed_stderr"; then
+            echo "::error::Malformed Java parser diagnostics were not classified as source syntax rejection."
             exit 1
           fi
 
           # A result destination that is a directory must preserve the result-write failure (25).
           result_write_manifest="$RUNNER_TEMP/glafira-result-write.nul"; result_write_stdout="$RUNNER_TEMP/glafira-result-write.stdout"; result_write_stderr="$RUNNER_TEMP/glafira-result-write.stderr"; result_write_target="$RUNNER_TEMP/glafira-result-write.target"
           mkdir -p "$result_write_target"
-          if run_format_gate "$fixture_root/formatted" "$result_write_manifest" "$result_write_stdout" "$result_write_stderr" "$result_write_target"; then result_write_status=0; else result_write_status=$?; fi
+          if run_format_gate "$fixture_root/empty" "$result_write_manifest" "$result_write_stdout" "$result_write_stderr" "$result_write_target"; then result_write_status=0; else result_write_status=$?; fi
           if [[ "$result_write_status" -ne 25 ]]; then
             echo "::error::Result persistence failure was masked or reclassified (expected 25, got $result_write_status)."
             exit 1
