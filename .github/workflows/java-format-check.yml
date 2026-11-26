@@ -61,7 +61,7 @@ jobs:
             --add-exports jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED \
             --add-exports jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED \
             --add-exports jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED \
-            -jar "$jar" --version)"
+            -jar "$jar" --version 2>&1)"
           grep -Fq "Version 2.0.0" <<< "$version"
           echo "Verified $version"
 
