@@ -98,7 +98,7 @@ jobs:
               }
             }
           }'
-          if pages="$(gh api graphql --paginate -f query="$query" 2>/dev/null)" && jq -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null <<< "$pages"; then
+          if pages="$(gh api graphql --paginate -f query="$query" 2>/dev/null)" && jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null <<< "$pages"; then
             jq -s '[
               .[].data.repository.pullRequests.nodes[] |
               {
