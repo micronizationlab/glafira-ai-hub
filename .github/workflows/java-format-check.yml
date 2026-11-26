@@ -160,9 +160,6 @@ jobs:
           count="$(awk -F= '$1=="count" { print $2; exit }' "$GITHUB_OUTPUT")"
           echo "Production checkout contains $count Java source file(s)."
           [[ "$count" != "0" ]] || echo "No Java sources exist in this checkout; Google Java Format is not applicable."
-          count="$(awk -F= '$1=="count" { print $2; exit }' "$GITHUB_OUTPUT")"
-          echo "Production checkout contains $count Java source file(s)."
-          [[ "$count" != "0" ]] || echo "No Java sources exist in this checkout; Google Java Format is not applicable."
   java-format:
     name: Google Java Style Validation batch ${{ matrix.index }}
     needs: discover
