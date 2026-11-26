@@ -31,14 +31,14 @@ jobs:
           source_list="$RUNNER_TEMP/glafira-java-sources.nul"
           java_symlink="$(find . -type l -name '*.java' -not -path './.git/*' -print -quit)"
           if [[ -n "$java_symlink" ]]; then
-            echo "::error::Java source symlinks are unsupported and must be handled explicitly: $java_symlink"
+            echo "::error::Java source symlinks are unsupported and must be handled explicitly."
             exit 1
           fi
           find . -type f -name '*.java' -not -path './.git/*' -print0 | sort -z > "$source_list"
           mapfile -d '' -t sources < "$source_list"
           for source in "${sources[@]}"; do
             if [[ "$source" =~ [[:space:]] ]]; then
-              echo "::error::Java source paths containing whitespace are unsupported: $source"
+              echo "::error::Java source paths containing whitespace are unsupported."
               exit 1
             fi
           done
@@ -86,7 +86,7 @@ jobs:
             xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$SOURCE_LIST"
           fi
 
-      - name: Verify formatter accepts and rejects fixtures
+      - name: Verify formatter accepts and rejects fixtures through the production handoff
         shell: bash
         run: |
           set -euo pipefail
@@ -117,13 +117,29 @@ jobs:
             }
           }
           EOF
-          smoke_sources="$RUNNER_TEMP/glafira-formatter-smoke.nul"
-          printf '%s\0' "$formatted" "$formatted_second" | sort -z > "$smoke_sources"
-          mapfile -d '' -t smoke_files < "$smoke_sources"
-          [[ "${#smoke_files[@]}" -eq 2 ]]
-          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$smoke_sources"
-
           printf '%s\n' 'final class Unformatted{void run(){System.out.println("unformatted");}}' > "$unformatted"
+
+          # Exercise the exact NUL-delimited discovery + xargs handoff used above.
+          smoke_sources="$RUNNER_TEMP/glafira-formatter-smoke.nul"
+          find "$fixture_dir" -type f -name '*.java' -print0 | sort -z > "$smoke_sources"
+          mapfile -d '' -t smoke_files < "$smoke_sources"
+          [[ "${#smoke_files[@]}" -eq 3 ]]
+          [[ "${smoke_files[0]}" == "$formatted" ]]
+          [[ "${smoke_files[1]}" == "$formatted_second" ]]
+          [[ "${smoke_files[2]}" == "$unformatted" ]]
+          mixed_output="$fixture_dir/mixed.stdout"
+          mixed_error="$fixture_dir/mixed.stderr"
+          set +e
+          xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$smoke_sources" > "$mixed_output" 2> "$mixed_error"
+          mixed_status=$?
+          set -e
+          if [[ "$mixed_status" -ne 123 ]]; then
+            echo "::error::Production formatter handoff did not reject the unformatted third manifest entry (xargs exit=$mixed_status)."
+            cat "$mixed_error"
+            exit 1
+          fi
+
+          # Keep a single-file oracle so an unrelated xargs/runtime error cannot satisfy the smoke.
           expected="$fixture_dir/expected.java"
           actual="$fixture_dir/actual.java"
           formatter_error="$fixture_dir/formatter.stderr"
@@ -140,4 +156,5 @@ jobs:
             diff -u "$expected" "$actual" || true
             exit 1
           fi
-          echo "Formatter regression smoke passed: formatted input accepted; unformatted input rejected with the expected output."
+          echo "Formatter regression smoke passed: the production manifest handoff rejects a later unformatted file, and the singleton oracle confirms the expected formatter output."
+
