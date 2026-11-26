@@ -1,6 +1,6 @@
 ## Mandatory eleventh workstream: helper intake and PR integration
 
-At the start of every session, follow `docs/engineering/ELEVENTH_WORKSTREAM_PR_INTEGRATION.md`: inspect all helper/contributor work and all open PRs, collect completed work, review it against current main, and integrate suitable changes as soon as exact-head checks, review, dependencies, approvals and branch protection permit. PR collection and safe merging are the coordinator's primary responsibility; the other ten workstreams are prioritized around it. Never merge stale or unverified work, bypass protections, or claim skipped/cancelled checks passed.
+At the start of every session, follow `docs/engineering/ELEVENTH_WORKSTREAM_PR_INTEGRATION.md`: inspect all helper/contributor work and all open PRs, collect completed work, review it against current main, and integrate suitable changes as soon as exact-head checks, review, dependencies, approvals and branch protection permit. PR collection and safe merging are cross-cutting integration duties, not a product priority above Core or Backup; perform them when required for an eligible higher-priority item under the owner order. Never merge stale or unverified work, bypass protections, or claim skipped/cancelled checks passed.
 
 # GitHub Copilot collaboration rules for GLAFIRA
 
@@ -63,7 +63,7 @@ All contributors and AI helpers, including Berestovkon, must obey docs/engineeri
 
 - Target 50–150 changed lines and at most 5 files per PR.
 - 200 changed lines is the normal hard ceiling.
-- 201–300 lines requires the owner's/integrator's written approval before implementation; maximum 10 files.
+- 201–300 changed lines require separate written owner/integrator approval before implementation. A 6–10-file exception is separate and limited to <=200 changed lines; when both 201–300 lines and 6–10 files apply, both approvals, rationale and exact file list are required. >300 lines or >10 files must be split.
 - More than 300 changed lines is prohibited for an ordinary implementation PR: split it.
 - Count additions + deletions. Tests and docs count; generated artifacts must be disclosed separately.
 - One PR = one logical, independently testable change. Check current main, existing PRs and changed-file overlaps before coding.
