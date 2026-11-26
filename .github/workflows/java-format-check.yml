@@ -152,34 +152,37 @@ jobs:
           skip-commit: true
   formatter-smoke:
     needs: discover
-    if: needs.discover.outputs.workflow_changed == 'true' && (needs.discover.outputs.count != '0' || github.event_name == 'workflow_dispatch')
+    if: needs.discover.outputs.workflow_changed == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.smoke_batches) }}
     steps:
       - shell: bash
         run: |
-          dir="$RUNNER_TEMP/glafira-java-format-smoke-$GITHUB_RUN_ID"
-          mkdir -m 700 "$dir"
-          printf '%s\n' 'final class Smoke {' '  void run() {' '    System.out.println("formatted");' '  }' '}' > "$dir/Smoke.java"
-          cp "$dir/Smoke.java" "$dir/@A.java"
-          cp "$dir/Smoke.java" "$dir/--version=.java"
-          cp "$dir/Smoke.java" "$dir/Unicode-λ.java"
-          cp "$dir/Smoke.java" "$dir/NeedsFormat-λ.java"
+          dir="$RUNNER_TEMP/java-discovery-smoke"; mkdir -m 700 "$dir"
+          printf '%s\n' 'final class Smoke {' '  void run() {' '    System.out.println("formatted");' '  }' '}' > "$dir/Good.java"
+          cp "$dir/Good.java" "$dir/--version=.java"; cp "$dir/Good.java" "$dir/@A.java"; cp "$dir/Good.java" "$dir/Unicode-λ.java"; cp "$dir/Good.java" "$dir/NeedsFormat-λ.java"
+      - id: paths
+        env:
+          FILES: ${{ matrix.files }}
+        run: echo "files=$(sed "s#\./#$RUNNER_TEMP/java-discovery-smoke/#g" <<< "$FILES")" >> "$GITHUB_OUTPUT"
       - uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
         with:
           args: "--set-exit-if-changed"
-          files: "${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/Smoke.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/@A.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/--version=.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/Unicode-λ.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/NeedsFormat-λ.java"
+          files: ${{ steps.paths.outputs.files }}
           skip-commit: true
-      - run: printf '%s\n' 'final class NeedsFormat{void run(){System.out.println("needs formatting");}}' > "$RUNNER_TEMP/glafira-java-format-smoke-$GITHUB_RUN_ID/NeedsFormat-λ.java"
+      - run: printf '%s\n' 'final class NeedsFormat{void run(){System.out.println("needs formatting");}}' > "$RUNNER_TEMP/java-discovery-smoke/NeedsFormat-λ.java"
       - id: reject-unformatted
         continue-on-error: true
         uses: ryanbascom/googlejavaformat@9abd254d9183b41942abf6dff7d717ed133f21c2 # v5
         with:
           args: "--set-exit-if-changed"
-          files: "${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/Smoke.java ${{ runner.temp }}/glafira-java-format-smoke-${{ github.run_id }}/NeedsFormat-λ.java"
+          files: ${{ steps.paths.outputs.files }}
           skip-commit: true
       - name: Assert formatting enforcement remains active
         if: steps.reject-unformatted.outcome != 'failure'
-        run: echo "::error::Formatter did not reject the previously accepted, now unformatted Unicode file." && exit 1
+        run: echo "::error::Formatter did not reject the unformatted file from the discovered batch." && exit 1
   java-format-gate:
     name: Google Java Style Validation
     needs: [discover, java-format]
