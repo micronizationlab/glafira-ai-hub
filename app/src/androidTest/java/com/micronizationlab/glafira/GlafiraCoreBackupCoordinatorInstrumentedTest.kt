@@ -99,8 +99,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             withFixtureLocks {
                 if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
                     if (journal.exists()) {
-                        if (!journalOwner.exists()) journalOwner.writeText(runId, Charsets.UTF_8)
-                        check(journalOwner.readText(Charsets.UTF_8) == runId)
+                        check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
                         check(journal.deleteRecursively())
                         if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
                     } else check(!rollbackKeyExists()) { "Refusing to delete an unowned rollback key." }
