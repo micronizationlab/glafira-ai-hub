@@ -30,11 +30,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var context: Context
     private lateinit var testRoot: File
     private lateinit var store: GlafiraTaskStore
+    private var runtimeWasEnabled = false
 
     @Before
     fun setUp() = runBlocking {
-        val runtime = GlafiraCoreRuntimeOwner.get(appContext)
-        assertEquals(GlafiraCoreRuntimeEnablementMutation.PAUSED, runtime.setEnabled(false))
+        runtimeWasEnabled = GlafiraCoreRuntimeOwner.get(appContext).isEnabled
         cancelAndAwaitCoreWorkers()
         testRoot = File(appContext.cacheDir, "glafira-backup-test-${UUID.randomUUID()}").apply { check(mkdirs()) }
         context = IsolatedBackupTestContext(appContext, testRoot)
@@ -44,6 +44,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     fun tearDown(): Unit = runBlocking<Unit> {
         if (::store.isInitialized) store.close()
         cancelAndAwaitCoreWorkers()
+        if (runtimeWasEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
         if (::testRoot.isInitialized) check(testRoot.deleteRecursively())
     }
     private class IsolatedBackupTestContext(base: Context, private val root: File) : ContextWrapper(base) {
