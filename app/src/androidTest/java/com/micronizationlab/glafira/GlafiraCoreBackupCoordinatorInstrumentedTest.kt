@@ -79,7 +79,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     .get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS).all { it.state.isFinished })
         }
     }
-
     private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val journalOwner = File(journal, "test-owner")
@@ -112,10 +111,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
     }
-
     private fun rollbackKeyExists(): Boolean =
         KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias("glafira_core_rollback_v1") }
-
     private fun task(id: String) = GlafiraTask(
         taskId = id,
         projectId = "backup-project",
@@ -621,7 +618,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-
     @Test
     fun rollbackJournalAndCacheNeverExposePlaintextMetadataCanary() = runBlocking<Unit> {
         val taskId = "rollback-journal-canary"
@@ -707,7 +703,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
     }
-
     @Test
     fun successfulRestoreDeletesInstallationLocalRollbackKey() = runBlocking {
         assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
@@ -723,7 +718,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             passphrase.fill('\u0000')
         }
     }
-
     @Test
     fun v3RecoveryReentersAfterFreshCoordinatorConstruction() = synchronized(V3_REENTRY_TEST_LOCK) {
         runBlocking {
