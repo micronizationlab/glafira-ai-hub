@@ -79,7 +79,6 @@ jobs:
             printf '%s\n' "$prs"
             exit 0
           fi
-          # Recover the PR inventory with REST if GraphQL fails; API failure never means pass.
           rest_prs="$(gh api "repos/$repo/pulls?state=open&per_page=100")"
           jq -e 'type == "array"' >/dev/null <<< "$rest_prs"
           jq '[.[] | {
@@ -192,7 +191,6 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
-          # One batched Actions API query is the fallback when GraphQL statusCheckRollup is empty.
           if runs="$(gh run list --repo "$GH_REPO" --limit 1000 --json headSha,name,displayTitle,workflowName,status,conclusion,url,createdAt 2>/dev/null)"; then
             printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           else
