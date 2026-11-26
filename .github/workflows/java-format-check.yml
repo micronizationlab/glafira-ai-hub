@@ -127,15 +127,18 @@ jobs:
           [[ "${smoke_files[0]}" == "$formatted" ]]
           [[ "${smoke_files[1]}" == "$formatted_second" ]]
           [[ "${smoke_files[2]}" == "$unformatted" ]]
+          mixed_expected="$fixture_dir/mixed.expected"
           mixed_output="$fixture_dir/mixed.stdout"
           mixed_error="$fixture_dir/mixed.stderr"
+          xargs -0 -r java "${java_args[@]}" -jar "$jar" < "$smoke_sources" > "$mixed_expected"
           set +e
           xargs -0 -r java "${java_args[@]}" -jar "$jar" --set-exit-if-changed < "$smoke_sources" > "$mixed_output" 2> "$mixed_error"
           mixed_status=$?
           set -e
-          if [[ "$mixed_status" -ne 123 ]]; then
-            echo "::error::Production formatter handoff did not reject the unformatted third manifest entry (xargs exit=$mixed_status)."
+          if [[ "$mixed_status" -ne 123 ]] || ! cmp -s "$mixed_expected" "$mixed_output"; then
+            echo "::error::Production formatter handoff did not process the complete mixed manifest and reject its unformatted third entry (xargs exit=$mixed_status)."
             cat "$mixed_error"
+            diff -u "$mixed_expected" "$mixed_output" || true
             exit 1
           fi
 
