@@ -126,29 +126,47 @@ Every cycle report must state the current `main` SHA, WBS ID, legacy step mappin
 The next executable step is not eligible until its predecessor is accepted and recorded. This rule is mandatory for every participant and every workstream.
 
 
-## 10. Core task queue lifecycle — owner cancellation WBS registration
+## 10. Core task queue lifecycle — owner cancellation WBS reservation
 
-The following owner-approved cross-step task is mapped to legacy Program Step 93 (task queue UI cancellation). This registration does not claim Step 93 complete.
+The following owner-approved task maps to legacy Program Step 93. This is a parent reservation only; it does not claim any child leaf implementation complete.
 
 - `1.1.3` — Core task queue and dispatcher.
 - `1.1.3.1` — Task queue lifecycle.
-- `1.1.3.1.1` — Owner cancellation of unclaimed tasks (Work Item `GLAFIRA-S093-W01`, issue #669).
-- `1.1.3.1.1.1` — Implement the safe owner cancellation path.
-- `1.1.3.1.1.1.1` — Storage/state primitive: eligible states, project-bound transaction, history, safe descendant propagation and unresolved-outcome preservation.
-- `1.1.3.1.1.1.2` — Owner API and Android queue UX: fresh one-use biometric session, restore-lock guard, project-bound confirmation and non-blocking execution. Predecessor: `.1` DONE.
-- `1.1.3.1.1.1.3` — Acceptance: policy JVM and Android instrumentation coverage for state/history/idempotence, owner-Core and generation fencing, project/dependency isolation, unknown outcomes, approval audit and claim/cancel races. Predecessors: `.1` and `.2` DONE.
-- `1.1.3.1.1.1.4` — Restore/cancellation serialization acceptance: pending restore marker and stale-precheck/lock-contention must fail closed, leave the task unchanged and verify cleanup. WBS predecessors: `.1` and `.2` DONE. The implementation branch may be stacked on `.3` only to extend the same instrumentation file; this Git branch relationship does not make `.3` a WBS predecessor. `.3` may be accepted on its own evidence; the parent task remains open until `.4` is also accepted.
+- `1.1.3.1.1` — Owner cancellation of unclaimed tasks; Work Item `GLAFIRA-S093-W01`; issue #669.
+- `1.1.3.1.1.1.1` — `.1` storage/state primitive: eligible states, project-bound transaction, history, descendant propagation and unresolved-outcome preservation.
+- `1.1.3.1.1.1.2` — `.2` owner API and Android queue UX: one-use biometric session, project-bound confirmation, restore-lock guard and non-blocking execution. Predecessor: `.1` DONE.
+- `1.1.3.1.1.1.3` — `.3` policy/instrumentation acceptance for state/history/idempotence, owner-Core and generation fencing, project/dependency isolation, unknown outcomes, approval audit and claim/cancel races. Predecessors: `.1` and `.2` DONE.
+- `1.1.3.1.1.1.4` — `.4` restore/cancellation serialization acceptance. Predecessors: `.1` and `.2` DONE **and** production recovery-temp ownership isolation PR #703 merged and recorded DONE. `.4` does not depend on `.3`; `.3` does not depend on #703.
 
-Each executable leaf must also have a numbered, reproducible procedure before source work:
-- `.1` storage: (1) verify task/owner in one transaction; (2) compare owner ID, generation and state version; (3) enforce never-claimed allowlist; (4) record owner cancellation and close artifacts; (5) propagate same-project dependencies in bounded batches; (6) preserve uncertain external writes.
-- `.2` UI/API: (1) capture ownership before biometric; (2) show task/project confirmation; (3) consume one-use biometric proof; (4) pass the captured fence to storage; (5) serialize with restore; (6) refresh UI with distinct outcomes.
-- `.3` acceptance: (1) owner-bound fixtures; (2) allowed/disallowed state tests; (3) attempt and generation fencing; (4) project/dependency isolation and large fan-out; (5) unknown outcomes, read-only expiry and deadline edges; (6) claim race and approval audit; (7) exact-head JVM/emulator CI.
-- `.4` restore race: (1) create a test-owned journal generation marker; (2) prepare restore under maintenance gate; (3) simulate stale cancellation; (4) assert task unchanged; (5) verify file recovery; (6) delete journal before key and preserve key on cleanup failure; (7) exact-head instrumentation and post-merge validation.
+### Independent leaf and file ownership
 
-Executor for each planned leaf: `micronizationlab`; independent reviewers: CodeRabbit and Proofline; final acceptance: project owner. Steps `.3` and `.4` share the instrumentation path sequentially under the same executor; this is not concurrent ownership. Branch names and base SHAs are assigned only in the follow-on leaf-reservation PR.
+- `.3` exclusively owns `GlafiraTaskCancellationInstrumentedTest.kt`.
+- `.4` exclusively owns `GlafiraTaskRestoreCancellationInstrumentedTest.kt`.
+- `.3` and `.4` are independent sibling acceptance leaves after `.1` and `.2`. They must not stack, share, or sequentially extend the same instrumentation file. Git branch ancestry does not alter WBS dependency order.
+- `.1` and `.2` implementation/test paths are recorded in their own leaf-reservation amendments after source inspection; this parent reservation does not authorize source edits.
 
-The parent reservation PR must be merged to Main. A separate leaf-reservation PR must then assign each executable leaf's unique branch, exact base SHA, executor, reviewer, file ownership, numbered procedure, predecessor and independent acceptance gates; that leaf-reservation PR must also be merged to Main before any source edit. The storage, UI/API and acceptance slices are separate focused PRs, each retaining the same Work Item ID and exact executable-step ID. Record each leaf's executor, branch, base, procedure, predecessor and independent acceptance gates in the ledger before future implementation begins; never apply a dependent leaf's gate to its predecessor. For cancellation, verify owner-Core identity and generation fencing for the target and every affected descendant, independently of biometric proof. Explicit state policy: `QUEUED`, `WAITING_FOR_NETWORK` and `WAITING_FOR_OWNER` are cancellable only when `attemptCount == 0` and no unresolved execution-outcome marker exists; any prior attempt, `RETRY_SCHEDULED`, or unknown/persistence-failure outcome is not cancellable. Test the allowlist and attempt-count guard independently. The `.4` restore/cancellation serialization check is mandatory and remains a separate leaf from `.3`. No slice may be marked DONE until its exact-head tests, review, merge and post-merge validation are complete; the parent task and Program Step 93 remain open until all required owner acceptance is satisfied.
+### Exact acceptance evidence
 
+- `.1` managed-emulator JUnit XML must contain passing named cases for `sameProjectDescendantsOnlyAreFailed`, `largeDependencyFanOutUsesBoundedBatches`, and preservation of unrelated project/task artifacts. It must separately prove each of `QUEUED`, `WAITING_FOR_NETWORK`, and `WAITING_FOR_OWNER` with `attemptCount == 0` **and** an unresolved execution-outcome marker is rejected without mutation. A prior-attempt test alone does not cover this combination.
+- `.3` JUnit XML must contain `repeatedOwnerCancellationIsIdempotent` (or an equivalent named test) proving a second identical cancellation adds no task-history, Trace, dependency or artifact writes and does not change terminal state.
+- `.4` must exercise actual maintenance-gate contention: cancellation passes its initial precheck; restore acquires and holds the gate and publishes its journal marker; cancellation then attempts the held gate and is demonstrably blocked; after release, cancellation rechecks under the gate, rejects because restore is pending, and leaves task/history/Trace/artifacts unchanged.
+- `.4` exact JUnit XML must also prove complete task/file restore, preservation of unrelated recovery temps, and rollback-key retention if journal deletion fails. Unowned-temp preservation is blocked until production PR #703 is merged; no test-only workaround is acceptable.
+- PR #703 is currently CLOSED UNMERGED. Therefore `.4` remains BLOCKED; `.1`, `.2` and `.3` are not blocked by #703.
+
+### Reservation and exact-base sequence
+
+- This parent reservation PR must merge first after exact-head Docs CI, Security Scan, Project Dispatcher, independent CodeRabbit/Proofline review, resolution of blocking findings and owner approval.
+- A separate leaf-pin amendment must then merge before each implementation branch is created. `.1` pin records the exact resulting Main SHA after the parent reservation. `.2` pin records the exact `.1` implementation merge SHA. `.3` pin records the exact `.2` implementation merge SHA. `.4` pin records an exact Main SHA containing `.1`, `.2` and merged PR #703.
+- If Main advances incompatibly before a leaf branch is created, merge a pin-refresh amendment recording the exact then-current Main SHA and full predecessor set before creating the branch.
+- Do not create even an empty implementation branch before its pin amendment merges. A reservation cannot predict its own future merge SHA.
+- Reservation PR is documentation-only and does not count emulator tests as passed. Emulator evidence is required on each implementation leaf's exact head.
+
+### Current status
+
+- Parent reservation: IN_REVIEW; no implementation leaf branch is authorized yet.
+- `.1`, `.2`, `.3`: NOT STARTED pending their separate pin amendments and predecessor acceptance.
+- `.4`: BLOCKED until production PR #703 is merged and `.1`/`.2` are DONE.
+- Program Step 93 and parent task remain open until every required leaf, review, merge and post-merge acceptance is complete.
 
 ## 12. Canonical coordinator-governance WBS registrations
 
