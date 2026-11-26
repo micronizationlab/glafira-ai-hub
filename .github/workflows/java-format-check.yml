@@ -209,7 +209,7 @@ jobs:
           cat > "$java_capture_bin/java" <<'JAVA'
           #!/usr/bin/env bash
           for arg in "$@"; do
-            case "$arg" in *.java) printf '%s\\0' "$arg" >> "$GLAFIRA_JAVA_CAPTURE" ;; esac
+            case "$arg" in *.java) printf '%s\0' "$arg" >> "$GLAFIRA_JAVA_CAPTURE" ;; esac
           done
           exec "$GLAFIRA_REAL_JAVA" "$@"
           JAVA
@@ -224,7 +224,7 @@ jobs:
           formatted_java_args="$RUNNER_TEMP/glafira-formatted.java-args.nul"; : > "$formatted_java_args"
           if GLAFIRA_JAVA_BIN="$java_capture_bin/java" GLAFIRA_JAVA_CAPTURE="$formatted_java_args" GLAFIRA_REAL_JAVA="$real_java" run_format_gate "$fixture_root/formatted" "$formatted_manifest" "$formatted_stdout" "$formatted_stderr" "$formatted_result"; then formatted_status=0; else formatted_status=$?; fi
           if [[ "$formatted_status" -ne 0 ]] || [[ "$(cat "$formatted_result")" != "0" ]] || [[ -s "$formatted_stderr" ]] || ! cmp -s "$formatted_expected_manifest" "$formatted_manifest" || ! cmp -s "$formatted_expected_manifest" "$formatted_java_args"; then
-            echo "::error::Formatted-only manifest was not accepted with the exact two expected sources."
+            echo "::error::Formatted-only manifest or Java argument handoff differed from the exact three expected sources."; emit_bounded_diagnostic java_arguments "$formatted_java_args"
             emit_bounded_diagnostic expected_manifest "$formatted_expected_manifest"
             emit_bounded_diagnostic actual_manifest "$formatted_manifest"
             emit_bounded_diagnostic stdout "$formatted_stdout"
