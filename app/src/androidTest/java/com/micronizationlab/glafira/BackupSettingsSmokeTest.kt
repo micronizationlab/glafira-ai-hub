@@ -84,7 +84,7 @@ class BackupSettingsSmokeTest {
             device.click(bounds.centerX(), bounds.centerY())
             device.waitForIdle()
             val guidance = device.wait(
-                Until.findObject(By.descContains("Сначала выбери папку")), 10_000
+                Until.findObject(By.desc("Сначала выбери папку Google Drive или Яндекс Диска.")), 10_000
             )
             assertNotNull(
                 "Missing-folder guidance was not shown after the manual backup action",
@@ -92,7 +92,7 @@ class BackupSettingsSmokeTest {
             )
             assertTrue(
                 "Missing-folder guidance is not visible to the owner",
-                requireNotNull(guidance).visibleBounds.let { it.width() > 0 && it.height() > 0 }
+                requireNotNull(guidance).visibleBounds.let { it.width() >= 80 && it.height() >= 24 }
             )
         } finally {
             scenario.close()
