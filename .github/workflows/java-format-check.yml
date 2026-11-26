@@ -37,7 +37,7 @@ jobs:
           mapfile -d '' -t discovered_files < "$source_list"
           java_files=()
           for source in "${discovered_files[@]}"; do
-            source="${source#./}"
+            # Keep the ./ prefix so a filename beginning with "-" cannot be parsed as an option.
             if [[ "$source" =~ [[:space:]] ]]; then
               echo "::error::Java source paths containing whitespace cannot be passed safely to this formatter action: $source"
               exit 1
