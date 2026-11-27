@@ -844,7 +844,7 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 
 | Work Item ID | Registered parent | Step / executable leaf | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|---|
-| GLAFIRA-S000-W06 | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher PR inventory reconciliation; bounded JSON transport, fail-closed comparison, pagination consistency and regression tests; issue #768 | IN_PROGRESS | Docs-only reservation PR #788 on exact Main base `8f0a8354434c031e1b6f331f2b69b15256d9d7c5`; implementation candidate PR #795 is not merge-eligible until post-reservation refresh and exact-head gates |
+| GLAFIRA-S000-W06 | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher PR inventory reconciliation; bounded JSON transport, fail-closed comparison, pagination consistency and regression tests; issue #768 | IN_REVIEW | Docs-only reservation PR #788 on exact Main base `8f0a8354434c031e1b6f331f2b69b15256d9d7c5`; implementation candidate PR #795 is not merge-eligible until post-reservation refresh and exact-head gates |
 
 ### W06 lifecycle event — PROPOSED → READY
 
