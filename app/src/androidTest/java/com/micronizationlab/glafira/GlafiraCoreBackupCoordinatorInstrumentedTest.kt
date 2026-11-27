@@ -130,7 +130,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             override fun apply() { commit() }
         }
     }
-    private suspend fun <T> withFixtureLocks(block: () -> T): T = withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
+    private suspend fun <T> withFixtureLocks(block: suspend () -> T): T = withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
         GlafiraCoreMaintenanceGate.withExclusive {
             PendingDeliveryRuntime.withPaused { block() }
         }
@@ -150,7 +150,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         File(appContext.noBackupFilesDir, "glafira-backup-instrumentation-owner")
 
     private fun syncMarkerDirectory(directory: File) {
-        val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY or OsConstants.O_DIRECTORY, 0)
+        val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
         try {
             Os.fsync(descriptor)
         } finally {
@@ -307,7 +307,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             withOwnedRollbackKey {
                 assertThrows(IllegalArgumentException::class.java) {
-                    runBlocking { GlafiraCoreBackupCoordinator(context, store).restore(legacyArchive, passphrase) } }
+                    runBlocking { GlafiraCoreBackupCoordinator(context, store).restore(legacyArchive, passphrase) }
                 }
                 assertEquals("existing-task", store.getTask("existing-task")?.taskId)
             }
