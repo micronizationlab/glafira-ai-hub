@@ -440,14 +440,15 @@ jobs:
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
-          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+          printf '%s|%s|%s\n' "$#" "\${1:-missing}" "\${2:-missing}" >> "$FAKE_GH_ARGS"
+          if [[ "\${1:-}" == "api" && "\${2:-}" == "graphql" ]]; then
             count=0
             [[ ! -f "$FAKE_GRAPHQL_CALLS" ]] || count="$(cat "$FAKE_GRAPHQL_CALLS")"
             count=$((count + 1))
             printf '%s' "$count" > "$FAKE_GRAPHQL_CALLS"
             exit 1
           fi
-          if [[ "$1" == "api" && "$2" == "--paginate" ]]; then
+          if [[ "\${1:-}" == "api" && "\${2:-}" == "--paginate" ]]; then
             count=0
             [[ ! -f "$FAKE_REST_CALLS" ]] || count="$(cat "$FAKE_REST_CALLS")"
             count=$((count + 1))
@@ -457,13 +458,20 @@ jobs:
           exit 2
           GH
           chmod +x "$tmp/fake-bin/gh"
-          if GLAFIRA_GH_CLI="$tmp/fake-bin/gh" GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep" FAKE_GRAPHQL_CALLS="$tmp/graphql-exhausted-count" FAKE_REST_CALLS="$tmp/rest-exhausted-count" FAKE_SLEEP_LOG="$tmp/open-prs-exhausted-sleeps" bash "$fetch_prs" micronizationlab/glafira-ai-hub"; then
+          export GLAFIRA_GH_CLI="$tmp/fake-bin/gh"
+          export GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep"
+          export FAKE_GRAPHQL_CALLS="$tmp/graphql-exhausted-count"
+          export FAKE_REST_CALLS="$tmp/rest-exhausted-count"
+          export FAKE_SLEEP_LOG="$tmp/open-prs-exhausted-sleeps"
+          export FAKE_GH_ARGS="$tmp/open-prs-gh-args"
+          if bash "$fetch_prs" "micronizationlab/glafira-ai-hub"; then
             echo "open PR inventory accepted exhausted GraphQL/REST retries" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
           [[ "$(cat "$tmp/graphql-exhausted-count")" -eq 3 ]]
           [[ "$(cat "$tmp/rest-exhausted-count")" -eq 3 ]]
+          [[ "$(wc -l < "$tmp/open-prs-gh-args")" -eq 6 ]]
           [[ "$(paste -sd, "$tmp/open-prs-exhausted-sleeps")" == "2,4,2,4" ]]
 
           # Actions run inventory also succeeds on attempt three with a nonempty result.
