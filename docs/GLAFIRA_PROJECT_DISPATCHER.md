@@ -24,7 +24,7 @@ The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `
 3. Re-read PR refs after collecting runs. A valid PR/head/base delta is `CHANGED` and is rendered against the latest complete snapshot; a failed fetch, malformed/partial page sequence, unreadable snapshot or comparator error is `UNKNOWN` and makes the Dispatcher job fail.
 4. Exclude METADATA_ONLY only for GLAFIRA Java Format Check; similarly named commit titles in other workflows remain valid CI evidence.
 5. Distinguish queued/in-progress from completed success/failure/cancelled.
-6. Rollup checks are head-associated only and must be labelled BASE NOT VERIFIED.
+6. The historical inventory scan does not request `statusCheckRollup`; fallback Actions runs must match exact PR number, exact current head SHA and non-empty exact current base SHA. If a future implementation reintroduces PR rollup checks, label them HEAD-ONLY / BASE NOT VERIFIED and never count them as exact-base acceptance.
 7. Build a pagination-stable PR cursor set from all PR states ordered by `CREATED_AT ASC`, then filter to `OPEN` only after all pages are collected. A concurrent close therefore does not remove an item from the middle of an offset-based open-only inventory. Validate every GraphQL page for errors, non-null nodes and `pageInfo`; a page advertising a next cursor must contain nodes and a non-empty cursor, and the page chain must end explicitly. Do not request `statusCheckRollup` for the historical all-state scan: use the bounded Actions-run fallback for the resulting open PRs, matching exact PR number/head/base. REST fallback uses `state=all` with the same created-at ordering. Cap workflow history at the newest 1,000 runs and fetch it only when fallback evidence is needed.
 8. Keep Draft PRs Draft. Human review and integration remain separate decisions.
 9. Never alter branch dependency stacks or merge into main.
@@ -42,7 +42,7 @@ The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `
 
 When the report identifies a newly completed run:
 - success on exact PR/head/base fallback match: inspect job-level results/artifacts and continue that workstream;
-- rollup success: treat as head-only evidence until the merge-base identity is independently verified;
+- if a future implementation supplies a rollup: treat it as head-only evidence until the merge-base identity is independently verified;
 - failure on current SHA: inspect failed job logs and fix the cause;
 - in progress: leave it running and continue another ready workstream;
 - no run for current SHA: inspect workflow triggers and decide whether a validation run is required.
