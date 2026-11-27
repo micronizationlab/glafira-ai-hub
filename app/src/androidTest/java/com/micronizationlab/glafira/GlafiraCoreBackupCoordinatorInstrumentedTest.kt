@@ -286,8 +286,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
                                         "Refusing to claim or delete a rollback journal without matching fixture ownership."
                                     }
-                                    check(journal.deleteRecursively()) { "Could not remove test-owned rollback journal." }
+                                    // Keep the ownership journal until Keystore deletion succeeds.
                                     if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                    check(journal.deleteRecursively()) { "Could not remove test-owned rollback journal." }
                                 } else {
                                     check(!rollbackKeyExists()) {
                                         "A fixture owner marker without its journal cannot authorize deletion of its fixture key."
@@ -932,16 +933,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                     withFixtureLocks {
                         if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
-                            val appJournal = File(appContext.noBackupFilesDir, "glafira-restore-journal")
-                            check(!appJournal.exists()) {
-                                "Preserving the installation rollback key while an application restore journal exists."
-                            }
                             if (journal.exists()) {
                                 check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
                                     "Refusing to delete a journal not proven to belong to this canary generation."
                                 }
-                                check(journal.deleteRecursively())
                                 if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                check(journal.deleteRecursively())
                             } else check(!rollbackKeyExists()) {
                                 "Refusing to delete an installation rollback key without its owned journal."
                             }
@@ -1074,8 +1071,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 }
                                 if (journal.exists()) {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
-                                    check(journal.deleteRecursively())
                                     if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                    check(journal.deleteRecursively())
                                 } else check(!rollbackKeyExists()) {
                                     "Refusing to delete an installation rollback key without its owned journal."
                                 }
@@ -1101,23 +1098,33 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val source = File(context.cacheDir, "alias-isolation-source.db")
         val firstEncrypted = File(context.cacheDir, "alias-isolation-first.enc")
         val secondEncrypted = File(context.cacheDir, "alias-isolation-second.enc")
+        val productionEncrypted = File(context.cacheDir, "alias-isolation-production.enc")
+        var testCreatedProductionKey = false
         try {
             source.writeText("fixture-alias-isolation")
+            // Establish a real production-key canary so this test cannot pass vacuously.
+            if (!productionKeyExistedBefore) {
+                productionCipher.encrypt(source, productionEncrypted)
+                testCreatedProductionKey = true
+            }
             rollbackCipher.encrypt(source, firstEncrypted)
             secondFixture.encrypt(source, secondEncrypted)
             assertTrue(rollbackCipher.keyExists())
             assertTrue(secondFixture.keyExists())
+            assertTrue(productionCipher.keyExists())
             assertFalse(rollbackCipher.keyAlias == secondFixture.keyAlias)
             rollbackCipher.deleteKey()
             assertFalse(rollbackCipher.keyExists())
             assertTrue(secondFixture.keyExists())
-            assertEquals(productionKeyExistedBefore, productionCipher.keyExists())
+            assertTrue("Fixture deletion must not delete the production rollback key", productionCipher.keyExists())
         } finally {
             source.delete()
             firstEncrypted.delete()
             secondEncrypted.delete()
+            productionEncrypted.delete()
             rollbackCipher.deleteKey()
             secondFixture.deleteKey()
+            if (testCreatedProductionKey) productionCipher.deleteKey()
             assertEquals(productionKeyExistedBefore, productionCipher.keyExists())
         }
     }
