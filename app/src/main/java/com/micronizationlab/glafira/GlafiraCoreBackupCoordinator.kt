@@ -25,6 +25,11 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private val rollbackCipher: GlafiraRollbackSnapshotCipher = GlafiraRollbackSnapshotCipher(),
     private val runtimeHooks: GlafiraBackupRuntimeHooks = ProductionGlafiraBackupRuntimeHooks
 ) {
+    /** Preserve the original public construction API for callers outside this module. */
+    constructor(context: Context, taskStore: GlafiraTaskStore) : this(
+        context, taskStore, GlafiraRollbackSnapshotCipher(), ProductionGlafiraBackupRuntimeHooks
+    )
+
     private val app = context.applicationContext
     private val portable = GlafiraPortableCoreSnapshot(taskStore)
     private val journal get() = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
@@ -51,7 +56,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
 
     suspend fun recover(passphrase: CharArray) = GlafiraCoreMaintenanceGate.withExclusive {
-        PendingDeliveryRuntime.withPaused {
+        runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 recoverInterruptedRestore(passphrase)
             } }
@@ -59,7 +64,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
     }
 
     suspend fun restore(archive: File, passphrase: CharArray): BackupVerification = GlafiraCoreMaintenanceGate.withExclusive {
-        PendingDeliveryRuntime.withPaused {
+        runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 recoverInterruptedRestore(passphrase)
                 val selected = File(app.cacheDir, "glafira-selected-${UUID.randomUUID()}.glb")
@@ -74,6 +79,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     prepareRollback(passphrase)
                     try {
                         val verification = BackupArchive.restore(app, selected, passphrase)
+                        syncRestoredFiles()
                         portable.restore(snapshot)
                         recoverPendingAfterRestore(app)
                         runtimeHooks.pauseForRestore(app)
@@ -81,8 +87,14 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         clearJournal()
                         verification
                     } catch (error: Exception) {
-                        try { recoverInterruptedRestore(passphrase) }
-                        catch (rollback: Exception) { error.addSuppressed(rollback) }
+                        try {
+                            recoverInterruptedRestore(passphrase)
+                            // A committed restore whose journal cleanup failed is still successful
+                            // once recovery confirms cleanup. Do not invite a duplicate restore.
+                            if (!marker.exists() && !committedMarker.exists()) return@withPaused verification
+                        } catch (rollback: Exception) {
+                            error.addSuppressed(rollback)
+                        }
                         throw error
                     }
                 } finally {
@@ -169,7 +181,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
             BackupArchive.verify(app, safetyArchive, passphrase)
             BackupArchive.restore(app, safetyArchive, passphrase)
             taskStore.restoreConsistentSnapshot(rollbackDatabase)
-            GlafiraCoreRuntimeOwner.pauseForRestore(app)
+            runtimeHooks.pauseForRestore(app)
             checkpointDatabase()
             clearJournal()
         } catch (error: Exception) {
@@ -231,6 +243,14 @@ class GlafiraCoreBackupCoordinator internal constructor(
         syncDirectory(journal)
         check(journal.deleteRecursively()) { "Не удалось удалить каталог журнала восстановления." }
         syncDirectory(app.noBackupFilesDir)
+    }
+
+    /** Make restored payload and directory entries durable before publishing COMMITTED_MARKER. */
+    private fun syncRestoredFiles() {
+        val root = app.filesDir
+        val files = root.walkTopDown().filter { it.isFile }.toList()
+        files.forEach(::sync)
+        root.walkTopDown().filter { it.isDirectory }.toList().asReversed().forEach(::syncDirectory)
     }
 
     private fun checkpointDatabase() {
