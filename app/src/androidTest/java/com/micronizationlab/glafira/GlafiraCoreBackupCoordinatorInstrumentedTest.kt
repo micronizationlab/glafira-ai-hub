@@ -397,8 +397,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-    private fun clearFixtureRootOwnerMarker(runId: String) = Unit
-
     private fun deleteTreeWithoutFollowingLinks(root: Path) {
         check(!Files.isSymbolicLink(root)) { "Refusing to recursively delete a symbolic-link fixture root." }
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
@@ -611,7 +609,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             cleanupOwnedLeftoverRollbackFixture()
             assertTrue("Current test database survives orphan reclamation", activeDatabase.exists())
             assertTrue("Current fixture owner marker survives orphan reclamation", activeAliasMarker.exists())
-            assertTrue("Current fixture root ownership record survives orphan reclamation", fixtureRootOwnerMarker(testRunId).exists())
+            assertTrue("Current fixture root ownership record survives orphan reclamation", fixtureRootOwnerMarker(testRoot).exists())
             assertFalse("Canonical interrupted registration is reclaimed", validTemp.exists())
             malformed.forEach { assertTrue("Malformed unrelated marker is preserved", it.exists()) }
         } finally {
