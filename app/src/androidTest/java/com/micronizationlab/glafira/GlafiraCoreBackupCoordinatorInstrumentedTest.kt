@@ -8,6 +8,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.WorkManager
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.file.Files
 import java.io.RandomAccessFile
 import java.security.KeyStore
 import java.util.UUID
@@ -145,12 +147,24 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun rollbackOwnerMarker(): File =
         File(appContext.noBackupFilesDir, "glafira-backup-instrumentation-owner")
 
-    private fun writeRollbackOwnerMarker(runId: String) {
+    private fun writeRollbackOwnerMarker(runId: String, beforePublish: () -> Unit = {}) {
         val marker = rollbackOwnerMarker()
         check(!marker.exists()) { "A previous test-owned rollback operation must be recovered first." }
-        FileOutputStream(marker).use { output ->
-            output.write(runId.toByteArray(Charsets.UTF_8))
-            output.fd.sync()
+        val temporary = File(marker.parentFile, ".${marker.name}.$runId.tmp")
+        check(!temporary.exists())
+        try {
+            FileOutputStream(temporary).use { output ->
+                output.write(runId.toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            beforePublish()
+            // A hard-link publish is atomic and fails if another generation already owns the marker.
+            Files.createLink(marker.toPath(), temporary.toPath())
+        } catch (error: Throwable) {
+            if (temporary.exists()) check(temporary.delete()) { "Could not remove unpublished owner marker temp." }
+            throw error
+        } finally {
+            if (temporary.exists()) check(temporary.delete()) { "Could not remove published owner marker temp link." }
         }
     }
 
@@ -162,25 +176,28 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-    private fun cleanupOwnedLeftoverRollbackFixture() {
+    private suspend fun cleanupOwnedLeftoverRollbackFixture() = withFixtureLocks {
         val marker = rollbackOwnerMarker()
-        if (!marker.exists()) return
-        org.junit.Assume.assumeFalse(
-            "Do not recover a test marker while the real application has an interrupted restore.",
-            GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
-        )
-        val runId = marker.readText(Charsets.UTF_8)
-        UUID.fromString(runId)
-        val previousRoot = File(appContext.cacheDir, "glafira-backup-test-$runId")
-        val journal = File(previousRoot, "no-backup/glafira-restore-journal")
-        val journalOwner = File(journal, "test-owner")
-        if (journalOwner.exists()) check(journalOwner.readText(Charsets.UTF_8) == runId) {
-            "Refusing to clean a journal owned by another generation."
+        if (marker.exists()) {
+            org.junit.Assume.assumeFalse(
+                "Do not recover a test marker while the real application has an interrupted restore.",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
+            )
+            val runId = marker.readText(Charsets.UTF_8)
+            UUID.fromString(runId)
+            val previousRoot = File(appContext.cacheDir, "glafira-backup-test-$runId")
+            val journal = File(previousRoot, "no-backup/glafira-restore-journal")
+            val journalOwner = File(journal, "test-owner")
+            if (journalOwner.exists()) check(journalOwner.readText(Charsets.UTF_8) == runId) {
+                "Refusing to clean a journal owned by another generation."
+            }
+            if (journal.exists()) check(journal.deleteRecursively())
+            // This alias is deleted only while holding the same Core/delivery gate as restore,
+            // and only because the durable app-level marker proves this test generation created it.
+            if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+            if (previousRoot.exists()) check(previousRoot.deleteRecursively())
+            clearRollbackOwnerMarker(runId)
         }
-        if (journal.exists()) check(journal.deleteRecursively())
-        if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-        if (previousRoot.exists()) check(previousRoot.deleteRecursively())
-        clearRollbackOwnerMarker(runId)
     }
 
     private suspend fun <T> withOwnedRollbackKey(block: suspend () -> T): T {
@@ -219,7 +236,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         archive: File,
         passphrase: CharArray
     ): BackupVerification = withOwnedRollbackKey { coordinator.restore(archive, passphrase) }
-    private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T = block()
+    private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T = withOwnedRollbackKey(block)
     private fun rollbackKeyExists(): Boolean =
         KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias("glafira_core_rollback_v1") }
     private fun task(id: String) = GlafiraTask(
@@ -232,6 +249,17 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         updatedAtMillis = 1_000L,
         idempotencyKey = "backup-project:$id"
     )
+    @Test
+    fun markerPublishFailureLeavesNoActiveMarkerOrTemporaryFile() {
+        val marker = rollbackOwnerMarker()
+        assertFalse(marker.exists())
+        assertThrows(IOException::class.java) {
+            writeRollbackOwnerMarker(testRunId) { throw IOException("injected before atomic publish") }
+        }
+        assertFalse(marker.exists())
+        assertTrue(marker.parentFile?.listFiles { file -> file.name.startsWith(".${marker.name}.") }?.isEmpty() != false)
+    }
+
     @Test
     fun coordinatorArchiveContainsCoreDatabaseSnapshot() = runBlocking {
         val coordinator = GlafiraCoreBackupCoordinator(context, store)
@@ -252,12 +280,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val legacyArchive = BackupArchive.create(context, passphrase)
         try {
-            assertThrows(IllegalArgumentException::class.java) {
-                runBlocking {
-                    restoreOwned(GlafiraCoreBackupCoordinator(context, store), legacyArchive, passphrase)
+            withOwnedRollbackKey {
+                assertThrows(IllegalArgumentException::class.java) {
+                    GlafiraCoreBackupCoordinator(context, store).restore(legacyArchive, passphrase)
                 }
+                assertEquals("existing-task", store.getTask("existing-task")?.taskId)
             }
-            assertEquals("existing-task", store.getTask("existing-task")?.taskId)
         } finally {
             legacyArchive.delete()
             passphrase.fill('\u0000')
@@ -406,15 +434,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             """.trimIndent())
 
             withOwnedRestoreJournal {
-                assertThrows(Exception::class.java) {
-                    runBlocking { restoreOwned(coordinator, archive, passphrase) }
+                assertThrows(android.database.sqlite.SQLiteException::class.java) {
+                    runBlocking { coordinator.restore(archive, passphrase) }
                 }
                 assertEquals(
                     "known-good-result",
                     store.coreTaskResult("backup-result-task", "backup-project")?.result
                 )
                 assertEquals("created-after-backup", store.getTask("created-after-backup")?.taskId)
-                assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+                assertFalse(File(context.noBackupFilesDir, "glafira-restore-journal/restore.pending").exists())
                 assertEquals(expectedTraceEventIds, trace.query(
                     GlafiraCoreTraceQuery("backup-project"),
                     GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
@@ -501,10 +529,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val wrongPassphrase = "GLAFIRA-wrong-passphrase-2026".toCharArray()
         val archive = coordinator.create(correctPassphrase)
         try {
-            assertThrows(Exception::class.java) {
-                runBlocking { restoreOwned(coordinator, archive, wrongPassphrase) }
+            withOwnedRollbackKey {
+                assertThrows(Exception::class.java) {
+                    coordinator.restore(archive, wrongPassphrase)
+                }
+                assertEquals("must-remain", store.getTask("must-remain")?.taskId)
             }
-            assertEquals("must-remain", store.getTask("must-remain")?.taskId)
         } finally {
             archive.delete()
             correctPassphrase.fill('\u0000')
@@ -577,13 +607,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
         try {
             withOwnedRestoreJournal {
-                assertThrows(Exception::class.java) {
-                    runBlocking {
-                        restoreOwned(GlafiraCoreBackupCoordinator(context, store), archive, passphrase)
-                    }
+                assertThrows(IllegalArgumentException::class.java) {
+                    GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
                 }
                 assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
-                assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+                assertFalse(File(context.noBackupFilesDir, "glafira-restore-journal/restore.pending").exists())
                 assertEquals(0, File(context.noBackupFilesDir, "glafira-restore-journal").listFiles()?.size ?: 0)
             }
         } finally {
@@ -816,8 +844,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "GLAFIRA-rollback-key-lifecycle".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
-            restoreOwned(coordinator, archive, passphrase)
-            assertFalse("Rollback key must be deleted after the pending journal is cleared", rollbackKeyExists())
+            withOwnedRollbackKey {
+                coordinator.restore(archive, passphrase)
+                assertFalse("Rollback key must be deleted after the pending journal is cleared", rollbackKeyExists())
+            }
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
