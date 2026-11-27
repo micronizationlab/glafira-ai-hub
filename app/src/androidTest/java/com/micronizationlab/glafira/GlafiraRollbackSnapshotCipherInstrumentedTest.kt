@@ -9,6 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import java.io.File
 import java.security.KeyStore
+import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class GlafiraRollbackSnapshotCipherInstrumentedTest {
@@ -18,13 +19,14 @@ class GlafiraRollbackSnapshotCipherInstrumentedTest {
         val source = File(context.cacheDir, "rollback-cipher-source.db")
         val encrypted = File(context.cacheDir, "rollback-cipher-snapshot.enc")
         val restored = File(context.cacheDir, "rollback-cipher-restored.db")
+        val cipher = GlafiraRollbackSnapshotCipher("glafira_test_cipher_" + UUID.randomUUID().toString().replace("-", ""))
         val canary = "GLAFIRA_ROLLBACK_PLAINTEXT_CANARY_7F31".toByteArray()
         try {
             source.writeBytes(canary)
-            GlafiraRollbackSnapshotCipher.encrypt(source, encrypted)
+            cipher.encrypt(source, encrypted)
             assertFalse(encrypted.readBytes().toString(Charsets.ISO_8859_1)
                 .contains(String(canary, Charsets.ISO_8859_1)))
-            GlafiraRollbackSnapshotCipher.decrypt(encrypted, restored)
+            cipher.decrypt(encrypted, restored)
             assertArrayEquals(canary, restored.readBytes())
 
             val damaged = encrypted.readBytes()
@@ -38,7 +40,7 @@ class GlafiraRollbackSnapshotCipherInstrumentedTest {
             source.delete()
             encrypted.delete()
             restored.delete()
-            GlafiraRollbackSnapshotCipher.deleteKey()
+            cipher.deleteKey()
         }
     }
     @Test
@@ -60,7 +62,7 @@ class GlafiraRollbackSnapshotCipherInstrumentedTest {
             }
             org.junit.Assert.assertEquals("ROLLBACK_KEY_MISSING", error.message)
             val afterDecrypt = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            assertFalse(afterDecrypt.containsAlias("glafira_core_rollback_v1"))
+            assertFalse(afterDecrypt.containsAlias(cipher.keyAlias))
             assertFalse(restored.exists())
         } finally {
             source.delete()
