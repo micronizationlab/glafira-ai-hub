@@ -1,9 +1,11 @@
 name: GLAFIRA Project Dispatcher
 
 on:
+  # Base-branch pushes can change every open PR's merge base without changing its head.
+  # The job filters these events to branches currently targeted by an open PR.
   push:
     branches:
-      - glafira/project-dispatcher-v1
+      - '**'
   workflow_run:
     workflows:
       - GLAFIRA CI — change-aware platform validation
@@ -127,7 +129,7 @@ jobs:
               pullRequests(first: 100, after: $endCursor, states: OPEN) {
                 pageInfo { hasNextPage endCursor }
                 nodes {
-                  number title headRefName headRefOid baseRefOid isDraft url
+                  number title headRefName headRefOid baseRefName baseRefOid isDraft url
                   statusCheckRollup { contexts(first: 100) { nodes {
                     __typename
                     ... on CheckRun { name status conclusion detailsUrl }
@@ -141,7 +143,7 @@ jobs:
             jq -s '[
               .[].data.repository.pullRequests.nodes[] |
               {
-                number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
+                number, title, headRefName, headRefOid, baseRefName, baseRefOid, isDraft, url,
                 statusCheckRollup: [
                   .statusCheckRollup.contexts.nodes[]? |
                   {
@@ -167,6 +169,7 @@ jobs:
               number, title,
               headRefName: .head.ref,
               headRefOid: .head.sha,
+              baseRefName: .base.ref,
               baseRefOid: .base.sha,
               isDraft: .draft,
               url: .html_url,
@@ -677,6 +680,7 @@ jobs:
           pull_request_types = events.fetch("pull_request").fetch("types")
           required_pr_types = %w[opened synchronize reopened ready_for_review closed converted_to_draft edited]
           abort "dispatcher PR lifecycle triggers are incomplete" unless (required_pr_types - pull_request_types).empty?
+          abort "dispatcher must reconcile pushes to PR target branches" unless events.fetch("push").fetch("branches") == ["**"]
           workflow_run = events.fetch("workflow_run")
           required_workflows = ["GLAFIRA CI — change-aware platform validation", "GLAFIRA Windows Agent", "GLAFIRA Java Format Check", "Security Scan"]
           abort "dispatcher workflow completion subscriptions are incomplete" unless (required_workflows - workflow_run.fetch("workflows")).empty?
@@ -691,7 +695,9 @@ jobs:
           abort "initial CodeRabbit PR review must remain enabled" unless auto_review["enabled"] == true
           abort "incremental CodeRabbit reviews must remain disabled" unless auto_review["auto_incremental_review"] == false
           abort "CodeRabbit auto replies must remain disabled" unless chat["auto_reply"] == false
-          puts "actual workflow triggers, job guard, no-schedule policy and CodeRabbit YAML: PASS"
+          grep -q 'baseRefName' .github/workflows/glafira-project-dispatcher.yml
+          grep -q 'baseRefName: .base.ref' .github/workflows/glafira-project-dispatcher.yml
+          puts "actual workflow triggers, base-branch push reconciliation, job guard, no-schedule policy and CodeRabbit YAML: PASS"
           RUBY
           should_reconcile() {
             local event_name="$1" action="$2" base_changed="$3" title_changed="$4" upstream_event="$5" workflow_name="$6" display_title="$7"
@@ -731,6 +737,16 @@ jobs:
               echo "ERROR: GraphQL and REST open-PR inventory are unavailable; no status is reported as passing."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then
+            if ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$prs"; then
+              echo "ERROR: push-triggered PR inventory is not a JSON array." >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            if ! jq -e --arg target "${GITHUB_REF_NAME:-}" 'any(.[]; .baseRefName == $target)' >/dev/null <<< "$prs"; then
+              echo "No open PR currently targets pushed branch ${GITHUB_REF_NAME:-unknown}; reconciliation not needed." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
           fi
           count="$(jq 'length' <<< "$prs")"
           if [[ "$count" -eq 0 ]]; then
