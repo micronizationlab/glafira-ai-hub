@@ -691,8 +691,6 @@ jobs:
           printf '[]\n' > "$tmp/runs-order.fixture"
           DISPATCHER_SEQUENCE_FILE="$tmp/runs-order.sequence" DISPATCHER_CALLS_FILE="$tmp/runs-order.calls" DISPATCHER_EVENT_FILE="$tmp/runs-order.events" DISPATCHER_RUNS_FIXTURE="$tmp/runs-order.fixture" bash "$reconcile" "$tmp/large-prs.json" "$tmp/runs-order.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused "$tmp/fetch-runs-fixture.sh" "$tmp/runs-order.json" >/dev/null
           [[ "$(cat "$tmp/runs-order.events")" == 
-
-          # Empty inventories use the same stabilization contract: []→[] confirms
           # empty, while []→[PR]→[PR] renders the newly opened PR.
           printf '[]\n' > "$tmp/empty-inventory.json"
           printf '%s\n' "$(<"$tmp/empty-inventory.json")" "$(<"$tmp/empty-inventory.json")" > "$tmp/sequence-empty-empty.jsonl"
@@ -1085,3 +1083,12 @@ snapshot\nsnapshot\nruns\nsnapshot' ]]
           fi
           bash "$RUNNER_TEMP/count-initial-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$GITHUB_STEP_SUMMARY" >/dev/null
           bash "$RUNNER_TEMP/render-stable-report.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json" "$GITHUB_STEP_SUMMARY"
+snapshot\nsnapshot\nruns\nsnapshot' ]]
+
+          # Empty initial inventory must not fetch history; there is no PR to match.
+          : > "$tmp/empty-runs-order.calls"
+          : > "$tmp/empty-runs-order.events"
+          printf '[]\n' > "$tmp/empty-runs-order.sequence"
+          DISPATCHER_SEQUENCE_FILE="$tmp/empty-runs-order.sequence" DISPATCHER_CALLS_FILE="$tmp/empty-runs-order.calls" DISPATCHER_EVENT_FILE="$tmp/empty-runs-order.events" DISPATCHER_RUNS_FIXTURE="$tmp/runs-order.fixture" bash "$reconcile" "$tmp/empty-inventory.json" "$tmp/empty-runs-order.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused "$tmp/fetch-runs-fixture.sh" "$tmp/empty-runs-order.json" >/dev/null
+          [[ "$(cat "$tmp/empty-runs-order.events")" == "snapshot" && ! -f "$tmp/empty-runs-order.json" ]]
+          echo "dispatcher Actions evidence ordering: non-empty refs → runs → final refs; empty inventory skips runs: PASS"
