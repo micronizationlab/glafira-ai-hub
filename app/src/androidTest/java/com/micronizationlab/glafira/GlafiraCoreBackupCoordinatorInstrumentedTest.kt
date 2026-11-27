@@ -90,12 +90,17 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             // store construction fails. Before ownership publication, only remove the
             // directory this setup just created exclusively; never infer ownership later.
             if (!ownsFixture) {
-                cleanupUnclaimedFixtureRoot(
-                    root = if (::testRoot.isInitialized) testRoot else null,
-                    createdByThisSetup = createdFixtureRoot,
-                    runId = if (::testRunId.isInitialized) testRunId else null
-                )
-                releaseFixtureLifetimeLock()
+                try {
+                    cleanupUnclaimedFixtureRoot(
+                        root = if (::testRoot.isInitialized) testRoot else null,
+                        createdByThisSetup = createdFixtureRoot,
+                        runId = if (::testRunId.isInitialized) testRunId else null
+                    )
+                } catch (cleanup: Throwable) {
+                    error.addSuppressed(cleanup)
+                } finally {
+                    releaseFixtureLifetimeLock()
+                }
             }
             throw error
         }
