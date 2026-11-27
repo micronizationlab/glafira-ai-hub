@@ -11,7 +11,6 @@ import androidx.work.WorkManager
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.nio.file.Files
 import java.io.RandomAccessFile
 import java.security.KeyStore
 import java.util.UUID
@@ -161,30 +160,26 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun writeRollbackOwnerMarker(runId: String, beforePublish: () -> Unit = {}) {
         val marker = rollbackOwnerMarker()
         val parent = checkNotNull(marker.parentFile)
-        check(!marker.exists()) { "A previous test-owned rollback operation must be recovered first." }
-        val temporary = File(parent, ".${marker.name}.$runId.tmp")
-        check(!temporary.exists())
+        beforePublish()
+        // createNewFile is an exclusive atomic create on Android; key creation is forbidden until
+        // the marker bytes and the containing directory entry have both been fsynced.
+        check(marker.createNewFile()) { "A previous test-owned rollback operation must be recovered first." }
         try {
-            FileOutputStream(temporary).use { output ->
+            FileOutputStream(marker, false).use { output ->
                 output.write(runId.toByteArray(Charsets.UTF_8))
                 output.fd.sync()
             }
-            beforePublish()
-            // Publish atomically, then persist the directory entry before any rollback key can be created.
-            Files.createLink(marker.toPath(), temporary.toPath())
             syncMarkerDirectory(parent)
         } catch (error: Throwable) {
-            if (temporary.exists()) check(temporary.delete()) { "Could not remove unpublished owner marker temp." }
-            if (marker.exists() && marker.readText(Charsets.UTF_8) == runId) {
-                check(marker.delete()) { "Could not remove failed owner marker publication." }
+            try {
+                if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
+                    check(marker.delete()) { "Could not remove failed owner marker." }
+                    syncMarkerDirectory(parent)
+                }
+            } catch (cleanup: Throwable) {
+                error.addSuppressed(cleanup)
             }
-            syncMarkerDirectory(parent)
             throw error
-        } finally {
-            if (temporary.exists()) {
-                check(temporary.delete()) { "Could not remove published owner marker temp link." }
-                syncMarkerDirectory(parent)
-            }
         }
     }
 
@@ -205,7 +200,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
             )
             val runId = marker.readText(Charsets.UTF_8)
-            UUID.fromString(runId)
+            val validRunId = runCatching { UUID.fromString(runId) }.isSuccess
+            if (!validRunId) {
+                org.junit.Assume.assumeFalse(
+                    "An incomplete owner marker is never permission to delete a rollback key or journal.",
+                    rollbackKeyExists()
+                )
+                check(marker.delete()) { "Could not remove incomplete marker with no test-owned key." }
+                syncMarkerDirectory(checkNotNull(marker.parentFile))
+                return@withFixtureLocks
+            }
             val previousRoot = File(appContext.cacheDir, "glafira-backup-test-$runId")
             val journal = File(previousRoot, "no-backup/glafira-restore-journal")
             val journalOwner = File(journal, "test-owner")
