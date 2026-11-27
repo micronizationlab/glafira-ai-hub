@@ -838,8 +838,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
                     })
                     try {
-                    owner.writeText(runId, Charsets.UTF_8)
                     writeRollbackOwnerMarker(runId)
+                    owner.writeText(runId, Charsets.UTF_8)
                     ownsFixture = true
                         GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
                         journalOwner.writeText(runId, Charsets.UTF_8)
@@ -947,8 +947,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         val task = task("known-good-before-marker")
                         store.enqueue(task)
                         expectedTask = checkNotNull(store.getTask(task.taskId))
-                        owner.writeText(runId, Charsets.UTF_8)
                         writeRollbackOwnerMarker(runId)
+                        owner.writeText(runId, Charsets.UTF_8)
                         ownsFixture = true
                         try {
                             GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
