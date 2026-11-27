@@ -84,3 +84,29 @@ Do not report "found N errors" as the outcome. The outcome is "corrected N defec
 ## 7. Priority and parallel application
 
 The rule applies simultaneously to all eleven permanent workstreams under `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`. Continue the owner-approved priority order (Core → Backup & Recovery → Bridge/Desktop, then the remaining streams) while allowing independent work in parallel only with separate WBS IDs and exclusive file ownership. A blocked stream must receive an eligible independent task; no idle testing-only cycles.
+
+
+## 8. Mandatory finding → correction → verification trace (all workstreams)
+
+This rule is universal. It applies to every finding from code review, CI, tests, security scans, manual inspection, user reports, production incidents, documentation review and helper submissions across all eleven workstreams. No finding may be treated as closed merely because a comment was resolved or a commit was created.
+
+For **each individual finding**, the repair register and the execution ledger MUST preserve one traceable record containing all of the following:
+
+1. **Finding:** stable finding/thread/incident ID, exact concern, affected behavior and file/line or workflow/job evidence.
+2. **Root cause:** the confirmed cause, or an explicit UNCONFIRMED status when evidence is insufficient.
+3. **Correction:** the exact change made, affected file(s), commit SHA and PR/merge SHA. If no correction is authorized or possible, state the precise blocker and owner action; do not mark fixed.
+4. **Verification:** the specific test, review assertion, static check, workflow/job or manual acceptance procedure that proves this correction; include exact command or check name, run/job ID, tested commit SHA and actual outcome. For a documentation-only rule, identify the exact diff/section reviewed and the applicable successful documentation/CI checks.
+5. **Disposition:** FIXED_AND_VERIFIED, FIXED_PENDING_VERIFICATION, BLOCKED, NOT_REPRODUCED or WONT_FIX (the last two require evidence and an accountable decision). A skipped, cancelled, queued, in-progress, stale or unrelated check is never verification.
+
+### Required one-to-one accounting
+
+- Every finding has a distinct row or uniquely keyed record. Related findings may share one correction commit or one test run, but each finding must explicitly point to that correction and verification evidence.
+- Every correction must point back to all findings it addresses. Every verification must identify the correction/commit it validates. This creates a bidirectional, auditable chain: **all findings → all corrections → all checks**.
+- Grouping is allowed for implementation efficiency only; it must never erase the per-finding mapping or leave an implicit relationship for the reader to infer.
+- The register is the index; the ledger is the append-only evidence history. Do not duplicate reservation occurrences or rewrite historical evidence. Add a new event when a finding's status or evidence changes.
+- A finding can be marked FIXED_AND_VERIFIED only after the exact correction is present in the tested commit and the relevant verification has actually completed successfully. A later source change invalidates evidence for the changed scope and requires fresh verification.
+- Review-thread resolution, issue closure, a green aggregate workflow, or a successful unrelated test does not independently prove the finding is fixed. Verify the specific concern against the diff and the appropriate check.
+- When one check covers multiple findings, list every covered finding ID in that check record and explain the coverage. When a finding has multiple acceptance conditions, enumerate each condition and its evidence; partial coverage remains pending.
+- At cycle closeout, reconcile counts: total findings, findings with corrections, findings verified, blocked/unverified findings, correction commits and verification runs. Counts must agree with the individual records.
+
+No workstream, helper, reviewer, coordinator or PR is exempt. This trace is mandatory before reporting a repair batch complete and before resolving a review finding as fixed.
