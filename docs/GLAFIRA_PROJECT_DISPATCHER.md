@@ -36,7 +36,7 @@ The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `
 - `UNCHANGED` means the complete ordered snapshots contain the same PR number/head/base identities.
 - `CHANGED` means both snapshots are complete and valid, but PR membership or identity changed; render the second complete snapshot and retain exact run matching.
 - `UNKNOWN` means either snapshot could not be fetched completely, page metadata is inconsistent, a local snapshot cannot be opened, or jq/comparator execution failed. Emit an explicit failure summary and exit non-zero; never turn UNKNOWN into a successful report.
-- The regression harness covers a 5,000-PR inventory, valid CHANGED wrapper output, injected jq and fetch failures, missing and existing-unreadable snapshots, failure-summary output, empty-intermediate-page rejection, and a multi-page close-during-pagination fixture.
+- The regression harness covers a 5,000-PR inventory, valid CHANGED wrapper output, injected jq and fetch failures, missing-snapshot diagnostics, failure-summary output, empty-intermediate-page rejection, and a multi-page close-during-pagination fixture.
 
 ## Current operational workflow
 
