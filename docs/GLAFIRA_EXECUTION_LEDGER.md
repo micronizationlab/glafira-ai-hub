@@ -838,3 +838,36 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 | `PRRT_kwDOVx1ISc68sxsQ` | Merge gate named #788 without clarifying the gate for #784. | Ledger now explicitly blocks both #784 and #788 on their own exact-head Dispatcher false-green evidence, with run/job IDs and observed jq failure timestamps. | Exact diff review; fix Dispatcher and rerun exact-head checks before either merge. | FIXED_PENDING_VERIFICATION |
 | `PRRT_kwDOVx1ISc68sxsT` | Blanket WBS uniqueness wording contradicted the narrow duplicate-Main recovery exception. | Identity rule and regression criteria now cross-reference only the exact owner-authorized incident pair with terminal SUPERSEDED event and replacement reservation; unrelated duplicates remain rejected. | Exact diff review and positive/negative validator fixtures. | FIXED_PENDING_VERIFICATION |
 
+## Append-only W06 reservation amendment — PR #788 — 2026-11-27
+
+### W06 registry extension (legacy registry rows above remain unchanged)
+
+| Work Item ID | Registered parent | Step / executable leaf | Owner | Scope | Status | Evidence / next action |
+|---|---|---|---|---|---|---|
+| GLAFIRA-S000-W06 | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher PR inventory reconciliation; bounded JSON transport, fail-closed comparison, pagination consistency and regression tests; issue #768 | READY | Docs-only reservation PR #788 on exact Main base `8f0a8354434c031e1b6f331f2b69b15256d9d7c5`; implementation candidate PR #795 is not merge-eligible until post-reservation refresh and exact-head gates |
+
+### W06 lifecycle event — PROPOSED → READY
+
+- **Event sequence:** `0001`
+- **Unique event ID:** `WBS-2026-11-27-GLAFIRA-S000-W06-PROPOSED-READY-001`
+- **Transition:** `PROPOSED → READY`
+- **Timestamp:** `2026-11-27T20:00:35Z`
+- **Actor:** repository owner `micronizationlab`
+- **Reason:** owner approved the focused documentation-only reservation and confirmed that the owner is the sole human approver; no third-party human approval is required.
+- **Evidence:** owner instruction in this conversation; issue #768; PR #788 and its exact Main base `8f0a8354434c031e1b6f331f2b69b15256d9d7c5`.
+- **Next transition:** after PR #788 merges, append `READY → RESERVED` with the exact merge SHA and current Main SHA. The first authorized post-reservation implementation commit then appends `RESERVED → IN_PROGRESS` and updates only the W06 registry `Status` projection in this controlled sub-scope.
+
+### PR #788 owner-approved false-green exception — docs-only scope
+
+- **Waived check:** Project Dispatcher only; its green conclusion is NOT PASSED and is not accepted as evidence of successful reconciliation.
+- **Observed exact-head reproduction before the final documentation refresh:** run `46060276952`, job `140712577878`; the log contains `/usr/bin/jq: Argument list too long` and the job still concluded success.
+- **Scope:** PR #788 documentation-only reservation; no implementation source, pin or follow-on PR is covered.
+- **Owner approval:** the owner explicitly confirmed that the owner is the only approver and authorizes this reservation. No third-party human approval is required.
+- **Remaining gates:** Security Scan, Java format, applicable change-aware Docs/path checks, technical triage of actionable review findings, exact-Main freshness and full path-ownership scan.
+- **Final exact-head evidence:** publish the final base SHA, PR head SHA, run IDs and job IDs in a top-level PR comment after the last commit; do not add that evidence to the PR head it validates. After merge, append the merge SHA and final evidence in a separate W06 ledger amendment.
+
+### W06 implementation candidate
+
+- **Current candidate:** PR #795, branch `fix/dispatcher-fail-closed-inventory-20261127`, current pre-reservation head `ce186427baf06c1525a7f5c2e262c11d9f43bf9d`.
+- **Earlier candidate:** PR #791 is frozen and superseded for this repair.
+- **Gate:** after #788 merges, rebase #795 onto exact current Main, preserve its single-file W06 scope, and create a new authorized post-reservation commit. Do not merge until the corrected Dispatcher check and all applicable exact-head checks pass.
