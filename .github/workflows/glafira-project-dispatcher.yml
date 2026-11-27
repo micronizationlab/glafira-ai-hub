@@ -470,7 +470,7 @@ jobs:
           exit 2
           GH
           chmod +x "$tmp/fake-bin/gh"
-          if PATH="$tmp/fake-bin:$PATH" GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep" FAKE_RUN_FAIL_CALLS="$tmp/run-fail-count" FAKE_SLEEP_LOG="$tmp/run-fail-sleep-log" bash "$fetch_runs" micronizationlab/glafira-ai-hub"; then
+          if PATH="$tmp/fake-bin:$PATH" GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep" FAKE_RUN_FAIL_CALLS="$tmp/run-fail-count" FAKE_SLEEP_LOG="$tmp/run-fail-sleep-log" bash "$fetch_runs" micronizationlab/glafira-ai-hub; then
             echo "three failed Actions API attempts were incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
