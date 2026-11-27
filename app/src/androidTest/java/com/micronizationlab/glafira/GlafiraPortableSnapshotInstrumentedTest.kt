@@ -78,6 +78,7 @@ class GlafiraPortableSnapshotInstrumentedTest {
     }
     @After fun clean() {
         if (::store.isInitialized) store.close()
+        if (::context.isInitialized) context.deleteSharedPreferences("glafira_prefs")
         if (::rollbackCipher.isInitialized) rollbackCipher.deleteKey()
         if (::testRoot.isInitialized && testRoot.exists()) check(testRoot.deleteRecursively())
     }
