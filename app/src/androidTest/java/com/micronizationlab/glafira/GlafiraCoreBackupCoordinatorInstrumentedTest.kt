@@ -1525,8 +1525,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     )
                                 }
                                 if (journal.exists()) {
-                                    deleteOwnedRollbackJournalWithoutFollowingLinks(journal, journalOwner, runId)
-                                    if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                    deleteOwnedRollbackJournalWithoutFollowingLinks(journal, journalOwner, runId) {
+                                        if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                    }
                                 } else check(!rollbackKeyExists()) {
                                     "Refusing to delete an installation rollback key without its owned journal."
                                 }
