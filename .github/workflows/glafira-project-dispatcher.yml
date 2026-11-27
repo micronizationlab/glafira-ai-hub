@@ -783,7 +783,7 @@ jobs:
             exit 1
           fi
           if [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then
-            printf '%s\\n' "$prs" > "$RUNNER_TEMP/push-pr-inventory.json"
+            printf '%s\n' "$prs" > "$RUNNER_TEMP/push-pr-inventory.json"
             set +e
             bash "$RUNNER_TEMP/matches-pushed-pr-branch.sh" "$RUNNER_TEMP/push-pr-inventory.json" "${GITHUB_REF_NAME:-}"
             match_status=$?
