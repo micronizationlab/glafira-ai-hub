@@ -41,6 +41,16 @@ The root is always `1 GLAFIRA`. Its first-level subprojects map to the eleven pe
 
 A workstream may contain many chapters, sections, tasks, subtasks and steps. The workstream list is stable; owner-approved scope changes may add children but must not silently repurpose an existing identifier.
 
+### Owner operational direction-number crosswalk
+
+The owner's operational direction numbering is not identical to the WBS top-level numbering. Preserve both labels in all dispatch and status reports:
+
+- Owner direction **10 — Multi-AI / specialists** maps to WBS `1.10`.
+- Owner direction **11 — Token / GCU** maps to WBS `1.9`.
+- WBS `1.11` is the cross-cutting helper-intake, review and integration function. It is not a substitute for owner direction 11 and does not remove the requirement to give Token/GCU its own work or DESIGN fallback.
+
+Do not renumber stable WBS identifiers to make the labels look sequential. The coordinator must show the owner direction number and WBS ID side by side so that Multi-AI and Token/GCU cannot disappear behind the integration lane.
+
 ## 3. Identifier stability and compatibility
 
 1. Every node receives one unique permanent ID when it is first approved.
