@@ -827,3 +827,14 @@ The following five findings were published against head `de2f0028be338b454b09025
 | `PRRT_kwDOVx1ISc68so7t` | Duplicate-Main recovery left replacement paths held by a BLOCKED reservation. | WBS now requires owner-authorized terminal SUPERSEDED disposition for the later conflict, branch quiescence/write revocation, replacement ID, and releases paths only after the terminal event; the narrow incidented historical duplicate exception is explicit. | Exact-head Docs CI and positive/negative duplicate-Main recovery fixtures. | FIXED_PENDING_VERIFICATION |
 | `PRRT_kwDOVx1ISc68so7x` | Codex closeout omitted separate NOT_REPRODUCED and WONT_FIX counts. | Codex now requires all five disposition counts to sum to total, with correction/verification metrics reported separately. | Exact-head Docs CI and count reconciliation review. | FIXED_PENDING_VERIFICATION |
 
+
+
+### PR #784 — latest scope and exception clarifications (2026-11-27)
+A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c3ce331` identified three further consistency gaps. Corrections are now recorded in the canonical documents; exact-head review remains pending.
+
+| Finding ID | Concern | Correction | Verification | Disposition |
+|---|---|---|---|---|
+| `PRRT_kwDOVx1ISc68sxsM` | Reservation scope summary omitted the owner-approved Codex document. | Ledger reservation scope now enumerates all four authorized documentation paths, including `docs/GLAFIRA_CODEX.md`, and explains both scope amendments. | Exact diff review and latest-head Proofline/CodeRabbit review. | FIXED_PENDING_VERIFICATION |
+| `PRRT_kwDOVx1ISc68sxsQ` | Merge gate named #788 without clarifying the gate for #784. | Ledger now explicitly blocks both #784 and #788 on their own exact-head Dispatcher false-green evidence, with run/job IDs and observed jq failure timestamps. | Exact diff review; fix Dispatcher and rerun exact-head checks before either merge. | FIXED_PENDING_VERIFICATION |
+| `PRRT_kwDOVx1ISc68sxsT` | Blanket WBS uniqueness wording contradicted the narrow duplicate-Main recovery exception. | Identity rule and regression criteria now cross-reference only the exact owner-authorized incident pair with terminal SUPERSEDED event and replacement reservation; unrelated duplicates remain rejected. | Exact diff review and positive/negative validator fixtures. | FIXED_PENDING_VERIFICATION |
+
