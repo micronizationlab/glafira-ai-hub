@@ -12,7 +12,7 @@ The dispatcher prevents parallel engineering work from becoming siloed. Every re
 - Completion of the Windows Agent workflow.
 - Completion of the GLAFIRA Java Format Check workflow, including validation after a PR base retarget.
 - Completion of Security Scan.
-- Pull request opened, synchronized, reopened, marked ready, closed, converted to Draft, or edited.
+- Pull request opened, synchronized, reopened, marked ready, closed, converted to Draft, or retargeted to a different base branch; title/body-only edits are ignored.
 - Manual workflow dispatch.
 
 There is no periodic schedule. Scheduled upstream workflow completions are ignored so a daily maintenance scan does not start an idle reconciliation. To refresh manually, open **Actions → GLAFIRA Project Dispatcher → Run workflow**, select `main`, and dispatch it.
