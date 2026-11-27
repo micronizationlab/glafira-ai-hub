@@ -253,9 +253,11 @@ class GlafiraCoreBackupCoordinator internal constructor(
         syncDirectory(journal)
         check(committedMarker.delete()) { "Не удалось удалить маркер завершения восстановления." }
         syncDirectory(journal)
+        // All rollback evidence and both markers are now durably gone; only empty-directory
+        // removal and its parent fsync remain, so a later unrelated failure is not a restore commit.
+        committedRestoreInProgress = false
         check(journal.deleteRecursively()) { "Не удалось удалить каталог журнала восстановления." }
         syncDirectory(app.noBackupFilesDir)
-        committedRestoreInProgress = false
     }
 
     /** Make restored payload and directory entries durable before publishing COMMITTED_MARKER. */
