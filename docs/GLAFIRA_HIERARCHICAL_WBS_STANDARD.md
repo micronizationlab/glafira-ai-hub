@@ -222,3 +222,15 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
 - `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
+
+## 14. Dispatcher inventory reconciliation reliability
+
+- `1.7.2` — Dispatcher inventory reconciliation.
+- `1.7.2.1` — Exact open-PR inventory and base/head identity comparison.
+- `1.7.2.1.1` — Bounded inventory transport and failure-state reporting.
+- `1.7.2.1.1.1` — Large-inventory and injected-failure regression.
+- `1.7.2.1.1.1.1` — Fix argv overflow and fail-closed comparison handling in `.github/workflows/glafira-project-dispatcher.yml`; Work Item `GLAFIRA-CI-W02`; issue #768.
+- Executor: GLAFIRA coordinator as active author; independent CodeRabbit/Proofline review; owner-controlled merge. No Amazon Q-only assignment.
+- Acceptance: large PR inventory passes without argv overflow; jq parse/exec failure becomes explicit UNKNOWN/degraded and cannot be mistaken for changed refs or green reconciliation; exact PR number/head SHA/non-empty base SHA matching remains intact; regression fixture covers large input and injected failure; exact-head Dispatcher/workflow lint/Security Scan and independent review pass.
+- This leaf is independent of #744's durable non-dropping FIFO build queue. No global build serialization is claimed or enabled by this work.
+- Status: RESERVED / NOT IMPLEMENTED until the dedicated reservation PR merges to Main.
