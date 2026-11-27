@@ -935,9 +935,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         isolatedCoordinator().prepareRollback(passphrase)
                         journalOwner.writeText(runId, Charsets.UTF_8)
                     } catch (error: Exception) {
-                        if (journal.exists() && !journalOwner.exists()) {
-                            journalOwner.writeText(runId, Charsets.UTF_8)
-                        }
+                        // Never manufacture an ownership record after a partial failure.
+                        // Recovery must preserve the journal/key if ownership is ambiguous.
                         throw error
                     }
                     val journalFiles = journal.walkTopDown().filter { it.isFile && it != journalOwner }.toList()
@@ -1058,7 +1057,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             isolatedCoordinator().prepareRollback(passphrase)
                             journalOwner.writeText(runId, Charsets.UTF_8)
                         } catch (error: Exception) {
-                            if (journal.exists() && !journalOwner.exists()) journalOwner.writeText(runId, Charsets.UTF_8)
+                            // A partial prepareRollback is not proof that this fixture owns
+                            // the installation-wide key. Leave ambiguous recovery state intact.
                             throw error
                         }
                         assertTrue("V3 marker must be durable before live-state mutation", marker.isFile)
