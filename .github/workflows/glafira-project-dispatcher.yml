@@ -456,7 +456,25 @@ jobs:
           if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-empty-base.json"; then
             echo "empty base SHA was incorrectly accepted as an exact identity" >&2; exit 1
           else
-            [[ "$?" -eq 1 ]]
+            [[ "$?" -eq 2 ]]
+          fi
+          jq '.[4999].number = 0' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-duplicate.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-duplicate.json"; then
+            echo "duplicate PR numbers were incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          cat "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-two-arrays.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-two-arrays.json"; then
+            echo "multiple top-level arrays were incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          printf '{}' > "$RUNNER_TEMP/large-pr-inventory-object.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-object.json"; then
+            echo "non-array inventory was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
           fi
           jq '.[4999].baseRefOid = "changed-base"' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-base-delta.json"
           if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-base-delta.json"; then
