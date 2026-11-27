@@ -1,11 +1,13 @@
 package com.micronizationlab.glafira
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.SharedPreferences
 import android.database.sqlite.SQLiteException
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.WorkManager
 import java.io.File
+import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.security.KeyStore
 import java.util.UUID
@@ -28,35 +30,49 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var context: Context
     private lateinit var testRoot: File
     private lateinit var store: GlafiraTaskStore
-    private var runtimeWasEnabled = false
+    private var ownsFixture = false
+    private lateinit var testRunId: String
     @Before
     fun setUp() = runBlocking {
         org.junit.Assume.assumeTrue(android.os.Build.FINGERPRINT.contains("sdk_gphone"))
-        runtimeWasEnabled = GlafiraCoreRuntimeOwner.get(appContext).isEnabled
         org.junit.Assume.assumeFalse(
-            "Backup instrumentation requires Core runtime to be owner-paused; do not cancel/restart live owner work.",
-            runtimeWasEnabled
+            "Backup instrumentation requires Core runtime to be owner-paused.",
+            GlafiraCoreRuntimeOwner.get(appContext).isEnabled
         )
         org.junit.Assume.assumeFalse(
             "Skip isolated rollback tests while the application has a pending rollback.",
             GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
         )
+        cleanupOwnedLeftoverRollbackFixture()
         org.junit.Assume.assumeFalse(
-            "Skip isolated rollback tests while the installation-local rollback key already exists.",
+            "Skip isolated rollback tests while an unowned installation-local rollback key exists.",
             rollbackKeyExists()
         )
-        cancelAndAwaitCoreWorkers()
-        testRoot = File(appContext.cacheDir, "glafira-backup-test-${UUID.randomUUID()}").apply { check(mkdirs()) }
+        assumeNoScheduledAppWork()
+        ownsFixture = true
+        testRunId = UUID.randomUUID().toString()
+        testRoot = File(appContext.cacheDir, "glafira-backup-test-$testRunId").apply { check(mkdirs()) }
         context = IsolatedBackupTestContext(appContext, testRoot)
         store = GlafiraTaskStore(context)
         assertEquals(File(testRoot, "databases/glafira_core_tasks.db").absolutePath, store.writableDatabase.path)
     }
     @After
     fun tearDown(): Unit = runBlocking<Unit> {
-        if (::store.isInitialized) store.close()
-        cancelAndAwaitCoreWorkers()
-        if (runtimeWasEnabled) GlafiraCoreWorkScheduler.scheduleImmediate(appContext)
-        if (::testRoot.isInitialized) check(testRoot.deleteRecursively())
+        if (!ownsFixture) return@runBlocking
+        var failure: Throwable? = null
+        try {
+            if (::store.isInitialized) store.close()
+        } catch (error: Throwable) {
+            failure = error
+        }
+        try {
+            if (::testRoot.isInitialized && testRoot.exists()) {
+                check(testRoot.deleteRecursively()) { "Could not remove isolated backup fixture." }
+            }
+        } catch (cleanup: Throwable) {
+            if (failure != null) failure!!.addSuppressed(cleanup) else failure = cleanup
+        }
+        if (failure != null) throw failure!!
     }
     private class IsolatedBackupTestContext(base: Context, private val root: File) : ContextWrapper(base) {
         private val databases = File(root, "databases").apply { mkdirs() }
@@ -70,54 +86,140 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         override fun deleteDatabase(name: String): Boolean = getDatabasePath(name).delete()
         override fun databaseList(): Array<String> = databases.list() ?: emptyArray()
         override fun getFilesDir(): File = files; override fun getNoBackupFilesDir(): File = noBackup; override fun getCacheDir(): File = cache
-        override fun getSharedPreferences(name: String, mode: Int) =
-            super.getSharedPreferences("${root.name}-$name", mode)
+        private val preferences = java.util.concurrent.ConcurrentHashMap<String, SharedPreferences>()
+        override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
+            preferences.computeIfAbsent(name) { InMemoryBackupPreferences() }
+    }
+
+    private class InMemoryBackupPreferences : SharedPreferences {
+        private val values = linkedMapOf<String, Any>()
+        override fun getAll(): MutableMap<String, *> = synchronized(values) { values.toMutableMap() }
+        override fun getString(key: String, defValue: String?): String? = synchronized(values) { values[key] as? String ?: defValue }
+        override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? =
+            synchronized(values) { (values[key] as? Set<*>)?.filterIsInstance<String>()?.toSet() ?: defValues?.toSet() }
+        override fun getInt(key: String, defValue: Int): Int = synchronized(values) { values[key] as? Int ?: defValue }
+        override fun getLong(key: String, defValue: Long): Long = synchronized(values) { values[key] as? Long ?: defValue }
+        override fun getFloat(key: String, defValue: Float): Float = synchronized(values) { values[key] as? Float ?: defValue }
+        override fun getBoolean(key: String, defValue: Boolean): Boolean = synchronized(values) { values[key] as? Boolean ?: defValue }
+        override fun contains(key: String): Boolean = synchronized(values) { values.containsKey(key) }
+        override fun edit(): SharedPreferences.Editor = MemoryEditor()
+        override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) = Unit
+        override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) = Unit
+        private inner class MemoryEditor : SharedPreferences.Editor {
+            private val updates = linkedMapOf<String, Any?>()
+            private var clearAll = false
+            override fun putString(key: String, value: String?): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun putStringSet(key: String, values: Set<String>?): SharedPreferences.Editor = apply { updates[key] = values?.toSet() }
+            override fun putInt(key: String, value: Int): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun putLong(key: String, value: Long): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun putFloat(key: String, value: Float): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun remove(key: String): SharedPreferences.Editor = apply { updates[key] = null }
+            override fun clear(): SharedPreferences.Editor = apply { clearAll = true }
+            override fun commit(): Boolean {
+                synchronized(values) {
+                    if (clearAll) values.clear()
+                    updates.forEach { (key, value) -> if (value == null) values.remove(key) else values[key] = value }
+                }
+                return true
+            }
+            override fun apply() { commit() }
+        }
     }
     private suspend fun <T> withFixtureLocks(block: () -> T): T = withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
         GlafiraCoreMaintenanceGate.withExclusive {
-            PendingDeliveryRuntime.withPaused { GlafiraFileMaintenance.withExclusive(block) }
+            PendingDeliveryRuntime.withPaused { block() }
         }
     }
-    private fun cancelAndAwaitCoreWorkers() {
+    private fun assumeNoScheduledAppWork() {
         val workManager = WorkManager.getInstance(appContext)
         (CORE_WORK_NAMES + listOf(BackupScheduler.DAILY_WORK_NAME, BackupScheduler.MANUAL_WORK_NAME)).forEach { name ->
-            workManager.cancelUniqueWork(name).result.get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            assertTrue("Core worker $name must stop before fixture mutation",
-                workManager.getWorkInfosForUniqueWork(name)
-                    .get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS).all { it.state.isFinished })
+            val infos = workManager.getWorkInfosForUniqueWork(name)
+                .get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            org.junit.Assume.assumeTrue(
+                "Skip instead of cancelling or replacing app-owned WorkManager request $name.",
+                infos.all { it.state.isFinished }
+            )
         }
     }
-    private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T {
-        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+    private fun rollbackOwnerMarker(): File =
+        File(appContext.noBackupFilesDir, "glafira-backup-instrumentation-owner")
+
+    private fun writeRollbackOwnerMarker(runId: String) {
+        val marker = rollbackOwnerMarker()
+        check(!marker.exists()) { "A previous test-owned rollback operation must be recovered first." }
+        FileOutputStream(marker).use { output ->
+            output.write(runId.toByteArray(Charsets.UTF_8))
+            output.fd.sync()
+        }
+    }
+
+    private fun clearRollbackOwnerMarker(runId: String) {
+        val marker = rollbackOwnerMarker()
+        if (marker.exists()) {
+            check(marker.readText(Charsets.UTF_8) == runId) { "Refusing to clear another rollback generation." }
+            check(marker.delete()) { "Could not clear test rollback owner marker." }
+        }
+    }
+
+    private fun cleanupOwnedLeftoverRollbackFixture() {
+        val marker = rollbackOwnerMarker()
+        if (!marker.exists()) return
+        org.junit.Assume.assumeFalse(
+            "Do not recover a test marker while the real application has an interrupted restore.",
+            GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
+        )
+        val runId = marker.readText(Charsets.UTF_8)
+        UUID.fromString(runId)
+        val previousRoot = File(appContext.cacheDir, "glafira-backup-test-$runId")
+        val journal = File(previousRoot, "no-backup/glafira-restore-journal")
         val journalOwner = File(journal, "test-owner")
-        val owner = File(context.noBackupFilesDir, "glafira-portable-restore-test-owner")
-        val runId = UUID.randomUUID().toString()
-        withFixtureLocks {
-            if (owner.exists()) {
-                val previous = owner.readText(Charsets.UTF_8)
-                if (journal.exists()) {
-                    check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
-                    check(journal.deleteRecursively())
-                    if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                } else check(!rollbackKeyExists()) { "Refusing to delete an unowned rollback key." }
-                check(owner.delete())
-            }
-            check(!journal.exists() && !rollbackKeyExists()) { "Refusing to overwrite unowned recovery state." }
-            owner.writeText(runId, Charsets.UTF_8)
+        if (journalOwner.exists()) check(journalOwner.readText(Charsets.UTF_8) == runId) {
+            "Refusing to clean a journal owned by another generation."
         }
-        try { return block() } finally {
-            withFixtureLocks {
-                if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
-                    if (journal.exists()) {
-                        check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
-                        check(journal.deleteRecursively())
+        if (journal.exists()) check(journal.deleteRecursively())
+        if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+        if (previousRoot.exists()) check(previousRoot.deleteRecursively())
+        clearRollbackOwnerMarker(runId)
+    }
+
+    private suspend fun <T> withOwnedRollbackKey(block: suspend () -> T): T {
+        val runId = testRunId
+        withFixtureLocks { writeRollbackOwnerMarker(runId) }
+        var primaryFailure: Throwable? = null
+        try {
+            return block()
+        } catch (error: Throwable) {
+            primaryFailure = error
+            throw error
+        } finally {
+            try {
+                withFixtureLocks {
+                    val marker = rollbackOwnerMarker()
+                    if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
+                        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+                        val journalOwner = File(journal, "test-owner")
+                        if (journal.exists()) {
+                            if (journalOwner.exists()) check(journalOwner.readText(Charsets.UTF_8) == runId)
+                            else journalOwner.writeText(runId, Charsets.UTF_8)
+                            check(journal.deleteRecursively()) { "Could not remove test-owned rollback journal." }
+                        }
                         if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                    } else check(!rollbackKeyExists()) { "Refusing to delete an unowned rollback key." }
-                    check(owner.delete())
+                        clearRollbackOwnerMarker(runId)
+                    }
                 }
+            } catch (cleanup: Throwable) {
+                if (primaryFailure != null) primaryFailure!!.addSuppressed(cleanup) else throw cleanup
             }
         }
     }
+
+    private suspend fun restoreOwned(
+        coordinator: GlafiraCoreBackupCoordinator,
+        archive: File,
+        passphrase: CharArray
+    ): BackupVerification = withOwnedRollbackKey { coordinator.restore(archive, passphrase) }
+    private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T = withOwnedRollbackKey(block)
     private fun rollbackKeyExists(): Boolean =
         KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias("glafira_core_rollback_v1") }
     private fun task(id: String) = GlafiraTask(
@@ -152,7 +254,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             assertThrows(IllegalArgumentException::class.java) {
                 runBlocking {
-                    GlafiraCoreBackupCoordinator(context, store).restore(legacyArchive, passphrase)
+                    restoreOwned(GlafiraCoreBackupCoordinator(context, store), legacyArchive, passphrase)
                 }
             }
             assertEquals("existing-task", store.getTask("existing-task")?.taskId)
@@ -183,7 +285,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             store.enqueue(task("second-task"))
             assertEquals("second-task", store.getTask("second-task")?.taskId)
 
-            coordinator.restore(archive, passphrase)
+            restoreOwned(coordinator, archive, passphrase)
 
             assertEquals(
                 "result-preserved-by-backup",
@@ -227,7 +329,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val archive = coordinator.create(passphrase)
         try {
             store.enqueue(task("temporary-task"))
-            coordinator.restore(archive, passphrase)
+            restoreOwned(coordinator, archive, passphrase)
 
             val restored = store.getTask("running-task")
             assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, restored?.state)
@@ -305,7 +407,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
             withOwnedRestoreJournal {
                 assertThrows(Exception::class.java) {
-                    runBlocking { coordinator.restore(archive, passphrase) }
+                    runBlocking { restoreOwned(coordinator, archive, passphrase) }
                 }
                 assertEquals(
                     "known-good-result",
@@ -362,7 +464,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 actionCode = "BACKUP_VERIFIED"
             ))
 
-            coordinator.restore(archive, passphrase)
+            restoreOwned(coordinator, archive, passphrase)
 
             val restored = trace.query(
                 GlafiraCoreTraceQuery("backup-trace-project"),
@@ -400,7 +502,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val archive = coordinator.create(correctPassphrase)
         try {
             assertThrows(Exception::class.java) {
-                runBlocking { coordinator.restore(archive, wrongPassphrase) }
+                runBlocking { restoreOwned(coordinator, archive, wrongPassphrase) }
             }
             assertEquals("must-remain", store.getTask("must-remain")?.taskId)
         } finally {
@@ -477,7 +579,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             withOwnedRestoreJournal {
                 assertThrows(Exception::class.java) {
                     runBlocking {
-                        GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
+                        restoreOwned(GlafiraCoreBackupCoordinator(context, store), archive, passphrase)
                     }
                 }
                 assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
@@ -604,7 +706,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue(identityFile.delete())
             keyStore.deleteEntry(sourceAlias)
 
-            GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
+            restoreOwned(GlafiraCoreBackupCoordinator(context, store), archive, passphrase)
 
             val restored = identityStore.loadOrCreate()
             assertNotEquals(sourceIdentity.coreId, restored.coreId)
@@ -656,6 +758,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     })
                     try {
                     owner.writeText(runId, Charsets.UTF_8)
+                    writeRollbackOwnerMarker(runId)
                     ownsFixture = true
                         GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
                         journalOwner.writeText(runId, Charsets.UTF_8)
@@ -665,10 +768,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         }
                         throw error
                     }
-                    val journalFiles = journal.walkTopDown().filter { it.isFile }.toList()
+                    val journalFiles = journal.walkTopDown().filter { it.isFile && it != journalOwner }.toList()
                     assertTrue(
-                        "Rollback journal must contain its encrypted snapshot and marker",
-                        journalFiles.isNotEmpty()
+                        "Rollback journal must contain both encrypted snapshot artifacts, excluding its ownership marker",
+                        journalFiles.map { it.name }.toSet().containsAll(setOf("database.db", "files.glb"))
                     )
                     val cacheFiles = context.cacheDir.walkTopDown().filter { it.isFile }.toList()
                     (journalFiles + cacheFiles).forEach { file ->
@@ -697,9 +800,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             }
                             check(journal.deleteRecursively())
                             if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                        } else check(!rollbackKeyExists()) {
-                            "Refusing to delete a rollback key without its owned journal."
-                        }
+                        } else if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                        clearRollbackOwnerMarker(runId)
                         check(owner.delete())
                     }
                 }
@@ -714,7 +816,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "GLAFIRA-rollback-key-lifecycle".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
-            coordinator.restore(archive, passphrase)
+            restoreOwned(coordinator, archive, passphrase)
             assertFalse("Rollback key must be deleted after the pending journal is cleared", rollbackKeyExists())
         } finally {
             archive.delete()
@@ -763,6 +865,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         store.enqueue(task)
                         expectedTask = checkNotNull(store.getTask(task.taskId))
                         owner.writeText(runId, Charsets.UTF_8)
+                        writeRollbackOwnerMarker(runId)
                         ownsFixture = true
                         try {
                             GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
@@ -817,9 +920,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
                                     check(journal.deleteRecursively())
                                     if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
-                                } else check(!rollbackKeyExists()) {
-                                    "Refusing to delete a rollback key without its owned journal."
-                                }
+                                } else if (rollbackKeyExists()) GlafiraRollbackSnapshotCipher.deleteKey()
+                                clearRollbackOwnerMarker(runId)
                                 check(!knownGood.exists() || knownGood.delete())
                                 check(!createdAfterMarker.exists() || createdAfterMarker.delete())
                                 check(owner.delete())
