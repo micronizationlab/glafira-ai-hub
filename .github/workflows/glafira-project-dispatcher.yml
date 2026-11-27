@@ -346,7 +346,7 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             if [[ ! -f "$FAKE_GH_FAIL_ONCE" ]]; then touch "$FAKE_GH_FAIL_ONCE"; exit 1; fi
-            printf '%s\\n' '{"data":{"repository":{"pullRequests":{"nodes":[{"number":3,"title":"retry","headRefName":"r","headRefOid":"hr","baseRefOid":"br","isDraft":false,"url":"https://example.test/3","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}'
+            printf '%s\n' '{"data":{"repository":{"pullRequests":{"nodes":[{"number":3,"title":"retry","headRefName":"r","headRefOid":"hr","baseRefOid":"br","isDraft":false,"url":"https://example.test/3","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}'
             exit 0
           fi
           exit 2
@@ -378,7 +378,7 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == repos/*/actions/runs* ]]; then
             if [[ ! -f "$FAKE_GH_FAIL_ONCE" ]]; then touch "$FAKE_GH_FAIL_ONCE"; exit 1; fi
-            printf '%s\\n' '{"workflow_runs":[]}'
+            printf '%s\n' '{"workflow_runs":[]}'
             exit 0
           fi
           exit 2
