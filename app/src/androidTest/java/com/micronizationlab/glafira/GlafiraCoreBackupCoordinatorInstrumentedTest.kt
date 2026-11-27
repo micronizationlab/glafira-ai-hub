@@ -41,7 +41,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         org.junit.Assume.assumeTrue(android.os.Build.FINGERPRINT.contains("sdk_gphone"))
         org.junit.Assume.assumeFalse(
             "Backup instrumentation requires Core runtime to be owner-paused.",
-            GlafiraCoreRuntimeOwner.get(appContext).isEnabled
+            appCoreRuntimeEnabledWithoutInitialization()
         )
         cleanupOwnedLeftoverRollbackFixture()
         org.junit.Assume.assumeFalse(
@@ -135,6 +135,40 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             PendingDeliveryRuntime.withPaused { block() }
         }
     }
+    /**
+     * Read persisted enablement without constructing GlafiraCoreRuntimeOwner: its constructor
+     * migrates preferences and creates/updates installation databases, which this fixture does not own.
+     */
+    private fun appCoreRuntimeEnabledWithoutInitialization(): Boolean {
+        val database = appContext.getDatabasePath("glafira_core_runtime_config.db")
+        if (database.isFile) {
+            try {
+                val enabled = android.database.sqlite.SQLiteDatabase.openDatabase(
+                    database.absolutePath,
+                    null,
+                    android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+                ).use { db ->
+                    db.rawQuery(
+                        "SELECT config_version, enabled FROM runtime_config WHERE singleton_id = 1",
+                        null
+                    ).use { cursor ->
+                        if (cursor.moveToFirst() && cursor.getInt(0) == 1) cursor.getInt(1) == 1 else null
+                    }
+                }
+                if (enabled != null) return enabled
+            } catch (_: Exception) {
+                return true // Unknown persistent state is treated as enabled; setup must skip.
+            }
+        }
+        val legacyPreferencesFile = File(
+            appContext.applicationInfo.dataDir,
+            "shared_prefs/glafira_core_runtime.xml"
+        )
+        if (!legacyPreferencesFile.isFile) return false
+        return appContext.getSharedPreferences("glafira_core_runtime", Context.MODE_PRIVATE)
+            .getBoolean("runtime_enabled", false)
+    }
+
     private fun assumeNoScheduledAppWork() {
         val workManager = WorkManager.getInstance(appContext)
         (CORE_WORK_NAMES + listOf(BackupScheduler.DAILY_WORK_NAME, BackupScheduler.MANUAL_WORK_NAME)).forEach { name ->
@@ -193,13 +227,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private suspend fun cleanupOwnedLeftoverRollbackFixture() = withFixtureLocks {
         val marker = rollbackOwnerMarker()
         if (marker.exists()) {
-            val realJournalMarker = File(
-                File(appContext.noBackupFilesDir, "glafira-restore-journal"),
-                "restore.pending"
-            )
+            val realJournal = File(appContext.noBackupFilesDir, "glafira-restore-journal")
             org.junit.Assume.assumeFalse(
                 "Never reclaim a test fixture or installation key while a real app restore is pending.",
-                realJournalMarker.exists()
+                realJournal.exists()
             )
             val runId = marker.readText(Charsets.UTF_8)
             val validRunId = runCatching { UUID.fromString(runId) }.isSuccess
@@ -265,12 +296,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     ): BackupVerification = withOwnedRollbackKey { coordinator.restore(archive, passphrase) }
     private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T = withOwnedRollbackKey(block)
     private fun deleteFixtureRollbackKey() {
-        val realRestoreMarker = File(
-            File(appContext.noBackupFilesDir, "glafira-restore-journal"),
-            "restore.pending"
-        )
-        check(!realRestoreMarker.exists()) {
-            "Refusing to delete the installation rollback key while a real restore journal is pending."
+        val realRestoreJournal = File(appContext.noBackupFilesDir, "glafira-restore-journal")
+        check(!realRestoreJournal.exists()) {
+            "Refusing to delete the installation rollback key while a real restore journal exists."
         }
         GlafiraRollbackSnapshotCipher.deleteKey()
     }
