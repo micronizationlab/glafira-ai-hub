@@ -222,3 +222,19 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
 - `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
+
+
+## 14. Dispatcher inventory reconciliation reliability
+
+- `1.7.2` — Dispatcher inventory reconciliation.
+- `1.7.2.1` — Exact open-PR inventory and base/head identity comparison.
+- `1.7.2.1.1` — Bounded inventory transport and failure-state reporting.
+- `1.7.2.1.1.1` — Large-inventory and injected-failure regression.
+- `1.7.2.1.1.1.1` — Fix argv overflow and fail-closed comparison handling; Work Item `GLAFIRA-S000-W06`; issue #768.
+- **Immediate parent:** `1.7.2.1.1.1` — Large-inventory and injected-failure regression.
+- **Exclusive implementation paths:** `.github/workflows/glafira-project-dispatcher.yml`, `.github/scripts/compare-pr-inventory.sh`, `.github/scripts/tests/test_dispatcher_inventory_comparison.py`.
+- **Predecessors / dependencies:** none. Independent of #744's durable non-dropping FIFO build queue.
+- **Executor:** GLAFIRA coordinator as active author; independent CodeRabbit/Proofline review; owner-controlled merge. No Amazon Q-only assignment.
+- **Acceptance:** large PR inventory passes without argv overflow; jq/script parse or execution failure becomes explicit UNKNOWN/degraded and cannot be mistaken for changed refs; UNKNOWN/degraded MUST make the Project Dispatcher check conclude failure (or another explicitly non-green conclusion), never green/success; genuine inventory deltas remain detectable; exact PR number/head SHA/non-empty base SHA matching remains intact; regression fixture covers large input, injected failure and real inventory changes. The owner-approved false-green waiver applies only to the documentation-only reservation PR #776 and its exact live-Main replacement: the check is explicitly NOT PASSED and the known UNKNOWN/degraded result is recorded as a defect. The waiver does not transfer to implementation or pin PRs. Docs CI is required only if present; path-gated workflow lint may be skipped for docs-only changes. The implementation PR must run the regression harness and all exact-head platform checks selected by its changed paths; skipped is not passed.
+- **Reservation lifecycle / mutual exclusion:** this WBS registration is not implementation authorization. Use a single-flight coordinator procedure: one reservation merge at a time, followed by a fresh Main read and full ownership rescan. A live reread is not an atomic mutex or compare-and-set. If Main advances unexpectedly or a bypass/concurrent merge occurs, stop all reservation merges and reconcile every candidate against exact new Main before resuming. The branch must be refreshed onto live Main and duplicate ownership rescanned immediately before merge. Reservation merge alone leaves the leaf `RESERVED / NOT IMPLEMENTED`. Only after a separate implementation pin amendment records the exact then-current Main SHA and merges may the leaf transition to `ACTIVE / IN_PROGRESS`; only after implementation, independent review, exact-head validation and owner acceptance may it transition to `DONE`.
+- **Status:** RESERVED / NOT IMPLEMENTED before and after the dedicated reservation PR merges. The leaf remains inactive until a separate exact-current-Main implementation pin amendment merges; only then may implementation start.
