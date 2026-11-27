@@ -141,12 +141,16 @@ final class BridgeHubBindingTests: XCTestCase {
     }
 
     func testPersistenceMapsMalformedJSONAndUnsupportedVersionToBindingError() throws {
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data("{".utf8)))
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data("{".utf8))) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .invalidHubBinding)
+        }
         var envelope = try XCTUnwrap(JSONSerialization.jsonObject(
             with: BridgeHubBindingPersistence.encode(binding())
         ) as? [String: Any])
         envelope["schemaVersion"] = 99
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope)))
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope))) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .invalidHubBinding)
+        }
     }
 
     func testPersistenceDecodeCanonicalizesEndpointBeforeReturning() throws {
