@@ -701,3 +701,28 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 - **Status:** PROPOSED / NOT ACTIVE — refreshed from live Main after PR #738 merged. This parent reservation becomes active only when this focused PR merges; no implementation leaf is started or authorized before then. Program Step 93 remains OPEN.
 
 - WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.
+
+## WBS reservation — Multi-AI selector UX and Token/GCU owner experience — 2026-11-27
+
+### Multi-AI selector UX
+- **Work Item / WBS / parent / tracker:** `GLAFIRA-S000-W06` / `1.10.1.1.1.1.1` / Multi-AI provider-selection experience / issue #680 / umbrella #672.
+- **Executor / reviewer:** GLAFIRA coordinator is the active author and delivery owner; independent review by CodeRabbit/Proofline; final product acceptance by the owner. Amazon Q is an optional secondary reviewer only, not the assigned executor and not evidence of work.
+- **Exclusive implementation path:** `docs/design/MULTI_AI_SELECTOR_UX.md` only. No provider runtime, API keys, routing, billing, workflow, app code or shared token edits.
+- **Predecessors:** none. This leaf is independent of #679 design tokens and #767 Token/GCU; use explicit provisional style assumptions if the shared token palette is not yet owner-approved.
+- **Procedure:** (1) inventory provider/model states and account/tier constraints; (2) define provider selection, model selection, default/fallback consent and quota exhaustion flows; (3) specify active/available/unavailable/quota-exhausted states and connection lifecycle; (4) classify local/private/sensitive/public context before provider selection; (5) disclose free/paid tier, cost estimate, data-sharing and retention at decision time; (6) define owner-controlled grants, revocation and failure/unknown states; (7) include keyboard/screen-reader/small-screen behavior and acceptance matrix; (8) independent review, correct all findings, and request owner review.
+- **Acceptance boundary:** a complete UX specification only. It does not authorize provider integrations, API-key storage, runtime dispatch, outbound data sharing, subscriptions, or payment flows. No claim of production model switching.
+
+### Token/GCU owner experience and compute economics UX
+- **Work Item / WBS / parent / tracker:** `GLAFIRA-S000-W07` / `1.9.1.1.1.1.1` / Token/GCU measurement, contribution and owner-settlement experience / issue #767 / umbrella #672.
+- **Executor / reviewer:** GLAFIRA coordinator is the active author and delivery owner; independent review by CodeRabbit/Proofline; final product/economic policy acceptance by the owner. Amazon Q is an optional secondary reviewer only, not the assigned executor and not evidence of work.
+- **Exclusive implementation path:** `docs/design/TOKEN_GCU_UX.md` only. No runtime code, issuance, wallet writes, payments, exchange/marketplace execution, provider billing, background compute, protocol, database or API changes.
+- **Predecessors:** none. This leaf is explicitly independent of #679, #680, Core, Bridge and Desktop; no stacked PR or dependency wait.
+- **Procedure:** (1) define GCU measurement with provenance, confidence and non-measured resources; (2) separate measured GCU from GLF settlement and prohibit implied 1:1 conversion; (3) define consent-first device contribution, resource caps, schedules, pause/revoke and per-device visibility; (4) distinguish estimated, accepted, pending, rejected and settled rewards; (5) specify concept-level wallet/ledger states and owner approval boundaries; (6) disclose pricing, fees, energy/depreciation and break-even without income guarantees; (7) define offline, quota, paused, revoked, rejected, disputed and error states; (8) cover accessibility, small screens, privacy and explicit unresolved owner decisions; (9) independent review, correct all findings, and request owner review.
+- **Acceptance boundary:** design specification only. No token issuance, wallet settlement, payments, device rewards, marketplace execution or economic/legal policy is approved by this reservation.
+
+### Shared reservation controls
+- This PR changes only `docs/GLAFIRA_EXECUTION_LEDGER.md`; the two design artifacts are reserved as separate, exclusive implementation paths.
+- These are two independent deliverables, not a stacked dependency chain. Each implementation must branch from the then-current Main after this reservation merges and use one focused PR per issue.
+- Do not assign either leaf solely to a bot. GLAFIRA owns active execution and must produce the artifacts; optional agent review cannot be reported as implementation.
+- Exact-head Docs CI, Security Scan, Project Dispatcher and independent review are required for this reservation PR. Design implementation begins only after the reservation is merged to Main; owner acceptance remains required before any runtime work.
+- **Status:** RESERVED / NOT IMPLEMENTED. Neither deliverable is DONE; no numbered Program 150 item is claimed complete.
