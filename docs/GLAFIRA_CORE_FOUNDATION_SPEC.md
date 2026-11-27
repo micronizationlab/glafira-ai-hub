@@ -85,16 +85,16 @@ Do not automatically train/fine-tune models on memory or raw conversation histor
 
 ### 3.5 Proposed repository contract
 
-Kotlin-level interface shape (names are normative; exact package and suspend/Flow details may follow the existing code style):
+The normative Kotlin API is the existing declaration in `app/src/main/java/com/micronizationlab/glafira/GlafiraCoreContracts.kt`; this excerpt mirrors it exactly. Changes require an explicit contract amendment and coordinated updates to all consumers:
 
 ```kotlin
 interface MemoryRepository {
-    suspend fun put(record: MemoryRecord, actor: CoreActor): MemoryWriteResult
-    suspend fun get(id: MemoryId, access: MemoryAccessContext): MemoryRecord?
-    suspend fun search(query: MemoryQuery, access: MemoryAccessContext): List<MemoryRecord>
-    suspend fun update(id: MemoryId, change: MemoryChange, actor: CoreActor): MemoryWriteResult
-    suspend fun delete(id: MemoryId, actor: CoreActor): MemoryDeleteResult
-    suspend fun export(query: MemoryExportQuery, actor: CoreActor): MemoryExport
+    suspend fun put(record: CoreMemoryRecord, access: MemoryAccessContext): MemoryWriteResult
+    suspend fun get(id: MemoryIdentifier, access: MemoryAccessContext): CoreMemoryRecord?
+    suspend fun search(query: MemoryQuery, access: MemoryAccessContext): List<CoreMemoryRecord>
+    suspend fun update(id: MemoryIdentifier, change: MemoryChange, access: MemoryAccessContext): MemoryWriteResult
+    suspend fun delete(id: MemoryIdentifier, access: MemoryAccessContext): MemoryDeleteResult
+    suspend fun export(query: MemoryQuery, access: MemoryAccessContext): MemoryExport
 }
 ```
 
