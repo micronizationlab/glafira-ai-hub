@@ -359,7 +359,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue(verification.totalBytes > 0)
         } finally {
             archive.delete()
-            passphrase.fill('\u0000')
+            passphrase.fill(0.toChar())
         }
     }
     @Test
