@@ -366,6 +366,41 @@ jobs:
           fi
           printf '%s\n' "$count"
           COUNT
+          cat > "$RUNNER_TEMP/render-stable-report.sh" <<'STABLE_REPORT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          prs_file="$1"
+          runs_file="$2"
+          summary_file="$3"
+          if ! jq -e 'type == "array"' "$prs_file" >/dev/null 2>&1; then
+            echo "stable PR inventory is not a JSON array" >&2
+            exit 2
+          fi
+          if ! jq -e 'type == "array"' "$runs_file" >/dev/null 2>&1; then
+            printf 'null\n' > "$RUNNER_TEMP/stable-report-unavailable-runs.json"
+            runs_file="$RUNNER_TEMP/stable-report-unavailable-runs.json"
+          fi
+          count="$(jq 'length' "$prs_file")"
+          if [[ "$count" -eq 0 ]]; then
+            {
+              echo "# GLAFIRA Project Dispatcher"
+              echo ""
+              echo "No open pull requests (confirmed by two identical complete snapshots)."
+            } >> "$summary_file"
+            exit 0
+          fi
+          {
+            echo "# GLAFIRA Project Dispatcher"
+            echo ""
+            echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo ""
+            echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
+            echo "|---:|---|---|---|:---:|"
+            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$prs_file" "$runs_file"
+            echo ""
+            echo "Policy: historical PR inventory does not request statusCheckRollup; fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Formatter metadata-only runs are excluded only for the Java formatter workflow. Workflow history is capped at 1,000 recent runs. No matching evidence is UNKNOWN/not a pass; skipped, cancelled, queued, partial or unknown states are not acceptance passes."
+          } >> "$summary_file"
+          STABLE_REPORT
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -616,7 +651,16 @@ jobs:
           opened_result="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-empty-pr-pr.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-empty-pr-pr.calls" bash "$reconcile" "$tmp/empty-inventory.json" "$tmp/empty-pr.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
           [[ "$opened_result" == "CHANGED" && "$(cat "$tmp/sequence-empty-pr-pr.calls")" -eq 2 ]]
           jq -e 'length == 5001 and .[-1].number == 5001' "$tmp/empty-pr.latest.json" >/dev/null
-          echo "dispatcher empty inventory: []→[] confirms empty; []→[PR]→[PR] renders PR: PASS"
+          : > "$tmp/empty-report.md"
+          printf '[]\n' > "$tmp/no-runs.json"
+          RUNNER_TEMP="$RUNNER_TEMP" bash "$RUNNER_TEMP/render-stable-report.sh" "$tmp/empty-empty.latest.json" "$tmp/no-runs.json" "$tmp/empty-report.md"
+          grep -Fq 'No open pull requests (confirmed by two identical complete snapshots).' "$tmp/empty-report.md"
+          jq -n '[{headSha:"head-b",workflowName:"GLAFIRA CI",status:"completed",conclusion:"success",createdAt:"2026-11-27T00:00:00Z",url:"https://example.test/run/5001",pullRequests:[{number:5001,base:{sha:"base"}}]}]' > "$tmp/opened-pr-runs.json"
+          : > "$tmp/opened-pr-report.md"
+          RUNNER_TEMP="$RUNNER_TEMP" bash "$RUNNER_TEMP/render-stable-report.sh" "$tmp/empty-pr.latest.json" "$tmp/opened-pr-runs.json" "$tmp/opened-pr-report.md"
+          grep -Fq '[#5001]' "$tmp/opened-pr-report.md"
+          grep -Fq 'COMPLETED/success' "$tmp/opened-pr-report.md"
+          echo "dispatcher production report: []→[] confirmed empty; []→[PR]→[PR] includes exact matching Actions status: PASS"
 
           # The original snapshot remains byte-for-byte unchanged even after a valid delta.
           jq '. + [{number: 5001, headRefOid: "head-new", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/large-prs-wrapper-delta.json"
@@ -786,22 +830,4 @@ jobs:
             if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then :; else runs='null'; fi
           fi
           printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
-          if [[ "$stable_count" -eq 0 ]]; then
-            {
-              echo "# GLAFIRA Project Dispatcher"
-              echo ""
-              echo "No open pull requests (confirmed by two identical complete snapshots)."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          {
-            echo "# GLAFIRA Project Dispatcher"
-            echo ""
-            echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            echo ""
-            echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
-            echo "|---:|---|---|---|:---:|"
-            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
-            echo ""
-            echo "Policy: historical PR inventory does not request statusCheckRollup; fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Formatter metadata-only runs are excluded only for the Java formatter workflow. Workflow history is capped at 1,000 recent runs. No matching evidence is UNKNOWN/not a pass; skipped, cancelled, queued, partial or unknown states are not acceptance passes."
-          } >> "$GITHUB_STEP_SUMMARY"
+          bash "$RUNNER_TEMP/render-stable-report.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json" "$GITHUB_STEP_SUMMARY"
