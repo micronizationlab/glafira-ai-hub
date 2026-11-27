@@ -43,6 +43,13 @@ class GlafiraPortableSnapshotInstrumentedTest {
         override fun getFilesDir(): File = files
         override fun getNoBackupFilesDir(): File = noBackup
         override fun getCacheDir(): File = cache
+        // Keep the production preference name, but namespace its backing file per fixture.
+        // BackupArchive.restoreSafePreferences must never mutate the installed app's settings.
+        private fun fixturePreferenceName(name: String) = "glafira_fixture_${root.name}_$name"
+        override fun getSharedPreferences(name: String, mode: Int) =
+            baseContext.getSharedPreferences(fixturePreferenceName(name), mode)
+        override fun deleteSharedPreferences(name: String): Boolean =
+            baseContext.deleteSharedPreferences(fixturePreferenceName(name))
     }
 
     private var fixturePauseCalls = 0
