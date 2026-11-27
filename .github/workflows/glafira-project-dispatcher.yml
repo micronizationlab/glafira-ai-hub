@@ -40,43 +40,66 @@ jobs:
           set -euo pipefail
           prs_file="$1"
           runs_file="$2"
-          prs="$(cat "$prs_file")"
-          runs="$(cat "$runs_file")"
-          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$prs"; then
+          if ! jq -e 'type == "array"' "$prs_file" >/dev/null 2>&1; then
             echo "pull request input must be a JSON array" >&2
             exit 2
           fi
-          while IFS= read -r pr; do
-            number="$(jq -r '.number' <<< "$pr")"
-            # PR titles and branch names are contributor-controlled: strip Markdown syntax.
-            title="$(jq -r '.title // "" | gsub("https?://[^ )]+"; "") | gsub("[|]"; "/") | gsub("[^[:alnum:] _.,:;!?-]"; " ")' <<< "$pr")"
-            branch="$(jq -r '.headRefName // "" | gsub("[^[:alnum:] _.,:/-]"; " ")' <<< "$pr")"
-            sha="$(jq -r '.headRefOid // ""' <<< "$pr")"
-            base_sha="$(jq -r '.baseRefOid // ""' <<< "$pr")"
-            draft="$(jq -r '.isDraft // false' <<< "$pr")"
-            url="$(jq -r '.url // ""' <<< "$pr")"
-            checks="$(jq -c '[.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)]' <<< "$pr")"
-            if [[ "$(jq 'length' <<< "$checks")" -gt 0 ]]; then
-              ci="HEAD-ONLY / BASE NOT VERIFIED: $(jq -r 'map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")' <<< "$checks")"
-            elif ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$runs"; then
-              ci="UNKNOWN / ACTIONS API UNAVAILABLE"
-            else
-              matching="$(jq -c --arg sha "$sha" --arg base "$base_sha" --argjson number "$number" '
-                [.[] |
-                  select(.headSha == $sha) |
-                  select($base != "" and any((.pullRequests // [])[]?; .number == $number and (.base.sha // "") != "" and .base.sha == $base)) |
-                  select((.workflowName // .name // "") != "GLAFIRA Java Format Check" or ((.displayTitle // "") | startswith("METADATA_ONLY -") | not))
-                ] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])
-              ' <<< "$runs")"
-              if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
-                ci="NO MATCHING RUN FOR EXACT PR/HEAD/BASE"
+          # Build the exact PR/head/base run index once, then render all PR rows in
+          # one jq pass. This avoids rescanning the 1,000-run history for every PR.
+          jq -r --slurpfile runs "$runs_file" '
+            def clean_title:
+              (.title // "")
+              | gsub("https?://[^ )]+"; "")
+              | gsub("[|]"; "/")
+              | gsub("[^[:alnum:] _.,:;!?-]"; " ");
+            def clean_branch:
+              (.headRefName // "") | gsub("[^[:alnum:] _.,:/-]"; " ");
+            def run_status:
+              if .status == "queued" then "QUEUED"
+              elif .status == "in_progress" then "IN_PROGRESS"
+              elif .status == "completed" then "COMPLETED/" + (.conclusion // "UNKNOWN")
+              else "UNKNOWN/" + (.status // "missing") end;
+            . as $prs
+            | if (($runs | length) != 1 or ($runs[0] | type) != "array") then
+                [$prs[] | "| [#\(.number)](\(.url // "")) \(clean_title) | <code>\(clean_branch)</code> | <code>\((.headRefOid // "")[0:12])</code> | UNKNOWN / ACTIONS API UNAVAILABLE | \(.isDraft // false) |"]
               else
-                ci="$(jq -r 'map((.workflowName // .name // "workflow") + ": " + (if .status == "queued" then "QUEUED" elif .status == "in_progress" then "IN_PROGRESS" elif .status == "completed" then ("COMPLETED/" + (.conclusion // "UNKNOWN")) else "UNKNOWN/" + (.status // "missing") end) + " ([run](\(.url // "")))") | join("<br>")' <<< "$matching")"
-              fi
-            fi
-            short_sha="$(cut -c1-12 <<< "$sha")"
-            echo "| [#$number]($url) $title | <code>$branch</code> | <code>$short_sha</code> | $ci | $draft |"
-          done < <(jq -c '.[]' <<< "$prs")
+                ($runs[0] | [
+                  .[] as $run
+                  | ($run.pullRequests // [])[]? as $association
+                  | select($association.number != null and ($association.base.sha // "") != "" and ($run.headSha // "") != "")
+                  | select(($run.workflowName // $run.name // "") != "GLAFIRA Java Format Check" or ((($run.displayTitle // "") | startswith("METADATA_ONLY -")) | not))
+                  | {
+                      key: "\($association.number)|\($run.headSha)|\($association.base.sha)",
+                      run: $run
+                    }
+                ]
+                | group_by(.key)
+                | map({
+                    key: .[0].key,
+                    value: ([.[].run]
+                      | sort_by(.createdAt // "")
+                      | reverse
+                      | group_by(.workflowName // .name // "unknown")
+                      | map(.[0]))
+                  })
+                | from_entries) as $run_index
+                | [
+                    $prs[] as $pr
+                    | ([$pr.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)]) as $checks
+                    | if ($checks | length) > 0 then
+                        "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | HEAD-ONLY / BASE NOT VERIFIED: \($checks | map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")) | \($pr.isDraft // false) |"
+                      else
+                        ($run_index["\($pr.number)|\($pr.headRefOid // "")|\($pr.baseRefOid // "")"] // []) as $matching
+                        | if ($matching | length) == 0 then
+                            "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | NO MATCHING RUN FOR EXACT PR/HEAD/BASE | \($pr.isDraft // false) |"
+                          else
+                            "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | \($matching | map((.workflowName // .name // "workflow") + ": " + run_status + " ([run](\(.url // "")))") | join("<br>")) | \($pr.isDraft // false) |"
+                          end
+                      end
+                  ]
+              end
+            | .[]
+          ' "$prs_file"
           SCRIPT
 
           cat > "$RUNNER_TEMP/fetch-open-prs.sh" <<'FETCH'
@@ -416,7 +439,7 @@ jobs:
           ! grep -q '\[link\]' <<< "$output"
 
           mkdir -p "$tmp/fake-bin"
-          # GraphQL pagination preserves base SHA and check-rollup data.
+          # Inventory projection preserves base SHA but intentionally omits check-rollup data.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
