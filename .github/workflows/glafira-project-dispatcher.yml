@@ -216,6 +216,8 @@ jobs:
               and all(.[]; . as $old |
                 ($latest_by_number[($old.number | tostring)] // null) as $current |
                 $current != null
+                and ($old.headRefOid // "") != ""
+                and ($old.baseRefOid // "") != ""
                 and $current.headRefOid == $old.headRefOid
                 and $current.baseRefOid == $old.baseRefOid
               )
@@ -430,6 +432,12 @@ jobs:
           jq '.[0:4999]' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-removed.json"
           if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-removed.json"; then
             echo "removed PR was incorrectly ignored as an inventory change" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          jq '.[0].baseRefOid = ""' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-empty-base.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-empty-base.json"; then
+            echo "empty base SHA was incorrectly accepted as an exact identity" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
