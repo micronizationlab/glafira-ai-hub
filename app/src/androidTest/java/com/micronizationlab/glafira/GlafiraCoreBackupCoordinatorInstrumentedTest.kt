@@ -747,15 +747,24 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val sentinel = File(journal, "must-survive-pre-rollback-validation")
             sentinel.writeText("pre-rollback-sentinel", Charsets.UTF_8)
             withOwnedRestoreJournal {
-                val failure = assertThrows(IllegalArgumentException::class.java) {
-                    runBlocking { isolatedCoordinator().restore(archive, passphrase) }
+                try {
+                    val failure = assertThrows(IllegalArgumentException::class.java) {
+                        runBlocking { isolatedCoordinator().restore(archive, passphrase) }
+                    }
+                    assertEquals("Неполный набор таблиц Core.", failure.message)
+                    assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
+                    assertFalse(File(journal, "restore.pending").exists())
+                    assertTrue("Validation must reject before prepareRollback can clear the journal directory.", sentinel.isFile)
+                    assertEquals("pre-rollback-sentinel", sentinel.readText(Charsets.UTF_8))
+                } finally {
+                    // This sentinel journal is deliberately test-created and has no rollback
+                    // ownership record. Remove only our sentinel and then its empty directory
+                    // before withOwnedRestoreJournal performs installation-key cleanup.
+                    if (sentinel.exists()) check(sentinel.delete())
+                    if (journal.exists() && journal.list().orEmpty().isEmpty()) {
+                        check(journal.delete()) { "Could not remove the empty test sentinel journal." }
+                    }
                 }
-                assertEquals("Неполный набор таблиц Core.", failure.message)
-                assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
-                assertFalse(File(journal, "restore.pending").exists())
-                assertTrue("Validation must reject before prepareRollback can clear the journal directory.", sentinel.isFile)
-                assertEquals("pre-rollback-sentinel", sentinel.readText(Charsets.UTF_8))
-                check(sentinel.delete())
             }
         } finally {
             archive.delete()
