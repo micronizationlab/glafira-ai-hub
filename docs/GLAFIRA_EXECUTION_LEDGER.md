@@ -15,18 +15,18 @@ This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CO
 
 ## Work-item registry
 
-| Work Item ID | Step | Owner | Scope | Status | Evidence / next action |
+| Work Item ID | Registered parent | Step / leaf | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|
-| GLAFIRA-CODEX-W01 | `1.7.1.1.1.1.1` | GLAFIRA | Project-wide immediate repair-on-discovery Codex; all eleven workstreams and all write-enabled helpers | MERGED | Append-only transition event recorded below: PR #761 merge commit `c40cc0033e65b3df74f53e846e331e685c59d05f`; PR #783 Main SHA `eed7a9c4aeee721ed6ff04e35ed2f94813a87eef` is a separate accountability amendment; `docs/GLAFIRA_CODEX.md` |
-| GLAFIRA-GOV-WBS-W01 | `1.7.1.2.1.1.1` | GLAFIRA | Required strict-Main WBS reservation uniqueness PR check, parser and regression fixtures; no legacy Program 150 mapping | RESERVED | Issue #736; refreshed reservation PR; implementation paths reserved below; implementation blocked until reservation merges and exact Main is reread |
-| GLAFIRA-S000-W06 | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher inventory reconciliation failure handling; registered parent `1.7.2.1.1.1`; bounded JSON transport, fail-closed errors and large-inventory/injected-failure regressions | RESERVED | Issue #768; docs-only reservation PR #788; exclusive Dispatcher implementation paths reserved; after reservation merge prepare a Draft-only fix; no source integration before verified exact-Main pin amendment |
-| GLAFIRA-GOV-W01 | Governance | GLAFIRA | Establish this control, update helper instructions and reconcile plan baseline | IN_PROGRESS | Branch `governance/program-150-single-source-of-truth`; PR to be opened after doc consistency check |
-| GLAFIRA-S016-W01 | 16 | GLAFIRA | Core failure-injection matrix | BLOCKED | First refresh exact current-main tests/PRs; do not duplicate already merged failure-injection coverage |
-| GLAFIRA-S017-W01 | 17 | GLAFIRA | Provider outcome classification and no blind replay | BLOCKED | Inspect current AiProviderClient/outbox and existing merged PRs before editing |
-| GLAFIRA-S018-W01 | 18 | GLAFIRA | Durable result outbox + explicit ACK | BLOCKED | Compare Core, Desktop Bridge and Agent outboxes; one canonical contract per authority |
-| GLAFIRA-S020-W01 | 20 | GLAFIRA | Persistent owner grants and approval binding | BLOCKED | Inspect current grants, owner session and approval stores |
-| GLAFIRA-S028-W01 | 28 | GLAFIRA | Preserve TaskPlan instrumentation acceptance | BLOCKED | Inventory existing instrumented tests before adding any |
-| GLAFIRA-S044-W01 | 44 | Owner + GLAFIRA | Private-LAN real-device pairing acceptance | OWNER_ACCEPTANCE | Requires actual owner devices; emulator is not equivalent |
+| GLAFIRA-CODEX-W01 | `1.7.1.1.1.1` | `1.7.1.1.1.1.1` | GLAFIRA | Project-wide immediate repair-on-discovery Codex; all eleven workstreams and all write-enabled helpers | MERGED | Append-only transition event recorded below: PR #761 merge commit `c40cc0033e65b3df74f53e846e331e685c59d05f`; PR #783 Main SHA `eed7a9c4aeee721ed6ff04e35ed2f94813a87eef` is a separate accountability amendment; `docs/GLAFIRA_CODEX.md` |
+| GLAFIRA-GOV-WBS-W01 | `1.7.1.2.1.1` | `1.7.1.2.1.1.1` | GLAFIRA | Required strict-Main WBS reservation uniqueness PR check, parser and regression fixtures; no legacy Program 150 mapping | RESERVED | Issue #736; refreshed reservation PR; implementation paths reserved below; implementation blocked until reservation merges and exact Main is reread |
+| GLAFIRA-S000-W06 | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher inventory reconciliation failure handling; registered parent `1.7.2.1.1.1`; bounded JSON transport, fail-closed errors and large-inventory/injected-failure regressions | RESERVED | Issue #768; docs-only reservation PR #788; exclusive Dispatcher implementation paths reserved; after reservation merge prepare a Draft-only fix; no source integration before verified exact-Main pin amendment |
+| GLAFIRA-GOV-W01 | `PARENT_ONLY: Governance` | Governance | GLAFIRA | Establish this control, update helper instructions and reconcile plan baseline | IN_PROGRESS | Branch `governance/program-150-single-source-of-truth`; PR to be opened after doc consistency check |
+| GLAFIRA-S016-W01 | `1.1 Core` | `1.1.4` | GLAFIRA | Core failure-injection matrix | BLOCKED | First refresh exact current-main tests/PRs; do not duplicate already merged failure-injection coverage |
+| GLAFIRA-S017-W01 | `LEGACY_UNRESOLVED` | 17 | GLAFIRA | Provider outcome classification and no blind replay | BLOCKED | Inspect current AiProviderClient/outbox and existing merged PRs before editing |
+| GLAFIRA-S018-W01 | `LEGACY_UNRESOLVED` | 18 | GLAFIRA | Durable result outbox + explicit ACK | BLOCKED | Compare Core, Desktop Bridge and Agent outboxes; one canonical contract per authority |
+| GLAFIRA-S020-W01 | `LEGACY_UNRESOLVED` | 20 | GLAFIRA | Persistent owner grants and approval binding | BLOCKED | Inspect current grants, owner session and approval stores |
+| GLAFIRA-S028-W01 | `LEGACY_UNRESOLVED` | 28 | GLAFIRA | Preserve TaskPlan instrumentation acceptance | BLOCKED | Inventory existing instrumented tests before adding any |
+| GLAFIRA-S044-W01 | `OWNER_ACCEPTANCE_PARENT_ONLY` | 44 | Owner + GLAFIRA | Private-LAN real-device pairing acceptance | OWNER_ACCEPTANCE | Requires actual owner devices; emulator is not equivalent |
 
 ## Active CI checkpoint — refresh before any retry
 
@@ -458,7 +458,7 @@ This checkpoint updates the live integration state after the previous Outbox/res
 
 ## MaintenanceGate contention test — 2026-11-25 (integrated after Core ownership receiver)
 
-- **Work item:** GLAFIRA-S016-W01 / WBS 1.1.4; tracker #638, sprint #634; PR #648.
+- **Work item:** GLAFIRA-S016-W01 / registered parent `1.1 Core` / WBS leaf `1.1.4`; tracker #638, sprint #634; PR #648.
 - **Change:** host-JVM regression test holds an execution lease, enters exclusive maintenance, verifies 100 waiters remain suspended, then releases maintenance and verifies all 100 resume; optional ThreadMXBean CPU measurement is reflection-only and safely unavailable on unsupported VMs.
 - **Exact-head evidence before reconciliation:** CI #45599259011 passed Android JVM (321 tests, 0 failures/errors/skips), Android Debug APK and Shared contracts; emulator/iOS/Windows/workflow lint were skipped by change-aware routing. Dispatcher #45599259055 passed.
 - **Integration note:** PR branch conflicted after Core receiver PR #627 merged. The branch is reconciled onto Main with the concurrency test preserved and this ledger entry appended to the current Main ledger. Fresh exact-head CI is required for the reconciled head.
