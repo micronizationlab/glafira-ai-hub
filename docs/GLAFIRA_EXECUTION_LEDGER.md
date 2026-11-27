@@ -697,3 +697,12 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 - **Status:** PROPOSED / NOT ACTIVE — this reservation branch was recreated from live Main after #738 merged. It becomes ACTIVE only when this focused reservation PR is merged; no helper instruction edit or dispatch is authorized before that merge. Follow-on PR #753 must be recreated from the exact resulting Main SHA after this reservation merges.
 
 - WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.
+
+
+## 2026-11-27 — Post-merge verification: GLAFIRA-S000-W01
+
+- **PR:** #738; merged to Main as squash commit `f938fcb93fda6d00a03167eee1f2413e40af9ae9` from exact PR head `0164993efe28b2eb20c17df93583d9f828c8904d`, whose base matched live Main `afaefb624f10084067452c269e15636fbc7e6bb3` immediately before merge.
+- **Exact-head pre-merge evidence:** Project Dispatcher run `45917380772` SUCCESS; change-aware CI run `45917380607` SUCCESS; Java format run `45917380630` SUCCESS; Security Scan run `45917380595` SUCCESS. All 12 review threads were resolved.
+- **Post-merge Main evidence:** Java format run `45917574899` SUCCESS; change-aware CI run `45917574955` SUCCESS; Project Dispatcher run `45917644606` SUCCESS.
+- **Scope note:** this was a docs-only governance change. Platform-specific checks were skipped by change-aware routing and are not claimed as platform validation.
+- **Status:** DONE — governance reconciliation is integrated and post-merge checks are recorded. The next Workstream 11 reservation is separately proposed as `GLAFIRA-S000-W02` in this PR; it does not inherit W01's completion status.
