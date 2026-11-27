@@ -33,6 +33,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     fun setUp() = runBlocking {
         org.junit.Assume.assumeTrue(android.os.Build.FINGERPRINT.contains("sdk_gphone"))
         runtimeWasEnabled = GlafiraCoreRuntimeOwner.get(appContext).isEnabled
+        org.junit.Assume.assumeFalse(
+            "Backup instrumentation requires Core runtime to be owner-paused; do not cancel/restart live owner work.",
+            runtimeWasEnabled
+        )
+        org.junit.Assume.assumeFalse(
+            "Skip isolated rollback tests while the application has a pending rollback.",
+            GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
+        )
+        org.junit.Assume.assumeFalse(
+            "Skip isolated rollback tests while the installation-local rollback key already exists.",
+            rollbackKeyExists()
+        )
         cancelAndAwaitCoreWorkers()
         testRoot = File(appContext.cacheDir, "glafira-backup-test-${UUID.randomUUID()}").apply { check(mkdirs()) }
         context = IsolatedBackupTestContext(appContext, testRoot)
@@ -622,7 +634,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var ownsFixture = false
         try {
             withFixtureLocks {
-                synchronized(store) {
+                run {
                     assertFalse("Refuse to overwrite an unowned rollback journal", journal.exists())
                     assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
                     assertFalse("Refuse to overwrite an existing canary owner marker", owner.exists())
@@ -677,7 +689,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         } finally {
             passphrase.fill('\u0000')
             if (ownsFixture) withFixtureLocks {
-                synchronized(store) {
+                run {
                     if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
                         if (journal.exists()) {
                             check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
@@ -710,7 +722,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
     @Test
-    fun v3RecoveryReentersAfterFreshCoordinatorConstruction() = synchronized(V3_REENTRY_TEST_LOCK) {
+    fun v3RecoveryReentersAfterFreshCoordinatorConstruction() = run {
         runBlocking {
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
             val marker = File(journal, "restore.pending")
@@ -728,7 +740,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
             try {
                 withFixtureLocks {
-                    synchronized(store) {
+                    run {
                         if (owner.exists()) {
                             val previous = owner.readText(Charsets.UTF_8)
                             if (journal.exists()) {
@@ -766,7 +778,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     }
                 }
                 withFixtureLocks {
-                    synchronized(store) {
+                    run {
                         store.enqueue(task("mutated-after-marker"))
                         assertTrue(store.transition(
                             "known-good-before-marker", setOf(GlafiraTaskState.QUEUED),
@@ -799,7 +811,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 passphrase.fill('\u0000')
                 if (ownsFixture) try {
                     withFixtureLocks {
-                        synchronized(store) {
+                        run {
                             if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
                                 if (journal.exists()) {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
@@ -821,7 +833,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
     companion object {
-        private val V3_REENTRY_TEST_LOCK = Any()
         private const val MAINTENANCE_TIMEOUT_MILLIS = 10_000L
         private const val WORKER_STOP_TIMEOUT_SECONDS = 10L
         private val CORE_WORK_NAMES = listOf("glafira-core-queue-drain", "glafira-core-queue-retry", "glafira-core-queue-network")
