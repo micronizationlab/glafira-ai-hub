@@ -345,7 +345,7 @@ jobs:
           # Re-read PR refs after run collection. If head/base moved, render against
           # the latest identity so older runs cannot be displayed as current.
           if latest_prs="$(bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO")"; then
-            printf '%s\\n' "$latest_prs" > "$RUNNER_TEMP/glafira-open-prs.latest-check.json"
+            printf '%s\n' "$latest_prs" > "$RUNNER_TEMP/glafira-open-prs.latest-check.json"
             if ! bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest-check.json"; then
               echo "PR head/base inventory changed during reconciliation; latest refs are used and exact matching is required." >> "$GITHUB_STEP_SUMMARY"
             fi
