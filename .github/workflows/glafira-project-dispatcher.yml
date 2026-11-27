@@ -164,7 +164,7 @@ jobs:
           # Keep large inventories in files; --argjson would exceed the OS argv limit.
           set +e
           jq -e --slurpfile latest "$latest_file" '
-            all(.[]; . as $old | any($latest[0][]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
+            (length == ($latest[0] | length)) and all(.[]; . as $old | any($latest[0][]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
           ' "$previous_file" >/dev/null
           status=$?
           set -e
@@ -307,6 +307,12 @@ jobs:
           jq '.[4999].headRefOid = "changed"' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-delta.json"
           if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-delta.json"; then
             echo "inventory delta was incorrectly reported as identical" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          jq '. + [{number: 5001, headRefOid: "new", baseRefOid: "base"}]' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-added.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-added.json"; then
+            echo "new PR was incorrectly ignored as an inventory change" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
