@@ -116,20 +116,10 @@ jobs:
             ]' <<< "$pages"
             exit 0
           fi
-          # REST fallback retains exact head/base identity and paginates all open PRs.
-          rest_pages="$(gh api --paginate "repos/$repo/pulls?state=open&per_page=100")"
-          jq -s '[
-            add[] |
-            {
-              number, title,
-              headRefName: .head.ref,
-              headRefOid: .head.sha,
-              baseRefOid: .base.sha,
-              isDraft: .draft,
-              url: .html_url,
-              statusCheckRollup: []
-            }
-          ]' <<< "$rest_pages"
+          # REST offset pagination can omit still-open PRs during concurrent closes.
+          # GraphQL cursor pagination is the only accepted inventory source.
+          echo "UNKNOWN: GraphQL cursor-based open-PR inventory unavailable; REST offset fallback is disabled." >&2
+          exit 1
           FETCH
           cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
           #!/usr/bin/env bash
@@ -161,6 +151,8 @@ jobs:
           set -euo pipefail
           previous_file="$1"
           latest_file="$2"
+          [[ "$previous_file" != "-" && -f "$previous_file" && -r "$previous_file" ]] || { echo "ERROR: previous PR snapshot must be a readable regular file." >&2; exit 2; }
+          [[ "$latest_file" != "-" && -f "$latest_file" && -r "$latest_file" ]] || { echo "ERROR: latest PR snapshot must be a readable regular file." >&2; exit 2; }
           # Keep inventories in files: a full JSON snapshot must never be passed in argv.
           set +e
           comparison_result="$(jq -r -s --slurpfile latest "$latest_file" '
@@ -208,6 +200,8 @@ jobs:
           fetch_script="$3"
           comparator="$4"
           repo="$5"
+          [[ -f "$comparator" && -r "$comparator" ]] && bash -n "$comparator" || { echo "UNKNOWN: comparator is missing, unreadable or invalid." >&2; exit 1; }
+          : > "$latest_file" || { echo "UNKNOWN: cannot open second PR snapshot '$latest_file'." >&2; exit 1; }
           if ! bash "$fetch_script" "$repo" > "$latest_file"; then
             echo "UNKNOWN: second PR inventory fetch failed." >&2
             exit 1
@@ -222,6 +216,20 @@ jobs:
             *) echo "UNKNOWN: PR inventory comparison failed (exit $comparison_status)." >&2; exit 1 ;;
           esac
           RECONCILE
+          cat > "$RUNNER_TEMP/write-dispatcher-error-summary.sh" <<'ERROR_SUMMARY'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          summary="$1"
+          message="$2"
+          {
+            echo "## ERROR: Dispatcher reconciliation incomplete"
+            echo ""
+            echo "$message"
+            echo "Current identity is UNKNOWN; this run is not a successful reconciliation."
+          } >> "$summary"
+          exit 1
+          ERROR_SUMMARY
+          chmod +x "$RUNNER_TEMP/write-dispatcher-error-summary.sh"
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -307,22 +315,20 @@ jobs:
           gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup[0].name == "Android CI" and .[1].number == 2' <<< "$gql_prs" >/dev/null
 
-          # REST fallback also paginates the open PR inventory.
+          # A GraphQL outage must not invoke REST or emit partial inventory.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then exit 1; fi
-          if [[ "$1" == "api" && "$2" == "--paginate" ]]; then
-            printf '%s\n' '[{"number":1,"title":"one","head":{"ref":"a","sha":"h1"},"base":{"sha":"b1"},"draft":false,"html_url":"https://example.test/1"}]'
-            printf '%s\n' '[{"number":2,"title":"two","head":{"ref":"b","sha":"h2"},"base":{"sha":"b2"},"draft":true,"html_url":"https://example.test/2"}]'
-            exit 0
-          fi
-          exit 2
+          exit 99
           GH
           chmod +x "$tmp/fake-bin/gh"
-          rest_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
-          jq -e 'length == 2 and .[1].baseRefOid == "b2" and .[1].statusCheckRollup == []' <<< "$rest_prs" >/dev/null
-
+          if output="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-outage.err")"; then
+            echo "GraphQL outage was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ -z "$output" ]]
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
@@ -363,6 +369,29 @@ jobs:
             echo "changed PR base was incorrectly treated as an identical inventory" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
+          fi
+          jq '.[0].number = 6000' "$tmp/large-prs.json" > "$tmp/large-prs-number-delta.json"
+          if bash "$comparator" "$tmp/large-prs.json" "$tmp/large-prs-number-delta.json"; then
+            echo "changed PR number was incorrectly ignored" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          printf '{' > "$tmp/malformed-prs.json"
+          if bash "$comparator" "$tmp/malformed-prs.json" "$tmp/large-prs.json"; then
+            echo "malformed JSON was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          printf '%s\n' '[{"number":1,"headRefOid":"head"}]' > "$tmp/missing-identity-prs.json"
+          if bash "$comparator" "$tmp/missing-identity-prs.json" "$tmp/large-prs.json"; then
+            echo "incomplete PR identity was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          if bash "$comparator" - "$tmp/large-prs.json"; then
+            echo "stdin marker was incorrectly accepted as a snapshot path" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
           fi
           jq '. + [{number: 5001, headRefOid: "head-new", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/large-prs-added.json"
           if bash "$comparator" "$tmp/large-prs.json" "$tmp/large-prs-added.json"; then
@@ -416,17 +445,34 @@ jobs:
           chmod +x "$tmp/fetch-same-prs.sh" "$tmp/fetch-failed-prs.sh"
           reconcile_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-latest.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json")"
           [[ "$reconcile_result" == "UNCHANGED" ]]
-          if bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-fetch-failed.json" "$tmp/fetch-failed-prs.sh" "$comparator" unused; then
+          changed_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-head-delta.json")"
+          [[ "$changed_result" == "CHANGED" ]]
+          if bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-fetch-failed.json" "$tmp/fetch-failed-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/second-fetch-error.log"; then
             echo "second PR inventory fetch failure was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
+          grep -Fq "second PR inventory fetch failed" "$tmp/second-fetch-error.log"
           if PATH="$tmp/failing-jq:$PATH" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json"; then
             echo "injected jq failure was incorrectly accepted by production reconciliation wrapper" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
-          echo "dispatcher fail-closed integration: second-fetch and injected-jq failures return non-zero: PASS"
+          if bash "$reconcile" "$tmp/large-prs.json" "$tmp" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/local-open-error.log"; then
+            echo "unwritable local snapshot path was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -Fq "cannot open second PR snapshot" "$tmp/local-open-error.log"
+          if bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$tmp/report-failure-summary.md" "injected second-fetch failure"; then
+            echo "production report failure-summary helper returned success" >&2; exit 1
+          fi
+          grep -Fq "injected second-fetch failure" "$tmp/report-failure-summary.md"
+          grep -Fq "Current identity is UNKNOWN" "$tmp/report-failure-summary.md"
+          if grep -Fq "| PR |" "$tmp/report-failure-summary.md"; then
+            echo "normal PR table appeared in failure summary" >&2; exit 1
+          fi
+          echo "dispatcher fail-closed integration: second-fetch, comparator, local-open, jq and report-summary failures return non-zero: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
@@ -437,29 +483,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          : > "$RUNNER_TEMP/glafira-open-prs.json" || { bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Cannot open local PR snapshot '$RUNNER_TEMP/glafira-open-prs.json'."; exit 1; }
           if ! bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO" > "$RUNNER_TEMP/glafira-open-prs.json"; then
-            {
-              echo "# GLAFIRA Project Dispatcher"
-              echo ""
-              echo "ERROR: GraphQL and REST open-PR inventory are unavailable; no status is reported as passing."
-            } >> "$GITHUB_STEP_SUMMARY"
+            bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "GraphQL cursor-based open-PR inventory is unavailable; no status is reported as passing."
             exit 1
           fi
-          count="$(jq 'length' "$RUNNER_TEMP/glafira-open-prs.json")"
-          if [[ "$count" -eq 0 ]]; then
-            {
-              echo "# GLAFIRA Project Dispatcher"
-              echo ""
-              echo "No open pull requests."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+          if ! jq -e 'type == "array"' "$RUNNER_TEMP/glafira-open-prs.json" >/dev/null; then
+            bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Open-PR snapshot is malformed or is not a JSON array."
+            exit 1
           fi
-          runs='[]'
-          if jq -e 'any(.[]; ([.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)] | length) == 0)' "$RUNNER_TEMP/glafira-open-prs.json" >/dev/null; then
-            if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then :; else runs='null'; fi
-          fi
-          printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
-          # Re-read and compare the PR inventory through the same tested wrapper.
+          # Always reconcile before declaring the inventory empty; a new PR may have opened after the first snapshot.
           if reconciliation_result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh" "$GH_REPO")"; then
             case "$reconciliation_result" in
               UNCHANGED)
@@ -474,13 +507,27 @@ jobs:
                 ;;
             esac
           else
-            {
-              echo "## ERROR: Dispatcher reconciliation incomplete"
-              echo ""
-              echo "Second PR inventory fetch or exact PR/head/base comparison failed. Current identity is UNKNOWN; this run is not a successful reconciliation."
-            } >> "$GITHUB_STEP_SUMMARY"
+            bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Second PR inventory fetch or exact PR/head/base comparison failed."
             exit 1
           fi
+          latest_count="$(jq 'length' "$RUNNER_TEMP/glafira-open-prs.latest.json")"
+          if [[ "$latest_count" -eq 0 ]]; then
+            {
+              echo "# GLAFIRA Project Dispatcher"
+              echo ""
+              echo "No open pull requests."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          runs='[]'
+          if jq -e 'any(.[]; ([.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)] | length) == 0)' "$RUNNER_TEMP/glafira-open-prs.latest.json" >/dev/null; then
+            if ! runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then
+              bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Actions run inventory fetch failed; no PR status is reported as passing."
+              exit 1
+            fi
+          fi
+          : > "$RUNNER_TEMP/glafira-workflow-runs.json" || { bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Cannot open local Actions snapshot."; exit 1; }
+          printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           {
             echo "# GLAFIRA Project Dispatcher"
             echo ""
@@ -490,5 +537,5 @@ jobs:
             echo "|---:|---|---|---|:---:|"
             bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
             echo ""
-            echo "Policy: fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Formatter metadata-only runs are excluded only for the Java formatter workflow. Rollup checks are head-associated and labelled base-unverified. Workflow history is capped at 1,000 recent runs and fetched only when fallback is needed. No matching evidence is UNKNOWN/not a pass; skipped, cancelled, queued, partial or unknown states are not acceptance passes."
+            echo "Policy: GraphQL cursor pagination is authoritative; REST offset fallback is disabled. Fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Skipped, cancelled, queued, partial or unknown states are not acceptance passes."
           } >> "$GITHUB_STEP_SUMMARY"
