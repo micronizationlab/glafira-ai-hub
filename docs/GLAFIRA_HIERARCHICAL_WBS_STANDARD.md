@@ -168,19 +168,21 @@ The following owner-approved task maps to legacy Program Step 93. This is a pare
 - `.3` acceptance: (1) owner-bound fixtures; (2) allowed/disallowed state and attempt cases; (3) owner-Core/generation fencing for target and descendants; (4) project/dependency isolation and bounded fan-out; (5) unknown outcomes, read-only expiry and deadline edges; (6) approval audit and claim/cancel race; (7) repeated-cancel idempotence; (8) exact-head JVM/emulator CI.
 - `.4` restore race: (1) create a test-owned journal generation marker; (2) hold restore under maintenance gate; (3) allow cancellation initial precheck to complete; (4) assert cancellation blocks on the held gate; (5) release gate and assert cancellation rechecks/rejects without mutation; (6) verify task/file restoration and unrelated-temp preservation; (7) force journal deletion failure and verify key preservation; (8) exact-head instrumentation and post-merge validation.
 
-### Reservation and exact-base sequence
+### Reservation and exact-base sequence — independent PR correction
 
-- PR #738 has merged to Main as `f938fcb93fda6d00a03167eee1f2413e40af9ae9`. This parent reservation PR #752 was recreated from that exact resulting Main SHA; the ledger and duplicate-ownership state were re-read before the refresh. PR #752 remains a separate parent reservation and must pass its own review/CI/owner gates before any child implementation leaf is pinned or started.
-- The parent reservation PR must merge first after Docs CI, Security Scan, Project Dispatcher, independent CodeRabbit/Proofline review, resolution of blocking findings and owner approval.
-- A separate leaf-pin amendment must then merge before each implementation branch is created. `.1` pin records exact Main SHA after the parent reservation. `.2` pin records exact `.1` implementation merge SHA. `.3` pin records exact `.2` implementation merge SHA. `.4` pin records exact Main SHA containing `.1`, `.2` and merged PR #703.
-- If Main advances incompatibly before a leaf branch is created, merge a pin-refresh amendment recording exact then-current Main SHA and full predecessor set before creating the branch. Do not create even an empty implementation branch before its pin amendment merges.
-- Reservation PR is documentation-only and does not count emulator tests as passed. Emulator evidence is required on each implementation leaf's exact head.
+- PR #738 and parent reservation PR #752 are already merged. PR #752's parent WBS hierarchy is active on Main; do not recreate it or create another parent-reservation PR.
+- **No separate leaf-pin PRs.** For the next eligible leaf, create one fresh branch from the exact live Main SHA. The first commit on that branch records the leaf reservation in the ledger (WBS ID, executor, independent reviewer, exact allowed files, predecessor IDs, tests and acceptance). Publish that commit and open the focused PR before editing source. Make source changes only in later commits on the same branch and within the same PR. This preserves reserve-before-edit without a three-PR administrative chain.
+- `.1` is the next eligible implementation leaf after parent #752. `.2` starts only after `.1` is merged and accepted. `.3` and `.4` are separate sibling PRs after `.1` and `.2` are merged; `.4` additionally requires production PR #703 merged and recorded DONE. `.3` does not wait for #703, and `.4` does not wait for `.3`.
+- Each independent leaf PR targets Main, not another unmerged branch. Re-read live Main and compare the PR base immediately before merge. If Main advanced, refresh only that leaf branch and rerun its exact-head checks; do not create a separate pin-refresh PR unless a real conflict or ownership change requires an independent review.
+- Reservation commit is governance evidence only. Emulator evidence is still required on the implementation PR's exact head; a docs-only reservation must never be reported as platform acceptance.
 
 ### Current status
 
-- Parent reservation: PROPOSED / IN_REVIEW in PR #752; predecessor #738 is merged, and this reservation is refreshed from exact Main SHA `f938fcb93fda6d00a03167eee1f2413e40af9ae9`. It remains inactive until its own merge gates pass and PR #752 is merged.
-- `.1`, `.2`, `.3`: NOT STARTED pending separate pin amendments and predecessor acceptance.
-- `.4`: BLOCKED until production PR #703 is merged and `.1`/`.2` are DONE.
+- Parent reservation #752: MERGED to Main as `f1ed37a72c9aa33ad0da3672fb8d8bb615d2d27d`.
+- `.1`: NEXT ELIGIBLE; no implementation is claimed started. Its reservation commit and implementation will be in one focused PR, with reservation commit first.
+- `.2`: BLOCKED until `.1` is merged and accepted.
+- `.3`: BLOCKED until `.1` and `.2` are merged and accepted; then independent of `.4` and #703.
+- `.4`: BLOCKED until `.1`/`.2` are merged and production PR #703 is merged and recorded DONE.
 - Program Step 93 and parent task remain open until every required leaf, review, merge and post-merge acceptance is complete.
 
 ## 12. Canonical coordinator-governance WBS registrations
