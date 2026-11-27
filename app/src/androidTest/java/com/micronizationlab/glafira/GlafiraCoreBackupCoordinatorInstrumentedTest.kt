@@ -51,6 +51,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failCommittedCleanupCount = 0
         var failPlaintextSnapshotDirectorySyncOnce = false
         var plaintextSnapshotDirectorySyncCalls = 0
+        var plaintextSnapshotDirectorySyncCompletedCalls = 0
         var pauseCount = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
@@ -65,11 +66,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 throw IOException("injected interruption before committed journal cleanup")
             }
         }
-        override fun beforePlaintextSnapshotDirectorySync() {
-            plaintextSnapshotDirectorySyncCalls++
-            if (failPlaintextSnapshotDirectorySyncOnce) {
-                failPlaintextSnapshotDirectorySyncOnce = false
-                throw IOException("injected plaintext snapshot parent-directory fsync failure")
+        override fun beforeDirectorySync(directory: File) {
+            if (directory.absoluteFile == context.filesDir.absoluteFile) {
+                plaintextSnapshotDirectorySyncCalls++
+                if (failPlaintextSnapshotDirectorySyncOnce) {
+                    failPlaintextSnapshotDirectorySyncOnce = false
+                    throw IOException("injected plaintext snapshot parent-directory fsync failure")
+                }
+            }
+        }
+        override fun afterDirectorySync(directory: File) {
+            if (directory.absoluteFile == context.filesDir.absoluteFile) {
+                plaintextSnapshotDirectorySyncCompletedCalls++
             }
         }
     }
@@ -1578,13 +1586,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 "injected plaintext snapshot parent-directory fsync failure",
                 injectedFailure.message
             )
-            assertEquals("The absent-snapshot fsync hook must be reached exactly once", 1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls)
+            assertEquals("The actual filesDir sync boundary must be reached for the absent snapshot", 1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls)
+            assertEquals("The injected first fsync must not be counted as completed", 0, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
             assertFalse("The injected fsync failure must be consumed", fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce)
             assertTrue("Committed marker remains when parent fsync fails", committed.exists())
             assertTrue("Rollback database remains when parent fsync fails", database.exists())
             assertTrue("Rollback archive remains when parent fsync fails", archive.exists())
             fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
             isolatedCoordinator().recover(passphrase)
+            assertEquals("Recovery must complete a real filesDir fsync before journal cleanup", 1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
+            assertEquals("Both initial and recovery sync attempts must be observed", 2, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls)
             assertFalse(pending.exists())
             assertFalse(committed.exists())
             assertFalse(database.exists())
