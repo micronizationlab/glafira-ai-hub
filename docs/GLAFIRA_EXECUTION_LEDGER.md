@@ -759,3 +759,17 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 - Required fields per finding: stable finding ID and evidence; root cause; exact correction/files/commit/PR; exact verification procedure, run/job ID, tested SHA and outcome; explicit disposition. Grouped fixes/checks must still map to each individual finding; counts must reconcile at cycle closeout.
 - This is a fourth, owner-authorized documentation path added to PR #784 scope. It changes process requirements only; it does not claim the WBS validator or Dispatcher defect #768 has been implemented.
 - Verification status: documentation diff committed; exact-head CI and line-by-line review remain pending and must be recorded before marking this amendment verified.
+
+
+### PR #784 — follow-up review register (4 new findings; pending)
+The following findings were added by the review published against the subsequent PR head. They are deliberately not marked resolved. Each requires its own correction and exact verification evidence before disposition changes.
+
+| Finding ID | Exact concern | Correction link | Required verification | Disposition |
+|---|---|---|---|---|
+| `PRRT_kwDOVx1ISc68rdyN` | `GLAFIRA-CODEX-W01` was changed to MERGED in the registry without a corresponding append-only transition event and PR #761 merge evidence. | Pending; audit registry status and append the missing event with PR #761 merge SHA `c40cc0033e65b3df74f53e846e331e685c59d05f`. | Reconcile registry projection with append-only event history; inspect exact diff and verify PR #761 merge evidence. | OPEN — not corrected or verified |
+| `PRRT_kwDOVx1ISc68rdyR` | Legacy IDs `GLAFIRA-GOV-W01` and `GLAFIRA-CI-W01` are not covered by the new ID grammar/legacy rule. | Pending; choose explicit legacy compatibility or audited migration, then align standard and registry. | Add positive/negative validator fixtures for both IDs and run exact parser test suite once implementation is authorized. | OPEN — not corrected or verified |
+| `PRRT_kwDOVx1ISc68rdyY` | BLOCKED cannot resume to `MERGED` when `blocked_from=MERGED`, preventing later transition to DONE. | Pending; allow only evidence-backed resume to saved MERGED state, retaining no direct jump to DONE. | Add state-machine fixture BLOCKED(from MERGED) → MERGED → DONE and negative bypass fixture; run validator tests. | OPEN — not corrected or verified |
+| `PRRT_kwDOVx1ISc68rdyc` | No audit-safe recovery procedure is defined if two duplicate WBS leaves have already reached Main through concurrent bypass merges. | Pending; define append-only conflict disposition/repair without deleting or rewriting either historical reservation. | Add fixture with two already-merged duplicate records; prove deterministic conflict reconciliation, preserved audit history and fail-closed behavior. | OPEN — not corrected or verified |
+
+- Snapshot after the latest push: 25 review threads total; 21 earlier threads are resolved/outdated; these 4 follow-up threads remain unresolved. The 21 earlier mappings remain in the table above and are not proof that these new findings are addressed.
+- Latest PR head at this snapshot: `bc61861238bb16f3940f5d92cd2d18e48c788f37`. Combined commit status returned no status checks and no PR-triggered workflow runs were returned for this SHA. Therefore this head is NOT validated and PR #784 is not eligible for merge.
