@@ -222,3 +222,20 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
 - `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
+
+## 15. Bounded shared file-maintenance lock
+
+- `1.2.1.2.2` — Bounded shared file-maintenance lock.
+- `1.2.1.2.2.1` — Bounded lock acquisition and contention regression.
+- `1.2.1.2.2.1.1` — Replace unbounded monitor acquisition in `GlafiraFileMaintenance` with a bounded reentrant lock; Work Item `GLAFIRA-BACKUP-LOCK-W01`; issue #775.
+- **Immediate parent:** `1.2.1.2.2.1`.
+- **Exclusive implementation paths:** `app/src/main/java/com/micronizationlab/glafira/DurableJsonFile.kt`; new `app/src/test/java/com/micronizationlab/glafira/GlafiraFileMaintenanceTest.kt`.
+- **Predecessors:** none for the lock primitive. The result is a production safety prerequisite for final acceptance of #769.
+- **Executor:** GLAFIRA coordinator active author; independent CodeRabbit/Proofline review; owner-controlled merge.
+- **Timeout policy:** fixed default `LOCK_WAIT_TIMEOUT_MILLIS = 5_000` in `GlafiraFileMaintenance`; no remote/dynamic configuration. Timeout returns caller-visible `IOException` before block execution. Interruption restores the thread interrupt flag and throws `IOException` with the original cause.
+- **Numbered implementation procedure:** (1) inventory every caller and confirm lock order; (2) replace `synchronized` with a fair `ReentrantLock`; (3) use `tryLock(5_000, MILLISECONDS)` plus an internal test-only timeout override; (4) throw `IOException` before protected mutation on timeout; (5) restore interrupt status and throw `IOException` on interruption; (6) unlock in `finally` only after acquisition; (7) preserve same-thread reentrancy and lock order; (8) audit every caller for fail-closed handling; (9) test contention, default 5-second upper bound (≤5.5 seconds), interruption, release/reuse and reentrancy.
+- **Acceptance:** bounded timeout and interruption fail closed before protected mutation; reentrant same-thread use remains safe; lock order is preserved; deterministic contention/release/reuse tests pass; exact-head Android JVM, Docs CI, Security Scan, Project Dispatcher and independent review pass.
+- **Pre-merge freshness:** immediately before merge, fetch live Main SHA and rescan active/reserved ownership for the exact production/test paths; refresh the reservation and rerun exact-head checks if Main advanced. Never merge a stale reservation.
+- **Traceability:** the ledger must record reservation PR ID, exact base SHA, branch name, changed-file list and both Work Item and leaf IDs in commit subjects.
+- **Test routing:** exact-head Android JVM CI is required for implementation because the reserved test file is under `app/src/test`; skipped is not success.
+- **Lifecycle:** RESERVED / NOT IMPLEMENTED before and after reservation merge. Separate exact-SHA implementation pin amendment required before implementation; reservation merge does not activate the leaf.
