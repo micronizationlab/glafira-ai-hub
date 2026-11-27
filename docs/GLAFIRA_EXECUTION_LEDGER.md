@@ -701,3 +701,11 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 - **Status:** PROPOSED / NOT ACTIVE — refreshed from live Main after PR #738 merged. This parent reservation becomes active only when this focused PR merges; no implementation leaf is started or authorized before then. Program Step 93 remains OPEN.
 
 - WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.
+
+
+## 2026-11-27 — GLAFIRA-S093-W01 current parent and next-leaf status correction
+
+- **Authoritative parent reservation:** PR #752 is MERGED to Main as `f1ed37a72c9aa33ad0da3672fb8d8bb615d2d27d`. The earlier PR #696 entry and its superseded status remain immutable history only; they do not mark #752 inactive and do not authorize recreating the parent reservation.
+- **Canonical lifecycle:** parent #752 is active. The next eligible leaf is `1.1.3.1.1.1.1` (`.1` storage/state primitive). Before implementation, make one canonical leaf-reservation update recording exact current Main SHA, Work Item, executor, reviewer, exclusive paths, dependencies, acceptance and tests; merge it to Main, then create one implementation PR from the resulting Main SHA. No separate leaf-pin or pin-refresh PR is required.
+- **Dependency order:** `.2` waits for `.1` DONE; `.3` waits for `.1` and `.2` DONE; `.4` waits for `.1` and `.2` DONE plus production PR #703 merged and recorded DONE. `.3` and `.4` are siblings; `.4` does not wait for `.3`.
+- **Status:** `.1` NEXT ELIGIBLE / NOT STARTED; `.2`, `.3` and `.4` BLOCKED_DEPENDENCY as specified above. Program Step 93 remains OPEN; no completion is claimed by this correction.
