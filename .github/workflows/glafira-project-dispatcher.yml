@@ -384,12 +384,22 @@ jobs:
           [[ "$(cat "$tmp/gh-call-count")" -eq 3 ]]
           [[ "$(paste -sd, "$tmp/sleep-log")" == "2,4" ]]
 
-          # REST fallback also paginates the open PR inventory.
+          # REST fallback follows exactly three failed GraphQL attempts.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
-          if [[ "$1" == "api" && "$2" == "graphql" ]]; then exit 1; fi
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            count=0
+            [[ ! -f "$FAKE_GRAPHQL_CALLS" ]] || count="$(cat "$FAKE_GRAPHQL_CALLS")"
+            count=$((count + 1))
+            printf '%s' "$count" > "$FAKE_GRAPHQL_CALLS"
+            exit 1
+          fi
           if [[ "$1" == "api" && "$2" == "--paginate" ]]; then
+            count=0
+            [[ ! -f "$FAKE_REST_CALLS" ]] || count="$(cat "$FAKE_REST_CALLS")"
+            count=$((count + 1))
+            printf '%s' "$count" > "$FAKE_REST_CALLS"
             printf '%s\n' '[{"number":1,"title":"one","head":{"ref":"a","sha":"h1"},"base":{"sha":"b1"},"draft":false,"html_url":"https://example.test/1"}]'
             printf '%s\n' '[{"number":2,"title":"two","head":{"ref":"b","sha":"h2"},"base":{"sha":"b2"},"draft":true,"html_url":"https://example.test/2"}]'
             exit 0
@@ -397,8 +407,26 @@ jobs:
           exit 2
           GH
           chmod +x "$tmp/fake-bin/gh"
-          rest_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+          rest_prs="$(PATH="$tmp/fake-bin:$PATH" FAKE_GRAPHQL_CALLS="$tmp/graphql-call-count" FAKE_REST_CALLS="$tmp/rest-call-count" FAKE_SLEEP_LOG="$tmp/rest-sleep-log" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 2 and .[1].baseRefOid == "b2" and .[1].statusCheckRollup == []' <<< "$rest_prs" >/dev/null
+          [[ "$(cat "$tmp/graphql-call-count")" -eq 3 ]]
+          [[ "$(cat "$tmp/rest-call-count")" -eq 1 ]]
+          [[ "$(paste -sd, "$tmp/rest-sleep-log")" == "2,4" ]]
+
+          # A zero-page GraphQL success must fall back to REST, not report an empty repository.
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then exit 0; fi
+          if [[ "$1" == "api" && "$2" == "--paginate" ]]; then
+            printf '%s\n' '[{"number":9,"title":"rest after empty GraphQL","head":{"ref":"r","sha":"hr"},"base":{"sha":"br"},"draft":false,"html_url":"https://example.test/9"}]'
+            exit 0
+          fi
+          exit 2
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          empty_graphql_fallback="$(PATH="$tmp/fake-bin:$PATH" FAKE_SLEEP_LOG="$tmp/empty-graphql-sleep-log" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 1 and .[0].number == 9' <<< "$empty_graphql_fallback" >/dev/null
 
           # Actions run inventory also succeeds on attempt three with a nonempty result.
           cat > "$tmp/fake-bin/gh" <<'GH'
