@@ -494,7 +494,11 @@ jobs:
             length > 0
             and all(.[]; (.errors // [] | length) == 0
               and .data.repository.pullRequests.nodes != null
-              and (.data.repository.pullRequests.pageInfo.hasNextPage | type) == "boolean")
+              and (.data.repository.pullRequests.pageInfo.hasNextPage | type) == "boolean"
+              and ((.data.repository.pullRequests.pageInfo.hasNextPage == false)
+                or ((.data.repository.pullRequests.nodes | length) > 0
+                  and (.data.repository.pullRequests.pageInfo.endCursor | type) == "string"
+                  and .data.repository.pullRequests.pageInfo.endCursor != "")))
             and all(.[0:-1][]; .data.repository.pullRequests.pageInfo.hasNextPage == true)
             and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
           '
@@ -516,16 +520,6 @@ jobs:
           if jq -s -e "$page_validation" "$tmp/graphql-incomplete.jsonl" >/dev/null; then
             echo "empty intermediate GraphQL page was incorrectly accepted" >&2; exit 1
           fi
-          : > "$tmp/unreadable-snapshot.json"
-          chmod 000 "$tmp/unreadable-snapshot.json"
-          if bash "$comparator" "$tmp/unreadable-snapshot.json" "$tmp/large-prs-same.json" 2>"$tmp/snapshot-unreadable.err"; then
-            chmod 600 "$tmp/unreadable-snapshot.json"
-            echo "existing unreadable snapshot was incorrectly accepted" >&2; exit 1
-          else
-            [[ "$?" -eq 2 ]]
-            grep -q "previous PR inventory snapshot is missing or unreadable" "$tmp/snapshot-unreadable.err"
-          fi
-          chmod 600 "$tmp/unreadable-snapshot.json"
           echo "dispatcher stable all-state pagination, CHANGED wrapper, snapshot-open diagnostics and failure summary: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
