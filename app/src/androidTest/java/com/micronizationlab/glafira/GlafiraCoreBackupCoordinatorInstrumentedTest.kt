@@ -44,7 +44,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         cleanupOwnedLeftoverRollbackFixture()
         org.junit.Assume.assumeFalse(
             "Skip isolated rollback tests while the application has a pending rollback.",
-            GlafiraCoreBackupCoordinator.hasInterruptedRestore(appContext)
+            hasAppOwnedRollbackArtifactsReadOnly()
         )
         org.junit.Assume.assumeFalse(
             "Skip isolated rollback tests while an unowned installation-local rollback key exists.",
@@ -69,6 +69,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
         try {
             if (::testRoot.isInitialized && testRoot.exists()) {
+                val installationMarker = rollbackOwnerMarker()
+                val fixtureJournal = File(testRoot, "no-backup/glafira-restore-journal")
+                check(!installationMarker.exists() && !fixtureJournal.exists()) {
+                    "Preserving fixture root because rollback ownership/recovery evidence remains."
+                }
                 check(testRoot.deleteRecursively()) { "Could not remove isolated backup fixture." }
             }
         } catch (cleanup: Throwable) {
@@ -169,7 +174,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         "SELECT config_version, enabled FROM runtime_config WHERE singleton_id = 1",
                         null
                     ).use { cursor ->
-                        if (cursor.moveToFirst() && cursor.getInt(0) == 1) cursor.getInt(1) == 1 else null
+                        if (!cursor.moveToFirst()) null
+                        else if (cursor.getInt(0) != 1) true
+                        else cursor.getInt(1) == 1
                     }
                 }
                 if (enabled != null) return enabled
@@ -188,6 +195,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     private fun rollbackOwnerMarker(): File =
         File(appContext.noBackupFilesDir, "glafira-backup-instrumentation-owner")
+
+    private fun hasAppOwnedRollbackArtifactsReadOnly(): Boolean {
+        val journal = File(appContext.noBackupFilesDir, "glafira-restore-journal")
+        if (journal.exists()) return true
+        return appContext.cacheDir.listFiles { file ->
+            file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+        }.orEmpty().any { it.exists() }
+    }
+
 
     private fun syncMarkerDirectory(directory: File) {
         val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
@@ -251,14 +267,27 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
             val previousRoot = File(appContext.cacheDir, "glafira-backup-test-$runId")
             val journal = File(previousRoot, "no-backup/glafira-restore-journal")
-            // The durable installation-level marker names this UUID-scoped isolated fixture.
-            // Inner owner files may be torn by process death; they are not the ownership authority.
-            if (journal.exists()) check(journal.deleteRecursively())
+            // A UUID marker alone is not proof that the installation-wide Keystore alias
+            // belongs to this fixture. Reclaim only when the isolated journal carries the
+            // same durable owner generation. Otherwise preserve all recovery evidence.
+            if (!journal.exists()) {
+                org.junit.Assume.assumeFalse(
+                    "Owner marker without an owned journal cannot authorize deletion of the installation rollback key.",
+                    rollbackKeyExists()
+                )
+            } else {
+                val journalOwner = File(journal, "test-owner")
+                org.junit.Assume.assumeTrue(
+                    "Interrupted fixture journal lacks matching durable ownership; preserve it.",
+                    journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId
+                )
+                check(journal.deleteRecursively())
+                if (rollbackKeyExists()) deleteFixtureRollbackKey()
+            }
             listOf("glafira-v3-reentry-test-owner", "glafira-rollback-canary-owner").forEach { name ->
                 val owner = File(previousRoot, "no-backup/$name")
                 if (owner.exists()) check(owner.delete()) { "Could not remove interrupted fixture owner $name." }
             }
-            if (rollbackKeyExists()) deleteFixtureRollbackKey()
             if (previousRoot.exists()) check(previousRoot.deleteRecursively())
             clearRollbackOwnerMarker(runId)
         }
@@ -283,12 +312,21 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
                         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
                         val journalOwner = File(journal, "test-owner")
-                        if (journal.exists()) {
-                            if (journalOwner.exists()) check(journalOwner.readText(Charsets.UTF_8) == runId)
-                            else journalOwner.writeText(runId, Charsets.UTF_8)
-                            check(journal.deleteRecursively()) { "Could not remove test-owned rollback journal." }
+                        val appJournal = File(appContext.noBackupFilesDir, "glafira-restore-journal")
+                        check(!appJournal.exists()) {
+                            "Preserving the installation rollback key while an application restore journal exists."
                         }
-                        if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                        if (journal.exists()) {
+                            check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
+                                "Refusing to claim or delete a rollback journal without matching fixture ownership."
+                            }
+                            check(journal.deleteRecursively()) { "Could not remove test-owned rollback journal." }
+                            if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                        } else {
+                            check(!rollbackKeyExists()) {
+                                "A fixture owner marker without its journal cannot authorize deletion of the installation rollback key."
+                            }
+                        }
                         clearRollbackOwnerMarker(runId)
                     }
                 }
@@ -918,7 +956,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             }
                             check(journal.deleteRecursively())
                             if (rollbackKeyExists()) deleteFixtureRollbackKey()
-                        } else if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                        } else check(!rollbackKeyExists()) {
+                            "Refusing to delete an installation rollback key without its owned journal."
+                        }
                         clearRollbackOwnerMarker(runId)
                         check(owner.delete())
                     }
@@ -1043,7 +1083,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
                                     check(journal.deleteRecursively())
                                     if (rollbackKeyExists()) deleteFixtureRollbackKey()
-                                } else if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                } else check(!rollbackKeyExists()) {
+                                    "Refusing to delete an installation rollback key without its owned journal."
+                                }
                                 clearRollbackOwnerMarker(runId)
                                 check(!knownGood.exists() || knownGood.delete())
                                 check(!createdAfterMarker.exists() || createdAfterMarker.delete())
