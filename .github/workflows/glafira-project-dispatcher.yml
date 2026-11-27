@@ -110,15 +110,9 @@ jobs:
               select(.state == "OPEN") |
               {
                 number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
-                statusCheckRollup: [
-                  .statusCheckRollup.contexts.nodes[]? |
-                  {
-                    name: (.name // .context // "check"),
-                    status: (.status // .state // "unknown"),
-                    conclusion: (.conclusion // null),
-                    detailsUrl: (.detailsUrl // .targetUrl // "")
-                  }
-                ]
+                # Historical inventory is intentionally lightweight.
+                # Exact PR/head/base status comes from the bounded Actions-run fallback.
+                statusCheckRollup: []
               }
             ]' <<< "$pages"
             exit 0
