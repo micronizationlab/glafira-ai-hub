@@ -879,3 +879,11 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 |---|---|---|---|---|---|
 | 0002 | `WBS-2026-11-27-GLAFIRA-S000-W06-READY-RESERVED-002` | READY → RESERVED | 2026-11-27T20:02:26Z | GLAFIRA | PR #788 merged; merge SHA `532c8051b87b13fc994706999d2deec8db9cd2be` |
 | 0003 | `WBS-2026-11-27-GLAFIRA-S000-W06-RESERVED-IN-PROGRESS-003` | RESERVED → IN_PROGRESS | 2026-11-27T20:12:41Z | GLAFIRA | First post-reservation implementation commit on PR #795; exact commit SHA is recorded in the PR's post-commit evidence comment |
+
+
+### W06 lifecycle event — PR #797 follow-up hardening
+
+| Sequence | Unique event ID | Transition | Timestamp | Actor | Reason / evidence |
+|---|---|---|---|---|---|
+| 0004 | `WBS-2026-11-27-GLAFIRA-S000-W06-IN_PROGRESS-IN_REVIEW-004` | IN_PROGRESS → IN_REVIEW | 2026-11-27T20:43:49Z | GLAFIRA | Follow-up PR #797 opened on Main base `fa4dd61c766b57d750bc5f08a10355866a9330c6`; review candidate head at opening `77b7ef9a5397df9da5e922155f3adf0445439ef7`. Scope is the existing W06 reservation: stable all-state pagination, page-chain validation, snapshot-open diagnostics, valid CHANGED wrapper coverage and production failure-summary assertions. Exact final head and CI evidence must be refreshed after this ledger append. |
+
