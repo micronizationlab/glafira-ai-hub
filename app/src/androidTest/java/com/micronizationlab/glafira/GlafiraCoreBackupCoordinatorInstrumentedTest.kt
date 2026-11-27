@@ -50,6 +50,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
         var failPlaintextSnapshotDirectorySyncOnce = false
+        var plaintextSnapshotDirectorySyncCalls = 0
         var pauseCount = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
@@ -65,6 +66,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
         override fun beforePlaintextSnapshotDirectorySync() {
+            plaintextSnapshotDirectorySyncCalls++
             if (failPlaintextSnapshotDirectorySyncOnce) {
                 failPlaintextSnapshotDirectorySyncOnce = false
                 throw IOException("injected plaintext snapshot parent-directory fsync failure")
@@ -1566,10 +1568,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "committed-snapshot-parent-fsync".toCharArray()
         try {
             assertFalse("Fixture starts with no plaintext snapshot", File(context.filesDir, ".glafira-core-snapshot").exists())
+            fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls = 0
             fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = true
-            assertThrows(IOException::class.java) {
+            val injectedFailure = assertThrows(IOException::class.java) {
                 runBlocking { isolatedCoordinator().recover(passphrase) }
             }
+            assertEquals(
+                "The intended parent-directory fsync injection must be the failure source",
+                "injected plaintext snapshot parent-directory fsync failure",
+                injectedFailure.message
+            )
+            assertEquals("The absent-snapshot fsync hook must be reached exactly once", 1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls)
+            assertFalse("The injected fsync failure must be consumed", fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce)
             assertTrue("Committed marker remains when parent fsync fails", committed.exists())
             assertTrue("Rollback database remains when parent fsync fails", database.exists())
             assertTrue("Rollback archive remains when parent fsync fails", archive.exists())
