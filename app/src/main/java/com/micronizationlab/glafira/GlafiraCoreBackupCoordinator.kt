@@ -17,7 +17,8 @@ internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
-    fun beforePlaintextSnapshotDirectorySync() = Unit
+    fun beforeDirectorySync(directory: File) = Unit
+    fun afterDirectorySync(directory: File) = Unit
 }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
@@ -302,7 +303,6 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
         // This fsync is required even when the path was already absent: a previous
         // deletion may have been interrupted before its parent directory was durable.
-        runtimeHooks.beforePlaintextSnapshotDirectorySync()
         syncDirectory(app.filesDir)
     }
 
@@ -331,8 +331,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     private fun sync(file: File) { FileOutputStream(file, true).use { it.fd.sync() } }
     private fun syncDirectory(directory: File) {
+        runtimeHooks.beforeDirectorySync(directory)
         val fd = android.system.Os.open(directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
         try { android.system.Os.fsync(fd) } finally { android.system.Os.close(fd) }
+        runtimeHooks.afterDirectorySync(directory)
     }
 
     companion object {
