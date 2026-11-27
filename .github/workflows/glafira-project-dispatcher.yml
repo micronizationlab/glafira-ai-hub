@@ -156,6 +156,16 @@ jobs:
           done
           jq -s '.' "$tmp"
           RUNS
+          cat > "$RUNNER_TEMP/compare-pr-inventory.sh" <<'COMPARE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          previous_file="$1"
+          latest_file="$2"
+          # Keep large inventories in files; --argjson would exceed the OS argv limit.
+          jq -e --slurpfile latest "$latest_file" '
+            all(.[] as $old; any($latest[0][]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
+          ' "$previous_file" >/dev/null
+          COMPARE
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -282,6 +292,10 @@ jobs:
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
+          # Exercise inventory comparison with a payload larger than the OS argv limit.
+          jq -n '[range(0; 5000) | {number: ., headRefOid: "head", baseRefOid: "base"}]' > "$RUNNER_TEMP/large-pr-inventory.json"
+          cp "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-latest.json"
+          bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-latest.json"
       - name: Verify event-driven trigger and review-noise policy
         shell: bash
         run: |
@@ -331,9 +345,8 @@ jobs:
           # Re-read PR refs after run collection. If head/base moved, render against
           # the latest identity so older runs cannot be displayed as current.
           if latest_prs="$(bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO")"; then
-            if ! jq -e --argjson latest "$latest_prs" '
-              all(.[] as $old; any($latest[]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
-            ' >/dev/null <<< "$prs"; then
+            printf '%s\\n' "$latest_prs" > "$RUNNER_TEMP/glafira-open-prs.latest-check.json"
+            if ! bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest-check.json"; then
               echo "PR head/base inventory changed during reconciliation; latest refs are used and exact matching is required." >> "$GITHUB_STEP_SUMMARY"
             fi
             prs="$latest_prs"
