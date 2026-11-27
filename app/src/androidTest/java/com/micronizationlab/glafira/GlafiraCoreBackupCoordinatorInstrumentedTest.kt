@@ -7,14 +7,12 @@ import android.system.OsConstants
 import android.database.sqlite.SQLiteException
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.work.WorkManager
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.security.KeyStore
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 import javax.crypto.AEADBadTagException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -35,6 +33,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var testRoot: File
     private lateinit var store: GlafiraTaskStore
     private var ownsFixture = false
+    private var isolatedRuntimePauseCalls = 0
     private lateinit var testRunId: String
     @Before
     fun setUp() = runBlocking {
@@ -52,8 +51,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             "Skip isolated rollback tests while an unowned installation-local rollback key exists.",
             rollbackKeyExists()
         )
-        assumeNoScheduledAppWork()
         ownsFixture = true
+        isolatedRuntimePauseCalls = 0
         testRunId = UUID.randomUUID().toString()
         testRoot = File(appContext.cacheDir, "glafira-backup-test-$testRunId").apply { check(mkdirs()) }
         context = IsolatedBackupTestContext(appContext, testRoot)
@@ -78,6 +77,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
         if (failure != null) throw failure!!
     }
+    private fun isolatedCoordinator() = GlafiraCoreBackupCoordinator(context, store) {
+        // Backup tests own an isolated Core context; never cancel process-wide app WorkManager jobs.
+        isolatedRuntimePauseCalls++
+    }
+
     private class IsolatedBackupTestContext(base: Context, private val root: File) : ContextWrapper(base) {
         private val databases = File(root, "databases").apply { mkdirs() }
         private val files = File(root, "files").apply { mkdirs() }; private val noBackup = File(root, "no-backup").apply { mkdirs() }; private val cache = File(root, "cache").apply { mkdirs() }
@@ -169,17 +173,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             .getBoolean("runtime_enabled", false)
     }
 
-    private fun assumeNoScheduledAppWork() {
-        val workManager = WorkManager.getInstance(appContext)
-        (CORE_WORK_NAMES + listOf(BackupScheduler.DAILY_WORK_NAME, BackupScheduler.MANUAL_WORK_NAME)).forEach { name ->
-            val infos = workManager.getWorkInfosForUniqueWork(name)
-                .get(WORKER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            org.junit.Assume.assumeTrue(
-                "Skip instead of cancelling or replacing app-owned WorkManager request $name.",
-                infos.all { it.state.isFinished }
-            )
-        }
-    }
     private fun rollbackOwnerMarker(): File =
         File(appContext.noBackupFilesDir, "glafira-backup-instrumentation-owner")
 
@@ -343,7 +336,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Test
     fun coordinatorArchiveContainsCoreDatabaseSnapshot() = runBlocking {
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
@@ -363,7 +356,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             withOwnedRollbackKey {
                 assertThrows(IllegalArgumentException::class.java) {
-                    runBlocking { GlafiraCoreBackupCoordinator(context, store).restore(legacyArchive, passphrase) }
+                    runBlocking { isolatedCoordinator().restore(legacyArchive, passphrase) }
                 }
                 assertEquals("existing-task", store.getTask("existing-task")?.taskId)
             }
@@ -383,7 +376,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             3_000L
         ))
 
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
@@ -433,7 +426,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         )
 
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
@@ -464,7 +457,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         try {
             assertThrows(IllegalArgumentException::class.java) {
-                runBlocking { GlafiraCoreBackupCoordinator(context, store).create(passphrase) }
+                runBlocking { isolatedCoordinator().create(passphrase) }
             }
         } finally {
             store.writableDatabase.execSQL("DROP TABLE core_future_sensitive")
@@ -496,7 +489,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             actionCode = "core.result.committed"
         ))
 
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
@@ -562,7 +555,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         )
         trace.append(original)
 
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-trace-backup-passphrase".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
@@ -606,7 +599,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun wrongPassphraseLeavesCurrentCoreQueueUntouched() = runBlocking {
         store.enqueue(task("must-remain"))
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val correctPassphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val wrongPassphrase = "GLAFIRA-wrong-passphrase-2026".toCharArray()
         val archive = coordinator.create(correctPassphrase)
@@ -691,7 +684,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             withOwnedRestoreJournal {
                 val failure = assertThrows(IllegalArgumentException::class.java) {
-                    runBlocking { GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase) }
+                    runBlocking { isolatedCoordinator().restore(archive, passphrase) }
                 }
                 assertEquals("Неполный набор таблиц Core.", failure.message)
                 assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
@@ -809,7 +802,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val identityStore = AndroidCoreInstallationIdentityStore(context, identityFile, keyAliasPrefix)
         val sourceIdentity = identityStore.loadOrCreate()
         val passphrase = "GLAFIRA-clean-install-restore-test-2026".toCharArray()
-        val archive = GlafiraCoreBackupCoordinator(context, store).create(passphrase)
+        val archive = isolatedCoordinator().create(passphrase)
         try {
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             val sourceAlias = "$keyAliasPrefix${sourceIdentity.keyEpoch}"
@@ -818,7 +811,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue(identityFile.delete())
             keyStore.deleteEntry(sourceAlias)
 
-            restoreOwned(GlafiraCoreBackupCoordinator(context, store), archive, passphrase)
+            restoreOwned(isolatedCoordinator(), archive, passphrase)
 
             val restored = identityStore.loadOrCreate()
             assertNotEquals(sourceIdentity.coreId, restored.coreId)
@@ -872,7 +865,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     writeRollbackOwnerMarker(runId)
                     owner.writeText(runId, Charsets.UTF_8)
                     ownsFixture = true
-                        GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
+                        isolatedCoordinator().prepareRollback(passphrase)
                         journalOwner.writeText(runId, Charsets.UTF_8)
                     } catch (error: Exception) {
                         if (journal.exists() && !journalOwner.exists()) {
@@ -924,7 +917,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     fun successfulRestoreDeletesInstallationLocalRollbackKey() = runBlocking {
         assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
         store.enqueue(task("rollback-key-lifecycle"))
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-rollback-key-lifecycle".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
@@ -982,7 +975,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         owner.writeText(runId, Charsets.UTF_8)
                         ownsFixture = true
                         try {
-                            GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
+                            isolatedCoordinator().prepareRollback(passphrase)
                             journalOwner.writeText(runId, Charsets.UTF_8)
                         } catch (error: Exception) {
                             if (journal.exists() && !journalOwner.exists()) journalOwner.writeText(runId, Charsets.UTF_8)
@@ -1008,9 +1001,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 }
                 // Runtime enablement is read-only verified as PAUSED; recheck app-owned
                 // unique work immediately before recovery, which pauses the production runtime.
-                assumeNoScheduledAppWork()
                 withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
-                    GlafiraCoreBackupCoordinator(context, store).recover(passphrase)
+                    isolatedCoordinator().recover(passphrase)
                 }
                 assertEquals(expectedTask, store.getTask("known-good-before-marker"))
                 assertNull(store.getTask("mutated-after-marker"))
@@ -1024,6 +1016,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 })
                 assertTrue("No decrypted rollback recovery temp may remain", remainingTemps.isEmpty())
                 assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+                assertEquals("Recovery must invoke the isolated runtime-pause hook", 1, isolatedRuntimePauseCalls)
             } catch (error: Throwable) {
                 primaryFailure = error
                 throw error
@@ -1053,7 +1046,5 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
     companion object {
         private const val MAINTENANCE_TIMEOUT_MILLIS = 10_000L
-        private const val WORKER_STOP_TIMEOUT_SECONDS = 10L
-        private val CORE_WORK_NAMES = listOf("glafira-core-queue-drain", "glafira-core-queue-retry", "glafira-core-queue-network")
     }
 }
