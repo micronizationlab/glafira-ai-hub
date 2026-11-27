@@ -329,7 +329,7 @@ jobs:
             } >> "$summary_file"
             exit 1
           fi
-          printf '%s\\n' "$count"
+          printf '%s\n' "$count"
           COUNT
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
