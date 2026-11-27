@@ -26,7 +26,7 @@ This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CO
 | GLAFIRA-S018-W01 | `LEGACY_UNRESOLVED` | 18 | GLAFIRA | Durable result outbox + explicit ACK; legacy parent mapping unresolved | BLOCKED | Historical Draft PR #575 is closed unmerged; reconcile exact Main and register parent/leaf before any new source writes or merge |
 | GLAFIRA-S020-W01 | `LEGACY_UNRESOLVED` | 20 | GLAFIRA | Persistent owner grants and approval binding; legacy parent mapping unresolved | BLOCKED | Parent/leaf migration and exact path ownership required before any source work |
 | GLAFIRA-S028-W01 | `LEGACY_UNRESOLVED` | 28 | GLAFIRA | Preserve TaskPlan instrumentation acceptance; legacy parent mapping unresolved | BLOCKED | Parent/leaf migration and exact path ownership required before any source work |
-| GLAFIRA-S044-W01 | `OWNER_ACCEPTANCE_PARENT_ONLY` | 44 | Owner + GLAFIRA | Private-LAN real-device pairing acceptance | OWNER_ACCEPTANCE | Requires actual owner devices; emulator is not equivalent |
+| GLAFIRA-S044-W01 | `PARENT_ONLY: Owner acceptance` | 44 | Owner + GLAFIRA | Private-LAN real-device pairing acceptance; no automated source reservation or executable child leaf | OWNER_ACCEPTANCE | Requires actual owner devices; emulator is not equivalent |
 
 ## Active CI checkpoint — refresh before any retry
 
