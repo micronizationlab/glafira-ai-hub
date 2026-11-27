@@ -135,7 +135,7 @@ private enum BridgeHubBindingValidation {
             return nil
         }
         components.scheme = "https"
-        components.host = host.contains(":") ? "[\(host.lowercased())]" : host.lowercased()
+        components.host = host.lowercased()
         guard let normalized = components.string,
               let normalizedURL = URL(string: normalized),
               normalizedURL.path == "/bridge/v1",
@@ -148,17 +148,17 @@ private enum BridgeHubBindingValidation {
     private static func isPrivateLanAddress(_ host: String) -> Bool {
         var ipv4 = in_addr()
         if host.withCString({ inet_pton(AF_INET, $0, &ipv4) }) == 1 {
-            let octets = host.split(separator: ".").compactMap { UInt8($0) }
-            guard octets.count == 4 else { return false }
-            return octets[0] == 10 ||
-                (octets[0] == 172 && (16...31).contains(octets[1])) ||
-                (octets[0] == 192 && octets[1] == 168)
+            let bytes = withUnsafeBytes(of: ipv4.s_addr, Array.init)
+            return bytes.count == 4 &&
+                (bytes[0] == 10 ||
+                 (bytes[0] == 172 && (16...31).contains(bytes[1])) ||
+                 (bytes[0] == 192 && bytes[1] == 168))
         }
 
         var ipv6 = in6_addr()
         if host.withCString({ inet_pton(AF_INET6, $0, &ipv6) }) == 1 {
-            let normalized = host.lowercased()
-            return normalized.hasPrefix("fc") || normalized.hasPrefix("fd")
+            let bytes = withUnsafeBytes(of: ipv6, Array.init)
+            return bytes.count == 16 && (bytes[0] & 0xFE) == 0xFC
         }
         return false
     }
@@ -206,6 +206,95 @@ public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
     case authenticationCancelled
     case authenticationFailed
     case keychainFailure(status: Int32)
+}
+
+/// Strict, bounded persistence envelope for a validated Windows Hub binding.
+public enum BridgeHubBindingPersistence {
+    private struct Envelope: Codable {
+        let schemaVersion: Int
+        let binding: BridgeHubBinding
+    }
+
+    static let maximumPayloadBytes = 4_096
+    static let maximumJSONNestingDepth = 16
+
+    public static func encode(_ binding: BridgeHubBinding) throws -> Data {
+        do {
+            try binding.validate()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(Envelope(schemaVersion: 1, binding: binding))
+            try validatePayloadSize(data)
+            return data
+        } catch {
+            throw BridgeCredentialStoreError.invalidHubBinding
+        }
+    }
+
+    public static func decode(_ data: Data) throws -> BridgeHubBinding {
+        do {
+            try validatePayloadSize(data)
+            guard hasSafeJSONNestingDepth(data),
+                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  Set(object.keys) == Set(["schemaVersion", "binding"]),
+                  validBindingJSONObject(object["binding"]) else {
+                throw BridgeCredentialStoreError.invalidHubBinding
+            }
+            let envelope = try JSONDecoder().decode(Envelope.self, from: data)
+            guard envelope.schemaVersion == 1 else {
+                throw BridgeCredentialStoreError.invalidHubBinding
+            }
+            try envelope.binding.validate()
+            return envelope.binding
+        } catch {
+            throw BridgeCredentialStoreError.invalidHubBinding
+        }
+    }
+
+    static func validatePayloadSize(_ data: Data) throws {
+        guard (1...maximumPayloadBytes).contains(data.count) else {
+            throw BridgeCredentialStoreError.invalidHubBinding
+        }
+    }
+
+    private static func hasSafeJSONNestingDepth(_ data: Data) -> Bool {
+        var depth = 0
+        var insideString = false
+        var escaped = false
+        for byte in data {
+            if insideString {
+                if escaped {
+                    escaped = false
+                } else if byte == 0x5C {
+                    escaped = true
+                } else if byte == 0x22 {
+                    insideString = false
+                }
+                continue
+            }
+            switch byte {
+            case 0x22:
+                insideString = true
+            case 0x7B, 0x5B: // { [
+                depth += 1
+                if depth > maximumJSONNestingDepth { return false }
+            case 0x7D, 0x5D: // } ]
+                depth -= 1
+                if depth < 0 { return false }
+            default:
+                break
+            }
+        }
+        return !insideString && depth == 0
+    }
+
+    private static func validBindingJSONObject(_ value: Any?) -> Bool {
+        guard let object = value as? [String: Any] else { return false }
+        return Set(object.keys) == Set([
+            "desktopHubId", "endpoint", "certificateSHA256", "scopes",
+            "enrolledAtEpochMs", "expiresAtEpochMs"
+        ])
+    }
 }
 
 /// Stores one paired-device HMAC secret as a device-only Keychain item.
