@@ -224,13 +224,20 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
 
 
-### Bounded Core file-maintenance lock acquisition — GLAFIRA-S000-W08
+### Backup recovery re-entry sibling — GLAFIRA-S025-W00
+
+- `1.2.1.2.1` — Verify V3 rollback recovery re-entry after coordinator reconstruction; issue #670; contributes to Program Step 25 but does not complete it.
+- **Exclusive path:** `app/src/androidTest/java/com/micronizationlab/glafira/GlafiraCoreBackupCoordinatorInstrumentedTest.kt`; the WBS reservation is recorded in the execution ledger.
+- **Status:** IN_REVIEW in PR #769. This sibling is a test-only slice and does not authorize production-source changes.
+
+### Bounded Core file-maintenance lock acquisition — GLAFIRA-S025-W01
 
 - `1.2.1.2` — Interrupted restore recovery and restart re-entry (existing parent).
-- `1.2.1.2.2` — Bounded, interruptible acquisition of the shared file-maintenance lock; Work Item `GLAFIRA-S000-W08`; issue #775.
-- **Exclusive implementation paths:** `app/src/main/java/com/micronizationlab/glafira/DurableJsonFile.kt`; `app/src/test/java/com/micronizationlab/glafira/GlafiraFileMaintenanceTest.kt`.
-- **Predecessors:** none. This leaf is independent of `1.2.1.2.1`'s coordinator-reconstruction instrumentation test and does not modify its reserved test file.
+- `1.2.1.2.2` — Bounded, interruptible acquisition of the shared file-maintenance lock; Work Item `GLAFIRA-S025-W01`; Program Step 25; issue #775.
+- **Exclusive implementation paths:** `app/src/main/java/com/micronizationlab/glafira/DurableJsonFile.kt`; `app/src/main/java/com/micronizationlab/glafira/GlafiraCoreBackupCoordinator.kt`; `app/src/main/java/com/micronizationlab/glafira/Extras.kt`; `app/src/main/java/com/micronizationlab/glafira/MainActivity.kt`; `app/src/test/java/com/micronizationlab/glafira/GlafiraFileMaintenanceTest.kt`.
+- **Predecessors:** none. This leaf is independent of `1.2.1.2.1` and does not modify its reserved instrumentation test file.
 - **Executor / reviewer:** GLAFIRA coordinator as author; independent CodeRabbit/Proofline review; owner-controlled merge.
-- **Procedure:** inspect all callers and lock order; replace unbounded monitor acquisition with a reentrant bounded wait; preserve interrupt status and fail closed on timeout/interruption; add timeout, interruption, reentrancy and release/reacquisition tests; verify no file mutation occurs without lock ownership and no lock-order inversion is introduced.
-- **Acceptance:** bounded timeout; interruption is propagated with interrupt flag restored; lock is reusable after release; nested same-thread acquisition remains reentrant; no partial primary/backup/temp-file mutation on failed acquisition; exact-head Android JVM, Debug APK, Shared Contracts, Security Scan, Project Dispatcher, Docs CI and independent review pass.
-- **Lifecycle:** reservation PR merge leaves the leaf `RESERVED / NOT IMPLEMENTED`; implementation starts from the resulting Main SHA in one focused PR. No additional leaf-pin PR is permitted.
+- **Observed lock order:** Core maintenance gate → pending-delivery pause → shared file-maintenance lock → taskStore monitor when Backup/Restore/project deletion requires it. `DurableJsonFile` takes its per-file lock under file-maintenance. The implementation must audit for and prevent any reverse acquisition; it must not rewrite the current order based on an unproven inversion.
+- **Procedure:** inspect all callers; replace unbounded monitor acquisition with a reentrant bounded wait; preserve interrupt status and fail closed on timeout/interruption; test timeout, interruption, reentrancy and release/reacquisition; ensure no partial file mutation; handle draft load/save timeout at the Compose boundary without crashing or claiming success; run existing managed-emulator Backup/Restore recovery tests.
+- **Acceptance:** bounded timeout; interruption is propagated with interrupt flag restored; lock is reusable after release; nested same-thread acquisition remains reentrant; no partial primary/backup/temp-file mutation on failed acquisition; audited lock order remains consistent; draft load/save failures are surfaced safely and text remains in the editor; exact-head Android JVM, Debug APK, Shared Contracts, managed-emulator Backup/Restore instrumentation, Security Scan, Project Dispatcher, Docs CI and independent review pass.
+- **Lifecycle:** reservation PR merge leaves the leaf `RESERVED / NOT IMPLEMENTED`; implementation starts from the resulting Main SHA in one focused PR. No additional leaf-pin PR is permitted. Program Step 25 remains OPEN.
