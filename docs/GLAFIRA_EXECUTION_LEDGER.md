@@ -759,7 +759,7 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 - **Transition:** `IN_REVIEW` → `MERGED`.
 - **Event identity / sequence:** `GLAFIRA-CODEX-W01-EVENT-0002`; sequence `2` (after reservation event sequence `1`).
 - **Actor / authority:** repository owner merge action; coordinator records the observed transition.
-- **Timestamp / reason:** `2026-11-26T11:42:00Z` (observed PR #761 merge time, rounded to the minute in the historical record); reason: PR #761 merged the reserved Codex governance deliverable after owner-controlled review.
+- **Timestamp / reason:** `2026-11-26T23:27:19Z` (GitHub PR #761 `merged_at`); reason: PR #761 merged the reserved Codex governance deliverable after owner-controlled review.
 - **Merge evidence:** PR #761 merge commit `c40cc0033e65b3df74f53e846e331e685c59d05f` (GitHub PR #761 merge record).
 - **Separate follow-up:** PR #783 produced Main SHA `eed7a9c4aeee721ed6ff04e35ed2f94813a87eef`; it is not the PR #761 merge SHA and does not replace this transition evidence.
 - **Projection:** the registry's `MERGED` value is supported by this append-only event; the historical reservation identity and prior events remain unchanged.
