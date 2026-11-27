@@ -162,9 +162,17 @@ jobs:
           previous_file="$1"
           latest_file="$2"
           # Keep large inventories in files; --argjson would exceed the OS argv limit.
+          set +e
           jq -e --slurpfile latest "$latest_file" '
             all(.[]; . as $old | any($latest[0][]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
           ' "$previous_file" >/dev/null
+          status=$?
+          set -e
+          case "$status" in
+            0) exit 0 ;; # inventories match
+            1) exit 1 ;; # valid inventory delta
+            *) echo "ERROR: PR inventory comparison failed (jq exit $status)." >&2; exit 2 ;;
+          esac
           COMPARE
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
@@ -296,6 +304,18 @@ jobs:
           jq -n '[range(0; 5000) | {number: ., headRefOid: "head", baseRefOid: "base"}]' > "$RUNNER_TEMP/large-pr-inventory.json"
           cp "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-latest.json"
           bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-latest.json"
+          jq '.[4999].headRefOid = "changed"' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-delta.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-delta.json"; then
+            echo "inventory delta was incorrectly reported as identical" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          printf '{invalid json' > "$RUNNER_TEMP/invalid-pr-inventory.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/invalid-pr-inventory.json"; then
+            echo "invalid JSON was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
       - name: Verify event-driven trigger and review-noise policy
         shell: bash
         run: |
@@ -339,20 +359,33 @@ jobs:
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
           runs='[]'
           if jq -e 'any(.[]; ([.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)] | length) == 0)' >/dev/null <<< "$prs"; then
-            if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then :; else runs='null'; fi
+            if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then
+              :
+            else
+              echo "ERROR: Actions run inventory unavailable; fallback CI evidence is UNKNOWN." >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
           fi
           printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           # Re-read PR refs after run collection. If head/base moved, render against
           # the latest identity so older runs cannot be displayed as current.
           if latest_prs="$(bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO")"; then
             printf '%s\n' "$latest_prs" > "$RUNNER_TEMP/glafira-open-prs.latest-check.json"
-            if ! bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest-check.json"; then
-              echo "PR head/base inventory changed during reconciliation; latest refs are used and exact matching is required." >> "$GITHUB_STEP_SUMMARY"
+            if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest-check.json"; then
+              :
+            else
+              comparison_status=$?
+              if [[ "$comparison_status" -eq 1 ]]; then
+                echo "PR head/base inventory changed during reconciliation; latest refs are used and exact matching is required." >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "ERROR: PR head/base inventory comparison failed (exit $comparison_status); status is UNKNOWN." >> "$GITHUB_STEP_SUMMARY"
+                exit 1
+              fi
             fi
             prs="$latest_prs"
           else
-            echo "WARNING: second PR inventory read failed; fallback CI is UNKNOWN because current refs could not be re-verified." >> "$GITHUB_STEP_SUMMARY"
-            runs='null'
+            echo "ERROR: second PR inventory read failed; current refs cannot be re-verified, so dispatcher status is UNKNOWN." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.latest.json"
           {
