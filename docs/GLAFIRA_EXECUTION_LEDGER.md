@@ -845,6 +845,8 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 | Work Item ID | Registered parent | Step / executable leaf | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|---|
 | GLAFIRA-S000-W06 | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher PR inventory reconciliation; bounded JSON transport, fail-closed comparison, pagination consistency and regression tests; issue #768 | IN_REVIEW | Implementation and regression-hardening PR #797 on Main base `fa4dd61c766b57d750bc5f08a10355866a9330c6`; exact-head CI, complete job logs and independent review remain mandatory |
+| GLAFIRA-S000-W08 | `1.3.1.1` | `1.3.1.1.1` | GLAFIRA | Bridge owner-visible pairing UX: invitation, SAS proof, scopes, approval, device inventory, revoke/rotate and recovery; issue #677 | PROPOSED | Reservation proposal PR; design file remains uncreated until this WBS registration is approved and merged; base observed `06b9bfdee05c9cc626b5fafb7446870b53a0cc5c` |
+| GLAFIRA-S000-W09 | `1.8.1.1` | `1.8.1.1.1` | GLAFIRA | Windows Agent subordinate-worker UX: consent, tray status, task progress, pause/revoke, diagnostics and resource limits; issue #676 | PROPOSED | Reservation proposal PR; design file remains uncreated until this WBS registration is approved and merged; base observed `06b9bfdee05c9cc626b5fafb7446870b53a0cc5c` |
 
 ### W06 lifecycle event — PROPOSED → READY
 
@@ -887,3 +889,28 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 |---|---|---|---|---|---|
 | 0004 | `WBS-2026-11-27-GLAFIRA-S000-W06-IN_PROGRESS-IN_REVIEW-004` | IN_PROGRESS → IN_REVIEW | 2026-11-27T20:43:49Z | GLAFIRA | Follow-up PR #797 opened on Main base `fa4dd61c766b57d750bc5f08a10355866a9330c6`; review candidate head at opening `77b7ef9a5397df9da5e922155f3adf0445439ef7`. Scope is the existing W06 reservation: stable open-only inventory, bounded GraphQL-to-REST fallback, duplicate-page rejection, three-snapshot stabilization, empty-inventory confirmation, snapshot-preservation diagnostics and production failure-summary assertions. Exact final head and CI evidence must be refreshed after this ledger append. |
 
+
+
+## Proposed WBS registrations — Bridge pairing UX and Windows Agent UX — 2026-11-27
+
+These are owner-review proposals only. They do not authorize either design file to be created or edited. Each design artifact remains blocked until this registration is approved, merged to protected Main, and its exact post-merge Main SHA/path ownership pin is recorded.
+
+### GLAFIRA-S000-W08 — Bridge pairing UX
+- **WBS:** parent `1.3.1.1` — Owner-visible device enrollment and pairing UX; executable leaf `1.3.1.1.1` — Specify Android↔Windows Hub pairing, approval, revocation and recovery.
+- **Tracker / scope:** issue #677; exclusive future deliverable `docs/design/BRIDGE_PAIRING_UX.md` only.
+- **Dependencies:** Windows Hub pairing/enrollment contract in #123; owning-Core authority and trusted recipient boundary #366; Android client dependency chain #392/#381; shared visual tokens #679/#684. Until shared tokens are accepted, information architecture and wireframes only; no final visual token values.
+- **Predecessors:** read-only source/contract inventory and this reservation approval. No protocol or runtime predecessor is waived.
+- **Numbered procedure:** (1) inventory actual Android client and Windows Hub pairing contracts; (2) specify expiring invitation and QR/manual-code fallback without exposing bearer secrets; (3) specify one-time proof and visual SAS/fingerprint comparison with mismatch abort; (4) specify least-privilege requested scopes and explicit owner approval/denial; (5) specify paired-device inventory with coordinator identity, key epoch, scopes and authenticated last contact; (6) specify revoke, credential/endpoint rotation, reconnect and restart recovery; (7) define loading/empty/success/error/expired/cancelled/revoked states and accessibility; (8) map every action to an existing contract and mark absent runtime behavior FUTURE rather than inventing it.
+- **Acceptance:** complete state/screen/control inventory; no trust based on device name or arbitrary LAN endpoint; no secrets displayed/logged; explicit separation of paired/connected/offline/pending/revoked; only the reserved Markdown path changes; independent review and owner approval. The design does not establish live LAN or two-PC acceptance.
+- **Out of scope:** TLS, cryptography, protocol, permissions, runtime, database/schema, Android HTTPS server, Hub authority and security-policy changes.
+- **Lifecycle:** PROPOSED now; READY only after owner accepts the WBS registration and its dedicated reservation PR is merged. Implementation of the design artifact remains blocked until exact post-merge Main pin.
+
+### GLAFIRA-S000-W09 — Windows Agent UX
+- **WBS:** parent `1.8.1.1` — Subordinate worker consent, operation and diagnostics UX; executable leaf `1.8.1.1.1` — Specify Windows Agent tray, task-progress, pause/revoke and resource screens.
+- **Tracker / scope:** issue #676; exclusive future deliverable `docs/design/WINDOWS_AGENT_UX.md` only.
+- **Dependencies:** Agent service/heartbeat/task runtime #76; Windows Hub enrollment/coordinator contract #123; shared visual tokens #679/#684. Until shared tokens are accepted, information architecture and wireframes only.
+- **Predecessors:** read-only inventory of current Agent/Hub contracts and this reservation approval.
+- **Numbered procedure:** (1) inventory existing service, tray, heartbeat, polling, durable progress/result ACK, pause/reconnect and Hub-approved profile contracts; (2) specify consent/enrollment summary with coordinator identity/fingerprint, capabilities/scopes and resource ceiling; (3) define green only for authenticated healthy connection, gray for paused/stopped/disconnected/not checked, red only for explicit error/revocation/auth failure; (4) specify idle/running progress with bounded task metadata and no sensitive tray payload; (5) specify pause/resume, owner-priority preemption, shutdown and network-loss recovery without blind replay; (6) specify resource usage/limits and throttling; (7) specify revoke, credential/endpoint rotation, reconnect and redacted diagnostics; (8) define accessibility, keyboard, screen-reader, high-contrast and compact tray behavior; (9) label every unimplemented control FUTURE and never imply generic shell or unrestricted filesystem access.
+- **Acceptance:** complete tray/detail-window flow from enrollment through pause/revoke/recovery; process-running is distinct from authenticated-connected and task-running; capability display derives only from authenticated owner-approved Hub profile; subordinate worker authority preserved; only the reserved Markdown path changes; independent review and owner approval. This design does not claim Agent execution or physical two-PC acceptance.
+- **Out of scope:** Agent source, protocol, database, permission, cryptography, security-policy, task-handler or scheduler changes; silent compute/data access; Hub/Core election.
+- **Lifecycle:** PROPOSED now; READY only after owner accepts the WBS registration and its dedicated reservation PR is merged. Implementation of the design artifact remains blocked until exact post-merge Main pin.
