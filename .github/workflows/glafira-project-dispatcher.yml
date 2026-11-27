@@ -151,6 +151,10 @@ jobs:
                 and (.base.sha | type) == "string" and .base.sha != ""
               )
             )
+            and (
+              [.[].[] | .number] as $numbers
+              | ($numbers | length) == ($numbers | unique | length)
+            )
           ' >/dev/null <<< "$rest_pages" || {
             echo "ERROR: REST open-PR inventory contains malformed pages or records." >&2
             exit 2
@@ -256,6 +260,10 @@ jobs:
           repo="$5"
           comparison_file="$(mktemp)"
           trap 'rm -f "$comparison_file"' EXIT
+          # Preserve the caller's initial snapshot; only the private working copy
+          # advances between attempts, so UNKNOWN never mutates the original input.
+          cp "$previous_file" "$comparison_file"
+          previous_working_file="$comparison_file"
           changed_seen=false
           # A close/open during offset pagination can shift an open-only REST page.
           # The initial production inventory is snapshot one. Allow only two
@@ -266,7 +274,7 @@ jobs:
               exit 1
             fi
             set +e
-            bash "$comparator" "$previous_file" "$latest_file"
+            bash "$comparator" "$previous_working_file" "$latest_file"
             comparison_status=$?
             set -e
             case "$comparison_status" in
@@ -277,7 +285,7 @@ jobs:
               1)
                 changed_seen=true
                 cp "$latest_file" "$comparison_file"
-                mv "$comparison_file" "$previous_file"
+                previous_working_file="$comparison_file"
                 ;;
               *)
                 echo "UNKNOWN: PR inventory comparison failed (exit $comparison_status)." >&2
@@ -292,10 +300,13 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           summary_file="$1"
+          failure_detail="${2:-PR inventory fetch or exact PR/head/base comparison failed.}"
           {
             echo "## ERROR: Dispatcher reconciliation incomplete"
             echo ""
-            echo "Second PR inventory fetch or exact PR/head/base comparison failed. Current identity is UNKNOWN; this run is not a successful reconciliation."
+            echo "Reason: $failure_detail"
+            echo ""
+            echo "Current identity is UNKNOWN; this run is not a successful reconciliation."
           } >> "$summary_file"
           SUMMARY
           cat > "$RUNNER_TEMP/reconcile-and-report.sh" <<'REPORT'
@@ -307,7 +318,8 @@ jobs:
           comparator="$4"
           repo="$5"
           summary_file="$6"
-          if result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$previous_file" "$latest_file" "$fetch_script" "$comparator" "$repo")"; then
+          reconciliation_error="$RUNNER_TEMP/reconciliation-error.log"
+          if result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$previous_file" "$latest_file" "$fetch_script" "$comparator" "$repo" 2>"$reconciliation_error")"; then
             case "$result" in
               UNCHANGED|CHANGED) printf '%s\n' "$result" ;;
               *)
@@ -316,7 +328,8 @@ jobs:
                 ;;
             esac
           else
-            bash "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" "$summary_file"
+            failure_detail="$(cat "$reconciliation_error")"
+            bash "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" "$summary_file" "$failure_detail"
             exit 1
           fi
           REPORT
@@ -569,6 +582,14 @@ jobs:
             [[ "$?" -eq 1 && "$(cat "$tmp/sequence-b-c.calls")" -eq 2 ]]
           fi
           echo "dispatcher snapshot budget: A→B→B stabilizes; A→B→C fails after two additional fetches: PASS"
+
+          # The original snapshot remains byte-for-byte unchanged even after a valid delta.
+          cp "$tmp/large-prs.json" "$tmp/original-preserved.json"
+          if bash "$reconcile" "$tmp/original-preserved.json" "$tmp/preserved-latest.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-wrapper-delta.json" >/dev/null; then
+            cmp -s "$tmp/original-preserved.json" "$tmp/large-prs.json"
+          else
+            echo "valid changed inventory unexpectedly failed" >&2; exit 1
+          fi
 
           # A valid inventory delta is CHANGED (not UNKNOWN) through the production wrapper.
           jq '. + [{number: 5001, headRefOid: "head-new", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/large-prs-wrapper-delta.json"
