@@ -316,6 +316,21 @@ jobs:
             exit 1
           fi
           REPORT
+          cat > "$RUNNER_TEMP/count-initial-inventory.sh" <<'COUNT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          snapshot_file="$1"
+          summary_file="$2"
+          if ! count="$(jq -er 'if type == "array" then length else error("initial PR inventory must be a JSON array") end' "$snapshot_file")"; then
+            {
+              echo "## ERROR: Dispatcher initial inventory unavailable"
+              echo ""
+              echo "Initial PR inventory snapshot is unreadable or malformed. Current identity is UNKNOWN; this run is not a successful reconciliation."
+            } >> "$summary_file"
+            exit 1
+          fi
+          printf '%s\\n' "$count"
+          COUNT
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -550,6 +565,18 @@ jobs:
           fi
           echo "dispatcher production failure-summary route: PASS"
 
+          # The exact initial-inventory count helper must report UNKNOWN on a malformed snapshot.
+          printf '{' > "$tmp/initial-malformed.json"
+          : > "$tmp/initial-summary.md"
+          if bash "$RUNNER_TEMP/count-initial-inventory.sh" "$tmp/initial-malformed.json" "$tmp/initial-summary.md"; then
+            echo "malformed initial inventory was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -q "Initial PR inventory snapshot is unreadable or malformed" "$tmp/initial-summary.md"
+          grep -q "Current identity is UNKNOWN" "$tmp/initial-summary.md"
+          echo "dispatcher initial-inventory UNKNOWN summary route: PASS"
+
           # Exercise the production fetcher against mixed, malformed and unstable page fixtures.
           grep -Fq 'states: [OPEN]' "$fetch_prs"
           grep -Fq 'state=open&sort=created&direction=asc' "$fetch_prs"
@@ -630,7 +657,9 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          count="$(jq 'length' "$RUNNER_TEMP/glafira-open-prs.json")"
+          if ! count="$(bash "$RUNNER_TEMP/count-initial-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$GITHUB_STEP_SUMMARY")"; then
+            exit 1
+          fi
           if [[ "$count" -eq 0 ]]; then
             {
               echo "# GLAFIRA Project Dispatcher"
