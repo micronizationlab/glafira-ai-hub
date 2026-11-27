@@ -39,12 +39,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private var fixtureLifetimeFileLock: java.nio.channels.FileLock? = null
     private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
+        var failCommittedCleanupCount = 0
         override suspend fun <T> withPaused(block: () -> T): T = block()
         val pauseContexts = mutableListOf<Context>()
         override fun pauseForRestore(context: Context) { pauseContexts += context }
         override fun beforeCommittedJournalCleanup() {
-            if (failCommittedCleanupOnce) {
+            if (failCommittedCleanupOnce || failCommittedCleanupCount > 0) {
                 failCommittedCleanupOnce = false
+                if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
                 throw IOException("injected interruption before committed journal cleanup")
             }
         }
@@ -1105,6 +1107,34 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             passphrase.fill('\u0000')
         }
     }
+    @Test
+    fun committedRestoreReportsSuccessWhenJournalCleanupMustBeRetried() = runBlocking {
+        store.enqueue(task("restore-cleanup-pending"))
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-committed-cleanup-pending".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        try {
+            withOwnedRollbackKey {
+                // Fail both the initial cleanup and its immediate recovery retry. The
+                // durable commit is already published, so restore must report success
+                // while preserving the journal for a later cleanup pass.
+                fixtureRuntimeHooks.failCommittedCleanupCount = 2
+                coordinator.restore(archive, passphrase)
+                assertTrue("Committed journal remains available for later cleanup", File(journal, "restore.committed").isFile)
+                assertTrue("Rollback evidence remains while cleanup is pending", File(journal, "database.db").isFile)
+                fixtureRuntimeHooks.failCommittedCleanupCount = 0
+                isolatedCoordinator().recover(passphrase)
+                assertFalse("A later recovery pass removes the committed journal", journal.exists())
+                assertTrue("The selected archive's task remains restored", store.getTask("restore-cleanup-pending") != null)
+            }
+        } finally {
+            fixtureRuntimeHooks.failCommittedCleanupCount = 0
+            archive.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
     @Test
     fun v3RecoveryReentersAfterFreshCoordinatorConstruction() = run {
         runBlocking {
