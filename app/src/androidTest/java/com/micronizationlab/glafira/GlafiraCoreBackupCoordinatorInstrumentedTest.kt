@@ -33,7 +33,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var testRoot: File
     private lateinit var store: GlafiraTaskStore
     private var ownsFixture = false
-    private var isolatedRuntimePauseCalls = 0
     private lateinit var testRunId: String
     @Before
     fun setUp() = runBlocking {
@@ -51,8 +50,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             "Skip isolated rollback tests while an unowned installation-local rollback key exists.",
             rollbackKeyExists()
         )
+        assertNoActiveCoreWork()
         ownsFixture = true
-        isolatedRuntimePauseCalls = 0
         testRunId = UUID.randomUUID().toString()
         testRoot = File(appContext.cacheDir, "glafira-backup-test-$testRunId").apply { check(mkdirs()) }
         context = IsolatedBackupTestContext(appContext, testRoot)
@@ -77,9 +76,23 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
         if (failure != null) throw failure!!
     }
-    private fun isolatedCoordinator() = GlafiraCoreBackupCoordinator(context, store) {
-        // Backup tests own an isolated Core context; never cancel process-wide app WorkManager jobs.
-        isolatedRuntimePauseCalls++
+    private fun isolatedCoordinator() = GlafiraCoreBackupCoordinator(context, store)
+
+    /**
+     * Restore pauses the real Core scheduler. The fixture must never cancel app-owned work;
+     * Core is required to be disabled and all unique Core work must be finished before restore.
+     */
+    private fun assertNoActiveCoreWork() {
+        val workManager = androidx.work.WorkManager.getInstance(appContext)
+        listOf("glafira-core-queue-drain", "glafira-core-queue-retry", "glafira-core-queue-network")
+            .forEach { uniqueName ->
+                val active = workManager.getWorkInfosForUniqueWork(uniqueName).get()
+                    .filterNot { it.state.isFinished }
+                org.junit.Assume.assumeTrue(
+                    "Skip isolated backup test while app-owned Core work is active: $uniqueName",
+                    active.isEmpty()
+                )
+            }
     }
 
     private class IsolatedBackupTestContext(base: Context, private val root: File) : ContextWrapper(base) {
@@ -252,6 +265,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     private suspend fun <T> withOwnedRollbackKey(block: suspend () -> T): T {
+        assertNoActiveCoreWork()
         val runId = testRunId
         withFixtureLocks {
             writeRollbackOwnerMarker(runId)
@@ -998,8 +1012,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         createdAfterMarker.writeText("created-after-marker", Charsets.UTF_8)
                     }
                 }
-                // Runtime enablement is read-only verified as PAUSED; recheck app-owned
-                // unique work immediately before recovery, which pauses the production runtime.
+                // Recheck app-owned unique work immediately before recovery, which pauses
+                // the production runtime and cancels only the Core scheduler's unique work.
+                assertNoActiveCoreWork()
                 withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
                     isolatedCoordinator().recover(passphrase)
                 }
@@ -1015,7 +1030,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 })
                 assertTrue("No decrypted rollback recovery temp may remain", remainingTemps.isEmpty())
                 assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-                assertEquals("Recovery must invoke the isolated runtime-pause hook", 1, isolatedRuntimePauseCalls)
             } catch (error: Throwable) {
                 primaryFailure = error
                 throw error
