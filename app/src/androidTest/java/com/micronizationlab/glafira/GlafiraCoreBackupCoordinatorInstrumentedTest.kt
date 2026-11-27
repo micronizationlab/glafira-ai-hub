@@ -49,6 +49,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
+        var failPlaintextSnapshotDirectorySyncOnce = false
         var pauseCount = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
@@ -61,6 +62,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
                 throw IOException("injected interruption before committed journal cleanup")
+            }
+        }
+        override fun beforePlaintextSnapshotDirectorySync() {
+            if (failPlaintextSnapshotDirectorySyncOnce) {
+                failPlaintextSnapshotDirectorySyncOnce = false
+                throw IOException("injected plaintext snapshot parent-directory fsync failure")
             }
         }
     }
@@ -1546,6 +1553,38 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 thirdFixture.deleteKey()
                 clearFixtureKeyAliasOwner(thirdFixture.keyAlias, testRunId)
             }
+        }
+    }
+
+    @Test
+    fun committedCleanupFsyncsFilesDirectoryEvenWhenPlaintextSnapshotIsAlreadyAbsent() = runBlocking {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
+        val pending = File(journal, "restore.pending").apply { writeText("GLAFIRA_RESTORE_ROLLBACK_V3") }
+        val committed = File(journal, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
+        val database = File(journal, "database.db").apply { writeText("encrypted-fixture-placeholder") }
+        val archive = File(journal, "files.glb").apply { writeText("encrypted-fixture-placeholder") }
+        val passphrase = "committed-snapshot-parent-fsync".toCharArray()
+        try {
+            assertFalse("Fixture starts with no plaintext snapshot", File(context.filesDir, ".glafira-core-snapshot").exists())
+            fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = true
+            assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Committed marker remains when parent fsync fails", committed.exists())
+            assertTrue("Rollback database remains when parent fsync fails", database.exists())
+            assertTrue("Rollback archive remains when parent fsync fails", archive.exists())
+            fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
+            isolatedCoordinator().recover(passphrase)
+            assertFalse(pending.exists())
+            assertFalse(committed.exists())
+            assertFalse(database.exists())
+            assertFalse(archive.exists())
+            assertFalse(journal.exists())
+        } finally {
+            fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
+            passphrase.fill(0.toChar())
+            // Preserve the journal if cleanup did not complete; the next fixture setup
+            // must not erase evidence whose committed cleanup is still pending.
         }
     }
 
