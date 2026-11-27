@@ -256,7 +256,7 @@ The repository remains owned by the personal GitHub account. Native GitHub Merge
 - `1.1.6.1` — Shared Core database persistence; extend `GlafiraTaskStore` migration framework and existing `glafira_core_tasks.db`.
 - `1.1.6.1.1` — Encrypted memory schema and repository.
 - `1.1.6.1.1.1` — Build encrypted scoped memory persistence.
-- `1.1.6.1.1.1.1` — W01: existing-Core-DB migration, Keystore crypto, project deletion and portable snapshot integration; Work Item `GLAFIRA-S024-W01`; issue #780; Program Step 24.
+- `1.1.6.1.1.1.1` — W01: existing-Core-DB migration, Keystore crypto, project deletion and portable snapshot integration; Work Item `GLAFIRA-S024-W01`; issue #780; reservation PR #793; Program Step 24.
   - **Objective:** add encrypted memory storage primitives to the one authoritative Core database and ensure those rows survive portable Core backup/restore and idempotent project deletion before repository APIs are implemented.
   - **Predecessors:** none; typed `MemoryRepository` / `CoreMemoryRecord` contracts exist in `GlafiraCoreContracts.kt`.
   - **Out of scope:** no second database, no repository CRUD/search/export implementation, no plaintext FTS/index, no UI or agent auto-promotion, no task queue semantic changes, no key bytes in portable backup.
