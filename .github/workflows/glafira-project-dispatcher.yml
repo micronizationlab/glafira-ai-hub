@@ -363,9 +363,45 @@ jobs:
           else
             [[ "$?" -eq 1 ]]
           fi
+          jq '.[0:4999]' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-removed.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-removed.json"; then
+            echo "removed PR was incorrectly ignored as an inventory change" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
           printf '{invalid json' > "$RUNNER_TEMP/invalid-pr-inventory.json"
           if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/invalid-pr-inventory.json"; then
             echo "invalid JSON was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          # Exercise the same fetch+compare path used by the production report step.
+          cat > "$RUNNER_TEMP/fetch-mocked-prs.sh" <<'FETCH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          jq '.[4999].headRefOid = "changed"' "$FAKE_INVENTORY_SOURCE"
+          FETCH
+          chmod +x "$RUNNER_TEMP/fetch-mocked-prs.sh"
+          report_status="$(FAKE_INVENTORY_SOURCE="$RUNNER_TEMP/large-pr-inventory.json" bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" test/repo "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/report-latest-prs.json" "$RUNNER_TEMP/fetch-mocked-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh")"
+          [[ "$report_status" == "CHANGED" ]]
+          jq -e '.[4999].headRefOid == "changed"' "$RUNNER_TEMP/report-latest-prs.json" >/dev/null
+          cat > "$RUNNER_TEMP/fetch-invalid-prs.sh" <<'FETCH'
+          #!/usr/bin/env bash
+          printf '{invalid json'
+          FETCH
+          chmod +x "$RUNNER_TEMP/fetch-invalid-prs.sh"
+          if bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" test/repo "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/report-invalid-prs.json" "$RUNNER_TEMP/fetch-invalid-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh"; then
+            echo "production reconciliation accepted invalid JSON" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          cat > "$RUNNER_TEMP/fetch-failing-prs.sh" <<'FETCH'
+          #!/usr/bin/env bash
+          exit 42
+          FETCH
+          chmod +x "$RUNNER_TEMP/fetch-failing-prs.sh"
+          if bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" test/repo "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/report-failed-fetch.json" "$RUNNER_TEMP/fetch-failing-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh"; then
+            echo "production reconciliation accepted a failed fetch" >&2; exit 1
           else
             [[ "$?" -eq 2 ]]
           fi
