@@ -214,17 +214,30 @@ jobs:
           latest_file="$2"
           # Keep large inventories in files; --argjson would exceed the OS argv limit.
           set +e
-          jq -e --slurpfile latest "$latest_file" '
-            ($latest[0] | reduce .[] as $pr ({}; .[($pr.number | tostring)] = $pr)) as $latest_by_number
-            | (length == ($latest[0] | length))
-              and all(.[]; . as $old |
-                ($latest_by_number[($old.number | tostring)] // null) as $current |
-                $current != null
-                and ($old.headRefOid // "") != ""
-                and ($old.baseRefOid // "") != ""
-                and $current.headRefOid == $old.headRefOid
-                and $current.baseRefOid == $old.baseRefOid
-              )
+          jq -e -s --slurpfile latest "$latest_file" '
+            if length != 1 or (.[0] | type) != "array" or ($latest | length) != 1 or ($latest[0] | type) != "array" then
+              error("each inventory file must contain exactly one JSON array")
+            else
+              .[0] as $previous
+              | $latest[0] as $current
+              | if (
+                  ([$previous[].number] | unique | length) != ($previous | length)
+                  or ([$current[].number] | unique | length) != ($current | length)
+                  or any($previous[]; (.number | type) != "number" or (.headRefOid | type) != "string" or .headRefOid == "" or (.baseRefOid | type) != "string" or .baseRefOid == "")
+                  or any($current[]; (.number | type) != "number" or (.headRefOid | type) != "string" or .headRefOid == "" or (.baseRefOid | type) != "string" or .baseRefOid == "")
+                ) then
+                  error("inventory contains duplicate PR numbers or incomplete PR identity")
+                else
+                  ($current | reduce .[] as $pr ({}; .[($pr.number | tostring)] = $pr)) as $latest_by_number
+                  | ($previous | length) == ($current | length)
+                    and all($previous[]; . as $old |
+                      ($latest_by_number[($old.number | tostring)] // null) as $new |
+                      $new != null
+                      and $new.headRefOid == $old.headRefOid
+                      and $new.baseRefOid == $old.baseRefOid
+                    )
+                end
+            end
           ' "$previous_file" >/dev/null
           status=$?
           set -e
@@ -515,6 +528,9 @@ jobs:
           abort "dispatcher workflow completion subscriptions are incomplete" unless (required_workflows - workflow_run.fetch("workflows")).empty?
           guard = workflow.dig("jobs", "project-status", "if").to_s
           abort "job guard must scope metadata-only skip to Java formatter" unless guard.include?("workflow_run.name == 'GLAFIRA Java Format Check'") && guard.include?("workflow_run.event != 'schedule'") && guard.include?("METADATA_ONLY -")
+          abort "job guard must skip title/body edits but preserve base retargets" unless guard.include?("github.event.changes.base != null")
+          concurrency_group = workflow.dig("concurrency", "group").to_s
+          abort "metadata-only edits need a unique concurrency group" unless concurrency_group.include?("metadata-") && concurrency_group.include?("github.run_id")
           config = YAML.load_file(".coderabbit.yaml")
           auto_review = config.dig("reviews", "auto_review") || {}
           chat = config["chat"] || {}
@@ -524,18 +540,27 @@ jobs:
           puts "actual workflow triggers, job guard, no-schedule policy and CodeRabbit YAML: PASS"
           RUBY
           should_reconcile() {
-            local event_name="$1" upstream_event="$2" workflow_name="$3" display_title="$4"
-            [[ "$event_name" != "workflow_run" || ( "$upstream_event" != "schedule" && ( "$workflow_name" != "GLAFIRA Java Format Check" || "$display_title" != "METADATA_ONLY -"* ) ) ]]
+            local event_name="$1" action="$2" base_changed="$3" upstream_event="$4" workflow_name="$5" display_title="$6"
+            if [[ "$event_name" == "pull_request" && "$action" == "edited" && "$base_changed" != "true" ]]; then return 1; fi
+            if [[ "$event_name" == "workflow_run" ]]; then
+              [[ "$upstream_event" != "schedule" ]] || return 1
+              if [[ "$workflow_name" == "GLAFIRA Java Format Check" && "$display_title" == "METADATA_ONLY -"* ]]; then return 1; fi
+            fi
+            return 0
           }
-          if should_reconcile "workflow_run" "schedule" "GLAFIRA CI — change-aware platform validation" "daily run"; then
+          if should_reconcile "workflow_run" "completed" "false" "schedule" "GLAFIRA CI — change-aware platform validation" "daily run"; then
             echo "scheduled workflow_run must be ignored" >&2; exit 1
           fi
-          if should_reconcile "workflow_run" "pull_request" "GLAFIRA Java Format Check" "METADATA_ONLY - PR metadata edit"; then
+          if should_reconcile "workflow_run" "completed" "false" "pull_request" "GLAFIRA Java Format Check" "METADATA_ONLY - PR metadata edit"; then
             echo "formatter metadata-only workflow_run must be ignored" >&2; exit 1
           fi
-          should_reconcile "workflow_run" "pull_request" "GLAFIRA CI — change-aware platform validation" "METADATA_ONLY - title collision"
-          should_reconcile "workflow_run" "pull_request" "Security Scan" "ordinary title"
-          should_reconcile "pull_request" "pull_request" "" ""
+          if should_reconcile "pull_request" "edited" "false" "" "" ""; then
+            echo "title/body-only PR edit must not start reconciliation" >&2; exit 1
+          fi
+          should_reconcile "pull_request" "edited" "true" "" "" ""
+          should_reconcile "pull_request" "synchronize" "false" "" "" ""
+          should_reconcile "workflow_run" "completed" "false" "pull_request" "GLAFIRA CI — change-aware platform validation" "METADATA_ONLY - title collision"
+          should_reconcile "workflow_run" "completed" "false" "pull_request" "Security Scan" "ordinary title"
           echo "event-driven dispatcher policy fixtures: PASS"
       - name: Build cross-workstream status report
         env:
