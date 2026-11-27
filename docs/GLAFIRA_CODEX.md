@@ -96,7 +96,7 @@ For **each individual finding**, the repair register and the execution ledger MU
 2. **Root cause:** the confirmed cause, or an explicit UNCONFIRMED status when evidence is insufficient.
 3. **Correction:** the exact change made, affected file(s), commit SHA and PR/merge SHA. If no correction is authorized or possible, state the precise blocker and owner action; do not mark fixed.
 4. **Verification:** the specific test, review assertion, static check, workflow/job or manual acceptance procedure that proves this correction; include exact command or check name, run/job ID, tested commit SHA and actual outcome. For a documentation-only rule, identify the exact diff/section reviewed and the applicable successful documentation/CI checks.
-5. **Disposition:** FIXED_AND_VERIFIED, FIXED_PENDING_VERIFICATION, BLOCKED, NOT_REPRODUCED or WONT_FIX (the last two require evidence and an accountable decision). A skipped, cancelled, queued, in-progress, stale or unrelated check is never verification.
+5. **Disposition:** FIXED_AND_VERIFIED, FIXED_PENDING_VERIFICATION, BLOCKED, NOT_REPRODUCED or WONT_FIX. For FIXED_AND_VERIFIED, FIXED_PENDING_VERIFICATION and BLOCKED, link the exact correction/commit when one exists and the verification evidence or explicit pending check. For NOT_REPRODUCED, link the reproduction attempt, environment, inputs and observed result; for WONT_FIX, link the technical analysis and explicit accountable owner decision. These two dispositions do not require a nonexistent correction, but must never substitute for a repair that is still required. A skipped, cancelled, queued, in-progress, stale or unrelated check is never verification.
 
 ### Required one-to-one accounting
 
