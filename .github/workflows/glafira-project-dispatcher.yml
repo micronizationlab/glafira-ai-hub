@@ -546,8 +546,8 @@ jobs:
           cat > "$tmp/fetch-sequence.sh" <<'FETCH_SEQUENCE'
           #!/usr/bin/env bash
           set -euo pipefail
-          sequence_file="$1"
-          calls_file="$2"
+          sequence_file="${DISPATCHER_SEQUENCE_FILE:?}"
+          calls_file="${DISPATCHER_CALLS_FILE:?}"
           count=0
           [[ ! -f "$calls_file" ]] || count="$(cat "$calls_file")"
           count=$((count + 1))
@@ -559,11 +559,11 @@ jobs:
           jq '. + [{number: 5002, headRefOid: "head-c", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/snapshot-c.json"
           printf '%s\n' "$(<"$tmp/snapshot-b.json")" "$(<"$tmp/snapshot-b.json")" > "$tmp/sequence-b-b.jsonl"
           : > "$tmp/sequence-b-b.calls"
-          stable_delta="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/sequence-b-b.latest.json" "$tmp/fetch-sequence.sh" "$comparator" "$tmp/sequence-b-b.jsonl" "$tmp/sequence-b-b.calls")"
+          stable_delta="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-b-b.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-b-b.calls" bash "$reconcile" "$tmp/large-prs.json" "$tmp/sequence-b-b.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
           [[ "$stable_delta" == "CHANGED" && "$(cat "$tmp/sequence-b-b.calls")" -eq 2 ]]
           printf '%s\n' "$(<"$tmp/snapshot-b.json")" "$(<"$tmp/snapshot-c.json")" > "$tmp/sequence-b-c.jsonl"
           : > "$tmp/sequence-b-c.calls"
-          if bash "$reconcile" "$tmp/large-prs.json" "$tmp/sequence-b-c.latest.json" "$tmp/fetch-sequence.sh" "$comparator" "$tmp/sequence-b-c.jsonl" "$tmp/sequence-b-c.calls"; then
+          if DISPATCHER_SEQUENCE_FILE="$tmp/sequence-b-c.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-b-c.calls" bash "$reconcile" "$tmp/large-prs.json" "$tmp/sequence-b-c.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused; then
             echo "unstable A→B→C inventory was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 && "$(cat "$tmp/sequence-b-c.calls")" -eq 2 ]]
