@@ -222,3 +222,15 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
 - `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
+
+## 15. Bounded shared file-maintenance lock
+
+- `1.2.1.2.2` — Bounded shared file-maintenance lock.
+- `1.2.1.2.2.1` — Bounded lock acquisition and contention regression.
+- `1.2.1.2.2.1.1` — Replace unbounded monitor acquisition in `GlafiraFileMaintenance` with a bounded reentrant lock; Work Item `GLAFIRA-BACKUP-LOCK-W01`; issue #775.
+- **Immediate parent:** `1.2.1.2.2.1`.
+- **Exclusive implementation paths:** `app/src/main/java/com/micronizationlab/glafira/DurableJsonFile.kt`; new `app/src/test/java/com/micronizationlab/glafira/GlafiraFileMaintenanceTest.kt`.
+- **Predecessors:** none for the lock primitive. The result is a production safety prerequisite for final acceptance of #769.
+- **Executor:** GLAFIRA coordinator active author; independent CodeRabbit/Proofline review; owner-controlled merge.
+- **Acceptance:** bounded timeout and interruption fail closed before protected mutation; reentrant same-thread use remains safe; lock order is preserved; deterministic contention/release/reuse tests pass; exact-head Android JVM, Docs CI, Security Scan, Project Dispatcher and independent review pass.
+- **Lifecycle:** RESERVED / NOT IMPLEMENTED before and after reservation merge. Separate exact-SHA implementation pin amendment required before implementation; reservation merge does not activate the leaf.
