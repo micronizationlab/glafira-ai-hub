@@ -305,7 +305,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             if (parsed == null || parsed.toString() != runId) return@forEach
             val expected = "glafira_test_rollback_${runId.replace("-", "")}"
             val alias = marker.readText(Charsets.UTF_8)
-            if (alias != if (second) "${expected}_second" else expected) return@forEach
+            val expectedAlias = if (second) "${expected}_second" else expected
+            if (alias != expectedAlias) return@forEach
             val root = File(appContext.cacheDir, "glafira-backup-test-$runId")
             val journal = File(root, "no-backup/glafira-restore-journal")
             if (journal.exists()) return@forEach
