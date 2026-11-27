@@ -103,6 +103,48 @@ private enum BridgeHubBindingValidation {
     }
 }
 
+enum BridgeHubBindingPersistence {
+    private struct Envelope: Codable {
+        let schemaVersion: Int
+        let binding: BridgeHubBinding
+    }
+
+    static func encode(_ binding: BridgeHubBinding) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(Envelope(schemaVersion: 1, binding: binding))
+    }
+
+    static func decode(_ data: Data) throws -> BridgeHubBinding {
+        guard (1...4_096).contains(data.count),
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(object.keys) == Set(["schemaVersion", "binding"]),
+              validJSONObject(object["binding"]),
+              let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
+              envelope.schemaVersion == 1,
+              let validated = try? BridgeHubBinding(
+                desktopHubId: envelope.binding.desktopHubId,
+                endpoint: envelope.binding.endpoint,
+                certificateSHA256: envelope.binding.certificateSHA256,
+                scopes: envelope.binding.scopes,
+                enrolledAtEpochMs: envelope.binding.enrolledAtEpochMs,
+                expiresAtEpochMs: envelope.binding.expiresAtEpochMs
+              ),
+              validated == envelope.binding else {
+            throw BridgeCredentialStoreError.invalidHubBinding
+        }
+        return validated
+    }
+
+    private static func validJSONObject(_ value: Any?) -> Bool {
+        guard let object = value as? [String: Any] else { return false }
+        return Set(object.keys) == Set([
+            "desktopHubId", "endpoint", "certificateSHA256", "scopes",
+            "enrolledAtEpochMs", "expiresAtEpochMs"
+        ])
+    }
+}
+
 /// Stores one paired-device HMAC secret as a device-only Keychain item.
 /// The item is bound to the currently enrolled biometric set; adding/removing
 /// biometrics invalidates access rather than silently weakening protection.
