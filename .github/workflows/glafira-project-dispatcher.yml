@@ -290,6 +290,28 @@ jobs:
             echo "Second PR inventory fetch or exact PR/head/base comparison failed. Current identity is UNKNOWN; this run is not a successful reconciliation."
           } >> "$summary_file"
           SUMMARY
+          cat > "$RUNNER_TEMP/reconcile-and-report.sh" <<'REPORT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          previous_file="$1"
+          latest_file="$2"
+          fetch_script="$3"
+          comparator="$4"
+          repo="$5"
+          summary_file="$6"
+          if result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$previous_file" "$latest_file" "$fetch_script" "$comparator" "$repo")"; then
+            case "$result" in
+              UNCHANGED|CHANGED) printf '%s\\n' "$result" ;;
+              *)
+                echo "ERROR: unexpected reconciliation result '$result'." >> "$summary_file"
+                exit 1
+                ;;
+            esac
+          else
+            bash "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" "$summary_file"
+            exit 1
+          fi
+          REPORT
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -515,10 +537,16 @@ jobs:
             grep -q "previous PR inventory snapshot is missing or unreadable" "$tmp/snapshot-open.err"
           fi
 
-          # The production failure-summary helper must leave an explicit non-green diagnostic.
-          bash "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" "$tmp/summary.md"
-          grep -q "ERROR: Dispatcher reconciliation incomplete" "$tmp/summary.md"
-          grep -q "Current identity is UNKNOWN" "$tmp/summary.md"
+          # Exercise the exact production report wrapper: injected fetch failure must
+          # both fail the step and write the diagnostic to its supplied summary path.
+          : > "$tmp/production-summary.md"
+          if bash "$RUNNER_TEMP/reconcile-and-report.sh" "$tmp/large-prs.json" "$tmp/report-latest.json" "$tmp/fetch-failed-prs.sh" "$comparator" unused "$tmp/production-summary.md"; then
+            echo "production report wrapper accepted a failed inventory fetch" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -q "ERROR: Dispatcher reconciliation incomplete" "$tmp/production-summary.md"
+          grep -q "Current identity is UNKNOWN" "$tmp/production-summary.md"
 
           # Exercise the production fetcher against mixed, malformed and unstable page fixtures.
           grep -Fq 'states: [OPEN]' "$fetch_prs"
@@ -587,8 +615,8 @@ jobs:
           if [[ "$count" -eq 1 ]]; then cat "$DISPATCHER_FIRST_SNAPSHOT"; else cat "$DISPATCHER_STABLE_SNAPSHOT"; fi
           FETCH_ONCE
           chmod +x "$tmp/fetch-changing-once.sh"
-          cp "$tmp/large-prs.json" "$tmp/initial-snapshot.json"
-          jq '. + [{number:5001,headRefOid:"new-head",baseRefOid:"base"}]' "$tmp/large-prs.json" > "$tmp/stable-snapshot.json"
+          jq '. + [{number:5001,headRefOid:"new-head",baseRefOid:"base"}]' "$tmp/large-prs.json" > "$tmp/initial-snapshot.json"
+          cp "$tmp/initial-snapshot.json" "$tmp/stable-snapshot.json"
           printf '0' > "$tmp/fetch-count"
           changed_stable="$(DISPATCHER_FETCH_COUNT="$tmp/fetch-count" DISPATCHER_FIRST_SNAPSHOT="$tmp/initial-snapshot.json" DISPATCHER_STABLE_SNAPSHOT="$tmp/stable-snapshot.json" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-stable.json" "$tmp/fetch-changing-once.sh" "$comparator" unused)"
           [[ "$changed_stable" == "CHANGED" && "$(cat "$tmp/fetch-count")" -eq 2 ]]
@@ -627,21 +655,16 @@ jobs:
           fi
           printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           # Re-read and compare the PR inventory through the same tested wrapper.
-          if reconciliation_result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh" "$GH_REPO")"; then
+          if reconciliation_result="$(bash "$RUNNER_TEMP/reconcile-and-report.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh" "$GH_REPO" "$GITHUB_STEP_SUMMARY")"; then
             case "$reconciliation_result" in
               UNCHANGED)
                 echo "PR inventory unchanged during reconciliation; exact PR/head/base identity re-confirmed." >> "$GITHUB_STEP_SUMMARY"
                 ;;
               CHANGED)
-                echo "PR inventory changed during reconciliation; rendering the latest snapshot. Exact run matching remains mandatory." >> "$GITHUB_STEP_SUMMARY"
-                ;;
-              *)
-                echo "ERROR: unexpected reconciliation result '$reconciliation_result'." >> "$GITHUB_STEP_SUMMARY"
-                exit 1
+                echo "PR inventory changed during reconciliation; rendering the latest stable snapshot. Exact run matching remains mandatory." >> "$GITHUB_STEP_SUMMARY"
                 ;;
             esac
           else
-            bash "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           {
