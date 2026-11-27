@@ -16,9 +16,10 @@ class GlafiraRollbackSnapshotCipherInstrumentedTest {
     @Test
     fun rollbackSnapshotHidesPlaintextAndAuthenticatesCiphertext() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val source = File(context.cacheDir, "rollback-cipher-source.db")
-        val encrypted = File(context.cacheDir, "rollback-cipher-snapshot.enc")
-        val restored = File(context.cacheDir, "rollback-cipher-restored.db")
+        val testRoot = File(context.cacheDir, "glafira-cipher-test-" + UUID.randomUUID()).apply { check(mkdirs()) }
+        val source = File(testRoot, "source.db")
+        val encrypted = File(testRoot, "snapshot.enc")
+        val restored = File(testRoot, "restored.db")
         val cipher = GlafiraRollbackSnapshotCipher("glafira_test_cipher_" + UUID.randomUUID().toString().replace("-", ""))
         val canary = "GLAFIRA_ROLLBACK_PLAINTEXT_CANARY_7F31".toByteArray()
         try {
@@ -41,14 +42,16 @@ class GlafiraRollbackSnapshotCipherInstrumentedTest {
             encrypted.delete()
             restored.delete()
             cipher.deleteKey()
+            testRoot.deleteRecursively()
         }
     }
     @Test
     fun decryptFailsClosedWhenRollbackKeyIsMissing() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val source = File(context.cacheDir, "rollback-missing-key-source.db")
-        val encrypted = File(context.cacheDir, "rollback-missing-key-snapshot.enc")
-        val restored = File(context.cacheDir, "rollback-missing-key-restored.db")
+        val testRoot = File(context.cacheDir, "glafira-cipher-missing-test-" + UUID.randomUUID()).apply { check(mkdirs()) }
+        val source = File(testRoot, "source.db")
+        val encrypted = File(testRoot, "snapshot.enc")
+        val restored = File(testRoot, "restored.db")
         val cipher = GlafiraRollbackSnapshotCipher("glafira_test_missing_" + UUID.randomUUID().toString().replace("-", ""))
         try {
             source.writeText("rollback-key-loss-canary")
@@ -70,6 +73,7 @@ class GlafiraRollbackSnapshotCipherInstrumentedTest {
             encrypted.delete()
             restored.delete()
             cipher.deleteKey()
+            testRoot.deleteRecursively()
         }
     }
 
