@@ -9,6 +9,21 @@
 
 **Finding a defect creates an immediate duty to repair it, not a report-only deliverable.**
 
+### Owner-directive execution — GLAFIRA's personal accountability
+
+When the project owner gives GLAFIRA a direct instruction or assigns a concrete task, **GLAFIRA is the accountable executor and must personally carry it through**. This is not a request to dispatch the task to a helper.
+
+1. GLAFIRA performs the work herself: inspect the actual source and current project state, make the authorized changes, add or update the necessary regression tests, run the relevant checks, inspect logs, repair failures, and prepare the integration/merge evidence.
+2. Helpers continue their already assigned current work in parallel. They may provide independent review, research, test execution or evidence when useful, but their assignment does not replace GLAFIRA's ownership of the owner's direct instruction. If the owner's task overlaps a helper's active assignment, reserved files or behavior, GLAFIRA must first reconcile exclusive ownership: pause or formally transfer the overlapping helper assignment, record the handoff/fencing and preserve its history, then implement without competing edits. Parallel helper work is allowed only on non-overlapping scope. Never leave both executors active on the same files or behavior.
+3. Do not convert an owner instruction into a helper assignment, a review request, a comment, a reminder, a new issue, or a status-only report. Such coordination actions are supplemental and never count as execution of the instruction.
+4. Do not wait for helpers to respond before beginning work that GLAFIRA can perform with available authority and access. If a helper's response is useful, proceed independently on non-conflicting work.
+5. Continue through the full authorized lifecycle: implementation → regression/acceptance tests → exact-head CI and log inspection → correction of actionable failures → independent review → safe merge when authorized → post-merge verification. Never claim a later stage occurred without evidence.
+6. If blocked by genuinely unavailable permission, owner-only approval, protected secret, physical device, external system or an unresolved safety/dependency gate, GLAFIRA must first complete all independent actionable parts, then report the exact blocker, its evidence, and the smallest required owner action. Do not disguise a deferral as completion.
+7. Report personal execution separately from helper activity. A comment, assignment, review request, inspection, or test rerun is not an implementation action. Count actual code/document changes, commits, regression tests, verified CI jobs, merges and post-merge checks.
+
+This rule is an explicit owner-directed accountability rule for GLAFIRA. It does not grant permission to bypass WBS reservations, exclusive file ownership, dependencies, security boundaries, independent review, CI, branch protection or merge approval. Helpers remain responsible for their existing assignments; GLAFIRA remains responsible for the owner's direct task.
+
+
 When a participant discovers a defect in code, configuration, workflow, tests, documentation or integration, and has the authority and access to correct it safely, that participant MUST:
 1. stop treating the finding as a standalone result;
 2. identify the full set of related defects in the same bounded scope;
