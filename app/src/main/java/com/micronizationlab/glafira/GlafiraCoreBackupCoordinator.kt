@@ -6,7 +6,11 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 /** Portable logical Core data inside an authenticated archive; raw SQLite is local rollback only. */
-class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: GlafiraTaskStore) {
+class GlafiraCoreBackupCoordinator(
+    context: Context,
+    private val taskStore: GlafiraTaskStore,
+    private val pauseRuntime: (Context) -> Unit = { GlafiraCoreRuntimeOwner.pauseForRestore(it) }
+) {
     private val app = context.applicationContext
     private val portable = GlafiraPortableCoreSnapshot(taskStore)
     private val journal get() = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
@@ -57,7 +61,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
                         val verification = BackupArchive.restore(app, selected, passphrase)
                         portable.restore(snapshot)
                         recoverPendingAfterRestore(app)
-                        GlafiraCoreRuntimeOwner.pauseForRestore(app)
+                        pauseRuntime(app)
                         checkpointDatabase()
                         clearJournal()
                         verification
@@ -143,7 +147,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
             BackupArchive.verify(app, safetyArchive, passphrase)
             BackupArchive.restore(app, safetyArchive, passphrase)
             taskStore.restoreConsistentSnapshot(rollbackDatabase)
-            GlafiraCoreRuntimeOwner.pauseForRestore(app)
+            pauseRuntime(app)
             checkpointDatabase()
             clearJournal()
         } catch (error: Exception) {
