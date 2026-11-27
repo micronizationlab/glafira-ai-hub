@@ -89,17 +89,16 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         clearJournal()
                         verification
                     } catch (error: Exception) {
-                        try {
+                        val cleanupSucceeded = try {
                             recoverInterruptedRestore(passphrase)
-                            // A committed restore whose journal cleanup failed is still successful
-                            // once recovery confirms cleanup. Do not invite a duplicate restore.
-                            if (!marker.exists() && !committedMarker.exists()) {
-                                completedVerification?.let { return@withPaused it }
-                            }
+                            !marker.exists() && !committedMarker.exists()
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
+                            false
                         }
-                        throw error
+                        // A committed restore whose journal cleanup failed is still successful
+                        // once recovery confirms cleanup. Do not invite a duplicate restore.
+                        if (cleanupSucceeded) completedVerification ?: throw error else throw error
                     }
                 } finally {
                     selected.delete()
