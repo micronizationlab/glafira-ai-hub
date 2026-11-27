@@ -12,8 +12,6 @@ on:
     types: [completed]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -29,6 +27,8 @@ concurrency:
 jobs:
   project-status:
     name: Reconcile all active GLAFIRA workstreams
+    # Ignore formatter runs caused only by bot-authored PR metadata edits.
+    if: ${{ github.event_name != 'workflow_run' || !startsWith(github.event.workflow_run.display_title || '', 'METADATA_ONLY -') }}
     runs-on: ubuntu-latest
     steps:
       - name: Prepare and test exact-head renderer
