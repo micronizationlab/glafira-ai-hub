@@ -2,6 +2,7 @@ import Foundation
 import Security
 import LocalAuthentication
 import Darwin
+import CoreFoundation
 
 /// Non-secret lifecycle identity of the authoritative Windows Hub enrollment.
 /// Deliberately not Codable: callers must use the strict, bounded persistence API.
@@ -352,6 +353,43 @@ private struct StrictJSONStructureValidator {
         index += 1
         return true
     }
+}
+
+public struct BridgeDeviceCredential: Equatable, Sendable {
+    public let deviceId: String
+    public let hmacSecret: Data
+
+    public init(deviceId: String, hmacSecret: Data) throws {
+        let units = deviceId.utf16.count
+        guard (8...128).contains(units),
+              deviceId.unicodeScalars.allSatisfy({
+                  $0.value <= 0xFFFF &&
+                  (CharacterSet.alphanumerics.contains($0) ||
+                   $0 == "-" || $0 == "_" || $0 == ".")
+              }) else {
+            throw BridgeCredentialStoreError.invalidDeviceIdentifier
+        }
+        guard hmacSecret.count == 32 else {
+            throw BridgeCredentialStoreError.invalidSecret
+        }
+        self.deviceId = deviceId
+        self.hmacSecret = hmacSecret
+    }
+}
+
+public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
+    case invalidDeviceIdentifier
+    case invalidSecret
+    case invalidHubBinding
+    case payloadTooLarge
+    case payloadTooDeep
+    case duplicateJSONKey
+    case biometricProtectionUnavailable
+    case credentialAlreadyExists
+    case credentialNotFound
+    case authenticationCancelled
+    case authenticationFailed
+    case keychainFailure(status: Int32)
 }
 
 /// Stores one paired-device HMAC secret as a device-only Keychain item.
