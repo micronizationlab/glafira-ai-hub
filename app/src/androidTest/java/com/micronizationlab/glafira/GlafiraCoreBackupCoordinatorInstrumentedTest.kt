@@ -59,7 +59,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             // Keep the lifetime lock from before orphan reclamation through teardown so
             // another test setup cannot reclaim a fixture that is still in use.
-            withFixtureLocks { cleanupOwnedLeftoverRollbackFixture() }
+            cleanupOwnedLeftoverRollbackFixture()
             testRunId = UUID.randomUUID().toString()
             fixtureRuntimeHooks.pauseContexts.clear()
             val aliasSuffix = testRunId.replace("-", "")
@@ -72,7 +72,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             store = GlafiraTaskStore(context)
             assertEquals(File(testRoot, "databases/glafira_core_tasks.db").absolutePath, store.writableDatabase.path)
         } catch (error: Throwable) {
-            releaseFixtureLifetimeLock()
+            // Once a fixture is claimed, @After owns lock release and cleanup even if
+            // store construction fails. Releasing here would let another setup reclaim it.
+            if (!ownsFixture) releaseFixtureLifetimeLock()
             throw error
         }
     }
@@ -93,10 +95,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     check(!installationMarker.exists() && !fixtureJournal.exists()) {
                         "Preserving fixture root because rollback ownership/recovery evidence remains."
                     }
-                    // Delete the test-owned Keystore key before its durable owner marker.
+                    // Keep the durable owner marker until both the key and fixture directory
+                    // are gone. If directory removal is interrupted, the next setup can find it.
                     rollbackCipher.deleteKey()
-                    clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
                     check(testRoot.deleteRecursively()) { "Could not remove isolated backup fixture." }
+                    syncMarkerDirectory(checkNotNull(testRoot.parentFile))
+                    clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
                 }
             } catch (cleanup: Throwable) {
                 if (failure != null) failure!!.addSuppressed(cleanup) else failure = cleanup
@@ -323,15 +327,22 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             "Only this run's uniquely scoped fixture aliases may be registered."
         }
         val marker = fixtureKeyOwnerMarker(alias, runId)
-        check(marker.createNewFile()) { "Fixture key ownership marker already exists." }
+        check(!marker.exists()) { "Fixture key ownership marker already exists." }
+        val temporary = File(
+            checkNotNull(marker.parentFile),
+            ".${marker.name}.${UUID.randomUUID()}.tmp"
+        )
         try {
-            FileOutputStream(marker, false).use {
+            FileOutputStream(temporary, false).use {
                 it.write(alias.toByteArray(Charsets.UTF_8))
                 it.fd.sync()
             }
+            check(temporary.renameTo(marker)) { "Could not atomically publish fixture key ownership." }
+            // If this fsync fails, retain the complete published marker: the alias is unique
+            // to this run and a later setup can safely reclaim it, even after process death.
             syncMarkerDirectory(checkNotNull(marker.parentFile))
         } catch (error: Throwable) {
-            marker.delete()
+            if (temporary.exists()) temporary.delete()
             throw error
         }
     }
@@ -354,6 +365,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             "Orphan fixture reclamation requires the lifetime lock held from setup through teardown."
         }
         val ownerDirectory = appContext.noBackupFilesDir
+        val abandonedTemporaryMarkers = ownerDirectory.listFiles { file ->
+            file.name.startsWith(".glafira-test-key-owner-") && file.name.endsWith(".tmp")
+        }.orEmpty()
+        abandonedTemporaryMarkers.forEach { temporary ->
+            check(!temporary.exists() || temporary.delete()) {
+                "Could not reclaim interrupted fixture alias registration."
+            }
+        }
+        if (abandonedTemporaryMarkers.isNotEmpty()) syncMarkerDirectory(ownerDirectory)
         ownerDirectory.listFiles { file ->
             file.name.startsWith("glafira-test-key-owner-")
         }.orEmpty().forEach { marker ->
@@ -379,11 +399,29 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val journal = File(root, "no-backup/glafira-restore-journal")
             if (journal.exists()) return@forEach
             GlafiraRollbackSnapshotCipher(alias).deleteKey()
+            if (root.exists()) {
+                check(root.deleteRecursively()) {
+                    "Could not remove orphaned fixture root after its owned key was reclaimed."
+                }
+                syncMarkerDirectory(appContext.cacheDir)
+            }
+            // Keep ownership discoverable until all reclaimable resources are removed.
             check(marker.delete()) { "Could not remove stale fixture-key owner marker." }
             syncMarkerDirectory(ownerDirectory)
-            if (root.exists()) check(root.deleteRecursively()) {
-                "Could not remove orphaned fixture root after its owned key was reclaimed."
-            }
+        }
+    }
+
+    @Test
+    fun orphanedTemporaryAliasRegistrationIsReclaimedUnderLifetimeLock() {
+        val abandoned = File(
+            appContext.noBackupFilesDir,
+            ".glafira-test-key-owner-abandoned-${UUID.randomUUID()}.tmp"
+        ).apply { writeText("partial-registration") }
+        try {
+            cleanupOwnedLeftoverRollbackFixture()
+            assertFalse("Interrupted temporary ownership records are reclaimed", abandoned.exists())
+        } finally {
+            abandoned.delete()
         }
     }
 
