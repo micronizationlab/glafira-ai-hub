@@ -15,6 +15,7 @@ import java.io.RandomAccessFile
 import java.security.KeyStore
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import javax.crypto.AEADBadTagException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -267,6 +268,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun assertCauseContains(error: Throwable, expected: String) {
         val messages = generateSequence(error as Throwable?) { it.cause }.mapNotNull { it.message }.toList()
         assertTrue("Expected failure cause to contain '$expected', got: $messages", messages.any { expected in it })
+    }
+    private fun assertCauseType(error: Throwable, expected: Class<out Throwable>) {
+        val causes = generateSequence(error as Throwable?) { it.cause }.toList()
+        assertTrue(
+            "Expected cause " + expected.name + ", got: " + causes.map { it.javaClass.name },
+            causes.any { expected.isInstance(it) }
+        )
     }
 
     private fun task(id: String) = GlafiraTask(
@@ -561,9 +569,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val archive = coordinator.create(correctPassphrase)
         try {
             withOwnedRollbackKey {
-                assertThrows(Exception::class.java) {
+                val failure = assertThrows(Exception::class.java) {
                     runBlocking { coordinator.restore(archive, wrongPassphrase) }
                 }
+                assertCauseType(failure, AEADBadTagException::class.java)
                 assertEquals("must-remain", store.getTask("must-remain")?.taskId)
             }
         } finally {
@@ -638,9 +647,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
         try {
             withOwnedRestoreJournal {
-                assertThrows(IllegalArgumentException::class.java) {
+                val failure = assertThrows(IllegalArgumentException::class.java) {
                     runBlocking { GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase) }
                 }
+                assertEquals("Неполный набор таблиц Core.", failure.message)
                 assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
                 assertFalse(File(context.noBackupFilesDir, "glafira-restore-journal/restore.pending").exists())
                 assertEquals(0, File(context.noBackupFilesDir, "glafira-restore-journal").listFiles()?.size ?: 0)
