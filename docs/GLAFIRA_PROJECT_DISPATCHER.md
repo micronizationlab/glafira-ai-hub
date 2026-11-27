@@ -45,8 +45,8 @@ When the report identifies a newly completed run:
 ## Boundaries / known limitations
 
 - This v1 is a status reconciler and dashboard, not an autonomous code-writing agent.
-- It does not poll continuously; the schedule is every 15 minutes and workflow completion events provide faster updates.
-- GitHub Actions scheduling can be delayed during platform load.
+- It does not poll continuously; reconciliation is event-driven and can be triggered manually when needed.
+- Scheduled upstream workflow completions are ignored; if an expected event is missed, use the documented manual dispatch.
 - It does not download or inspect test artifacts automatically; a later version can add focused JUnit/artifact parsing after the basic status loop is validated.
 - It cannot monitor local laptop processes or the owner's physical Android device.
 - It must not expose secrets or copy repository contents into public logs.
