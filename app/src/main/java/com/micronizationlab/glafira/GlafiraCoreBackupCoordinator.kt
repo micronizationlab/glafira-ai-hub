@@ -92,6 +92,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         clearJournal { committedThisAttempt = true }
                         verification
                     } catch (error: Exception) {
+                        // If marker publication reached rename but its first directory fsync failed,
+                        // recovery below re-syncs this journal before treating it as committed.
+                        val commitMarkerNeedsReconfirmation = committedMarker.isFile
                         val cleanupSucceeded = try {
                             recoverInterruptedRestore(passphrase)
                             !marker.exists() && !committedMarker.exists()
@@ -99,9 +102,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
                             error.addSuppressed(rollback)
                             false
                         }
-                        // Only this attempt's durably published commit can turn a cleanup retry
-                        // into success. A rollback (even when complete) preserves the original error.
-                        if (committedThisAttempt && cleanupSucceeded) completedVerification ?: throw error else throw error
+                        // A marker seen here belongs to this attempt: any previous journal was
+                        // recovered before the selected archive was read. Successful re-sync and
+                        // cleanup therefore confirm this attempt's durable commit.
+                        if ((committedThisAttempt || commitMarkerNeedsReconfirmation) && cleanupSucceeded) {
+                            completedVerification ?: throw error
+                        } else throw error
                     }
                 } finally {
                     selected.delete()
