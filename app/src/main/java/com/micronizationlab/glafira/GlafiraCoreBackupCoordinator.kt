@@ -17,6 +17,7 @@ internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
+    fun beforePlaintextSnapshotDirectorySync() = Unit
 }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
@@ -280,19 +281,28 @@ class GlafiraCoreBackupCoordinator internal constructor(
     /** Delete the crash-left plaintext portable export without following symlinks. */
     private fun deleteCommittedPortableSnapshot() {
         val snapshot = File(app.filesDir, ".glafira-core-snapshot").toPath()
-        if (!Files.exists(snapshot, LinkOption.NOFOLLOW_LINKS)) return
-        Files.walkFileTree(snapshot, object : SimpleFileVisitor<Path>() {
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                Files.delete(file)
-                return FileVisitResult.CONTINUE
-            }
+        val exists = Files.exists(snapshot, LinkOption.NOFOLLOW_LINKS)
+        val absent = Files.notExists(snapshot, LinkOption.NOFOLLOW_LINKS)
+        if (!exists && !absent) {
+            throw IOException("Не удалось определить состояние незашифрованного снимка Core.")
+        }
+        if (exists) {
+            Files.walkFileTree(snapshot, object : SimpleFileVisitor<Path>() {
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    Files.delete(file)
+                    return FileVisitResult.CONTINUE
+                }
 
-            override fun postVisitDirectory(dir: Path, error: IOException?): FileVisitResult {
-                if (error != null) throw error
-                Files.delete(dir)
-                return FileVisitResult.CONTINUE
-            }
-        })
+                override fun postVisitDirectory(dir: Path, error: IOException?): FileVisitResult {
+                    if (error != null) throw error
+                    Files.delete(dir)
+                    return FileVisitResult.CONTINUE
+                }
+            })
+        }
+        // This fsync is required even when the path was already absent: a previous
+        // deletion may have been interrupted before its parent directory was durable.
+        runtimeHooks.beforePlaintextSnapshotDirectorySync()
         syncDirectory(app.filesDir)
     }
 
