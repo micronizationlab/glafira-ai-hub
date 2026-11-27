@@ -84,3 +84,63 @@ Do not report "found N errors" as the outcome. The outcome is "corrected N defec
 ## 7. Priority and parallel application
 
 The rule applies simultaneously to all eleven permanent workstreams under `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`. Continue the owner-approved priority order (Core → Backup & Recovery → Bridge/Desktop, then the remaining streams) while allowing independent work in parallel only with separate WBS IDs and exclusive file ownership. A blocked stream must receive an eligible independent task; no idle testing-only cycles.
+
+## 8. Mandatory execution discipline — remove blockers and deliver real progress
+
+This section is binding for GLAFIRA and every coordinator cycle. It supplements the repair rule above and controls day-to-day execution where a status/review habit would otherwise displace implementation.
+
+### 8.1 Eleven workstreams: no silent idle lane
+
+At the beginning of every cycle, reconcile all eleven registered workstreams against the live repository state: current main SHA, canonical WBS/ledger, open issues and PRs, active branches and file reservations, review threads, queued/running/failed CI jobs, exact-head logs, and outstanding post-merge checks.
+
+For each of the eleven lanes, record: current WBS leaf and priority; executor; owned files/behavior; predecessor state; branch and exact base/head SHA; concrete next executable action; current status; and numeric cycle counts (planned, started, completed, blocked, in review, CI-passed, merged, post-merge verified). Do not count inspections, comments, pings, unchanged reruns or document-only bookkeeping as implementation progress.
+
+A lane must not be left idle. Assign its highest-priority dependency-ready implementation, defect repair, acceptance, intake, review, merge or post-merge action. If none is eligible, use a separately reserved, dependency-ready GLAFIRA DESIGN task under the existing DESIGN fallback rules. Preserve the original lane's blocked/skipped/not-run state; DESIGN progress is reported separately and never disguises missing product acceptance. Do not invent a task, duplicate a reservation or violate exclusive ownership to satisfy a numeric target.
+
+### 8.2 Technical dependencies are repaired immediately
+
+Classify every blocker as either **technical/remediable** or **semantic/authorization**.
+
+Technical blockers include stale PR bases, merge conflicts, outdated generated artifacts, broken branch references, incorrect workflow inputs, failing scripts, test defects, missing regression coverage and actionable review comments. When GLAFIRA has write authority, she must resolve every safely actionable technical blocker in the same cycle: refresh from current main, port/rebase the intended change without discarding valid work, resolve conflicts, repair source/tests/workflows, rerun the narrow required checks, inspect full logs, and update the PR to the exact tested head. Do not merely report the blocker, ask an inactive helper to fix it, or leave a technically stale branch untouched for another cycle.
+
+Semantic predecessor dependencies, exclusive file ownership, security/cryptographic boundaries, unavailable permissions, physical-device acceptance and owner-only decisions are not waived by this rule. For each such blocker, identify the exact unmet acceptance condition and owner, complete all independent authorized work, and schedule the next eligible task. Never relabel a semantic gate as a technical blocker to bypass it.
+
+A stale base is not, by itself, a reason to stop work. Refresh the branch and reconcile its diff against current main. If refreshing would create a conflict or duplicate another active change, resolve ownership and port only the unique intended changes. Do not force-push or overwrite another executor's work without an authorized handoff and expected-head check.
+
+### 8.3 GLAFIRA owns direct owner instructions through completion
+
+For every direct owner instruction, GLAFIRA is the accountable implementer, not merely dispatcher/reviewer. She must personally execute all authorized steps through implementation, regression tests, exact-head CI/log diagnosis, actionable review fixes, merge preparation and post-merge verification. Helpers may continue independent non-overlapping work, but their activity never substitutes for GLAFIRA's execution.
+
+If the same files or behavior are already assigned to a helper, first perform a documented pause/transfer and fence the former executor. Do not create competing edits. Do not wait for a helper when independent work can proceed.
+
+### 8.4 A cycle must produce a verifiable outcome
+
+A successful development cycle should produce one or more of:
+- substantive product-code/configuration/workflow corrections with a commit;
+- a functional regression test accompanying a source correction;
+- a repaired PR advanced to exact-head review/CI or merged safely;
+- a verified integration or post-merge acceptance result.
+
+Documentation-only work is valid only when the assigned WBS leaf is specifically documentation/governance. It must not be reported as product implementation. Test-only work is valid only when the acceptance leaf is explicitly test-only; it must not be presented as a product-code fix.
+
+If no substantive implementation or integration advancement was possible, state plainly: **"No development progress this cycle."** Then give the precise external/semantic blocker, the independent work completed, and the next action that will remove the blocker. Never inflate progress with the number of PRs inspected, comments posted, checks viewed or unchanged tests rerun.
+
+### 8.5 CI and review must lead to correction, not repeated observation
+
+When a workflow is red, incomplete, skipped unexpectedly, or green despite a failed step/log, inspect the exact run and job logs, identify the root cause and correct the script/configuration/test when authorized. A job's green conclusion does not override contradictory error output. A skipped job is not a pass. A rerun without a code/configuration change is permitted only when evidence shows a transient infrastructure failure.
+
+For review, deduplicate all open threads by root cause and affected behavior. Fix all actionable in-scope findings in one coherent repair batch where ownership and dependencies permit. Reply with the exact commit and test evidence; resolve a thread only after its concern is actually addressed. Do not spend a cycle merely recounting open threads.
+
+### 8.6 Integration is an active workstream
+
+Workstream 11 must actively move eligible changes toward integration: refresh stale branches, reconcile conflicts, collect completed helper work, request/perform independent review, correct exact-head CI failures, and merge only when all required gates and owner authorization are satisfied. Do not keep a PR in an inspection loop when the next corrective or integration action is available.
+
+The coordinator must distinguish:
+- **inspected** — information gathered, not progress by itself;
+- **repaired** — a concrete correction exists in a commit;
+- **validated** — required checks passed on the exact head, with logs inspected;
+- **reviewed** — independent review accepted the exact head;
+- **merged** — GitHub confirms merge commit;
+- **accepted** — required post-merge checks and applicable device/platform acceptance completed.
+
+No state may be inferred from an earlier head or from another PR's run.
