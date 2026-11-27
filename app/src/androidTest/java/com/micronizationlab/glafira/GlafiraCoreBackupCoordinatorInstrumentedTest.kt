@@ -191,8 +191,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         GlafiraCoreBackupCoordinator(context, store, rollbackCipher, fixtureRuntimeHooks)
 
     /**
-     * Restore pauses the real Core scheduler. The fixture must never cancel app-owned work;
-     * Core is required to be disabled and all unique Core work must be finished before restore.
+     * Production restore pauses the real Core scheduler. This fixture injects a recorder/no-op
+     * runtime hook and must not cancel app-owned work. Skip while any known unique Core queue
+     * work is unfinished so the isolated fixture cannot race the application's active work.
      */
     private fun assertNoActiveCoreWork() {
         val workManager = androidx.work.WorkManager.getInstance(appContext)
