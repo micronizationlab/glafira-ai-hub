@@ -200,6 +200,9 @@ public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
     case invalidDeviceIdentifier
     case invalidSecret
     case invalidHubBinding
+    case payloadTooLarge
+    case payloadTooDeep
+    case duplicateJSONKey
     case biometricProtectionUnavailable
     case credentialAlreadyExists
     case credentialNotFound
