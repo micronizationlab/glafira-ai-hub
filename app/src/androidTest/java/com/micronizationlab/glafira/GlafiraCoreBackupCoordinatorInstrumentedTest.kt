@@ -256,15 +256,17 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-    private fun fixtureKeyOwnerMarker(runId: String): File =
-        File(appContext.noBackupFilesDir, "glafira-test-key-owner-$runId")
+    private fun fixtureKeyOwnerMarker(alias: String, runId: String): File {
+        val kind = if (alias.endsWith("_second")) "second" else "primary"
+        return File(appContext.noBackupFilesDir, "glafira-test-key-owner-$runId-$kind")
+    }
 
     private fun registerFixtureKeyAlias(alias: String, runId: String) {
         val expected = "glafira_test_rollback_${runId.replace("-", "")}"
         require(alias == expected || alias == "${expected}_second") {
             "Only this run's uniquely scoped fixture aliases may be registered."
         }
-        val marker = fixtureKeyOwnerMarker(runId)
+        val marker = fixtureKeyOwnerMarker(alias, runId)
         check(marker.createNewFile()) { "Fixture key ownership marker already exists." }
         try {
             FileOutputStream(marker, false).use {
@@ -279,7 +281,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     private fun clearFixtureKeyAliasOwner(alias: String, runId: String) {
-        val marker = fixtureKeyOwnerMarker(runId)
+        val marker = fixtureKeyOwnerMarker(alias, runId)
         if (marker.exists()) {
             check(marker.readText(Charsets.UTF_8) == alias) {
                 "Refusing to clear a fixture-key owner marker for another alias."
@@ -296,13 +298,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         ownerDirectory.listFiles { file ->
             file.name.startsWith("glafira-test-key-owner-")
         }.orEmpty().forEach { marker ->
-            val runId = marker.name.removePrefix("glafira-test-key-owner-")
+            val markerName = marker.name.removePrefix("glafira-test-key-owner-")
+            val second = markerName.endsWith("-second")
+            val runId = markerName.removeSuffix(if (second) "-second" else "-primary")
             val parsed = try { UUID.fromString(runId) } catch (_: IllegalArgumentException) { null }
             if (parsed == null || parsed.toString() != runId) return@forEach
-            val suffix = runId.replace("-", "")
-            val expected = "glafira_test_rollback_$suffix"
+            val expected = "glafira_test_rollback_${runId.replace("-", "")}"
             val alias = marker.readText(Charsets.UTF_8)
-            if (alias != expected && alias != "${expected}_second") return@forEach
+            if (alias != if (second) "${expected}_second" else expected) return@forEach
             val root = File(appContext.cacheDir, "glafira-backup-test-$runId")
             val journal = File(root, "no-backup/glafira-restore-journal")
             if (journal.exists()) return@forEach
