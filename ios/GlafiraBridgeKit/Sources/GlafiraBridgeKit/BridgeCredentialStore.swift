@@ -148,17 +148,17 @@ private enum BridgeHubBindingValidation {
     private static func isPrivateLanAddress(_ host: String) -> Bool {
         var ipv4 = in_addr()
         if host.withCString({ inet_pton(AF_INET, $0, &ipv4) }) == 1 {
-            let bytes = withUnsafeBytes(of: ipv4.s_addr, Array.init)
-            return bytes.count == 4 &&
-                (bytes[0] == 10 ||
-                 (bytes[0] == 172 && (16...31).contains(bytes[1])) ||
-                 (bytes[0] == 192 && bytes[1] == 168))
+            let octets = host.split(separator: ".").compactMap { UInt8($0) }
+            guard octets.count == 4 else { return false }
+            return octets[0] == 10 ||
+                (octets[0] == 172 && (16...31).contains(octets[1])) ||
+                (octets[0] == 192 && octets[1] == 168)
         }
 
         var ipv6 = in6_addr()
         if host.withCString({ inet_pton(AF_INET6, $0, &ipv6) }) == 1 {
-            let bytes = withUnsafeBytes(of: ipv6, Array.init)
-            return bytes.count == 16 && (bytes[0] & 0xFE) == 0xFC
+            let normalized = host.lowercased()
+            return normalized.hasPrefix("fc") || normalized.hasPrefix("fd")
         }
         return false
     }
