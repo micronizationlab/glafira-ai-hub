@@ -254,6 +254,7 @@ jobs:
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
+          trap 'status=$?; echo "DISPATCHER_TEST_EXIT status=$status command=$BASH_COMMAND" >&2' EXIT
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
