@@ -441,7 +441,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         check(Files.isRegularFile(ownerMarker, LinkOption.NOFOLLOW_LINKS) &&
             !Files.isSymbolicLink(ownerMarker)
         ) { "Refusing to delete a rollback journal without a regular owner marker." }
-        check(Files.readString(ownerMarker, Charsets.UTF_8) == runId) {
+        val recordedOwner = Files.newInputStream(ownerMarker, LinkOption.NOFOLLOW_LINKS)
+            .bufferedReader(Charsets.UTF_8).use { it.readText() }
+        check(recordedOwner == runId) {
             "Refusing to delete a rollback journal owned by another fixture."
         }
         // Key deletion is deliberately first. If it fails, the journal and its owner
