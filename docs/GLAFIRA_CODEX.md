@@ -69,3 +69,33 @@ Do not report "found N errors" as the outcome. The outcome is "corrected N defec
 ## 7. Priority and parallel application
 
 The rule applies simultaneously to all eleven permanent workstreams under `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`. Continue the owner-approved priority order (Core → Backup & Recovery → Bridge/Desktop, then the remaining streams) while allowing independent work in parallel only with separate WBS IDs and exclusive file ownership. A blocked stream must receive an eligible independent task; no idle testing-only cycles.
+
+
+## 8. Independent workstreams and independent releases — default rule
+
+The eleven workstreams are parallel product areas, not a mandatory serial release train. The coordinator MUST keep their delivery and release paths independent unless a real technical dependency is demonstrated.
+
+1. **No artificial release chains.** Do not create a parent PR, reservation PR, umbrella PR or unmerged branch merely to make an unrelated workstream wait. A PR in one lane must not be a merge prerequisite for another lane unless the second change genuinely consumes an API, schema, protocol, migration or artifact that does not yet exist in Main.
+2. **Main is the default base.** Every independent implementation or design package starts from the latest verified `main` SHA and targets `main`. Do not stack PRs on unmerged PR branches. A stacked PR is permitted only for inseparable changes to one deliverable; document the exact technical dependency and close/retarget the stack as soon as that dependency lands.
+3. **WBS dependencies are technical, not administrative.** A predecessor is valid only when its accepted output is required by the child. Shared review calendars, a common document, the desire to serialize all merges, or a parent issue do not create a technical dependency.
+4. **Avoid shared-file bottlenecks.** Independent lanes must use lane-owned files and contracts. Do not make every lane edit the same execution ledger, roadmap or WBS file. The coordinator/integrator maintains cross-lane indexes in a separate integration change; lane deliverables remain independently reviewable and mergeable. Where a shared record must be updated, use a short, isolated integration update and do not attach unrelated product work to it.
+5. **Release each accepted slice on its own.** Each lane may open, review, test and merge its own small release as soon as its actual dependencies and acceptance gates pass. Do not hold a ready release for unrelated lanes, and do not batch independent deliverables into one mega-release.
+6. **A dependency must be explicit and minimal.** Record the exact producer artifact/API/version, consumer need, acceptance condition and removal point. If a consumer can work against a stable interface, mock, fixture or documented contract, it should proceed independently rather than wait for the producer's entire release.
+7. **No speculative reservations.** Do not create WBS parent/child reservation PR chains for work that can be reserved in the canonical ledger before editing. Use a focused reservation artifact only where repository policy or a real shared-resource conflict requires it. A reservation is not a product release and must never be presented as implementation progress.
+8. **Freshness is not a reason to serialize unrelated work.** Refresh each PR from Main immediately before merge, re-check its exact head, base SHA, changed-file overlap, review and CI. If Main moved, refresh only the affected PR; do not force all other lanes into a common rebase train.
+
+A lane's release independence never waives its own tests, security, review, owner approval or post-merge verification. It removes only artificial dependencies on unrelated lanes.
+
+## 9. Mandatory DESIGN fallback for every lane without executable work
+
+A workstream must never disappear from a cycle merely because it is deferred, has no issue assigned, is waiting for a build/device, is blocked by a dependency, or has no implementation task ready. The absence of a concrete task is itself a dispatch gap that the coordinator must repair.
+
+1. At the start of each cycle, scan every workstream's ready backlog and active assignments. If the lane has no concrete, authorized, dependency-ready implementation/review/research task that can produce a substantive result in this cycle, assign it one bounded **GLAFIRA DESIGN** package.
+2. This rule explicitly includes the deferred Multi-AI/specialist lane and the Token/GCU lane. They must work on independent product/UX/architecture design packages while runtime implementation remains deferred. Do not report them as active implementation lanes or invent implementation progress.
+3. A DESIGN package must have its own WBS leaf, issue, one accountable executor, exact allowed artifact/files, acceptance criteria, independent reviewer and branch from current Main. Prefer one standalone `docs/design/<LANE>_*.md` deliverable. Do not make it wait on an unrelated design package or a global design-system PR; state any visual assumptions locally and reconcile them later.
+4. A DESIGN package must produce a tangible artifact: user flows, screen/state specification, information architecture, interaction rules, data disclosure, error/empty/loading states, accessibility and implementation acceptance criteria as applicable. A comment saying "work on design" is not a deliverable.
+5. Keep the original lane status truthful (`DEFERRED`, `BLOCKED`, `WAITING_FOR_HARDWARE`, etc.). DESIGN is a separate active work item; it does not turn deferred implementation into active implementation and does not satisfy implementation/test/merge acceptance.
+6. One executor receives one active bounded package at a time. If the designated executor does not respond for three consecutive coordinator cycles, transfer the package to GLAFIRA or another qualified executor, preserve history and notify the previous executor. Do not let a non-responsive helper cause the lane to idle.
+7. Re-evaluate the lane after each cycle. When a real implementation task becomes ready, prioritize it according to owner-approved priorities; finish or hand off the design package cleanly without discarding its artifact.
+
+The coordinator must publish a per-cycle 11-lane matrix with, for every lane, the concrete work item, executor, artifact/PR, status and next action. A blank lane or a lane described only as "deferred" is a failed dispatch cycle.
