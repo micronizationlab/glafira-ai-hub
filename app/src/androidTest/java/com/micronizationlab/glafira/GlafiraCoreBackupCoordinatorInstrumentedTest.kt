@@ -35,10 +35,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var rollbackCipher: GlafiraRollbackSnapshotCipher
     private var ownsFixture = false
     private lateinit var testRunId: String
-    private val fixtureRuntimeHooks = object : GlafiraBackupRuntimeHooks {
+    private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
+        var failCommittedCleanupOnce = false
         override suspend fun <T> withPaused(block: () -> T): T = block()
         override fun pauseForRestore(context: Context) = Unit
+        override fun beforeCommittedJournalCleanup() {
+            if (failCommittedCleanupOnce) {
+                failCommittedCleanupOnce = false
+                throw IOException("injected interruption before committed journal cleanup")
+            }
+        }
     }
+    private val fixtureRuntimeHooks = FixtureBackupRuntimeHooks()
 
     @Before
     fun setUp() = runBlocking {
@@ -1113,6 +1121,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val archive = File(journal, "files.glb").apply { writeText("encrypted-fixture-placeholder") }
         val passphrase = "committed-cleanup-reentry".toCharArray()
         try {
+            fixtureRuntimeHooks.failCommittedCleanupOnce = true
+            assertThrows(IllegalStateException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Committed marker is preserved after interrupted cleanup", committed.exists())
+            assertTrue("Pending marker is retained until cleanup completes", pending.exists())
+            assertTrue("Rollback database is retained while cleanup is interrupted", database.exists())
+            assertTrue("Rollback archive is retained while cleanup is interrupted", archive.exists())
+
             isolatedCoordinator().recover(passphrase)
             assertFalse(pending.exists())
             assertFalse(committed.exists())
