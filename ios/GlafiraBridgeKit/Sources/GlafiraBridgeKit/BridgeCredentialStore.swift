@@ -278,7 +278,11 @@ private struct StrictJSONStructureValidator {
             guard keys.insert(key).inserted else { throw BridgeCredentialStoreError.duplicateJSONKey }
             skipWhitespace()
             guard consume(0x3A) else { throw BridgeCredentialStoreError.invalidHubBinding } // :
-            try parseValue(depth: depth)
+            if key == "schemaVersion" || key == "enrolledAtEpochMs" || key == "expiresAtEpochMs" {
+                try parseIntegerPrimitive()
+            } else {
+                try parseValue(depth: depth)
+            }
             skipWhitespace()
             if consume(0x2C) { continue } // ,
             if consume(0x7D) { return } // }
@@ -338,6 +342,29 @@ private struct StrictJSONStructureValidator {
             index += 1
         }
         guard index > start else { throw BridgeCredentialStoreError.invalidHubBinding }
+    }
+
+    private mutating func parseIntegerPrimitive() throws {
+        let start = index
+        if consume(0x2D) { /* optional minus; semantic validation rejects negative schema/timestamps */ }
+        guard index < bytes.count else { throw BridgeCredentialStoreError.invalidHubBinding }
+        if bytes[index] == 0x30 {
+            index += 1
+        } else {
+            guard (0x31...0x39).contains(bytes[index]) else {
+                throw BridgeCredentialStoreError.invalidHubBinding
+            }
+            while index < bytes.count && (0x30...0x39).contains(bytes[index]) {
+                index += 1
+            }
+        }
+        let token = String(decoding: bytes[start..<index], as: UTF8.self)
+        guard Int64(token) != nil else { throw BridgeCredentialStoreError.invalidHubBinding }
+        guard index == bytes.count ||
+                isWhitespace(bytes[index]) ||
+                bytes[index] == 0x2C || bytes[index] == 0x5D || bytes[index] == 0x7D else {
+            throw BridgeCredentialStoreError.invalidHubBinding
+        }
     }
 
     private mutating func skipWhitespace() {
