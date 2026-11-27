@@ -891,7 +891,7 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 ## WBS reservation — bounded shared file-maintenance lock — 2026-11-27 (refreshed)
 
 - **Work Item / WBS / immediate parent / tracker:** `GLAFIRA-BACKUP-LOCK-W01` / executable leaf `1.2.1.2.2.1.1` / immediate parent `1.2.1.2.2.1 — Bounded file-maintenance lock acquisition and contention regression` / issue #775.
-- **Reservation PR / branch / exact base:** replacement reservation PR pending / `wbs/glafira-backup-lock-w01-main-refresh-20261127` / Main `06b9bfdee05c9cc626b5fafb7446870b53a0cc5c`.
+- **Reservation PR / branch / exact base:** replacement reservation PR #799 / `wbs/glafira-backup-lock-w01-main-refresh-20261127` / Main `06b9bfdee05c9cc626b5fafb7446870b53a0cc5c`.
 - **Reservation PR changed files:** `docs/GLAFIRA_EXECUTION_LEDGER.md`; `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`.
 - **Exclusive implementation paths:** `app/src/main/java/com/micronizationlab/glafira/DurableJsonFile.kt`; new `app/src/test/java/com/micronizationlab/glafira/GlafiraFileMaintenanceTest.kt`. This reservation changes only the two WBS governance documents.
 - **Executor / reviewer:** GLAFIRA coordinator active author/delivery owner; independent CodeRabbit/Proofline review; owner-controlled merge.
