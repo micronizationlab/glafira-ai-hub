@@ -280,6 +280,31 @@ jobs:
             fi
           fi
           RECONCILE
+          cat > "$RUNNER_TEMP/matches-pushed-pr-branch.sh" <<'PUSH_MATCH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          inventory_file="$1"
+          target_branch="$2"
+          jq_bin="${GLAFIRA_JQ_BIN:-jq}"
+          if [[ -z "$target_branch" ]]; then
+            echo "ERROR: pushed branch name is empty; reconciliation cannot be skipped." >&2
+            exit 2
+          fi
+          if ! "$jq_bin" -e 'type == "array" and all(.[]; (.baseRefName | type) == "string" and .baseRefName != "")' "$inventory_file" >/dev/null; then
+            echo "ERROR: PR inventory is malformed or has incomplete target branch names." >&2
+            exit 2
+          fi
+          set +e
+          "$jq_bin" -e --arg target "$target_branch" 'any(.[]; .baseRefName == $target)' "$inventory_file" >/dev/null
+          status=$?
+          set -e
+          case "$status" in
+            0) exit 0 ;; # at least one PR targets the pushed branch
+            1) exit 1 ;; # valid inventory, no matching PR
+            *) echo "ERROR: pushed-branch matching failed (jq exit $status)." >&2; exit 2 ;;
+          esac
+          PUSH_MATCH
+          chmod +x "$RUNNER_TEMP/matches-pushed-pr-branch.sh"
           cat > "$RUNNER_TEMP/needs-actions-history.sh" <<'HISTORY'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -544,6 +569,41 @@ jobs:
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
+          # Exercise the exact push-branch matcher used by the production dispatcher.
+          cat > "$RUNNER_TEMP/push-prs-match.json" <<'JSON'
+          [{"number":1,"baseRefName":"main"},{"number":2,"baseRefName":"release"}]
+          JSON
+          bash "$RUNNER_TEMP/matches-pushed-pr-branch.sh" "$RUNNER_TEMP/push-prs-match.json" "main"
+          if bash "$RUNNER_TEMP/matches-pushed-pr-branch.sh" "$RUNNER_TEMP/push-prs-match.json" "feature/no-pr"; then
+            echo "valid non-matching branch was treated as a match" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          if bash "$RUNNER_TEMP/matches-pushed-pr-branch.sh" "$RUNNER_TEMP/push-prs-match.json" ""; then
+            echo "empty pushed branch name was accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          printf '{invalid json' > "$RUNNER_TEMP/push-prs-invalid.json"
+          if bash "$RUNNER_TEMP/matches-pushed-pr-branch.sh" "$RUNNER_TEMP/push-prs-invalid.json" "main"; then
+            echo "invalid PR inventory was accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          real_jq="$(command -v jq)"
+          mkdir -p "$RUNNER_TEMP/push-failing-jq"
+          cat > "$RUNNER_TEMP/push-failing-jq/jq" <<'JQ'
+          #!/usr/bin/env bash
+          if [[ "$*" == *'type == "array"'* ]]; then exec "$REAL_JQ" "$@"; fi
+          exit 42
+          JQ
+          chmod +x "$RUNNER_TEMP/push-failing-jq/jq"
+          if REAL_JQ="$real_jq" GLAFIRA_JQ_BIN="$RUNNER_TEMP/push-failing-jq/jq" bash "$RUNNER_TEMP/matches-pushed-pr-branch.sh" "$RUNNER_TEMP/push-prs-match.json" "main"; then
+            echo "jq execution failure was incorrectly treated as a non-matching branch" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          echo "push branch matcher: match/no-match/empty/malformed/jq-failure fixtures: PASS"
           # Exercise inventory comparison with a payload larger than the OS argv limit.
           jq -n '[range(1; 5001) | {number: ., headRefOid: "head", baseRefOid: "base"}]' > "$RUNNER_TEMP/large-pr-inventory.json"
           cp "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-latest.json"
@@ -723,14 +783,22 @@ jobs:
             exit 1
           fi
           if [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then
-            if ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$prs"; then
-              echo "ERROR: push-triggered PR inventory is not a JSON array." >> "$GITHUB_STEP_SUMMARY"
-              exit 1
-            fi
-            if ! jq -e --arg target "${GITHUB_REF_NAME:-}" 'any(.[]; .baseRefName == $target)' >/dev/null <<< "$prs"; then
-              echo "No open PR currently targets pushed branch ${GITHUB_REF_NAME:-unknown}; reconciliation not needed." >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
+            printf '%s\\n' "$prs" > "$RUNNER_TEMP/push-pr-inventory.json"
+            set +e
+            bash "$RUNNER_TEMP/matches-pushed-pr-branch.sh" "$RUNNER_TEMP/push-pr-inventory.json" "${GITHUB_REF_NAME:-}"
+            match_status=$?
+            set -e
+            case "$match_status" in
+              0) : ;; # a PR targets this branch; continue reconciliation
+              1)
+                echo "No open PR currently targets pushed branch ${GITHUB_REF_NAME:-unknown}; reconciliation not needed." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+                ;;
+              *)
+                echo "ERROR: pushed-branch PR matching failed; reconciliation status is UNKNOWN." >> "$GITHUB_STEP_SUMMARY"
+                exit 1
+                ;;
+            esac
           fi
           count="$(jq 'length' <<< "$prs")"
           if [[ "$count" -eq 0 ]]; then
