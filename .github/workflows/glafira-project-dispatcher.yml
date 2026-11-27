@@ -254,7 +254,6 @@ jobs:
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
-          trap 'status=$?; echo "DISPATCHER_TEST_EXIT status=$status command=$BASH_COMMAND" >&2' EXIT
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
@@ -326,8 +325,8 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-1"},"nodes":[{"number":1,"state":"OPEN","title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":2,"state":"OPEN","title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
             exit 0
           fi
@@ -343,8 +342,8 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then exit 1; fi
           if [[ "$1" == "api" && "$2" == "--paginate" ]]; then
-            printf '%s\n' '[{"number":1,"title":"one","head":{"ref":"a","sha":"h1"},"base":{"sha":"b1"},"draft":false,"html_url":"https://example.test/1"}]'
-            printf '%s\n' '[{"number":2,"title":"two","head":{"ref":"b","sha":"h2"},"base":{"sha":"b2"},"draft":true,"html_url":"https://example.test/2"}]'
+            printf '%s\n' '[{"number":1,"state":"open","title":"one","head":{"ref":"a","sha":"h1"},"base":{"sha":"b1"},"draft":false,"html_url":"https://example.test/1"}]'
+            printf '%s\n' '[{"number":2,"state":"open","title":"two","head":{"ref":"b","sha":"h2"},"base":{"sha":"b2"},"draft":true,"html_url":"https://example.test/2"}]'
             exit 0
           fi
           exit 2
