@@ -18,6 +18,7 @@ internal interface GlafiraBackupRuntimeHooks {
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
     fun beforePlaintextSnapshotDirectorySync() = Unit
+    fun beforeCommittedMarkerSync() = Unit
 }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
@@ -104,7 +105,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // recovery below re-syncs this journal before treating it as committed.
                         val commitMarkerNeedsReconfirmation = committedMarker.isFile
                         val cleanupSucceeded = try {
-                            recoverInterruptedRestore(passphrase)
+                            recoverInterruptedRestore(passphrase) { committedThisAttempt = true }
                             !marker.exists() && !committedMarker.exists()
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
@@ -178,12 +179,17 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
     }
 
-    private fun recoverInterruptedRestore(passphrase: CharArray) {
+    private fun recoverInterruptedRestore(passphrase: CharArray, onCommitted: () -> Unit = {}) {
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
+            require(committedMarker.isFile && committedMarker.readText(Charsets.UTF_8) == COMMITTED_VALUE) {
+                "Некорректная отметка завершения восстановления; журнал сохранён."
+            }
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
+            runtimeHooks.beforeCommittedMarkerSync()
             syncDirectory(journal)
+            onCommitted()
             cleanupCommittedJournal()
             return
         }
@@ -231,6 +237,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     private fun publishCommittedMarker(onCommitted: () -> Unit = {}) {
         if (committedMarker.exists()) {
+            runtimeHooks.beforeCommittedMarkerSync()
             syncDirectory(journal)
             onCommitted()
             return
@@ -243,6 +250,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         check(temporary.renameTo(committedMarker)) {
             "Не удалось зафиксировать завершение восстановления; журнал сохранён."
         }
+        runtimeHooks.beforeCommittedMarkerSync()
         syncDirectory(journal)
         onCommitted()
     }
