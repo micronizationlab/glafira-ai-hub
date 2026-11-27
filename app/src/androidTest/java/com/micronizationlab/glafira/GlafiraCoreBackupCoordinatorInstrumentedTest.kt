@@ -239,6 +239,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T = withOwnedRollbackKey(block)
     private fun rollbackKeyExists(): Boolean =
         KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias("glafira_core_rollback_v1") }
+    private fun assertCauseContains(error: Throwable, expected: String) {
+        val messages = generateSequence(error as Throwable?) { it.cause }.mapNotNull { it.message }.toList()
+        assertTrue("Expected failure cause to contain '$expected', got: $messages", messages.any { expected in it })
+    }
+
     private fun task(id: String) = GlafiraTask(
         taskId = id,
         projectId = "backup-project",
@@ -434,9 +439,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             """.trimIndent())
 
             withOwnedRestoreJournal {
-                assertThrows(android.database.sqlite.SQLiteException::class.java) {
+                val restoreFailure = assertThrows(android.database.sqlite.SQLiteException::class.java) {
                     runBlocking { coordinator.restore(archive, passphrase) }
                 }
+                assertCauseContains(restoreFailure, "injected-portable-restore-result-failure")
                 assertEquals(
                     "known-good-result",
                     store.coreTaskResult("backup-result-task", "backup-project")?.result
