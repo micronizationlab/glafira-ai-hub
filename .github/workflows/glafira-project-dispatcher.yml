@@ -401,9 +401,26 @@ jobs:
           else
             [[ "$?" -eq 1 ]]
           fi
+          jq '.[4999].baseRefOid = "changed-base"' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-base-delta.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-base-delta.json"; then
+            echo "changed base SHA was incorrectly ignored" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
           printf '{invalid json' > "$RUNNER_TEMP/invalid-pr-inventory.json"
           if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/invalid-pr-inventory.json"; then
             echo "invalid JSON was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          mkdir -p "$RUNNER_TEMP/failing-jq-bin"
+          cat > "$RUNNER_TEMP/failing-jq-bin/jq" <<'JQ'
+          #!/usr/bin/env bash
+          exit 42
+          JQ
+          chmod +x "$RUNNER_TEMP/failing-jq-bin/jq"
+          if PATH="$RUNNER_TEMP/failing-jq-bin:$PATH" bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-latest.json"; then
+            echo "jq invocation failure was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 2 ]]
           fi
