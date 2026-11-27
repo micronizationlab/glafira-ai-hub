@@ -701,3 +701,15 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 - **Status:** PROPOSED / NOT ACTIVE — refreshed from live Main after PR #738 merged. This parent reservation becomes active only when this focused PR merges; no implementation leaf is started or authorized before then. Program Step 93 remains OPEN.
 
 - WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.
+
+## WBS reservation — dispatcher PR inventory comparison failure handling — 2026-11-27
+
+- **Work Item / WBS / parent / tracker:** `GLAFIRA-CI-W02` / executable leaf `1.7.2.1.1.1.1` / parent `1.7.2.1 — Dispatcher inventory reconciliation` / issue #768.
+- **Executor / reviewer:** GLAFIRA coordinator is active implementation owner; independent CodeRabbit/Proofline review; owner-controlled merge. Amazon Q is not the assigned executor.
+- **Reservation branch / base:** `wbs/dispatcher-inventory-failure-reservation-20261127` / Main `f1ed37a72c9aa33ad0da3672fb8d8bb615d2d27d`.
+- **Exclusive implementation path:** `.github/workflows/glafira-project-dispatcher.yml` and one dedicated workflow regression test/fixture path to be named after repository test harness discovery. This reservation PR changes only the two governance documents.
+- **Observed defect:** dispatcher run #45925577417 reported success despite `/usr/bin/jq: Argument list too long` at the inventory comparison. The shell conditional treats command failure like a changed inventory, masking a failed comparison.
+- **Procedure:** (1) inspect current dispatcher inventory generation and comparison path; (2) pass large inventory through a bounded file/slurpfile or stdin rather than argv; (3) distinguish jq parse/exec failure from a genuine inventory delta; (4) persist explicit `UNKNOWN`/degraded reconciliation evidence on any comparison failure; (5) preserve exact PR number, head SHA and non-empty base SHA matching; (6) add a large-inventory regression that exceeds ordinary argv limits; (7) inject jq failure and prove workflow fails/degrades rather than reporting a green comparison; (8) inspect job logs and exact-head summary; (9) resolve all independent findings before merge.
+- **Dependencies / boundaries:** no dependency on #744's durable FIFO build queue. This leaf fixes only dispatcher inventory reconciliation; it does not implement cross-PR build serialization or claim #744 acceptance.
+- **Acceptance:** no argv overflow at large inventory size; no false success on jq execution/parse failure; explicit UNKNOWN/degraded evidence; valid inventory deltas remain distinguishable; exact-head Dispatcher, workflow lint, Security Scan and independent review pass. Owner approval remains required.
+- **Status:** RESERVED / NOT IMPLEMENTED. The implementation branch and PR may be created only after this reservation merges to Main. No Program 150 step is claimed complete.
