@@ -282,6 +282,11 @@ jobs:
           runs_fetched=false
           comparison_file="$(mktemp)"
           trap 'rm -f "$comparison_file"' EXIT
+          # Diagnose the caller's snapshot before copying it into private working state.
+          if [[ ! -f "$previous_file" || ! -r "$previous_file" ]]; then
+            echo "UNKNOWN: previous PR inventory snapshot is missing or unreadable: $previous_file" >&2
+            exit 1
+          fi
           # Preserve the caller's initial snapshot; only the private working copy
           # advances between attempts, so UNKNOWN never mutates the original input.
           cp "$previous_file" "$comparison_file"
@@ -430,7 +435,6 @@ jobs:
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
-          set -x
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
@@ -450,7 +454,9 @@ jobs:
             {"number":563,"title":"same head different base","headRefName":"feature/other-base","headRefOid":"sha-meta","baseRefOid":"base-meta-563","isDraft":false,"url":"https://example.test/pr/563","statusCheckRollup":[]},
             {"number":564,"title":"same head and base different PR","headRefName":"feature/other-pr","headRefOid":"sha-meta","baseRefOid":"base-meta-562","isDraft":false,"url":"https://example.test/pr/564","statusCheckRollup":[]},
             {"number":565,"title":"metadata-looking commit title","headRefName":"feature/title","headRefOid":"sha-title","baseRefOid":"base-title","isDraft":false,"url":"https://example.test/pr/565","statusCheckRollup":[]},
-            {"number":566,"title":"metadata rollup falls back","headRefName":"feature/metadata-rollup","headRefOid":"sha-meta-rollup","baseRefOid":"base-meta-rollup","isDraft":false,"url":"https://example.test/pr/566","statusCheckRollup":[{"name":"PR metadata edit — formatter not run","status":"COMPLETED","conclusion":"SKIPPED","detailsUrl":"https://example.test/metadata"}]}
+            {"number":566,"title":"metadata rollup falls back","headRefName":"feature/metadata-rollup","headRefOid":"sha-meta-rollup","baseRefOid":"base-meta-rollup","isDraft":false,"url":"https://example.test/pr/566","statusCheckRollup":[{"name":"PR metadata edit — formatter not run","status":"COMPLETED","conclusion":"SKIPPED","detailsUrl":"https://example.test/metadata"}]},
+            {"number":567,"title":"pipe workflow label","headRefName":"feature/pipe","headRefOid":"sha-pipe","baseRefOid":"base-pipe","isDraft":false,"url":"https://example.test/pr/567","statusCheckRollup":[]},
+            {"number":568,"title":"malformed formatter metadata","headRefName":"feature/bad-title","headRefOid":"sha-bad-title","baseRefOid":"base-bad-title","isDraft":false,"url":"https://example.test/pr/568","statusCheckRollup":[]}
           ]
           JSON
           cat > "$tmp/runs.json" <<'JSON'
@@ -470,7 +476,9 @@ jobs:
             {"headSha":"sha-meta","workflowName":"Security Scan","displayTitle":"METADATA_ONLY - commit subject","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:09:00Z","url":"https://example.test/run/security-valid","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]},
             {"headSha":"sha-title","workflowName":"Security Scan","displayTitle":"METADATA_ONLY - ordinary commit title","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:10:00Z","url":"https://example.test/run/title-valid","pullRequests":[{"number":565,"base":{"sha":"base-title"}}]},
             {"headSha":"sha-meta-rollup","workflowName":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:11:00Z","url":"https://example.test/run/format-rollup-fallback","pullRequests":[{"number":566,"base":{"sha":"base-meta-rollup"}}]},
-            {"headSha":"sha-unassociated","workflowName":"No PR association","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:12:00Z","url":"https://example.test/run/no-pr","pullRequests":[]}
+            {"headSha":"sha-pipe","workflowName":"Windows | Agent CI","displayTitle":"Windows CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:12:00Z","url":"https://example.test/run/pipe","pullRequests":[{"number":567,"base":{"sha":"base-pipe"}}]},
+            {"headSha":"sha-bad-title","workflowName":"GLAFIRA Java Format Check","displayTitle":42,"status":"completed","conclusion":"success","createdAt":"2026-11-24T12:13:00Z","url":"https://example.test/run/bad-title","pullRequests":[{"number":568,"base":{"sha":"base-bad-title"}}]},
+            {"headSha":"sha-unassociated","workflowName":"No PR association","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:14:00Z","url":"https://example.test/run/no-pr","pullRequests":[]}
           ]
           JSON
           output="$(bash "$renderer" "$tmp/prs.json" "$tmp/runs.json")"
@@ -492,6 +500,8 @@ jobs:
           row565="$(grep -F '| [#565]' <<< "$output")"
           grep -q 'Security Scan: COMPLETED/success' <<< "$row565"
           grep -q 'GLAFIRA Java Format Check: COMPLETED/success' <<< "$(grep -F '| [#566]' <<< "$output")"
+          grep -q 'Windows / Agent CI: COMPLETED/success' <<< "$(grep -F '| [#567]' <<< "$output")"
+          grep -q 'GLAFIRA Java Format Check: COMPLETED/success' <<< "$(grep -F '| [#568]' <<< "$output")"
           ! grep -q 'evil.test' <<< "$output"
           ! grep -q '\[link\]' <<< "$output"
 
@@ -502,7 +512,7 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":1,"state":"OPEN","title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}},{"number":2,"state":"OPEN","title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":1,"state":"OPEN","title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}},{"number":2,"state":"OPEN","title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Windows CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check-2"}]}}}]}}}}
           JSON
             exit 0
           fi
@@ -510,7 +520,7 @@ jobs:
           GH
           chmod +x "$tmp/fake-bin/gh"
           gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
-          jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup == [] and .[1].number == 2' <<< "$gql_prs" >/dev/null
+          jq -e 'length == 2 and .[0].baseRefOid == "b1" and all(.[]; .statusCheckRollup == []) and .[1].number == 2' <<< "$gql_prs" >/dev/null
 
           # REST fallback also paginates the open PR inventory.
           cat > "$tmp/fake-bin/gh" <<'GH'
