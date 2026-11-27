@@ -104,4 +104,64 @@ final class BridgeHubBindingTests: XCTestCase {
         """.data(using: .utf8)!
         XCTAssertThrowsError(try JSONDecoder().decode(BridgeHubBinding.self, from: invalid))
     }
+
+    func testPersistenceRoundTripsCanonicalBinding() throws {
+        let original = try binding(endpoint: "HTTPS://192.168.1.20:8443/bridge/v1")
+        let encoded = try BridgeHubBindingPersistence.encode(original)
+        XCTAssertLessThanOrEqual(encoded.count, BridgeHubBindingPersistence.maximumPayloadBytes)
+        let decoded = try BridgeHubBindingPersistence.decode(encoded)
+        XCTAssertEqual(decoded, original)
+        XCTAssertEqual(decoded.endpoint, endpoint)
+    }
+
+    func testPersistenceRejectsUnknownEnvelopeAndBindingFields() throws {
+        let encoded = try BridgeHubBindingPersistence.encode(binding())
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        envelope["unexpected"] = true
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope)))
+
+        var nested = try XCTUnwrap(envelope["binding"] as? [String: Any])
+        nested["unexpectedBindingField"] = "must-not-be-ignored"
+        envelope.removeValue(forKey: "unexpected")
+        envelope["binding"] = nested
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope)))
+    }
+
+    func testPersistenceRejectsOversizedAndTooDeepPayloads() throws {
+        let oversized = Data(repeating: 0x20, count: BridgeHubBindingPersistence.maximumPayloadBytes + 1)
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(oversized))
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.validatePayloadSize(oversized))
+
+        let nested = "{\"schemaVersion\":1,\"binding\":" +
+            String(repeating: "[", count: BridgeHubBindingPersistence.maximumJSONNestingDepth + 1) +
+            "0" +
+            String(repeating: "]", count: BridgeHubBindingPersistence.maximumJSONNestingDepth + 1) +
+            "}"
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(nested.utf8)))
+    }
+
+    func testPersistenceMapsMalformedJSONAndUnsupportedVersionToBindingError() throws {
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data("{".utf8))) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .invalidHubBinding)
+        }
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: BridgeHubBindingPersistence.encode(binding())
+        ) as? [String: Any])
+        envelope["schemaVersion"] = 99
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope))) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .invalidHubBinding)
+        }
+    }
+
+    func testPersistenceDecodeCanonicalizesEndpointBeforeReturning() throws {
+        let encoded = try BridgeHubBindingPersistence.encode(binding())
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        var nested = try XCTUnwrap(envelope["binding"] as? [String: Any])
+        nested["endpoint"] = "HTTPS://192.168.1.20:8443/bridge/v1"
+        envelope["binding"] = nested
+        let decoded = try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope))
+        XCTAssertEqual(decoded.endpoint, endpoint)
+        XCTAssertEqual(decoded.transportOrigin, "https://192.168.1.20:8443")
+    }
+
 }
