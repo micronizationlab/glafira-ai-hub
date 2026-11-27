@@ -879,3 +879,33 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 |---|---|---|---|---|---|
 | 0002 | `WBS-2026-11-27-GLAFIRA-S000-W06-READY-RESERVED-002` | READY → RESERVED | 2026-11-27T20:02:26Z | GLAFIRA | PR #788 merged; merge SHA `532c8051b87b13fc994706999d2deec8db9cd2be` |
 | 0003 | `WBS-2026-11-27-GLAFIRA-S000-W06-RESERVED-IN-PROGRESS-003` | RESERVED → IN_PROGRESS | 2026-11-27T20:12:41Z | GLAFIRA | First post-reservation implementation commit on PR #795; exact commit SHA is recorded in the PR's post-commit evidence comment |
+| 0004 | `WBS-2026-11-27-GLAFIRA-S000-W06-IMPLEMENTATION-MERGED-004` | IN_PROGRESS → IN_PROGRESS | 2026-11-27T20:35:00Z | GLAFIRA | PR #795 merged at `fa4dd61c766b57d750bc5f08a10355866a9330c6`; Main tree matches tested head; W06 continues under PR #796 and is not DONE |
+
+
+### W06 post-merge verification — PR #795
+
+| PR | Tested head | Merge commit | Main head | Exact-head evidence |
+|---|---|---|---|---|
+| #795 | `85ac0c0ba7b53a78e61de35afac81756c9458578` | `fa4dd61c766b57d750bc5f08a10355866a9330c6` | `fa4dd61c766b57d750bc5f08a10355866a9330c6` | Dispatcher run `46062970039` / job `140721410556`: SUCCESS; 5,000-PR, jq exit 1/42 and second-fetch failure fixtures passed, no `Argument list too long`; Security `46062970215` / job `140721410495`, Java Format `46062970078` / job `140721411730`, Change-aware CI `46062971895` including emulator `140721510329` — all SUCCESS |
+
+- The Main tree at merge commit `fa4dd61c766b57d750bc5f08a10355866a9330c6` is identical to the tested PR #795 head tree `c1e454397a1bf77c65206949520cd1df2ee034b0`.
+- PR #795 merged the original false-green root-cause fix. W06 remains `IN_PROGRESS`; this is not the final W06 acceptance event.
+
+### W06 reservation PR #788 — final exact-head and post-merge evidence
+
+| PR | Final head | Base SHA | Merge / Main SHA | Dispatcher | Security | Java Format | Change-aware CI |
+|---|---|---|---|---|---|---|---|
+| #788 | `ad7771cc39738e51322947d2d17f0cf1b46b4ba6` | `8f0a8354434c031e1b6f331f2b69b15256d9d7c5` | `532c8051b87b13fc994706999d2deec8db9cd2be` | Run `46060665779` / job `140713846375`: GitHub SUCCESS, but log contains `/usr/bin/jq: Argument list too long`; NOT PASSED, waived only for this docs-only reservation | Run `46060665861` / job `140713846105`: SUCCESS | Run `46060665994` / job `140713847938`: SUCCESS | Run `46060665849` / job `140714179422`: SUCCESS summary; platform jobs SKIPPED for docs-only scope |
+
+- The owner approved the narrow false-green exception for PR #788 only; no third-party human approval was required.
+- Three governance review threads remained unresolved at merge. They are addressed by the append-only reservation-key/path/evidence supplements and the W06-specific WBS-standard correction in this follow-up.
+
+### W06 reservation identity supplement — append-only
+
+| Event ID | Reservation key | Work Item ID | Registered parent | Executable leaf | Tracker | Reserved paths |
+|---|---|---|---|---|---|
+| `WBS-2026-11-27-GLAFIRA-S000-W06-PROPOSED-READY-001` | `W06-768-1.7.2.1.1.1.1` | `GLAFIRA-S000-W06` | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | `#768` | workflow, Dispatcher contract, shared project context, W06 ledger sub-scope |
+| `WBS-2026-11-27-GLAFIRA-S000-W06-READY-RESERVED-002` | `W06-768-1.7.2.1.1.1.1` | `GLAFIRA-S000-W06` | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | `#768` | workflow, Dispatcher contract, shared project context, W06 ledger sub-scope |
+| `WBS-2026-11-27-GLAFIRA-S000-W06-RESERVED-IN-PROGRESS-003` | `W06-768-1.7.2.1.1.1.1` | `GLAFIRA-S000-W06` | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | `#768` | workflow, Dispatcher contract, shared project context, W06 ledger sub-scope |
+
+The supplement assigns the stable reservation key to the already-recorded immutable events; it does not rewrite their original text or sequence.

@@ -1,6 +1,6 @@
 # GLAFIRA Project Dispatcher — v1
 
-Status: implementation branch / draft PR pending CI.
+Status: PR #795 merged; sequential W06 hardening follow-up PR #796 in progress. W06 remains IN_PROGRESS.
 
 ## Purpose
 
@@ -21,11 +21,11 @@ The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `
 
 1. Inspect all open PRs, not only the PR that triggered the latest event.
 2. For fallback Actions evidence, require exact PR number, exact current head SHA and a non-empty exact current base SHA. Older-head/base runs are stale.
-3. Re-read PR refs after collecting runs. If refs moved, render against latest refs; if the second inventory read fails, fallback status is UNKNOWN.
+3. Re-read PR refs before rendering, including when the first inventory is empty. If either snapshot path is invalid/unreadable, JSON is malformed or incomplete, the second fetch fails, or comparison is UNKNOWN, fail the job and omit the entire PR table; do not render an UNKNOWN inventory as a normal report.
 4. Exclude METADATA_ONLY only for GLAFIRA Java Format Check; similarly named commit titles in other workflows remain valid CI evidence.
 5. Distinguish queued/in-progress from completed success/failure/cancelled.
 6. Rollup checks are head-associated only and must be labelled BASE NOT VERIFIED.
-7. Paginate open-PR inventory. Cap workflow history at the newest 1,000 runs and fetch it only when fallback evidence is needed.
+7. Use GraphQL cursor pagination for open-PR inventory. REST offset fallback is disabled because concurrent closes can shift page boundaries; if GraphQL is unavailable, fail closed. Cap workflow history at the newest 1,000 runs and fetch it only when fallback evidence is needed.
 8. Keep Draft PRs Draft. Human review and integration remain separate decisions.
 9. Never alter branch dependency stacks or merge into main.
 10. Escape contributor-controlled PR titles and branch names before inserting them into Markdown.
