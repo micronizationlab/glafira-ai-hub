@@ -751,3 +751,11 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 
 **Disposition rule:** the table is the complete finding-to-fix map, not permission to mass-resolve. After this documentation revision is committed, re-fetch all 21 threads and resolve only those whose exact concern is visibly corrected in the diff. Keep any finding that depends on a third-file change or executable validator implementation open until that separate authorized work is completed.
 
+
+
+### 2026-11-27 — owner-directed universal Codex trace rule (PR #784 scope amendment)
+- Owner instruction: preserve a one-to-one trace for every finding: all findings → all corrections → all verification checks, and make the rule mandatory for every workstream in Codex.
+- Updated `docs/GLAFIRA_CODEX.md` section 8 on branch `wbs/reserve-strict-main-wbs-uniqueness-refresh-20261127`; commit `f5b8d305b940f91789b78550b50b3a0c16436ebd`.
+- Required fields per finding: stable finding ID and evidence; root cause; exact correction/files/commit/PR; exact verification procedure, run/job ID, tested SHA and outcome; explicit disposition. Grouped fixes/checks must still map to each individual finding; counts must reconcile at cycle closeout.
+- This is a fourth, owner-authorized documentation path added to PR #784 scope. It changes process requirements only; it does not claim the WBS validator or Dispatcher defect #768 has been implemented.
+- Verification status: documentation diff committed; exact-head CI and line-by-line review remain pending and must be recorded before marking this amendment verified.
