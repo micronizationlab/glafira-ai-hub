@@ -254,7 +254,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private suspend fun <T> withOwnedRollbackKey(block: suspend () -> T): T {
         val runId = testRunId
         withFixtureLocks {
-            assumeNoScheduledAppWork()
             writeRollbackOwnerMarker(runId)
         }
         var primaryFailure: Throwable? = null
