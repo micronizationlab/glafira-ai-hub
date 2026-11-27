@@ -228,3 +228,28 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
 - `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
+
+
+### Independent deferred-lane design fallback registrations
+
+These are standalone, owner-directed DESIGN deliverables for lanes whose runtime implementation is deferred. They are not dependent on a shared design-token release, each other, or any Core/Desktop release. The source implementation lanes remain DEFERRED.
+
+#### Multi-AI and specialist experience — issue #680
+
+- `1.10.1` — Multi-AI provider selection and specialist experience.
+- `1.10.1.1` — Owner-facing model/provider selection UX.
+- `1.10.1.1.1` — Standalone deferred-lane design package.
+- `1.10.1.1.1.1` — Provider selection, availability, quota and privacy states.
+- `1.10.1.1.1.1.1` — `docs/design/MULTI_AI_SELECTOR_UX.md`; Work Item `GLAFIRA-S000-W06`; issue #680.
+- **Status:** DESIGN FALLBACK / READY FOR ASSIGNMENT; runtime Multi-AI/provider integration remains DEFERRED. This package starts from Main and is independent of #679 and all other design PRs.
+
+#### Token/GCU owner experience — issue #767
+
+- `1.9.1` — Token/GCU product experience and compute economics.
+- `1.9.1.1` — Owner-facing GCU measurement, contribution and GLF settlement UX.
+- `1.9.1.1.1` — Standalone deferred-lane design package.
+- `1.9.1.1.1.1` — Consent, measurement, reward estimate, wallet and disclosure states.
+- `1.9.1.1.1.1.1` — `docs/design/TOKEN_GCU_UX.md`; Work Item `GLAFIRA-S000-W07`; issue #767.
+- **Status:** DESIGN FALLBACK / READY FOR ASSIGNMENT; token issuance, wallet settlement, compute rewards and marketplace implementation remain DEFERRED. This package starts from Main and is independent of #679, #680 and all other design PRs.
+
+For both packages, the executor is GLAFIRA coordinator unless the owner assigns another named executor; independent review and owner design approval remain required. No runtime implementation is authorized by these registrations.
