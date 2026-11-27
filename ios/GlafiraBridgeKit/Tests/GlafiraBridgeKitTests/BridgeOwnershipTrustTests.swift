@@ -15,8 +15,8 @@ final class BridgeOwnershipTrustTests: XCTestCase {
         epoch: Int64 = 7,
         fingerprint: String? = nil,
         publicKey: Data? = nil
-    ) -> BridgeOwnershipTrustedSigningKey {
-        BridgeOwnershipTrustedSigningKey(
+    ) throws -> BridgeOwnershipTrustedSigningKey {
+        try BridgeOwnershipTrustedSigningKey(
             ownerCoreId: ownerCoreId,
             signingKeyEpoch: epoch,
             signingPublicKeySHA256: fingerprint ?? self.fingerprint,
@@ -24,25 +24,43 @@ final class BridgeOwnershipTrustTests: XCTestCase {
         )
     }
 
-    func testAcceptsCanonicalP256TrustAnchor() {
-        XCTAssertTrue(BridgeOwnershipTrustValidation.isValid(key()))
+    func testAcceptsCanonicalP256TrustAnchor() throws {
+        XCTAssertTrue(BridgeOwnershipTrustValidation.isValid(try key()))
+        XCTAssertNoThrow(try key().validate())
     }
 
-    func testRejectsFingerprintSubstitutionAndNoncanonicalHex() {
+    func testRejectsFingerprintSubstitutionAndNoncanonicalHex() throws {
         XCTAssertFalse(BridgeOwnershipTrustValidation.isValid(
-            key(fingerprint: String(repeating: "0", count: 64))
+            try key(fingerprint: String(repeating: "f", count: 64))
         ))
+        XCTAssertTrue(BridgeOwnershipTrustValidation.isCanonicalFingerprint(String(repeating: "a", count: 64)))
+        XCTAssertFalse(BridgeOwnershipTrustValidation.isCanonicalFingerprint(String(repeating: "A", count: 64)))
+        XCTAssertFalse(BridgeOwnershipTrustValidation.isCanonicalFingerprint("g" + String(repeating: "0", count: 63)))
+    }
+
+    func testRejectsInvalidIdentityEpochAndKeyEncoding() throws {
+        XCTAssertThrowsError(try key(ownerCoreId: "short"))
+        XCTAssertThrowsError(try key(ownerCoreId: "owner core 0001"))
+        XCTAssertThrowsError(try key(epoch: 0))
+
+        let invalidDER = Data(repeating: 0x5A, count: publicKey.count)
+        let matchingFingerprint = SHA256.hash(data: invalidDER).map { String(format: "%02x", $0) }.joined()
         XCTAssertFalse(BridgeOwnershipTrustValidation.isValid(
-            key(fingerprint: fingerprint.uppercased())
+            try key(fingerprint: matchingFingerprint, publicKey: invalidDER)
         ))
     }
 
-    func testRejectsInvalidIdentityEpochAndKeyEncoding() {
-        XCTAssertFalse(BridgeOwnershipTrustValidation.isValid(key(ownerCoreId: "short")))
-        XCTAssertFalse(BridgeOwnershipTrustValidation.isValid(key(ownerCoreId: "owner core 0001")))
-        XCTAssertFalse(BridgeOwnershipTrustValidation.isValid(key(epoch: 0)))
+    func testRejectsOversizedDERBeforeCryptographicParsing() throws {
+        let oversizedDER = Data(repeating: 0x5A, count: BridgeOwnershipTrustValidation.maximumDEREncodedPublicKeyBytes + 1)
+        let matchingFingerprint = SHA256.hash(data: oversizedDER).map { String(format: "%02x", $0) }.joined()
         XCTAssertFalse(BridgeOwnershipTrustValidation.isValid(
-            key(publicKey: Data(repeating: 0x5A, count: publicKey.count))
+            try key(fingerprint: matchingFingerprint, publicKey: oversizedDER)
+        ))
+        XCTAssertThrowsError(try BridgeOwnershipTrustedSigningKey(
+            ownerCoreId: "owner-core-0001",
+            signingKeyEpoch: 7,
+            signingPublicKeySHA256: matchingFingerprint,
+            derEncodedPublicKey: oversizedDER
         ))
     }
 }
