@@ -724,7 +724,9 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             [[ "$3" == "-f" && "$4" == query=* ]] || exit 91
-            printf '%s' "$4" > "$DISPATCHER_GRAPHQL_QUERY_CAPTURE"
+            if [[ -n "${DISPATCHER_GRAPHQL_QUERY_CAPTURE:-}" ]]; then
+              printf '%s' "$4" > "$DISPATCHER_GRAPHQL_QUERY_CAPTURE"
+            fi
             cat "$DISPATCHER_GRAPHQL_FIXTURE"
             exit 0
           fi
