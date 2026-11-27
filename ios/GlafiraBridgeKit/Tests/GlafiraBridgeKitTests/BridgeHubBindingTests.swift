@@ -52,7 +52,7 @@ final class BridgeHubBindingTests: XCTestCase {
             "https://example.com:8443/bridge/v1",
             "http://192.168.1.20:8443/bridge/v1"
         ] {
-            XCTAssertThrowsError(try binding(endpoint: invalid), "Unexpectedly accepted (invalid)")
+            XCTAssertThrowsError(try binding(endpoint: invalid))
         }
     }
 
@@ -91,18 +91,15 @@ final class BridgeHubBindingTests: XCTestCase {
         XCTAssertThrowsError(try binding(expiresAt: enrolledAt + 365 * 24 * 60 * 60 * 1_000 + 1))
     }
 
-    func testDecodingCannotBypassBindingValidation() throws {
-        let invalid = """
-        {
-          "desktopHubId": "desktop-hub-0001",
-          "endpoint": "https://8.8.8.8:8443/bridge/v1",
-          "certificateSHA256": "(pin)",
-          "scopes": ["project.read"],
-          "enrolledAtEpochMs": (enrolledAt),
-          "expiresAtEpochMs": (enrolledAt + oneHour)
+    func testPersistenceRejectsInvalidBindingFields() throws {
+        let encoded = try BridgeHubBindingPersistence.encode(binding())
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        var nested = try XCTUnwrap(envelope["binding"] as? [String: Any])
+        nested["endpoint"] = "https://8.8.8.8:8443/bridge/v1"
+        envelope["binding"] = nested
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope))) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .invalidHubBinding)
         }
-        """.data(using: .utf8)!
-        XCTAssertThrowsError(try JSONDecoder().decode(BridgeHubBinding.self, from: invalid))
     }
 
     func testPersistenceRoundTripsCanonicalBinding() throws {
@@ -128,16 +125,45 @@ final class BridgeHubBindingTests: XCTestCase {
     }
 
     func testPersistenceRejectsOversizedAndTooDeepPayloads() throws {
-        let oversized = Data(repeating: 0x20, count: BridgeHubBindingPersistence.maximumPayloadBytes + 1)
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(oversized))
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.validatePayloadSize(oversized))
+        let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
+        let oversized = Data((String(repeating: " ", count: BridgeHubBindingPersistence.maximumPayloadBytes + 1) + validJSON).utf8)
+        XCTAssertGreaterThan(oversized.count, BridgeHubBindingPersistence.maximumPayloadBytes)
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(oversized)) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .payloadTooLarge)
+        }
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.validatePayloadSize(oversized)) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .payloadTooLarge)
+        }
 
-        let nested = "{\"schemaVersion\":1,\"binding\":" +
-            String(repeating: "[", count: BridgeHubBindingPersistence.maximumJSONNestingDepth + 1) +
+        let nestedValue = String(repeating: "[", count: BridgeHubBindingPersistence.maximumJSONNestingDepth + 1) +
             "0" +
-            String(repeating: "]", count: BridgeHubBindingPersistence.maximumJSONNestingDepth + 1) +
-            "}"
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(nested.utf8)))
+            String(repeating: "]", count: BridgeHubBindingPersistence.maximumJSONNestingDepth + 1)
+        let deeplyNested = validJSON.replacingOccurrences(
+            of: "\"desktopHubId\":\"desktop-hub-0001\"",
+            with: "\"desktopHubId\":\"desktop-hub-0001\",\"extension\":\(nestedValue)"
+        )
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(deeplyNested.utf8))) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .payloadTooDeep)
+        }
+    }
+
+    func testPersistenceRejectsDuplicateDecodedJSONMemberNames() throws {
+        let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
+        let duplicateEnvelope = validJSON.replacingOccurrences(
+            of: "\"schemaVersion\":1",
+            with: "\"schemaVersion\":1,\"schemaVersion\":1"
+        )
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(duplicateEnvelope.utf8))) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .duplicateJSONKey)
+        }
+
+        let duplicateBinding = validJSON.replacingOccurrences(
+            of: "\"desktopHubId\":\"desktop-hub-0001\"",
+            with: "\"desktopHubId\":\"desktop-hub-0001\",\"desktopHubId\":\"desktop-hub-0001\""
+        )
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(duplicateBinding.utf8))) { error in
+            XCTAssertEqual(error as? BridgeCredentialStoreError, .duplicateJSONKey)
+        }
     }
 
     func testPersistenceMapsMalformedJSONAndUnsupportedVersionToBindingError() throws {
