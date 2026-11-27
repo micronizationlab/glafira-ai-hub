@@ -570,11 +570,13 @@ jobs:
           chmod +x "$tmp/fetch-sequence.sh"
           jq '. + [{number: 5001, headRefOid: "head-b", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/snapshot-b.json"
           jq '. + [{number: 5002, headRefOid: "head-c", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/snapshot-c.json"
-          printf '%s\n' "$(<"$tmp/snapshot-b.json")" "$(<"$tmp/snapshot-b.json")" > "$tmp/sequence-b-b.jsonl"
+          jq -c . "$tmp/snapshot-b.json" > "$tmp/sequence-b-b.jsonl"
+          jq -c . "$tmp/snapshot-b.json" >> "$tmp/sequence-b-b.jsonl"
           : > "$tmp/sequence-b-b.calls"
           stable_delta="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-b-b.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-b-b.calls" bash "$reconcile" "$tmp/large-prs.json" "$tmp/sequence-b-b.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
           [[ "$stable_delta" == "CHANGED" && "$(cat "$tmp/sequence-b-b.calls")" -eq 2 ]]
-          printf '%s\n' "$(<"$tmp/snapshot-b.json")" "$(<"$tmp/snapshot-c.json")" > "$tmp/sequence-b-c.jsonl"
+          jq -c . "$tmp/snapshot-b.json" > "$tmp/sequence-b-c.jsonl"
+          jq -c . "$tmp/snapshot-c.json" >> "$tmp/sequence-b-c.jsonl"
           : > "$tmp/sequence-b-c.calls"
           if DISPATCHER_SEQUENCE_FILE="$tmp/sequence-b-c.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-b-c.calls" bash "$reconcile" "$tmp/large-prs.json" "$tmp/sequence-b-c.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused; then
             echo "unstable A→B→C inventory was incorrectly accepted" >&2; exit 1
@@ -590,7 +592,8 @@ jobs:
           : > "$tmp/sequence-empty-empty.calls"
           empty_result="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-empty-empty.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-empty-empty.calls" bash "$reconcile" "$tmp/empty-inventory.json" "$tmp/empty-empty.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
           [[ "$empty_result" == "UNCHANGED" && "$(cat "$tmp/sequence-empty-empty.calls")" -eq 1 ]]
-          printf '%s\n' "$(<"$tmp/snapshot-b.json")" "$(<"$tmp/snapshot-b.json")" > "$tmp/sequence-empty-pr-pr.jsonl"
+          jq -c . "$tmp/snapshot-b.json" > "$tmp/sequence-empty-pr-pr.jsonl"
+          jq -c . "$tmp/snapshot-b.json" >> "$tmp/sequence-empty-pr-pr.jsonl"
           : > "$tmp/sequence-empty-pr-pr.calls"
           opened_result="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-empty-pr-pr.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-empty-pr-pr.calls" bash "$reconcile" "$tmp/empty-inventory.json" "$tmp/empty-pr.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
           [[ "$opened_result" == "CHANGED" && "$(cat "$tmp/sequence-empty-pr-pr.calls")" -eq 2 ]]
