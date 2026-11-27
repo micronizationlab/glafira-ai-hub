@@ -416,7 +416,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun deleteOwnedRollbackJournalWithoutFollowingLinks(
         journal: File,
         ownerMarker: File,
-        runId: String
+        runId: String,
+        beforeDelete: () -> Unit = {}
     ) {
         check(Files.isDirectory(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             "Refusing to delete a missing or linked rollback journal."
@@ -427,6 +428,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         check(ownerMarker.readText(Charsets.UTF_8) == runId) {
             "Refusing to delete a rollback journal owned by another fixture."
         }
+        beforeDelete()
         deleteTreeWithoutFollowingLinks(journal.toPath())
         syncMarkerDirectory(checkNotNull(journal.parentFile))
     }
@@ -707,8 +709,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     )
                                 }
                                 if (journal.exists()) {
-                                    deleteOwnedRollbackJournalWithoutFollowingLinks(journal, journalOwner, runId)
-                                    if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                    deleteOwnedRollbackJournalWithoutFollowingLinks(journal, journalOwner, runId) {
+                                        if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                    }
                                 } else {
                                     check(!rollbackKeyExists()) {
                                         "A fixture owner marker without its journal cannot authorize deletion of its fixture key."
@@ -1358,8 +1361,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     withFixtureLocks {
                         if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
                             if (journal.exists()) {
-                                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, journalOwner, runId)
-                                if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, journalOwner, runId) {
+                                    if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                }
                             } else check(!rollbackKeyExists()) {
                                 "Refusing to delete an installation rollback key without its owned journal."
                             }
@@ -1441,8 +1445,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         if (owner.exists()) {
                             val previous = owner.readText(Charsets.UTF_8)
                             if (journal.exists()) {
-                                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, journalOwner, previous)
-                                if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, journalOwner, previous) {
+                                    if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                }
                             } else check(!rollbackKeyExists()) {
                                 "Refusing to delete a rollback key without its owned journal."
                             }
