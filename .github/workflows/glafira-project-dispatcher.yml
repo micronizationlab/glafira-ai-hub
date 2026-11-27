@@ -711,7 +711,7 @@ jobs:
           stale_head_report="$(bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$tmp/runs-order.changed-head.json" "$tmp/runs-order-changing.json")"
           grep -Fq 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#1]' <<< "$stale_head_report")"
           echo "dispatcher stale-run protection: PASS"
-printf '[]\n' > "$tmp/empty-inventory.json"
+          printf '[]\n' > "$tmp/empty-inventory.json"
           printf '%s\n' "$(<"$tmp/empty-inventory.json")" "$(<"$tmp/empty-inventory.json")" > "$tmp/sequence-empty-empty.jsonl"
           : > "$tmp/sequence-empty-empty.calls"
           empty_result="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-empty-empty.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-empty-empty.calls" bash "$reconcile" "$tmp/empty-inventory.json" "$tmp/empty-empty.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
