@@ -690,7 +690,7 @@ jobs:
           jq -c . "$tmp/large-prs.json" > "$tmp/runs-order.sequence"
           jq -c . "$tmp/large-prs.json" >> "$tmp/runs-order.sequence"
           : > "$tmp/runs-order.calls"
-          printf 'snapshot\\n' > "$tmp/runs-order.events"
+          printf 'snapshot\n' > "$tmp/runs-order.events"
           printf '[]\n' > "$tmp/runs-order.fixture"
           DISPATCHER_SEQUENCE_FILE="$tmp/runs-order.sequence" DISPATCHER_CALLS_FILE="$tmp/runs-order.calls" DISPATCHER_EVENT_FILE="$tmp/runs-order.events" DISPATCHER_RUNS_FIXTURE="$tmp/runs-order.fixture" bash "$reconcile" "$tmp/large-prs.json" "$tmp/runs-order.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused "$tmp/fetch-runs-fixture.sh" "$tmp/runs-order.json" >/dev/null
           [[ "$(cat "$tmp/runs-order.events")" == $'snapshot\nsnapshot\nruns\nsnapshot' ]]
