@@ -484,25 +484,45 @@ jobs:
           # Simulate a PR closing while the second inventory page is fetched.
           # Querying all PR states in created-at order keeps the closed PR in the
           # cursor set; it is filtered only after every page has been collected.
-          mkdir -p "$tmp/paged-gh"
-          cat > "$tmp/paged-gh/gh" <<'FAKE_GH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          [[ "$1" == "api" && "$2" == "graphql" ]] || exit 90
-          for arg in "$@"; do
-            case "$arg" in
-              query=*) [[ "$arg" == *"states: [OPEN, CLOSED, MERGED]"* && "$arg" == *"CREATED_AT"* ]] || exit 91 ;;
-            esac
-          done
-          cat "$DISPATCHER_GRAPHQL_PAGES"
-          FAKE_GH
-          chmod +x "$tmp/paged-gh/gh"
+          grep -Fq 'states: [OPEN, CLOSED, MERGED]' "$fetch_prs"
+          grep -Fq 'orderBy: {field: CREATED_AT, direction: ASC}' "$fetch_prs"
+          grep -Fq 'state=all&sort=created&direction=asc' "$fetch_prs"
           cat > "$tmp/graphql-pages.jsonl" <<'PAGES'
           {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-1"},"nodes":[{"number":7001,"state":"OPEN","title":"still open","headRefName":"feature/open","headRefOid":"head-open","baseRefOid":"base","isDraft":false,"url":"https://example.test/7001","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":7002,"state":"CLOSED","title":"closed during pagination","headRefName":"feature/closed","headRefOid":"head-closed","baseRefOid":"base","isDraft":false,"url":"https://example.test/7002","statusCheckRollup":{"contexts":{"nodes":[]}}},{"number":7003,"state":"OPEN","title":"new open","headRefName":"feature/new","headRefOid":"head-new","baseRefOid":"base","isDraft":false,"url":"https://example.test/7003","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           PAGES
-          paged_inventory="$(PATH="$tmp/paged-gh:$PATH" DISPATCHER_GRAPHQL_PAGES="$tmp/graphql-pages.jsonl" bash "$fetch_prs" unused)"
+          page_validation='
+            length > 0
+            and all(.[]; (.errors // [] | length) == 0
+              and .data.repository.pullRequests.nodes != null
+              and (.data.repository.pullRequests.pageInfo.hasNextPage | type) == "boolean")
+            and all(.[0:-1][]; .data.repository.pullRequests.pageInfo.hasNextPage == true)
+            and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
+          '
+          jq -s -e "$page_validation" "$tmp/graphql-pages.jsonl" >/dev/null
+          paged_inventory="$(jq -s '[
+            .[].data.repository.pullRequests.nodes[] |
+            select(.state == "OPEN") |
+            {
+              number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
+              statusCheckRollup: [
+                .statusCheckRollup.contexts.nodes[]? |
+                {
+                  name: (.name // .context // "check"),
+                  status: (.status // .state // "unknown"),
+                  conclusion: (.conclusion // null),
+                  detailsUrl: (.detailsUrl // .targetUrl // "")
+                }
+              ]
+            }
+          ]' "$tmp/graphql-pages.jsonl")"
           jq -e 'length == 2 and map(.number) == [7001,7003]' <<< "$paged_inventory" >/dev/null
+          cat > "$tmp/graphql-incomplete.jsonl" <<'INCOMPLETE'
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-never-followed"},"nodes":[]}}}}
+          INCOMPLETE
+          if jq -s -e "$page_validation" "$tmp/graphql-incomplete.jsonl" >/dev/null; then
+            echo "incomplete GraphQL page chain was incorrectly accepted" >&2; exit 1
+          fi
           echo "dispatcher stable all-state pagination, CHANGED wrapper, snapshot-open diagnostics and failure summary: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
