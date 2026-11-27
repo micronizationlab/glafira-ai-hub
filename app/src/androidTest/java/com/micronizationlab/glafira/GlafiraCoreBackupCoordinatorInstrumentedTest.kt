@@ -1411,7 +1411,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 fixtureRuntimeHooks.failCommittedCleanupOnce = false
                 isolatedCoordinator().recover(passphrase)
                 assertFalse("Recovery removes the committed journal", journal.exists())
-                assertEquals("Restore reinstates the archived queued task", GlafiraTaskState.QUEUED, store.getTask(taskId)?.state)
+                assertEquals(
+                    "Restore reinstates the archived task for owner review",
+                    GlafiraTaskState.WAITING_FOR_OWNER,
+                    store.getTask(taskId)?.state
+                )
                 assertTrue("Verification result remains successful", verification.fileCount > 0 && verification.totalBytes > 0)
             }
         } finally {
