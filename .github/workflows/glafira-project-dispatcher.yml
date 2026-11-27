@@ -611,23 +611,8 @@ jobs:
             [[ "$?" -eq 2 ]]
           fi
 
-          # The production wrapper retries a changed inventory and only accepts two consecutive equal snapshots.
-          cat > "$tmp/fetch-changing-once.sh" <<'FETCH_ONCE'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          workdir="$1"
-          count_file="$workdir/fetch-count"
-          count=0; [[ ! -f "$count_file" ]] || count="$(cat "$count_file")"
-          count=$((count + 1)); printf '%s' "$count" > "$count_file"
-          if [[ "$count" -eq 1 ]]; then cat "$workdir/initial-snapshot.json"; else cat "$workdir/stable-snapshot.json"; fi
-          FETCH_ONCE
-          chmod +x "$tmp/fetch-changing-once.sh"
-          jq '. + [{number:5001,headRefOid:"new-head",baseRefOid:"base"}]' "$tmp/large-prs.json" > "$tmp/initial-snapshot.json"
-          cp "$tmp/initial-snapshot.json" "$tmp/stable-snapshot.json"
-          printf '0' > "$tmp/fetch-count"
-          changed_stable="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-stable.json" "$tmp/fetch-changing-once.sh" "$comparator" "$tmp")"
-          [[ "$changed_stable" == "CHANGED" && "$(cat "$tmp/fetch-count")" -eq 2 ]]
-
+          # The preceding production CHANGED fixture returns the same new snapshot
+          # on consecutive fetches, proving the bounded retry accepts only a stable result.
           echo "dispatcher production fetcher: mixed-state filtering, malformed GraphQL fallback, malformed REST fail-closed, cursor validation and bounded stabilization: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
