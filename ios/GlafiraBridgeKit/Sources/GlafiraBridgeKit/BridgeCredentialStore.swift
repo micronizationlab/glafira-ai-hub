@@ -4,7 +4,8 @@ import LocalAuthentication
 import Darwin
 
 /// Non-secret lifecycle identity of the authoritative Windows Hub enrollment.
-public struct BridgeHubBinding: Codable, Equatable, Sendable {
+/// Deliberately not Codable: callers must use the strict, bounded persistence API.
+public struct BridgeHubBinding: Equatable, Sendable {
     public let desktopHubId: String
     /// Canonical HTTPS endpoint including the Windows Hub API base path.
     public let endpoint: String
@@ -18,15 +19,6 @@ public struct BridgeHubBinding: Codable, Equatable, Sendable {
         var components = URLComponents(string: endpoint)!
         components.path = ""
         return components.string!
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case desktopHubId
-        case endpoint
-        case certificateSHA256
-        case scopes
-        case enrolledAtEpochMs
-        case expiresAtEpochMs
     }
 
     public init(
@@ -59,29 +51,6 @@ public struct BridgeHubBinding: Codable, Equatable, Sendable {
         self.scopes = scopes.sorted()
         self.enrolledAtEpochMs = enrolledAtEpochMs
         self.expiresAtEpochMs = expiresAtEpochMs
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
-            desktopHubId: container.decode(String.self, forKey: .desktopHubId),
-            endpoint: container.decode(String.self, forKey: .endpoint),
-            certificateSHA256: container.decode(String.self, forKey: .certificateSHA256),
-            scopes: container.decode([String].self, forKey: .scopes),
-            enrolledAtEpochMs: container.decode(Int64.self, forKey: .enrolledAtEpochMs),
-            expiresAtEpochMs: container.decode(Int64.self, forKey: .expiresAtEpochMs)
-        )
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        try validate()
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(desktopHubId, forKey: .desktopHubId)
-        try container.encode(endpoint, forKey: .endpoint)
-        try container.encode(certificateSHA256, forKey: .certificateSHA256)
-        try container.encode(scopes, forKey: .scopes)
-        try container.encode(enrolledAtEpochMs, forKey: .enrolledAtEpochMs)
-        try container.encode(expiresAtEpochMs, forKey: .expiresAtEpochMs)
     }
 
     public func validate() throws {
@@ -174,58 +143,28 @@ private enum BridgeHubBindingValidation {
     }
 }
 
-public struct BridgeDeviceCredential: Equatable, Sendable {
-    public let deviceId: String
-    public let hmacSecret: Data
-
-    public init(deviceId: String, hmacSecret: Data) throws {
-        let units = deviceId.utf16.count
-        guard (8...128).contains(units),
-              deviceId.unicodeScalars.allSatisfy({
-                  $0.value <= 0xFFFF &&
-                  (CharacterSet.alphanumerics.contains($0) ||
-                   $0 == "-" || $0 == "_" || $0 == ".")
-              }) else {
-            throw BridgeCredentialStoreError.invalidDeviceIdentifier
-        }
-        guard hmacSecret.count == 32 else {
-            throw BridgeCredentialStoreError.invalidSecret
-        }
-        self.deviceId = deviceId
-        self.hmacSecret = hmacSecret
-    }
-}
-
-public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
-    case invalidDeviceIdentifier
-    case invalidSecret
-    case invalidHubBinding
-    case biometricProtectionUnavailable
-    case credentialAlreadyExists
-    case credentialNotFound
-    case authenticationCancelled
-    case authenticationFailed
-    case keychainFailure(status: Int32)
-}
-
-/// Strict, bounded persistence envelope for a validated Windows Hub binding.
+/// Strict, bounded persistence envelope. This is the only public decoding route for bindings.
 public enum BridgeHubBindingPersistence {
-    private struct Envelope: Codable {
-        let schemaVersion: Int
-        let binding: BridgeHubBinding
-    }
-
     static let maximumPayloadBytes = 4_096
     static let maximumJSONNestingDepth = 16
 
     public static func encode(_ binding: BridgeHubBinding) throws -> Data {
         do {
             try binding.validate()
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            let data = try encoder.encode(Envelope(schemaVersion: 1, binding: binding))
+            let bindingObject: [String: Any] = [
+                "desktopHubId": binding.desktopHubId,
+                "endpoint": binding.endpoint,
+                "certificateSHA256": binding.certificateSHA256,
+                "scopes": binding.scopes,
+                "enrolledAtEpochMs": binding.enrolledAtEpochMs,
+                "expiresAtEpochMs": binding.expiresAtEpochMs
+            ]
+            let envelope: [String: Any] = ["schemaVersion": 1, "binding": bindingObject]
+            let data = try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])
             try validatePayloadSize(data)
             return data
+        } catch let error as BridgeCredentialStoreError {
+            throw error
         } catch {
             throw BridgeCredentialStoreError.invalidHubBinding
         }
@@ -234,18 +173,33 @@ public enum BridgeHubBindingPersistence {
     public static func decode(_ data: Data) throws -> BridgeHubBinding {
         do {
             try validatePayloadSize(data)
-            guard hasSafeJSONNestingDepth(data),
-                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  Set(object.keys) == Set(["schemaVersion", "binding"]),
-                  validBindingJSONObject(object["binding"]) else {
+            try validateJSONStructure(data)
+            guard let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  Set(envelope.keys) == Set(["schemaVersion", "binding"]),
+                  integerValue(envelope["schemaVersion"]) == 1,
+                  let object = envelope["binding"] as? [String: Any],
+                  Set(object.keys) == Set([
+                    "desktopHubId", "endpoint", "certificateSHA256", "scopes",
+                    "enrolledAtEpochMs", "expiresAtEpochMs"
+                  ]),
+                  let desktopHubId = object["desktopHubId"] as? String,
+                  let endpoint = object["endpoint"] as? String,
+                  let certificateSHA256 = object["certificateSHA256"] as? String,
+                  let scopes = object["scopes"] as? [String],
+                  let enrolledAtEpochMs = integerValue(object["enrolledAtEpochMs"]),
+                  let expiresAtEpochMs = integerValue(object["expiresAtEpochMs"]) else {
                 throw BridgeCredentialStoreError.invalidHubBinding
             }
-            let envelope = try JSONDecoder().decode(Envelope.self, from: data)
-            guard envelope.schemaVersion == 1 else {
-                throw BridgeCredentialStoreError.invalidHubBinding
-            }
-            try envelope.binding.validate()
-            return envelope.binding
+            return try BridgeHubBinding(
+                desktopHubId: desktopHubId,
+                endpoint: endpoint,
+                certificateSHA256: certificateSHA256,
+                scopes: scopes,
+                enrolledAtEpochMs: enrolledAtEpochMs,
+                expiresAtEpochMs: expiresAtEpochMs
+            )
+        } catch let error as BridgeCredentialStoreError {
+            throw error
         } catch {
             throw BridgeCredentialStoreError.invalidHubBinding
         }
@@ -253,47 +207,150 @@ public enum BridgeHubBindingPersistence {
 
     static func validatePayloadSize(_ data: Data) throws {
         guard (1...maximumPayloadBytes).contains(data.count) else {
+            throw BridgeCredentialStoreError.payloadTooLarge
+        }
+    }
+
+    static func validateJSONStructure(_ data: Data) throws {
+        var validator = StrictJSONStructureValidator(
+            bytes: Array(data),
+            maximumDepth: maximumJSONNestingDepth
+        )
+        try validator.validate()
+    }
+
+    private static func integerValue(_ value: Any?) -> Int64? {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else {
+            return nil
+        }
+        let value = number.doubleValue
+        guard value.isFinite,
+              value.rounded(.towardZero) == value,
+              value >= Double(Int64.min),
+              value <= Double(Int64.max) else {
+            return nil
+        }
+        return number.int64Value
+    }
+}
+
+/// Small pre-parse JSON scanner: detects duplicate decoded member names and bounds nesting
+/// before JSONSerialization can collapse duplicate keys or allocate a deep object graph.
+private struct StrictJSONStructureValidator {
+    private let bytes: [UInt8]
+    private let maximumDepth: Int
+    private var index = 0
+
+    init(bytes: [UInt8], maximumDepth: Int) {
+        self.bytes = bytes
+        self.maximumDepth = maximumDepth
+    }
+
+    mutating func validate() throws {
+        skipWhitespace()
+        try parseValue(depth: 0)
+        skipWhitespace()
+        guard index == bytes.count else { throw BridgeCredentialStoreError.invalidHubBinding }
+    }
+
+    private mutating func parseValue(depth: Int) throws {
+        skipWhitespace()
+        guard index < bytes.count else { throw BridgeCredentialStoreError.invalidHubBinding }
+        switch bytes[index] {
+        case 0x7B: try parseObject(depth: depth + 1) // {
+        case 0x5B: try parseArray(depth: depth + 1) // [
+        case 0x22: _ = try parseString()
+        default: try parsePrimitive()
+        }
+    }
+
+    private mutating func parseObject(depth: Int) throws {
+        guard depth <= maximumDepth else { throw BridgeCredentialStoreError.payloadTooDeep }
+        index += 1
+        skipWhitespace()
+        if consume(0x7D) { return }
+        var keys = Set<String>()
+        while true {
+            skipWhitespace()
+            let key = try parseString()
+            guard keys.insert(key).inserted else { throw BridgeCredentialStoreError.duplicateJSONKey }
+            skipWhitespace()
+            guard consume(0x3A) else { throw BridgeCredentialStoreError.invalidHubBinding } // :
+            try parseValue(depth: depth)
+            skipWhitespace()
+            if consume(0x2C) { continue } // ,
+            if consume(0x7D) { return } // }
             throw BridgeCredentialStoreError.invalidHubBinding
         }
     }
 
-    private static func hasSafeJSONNestingDepth(_ data: Data) -> Bool {
-        var depth = 0
-        var insideString = false
-        var escaped = false
-        for byte in data {
-            if insideString {
-                if escaped {
-                    escaped = false
-                } else if byte == 0x5C {
-                    escaped = true
-                } else if byte == 0x22 {
-                    insideString = false
-                }
-                continue
-            }
-            switch byte {
-            case 0x22:
-                insideString = true
-            case 0x7B, 0x5B: // { [
-                depth += 1
-                if depth > maximumJSONNestingDepth { return false }
-            case 0x7D, 0x5D: // } ]
-                depth -= 1
-                if depth < 0 { return false }
-            default:
-                break
-            }
+    private mutating func parseArray(depth: Int) throws {
+        guard depth <= maximumDepth else { throw BridgeCredentialStoreError.payloadTooDeep }
+        index += 1
+        skipWhitespace()
+        if consume(0x5D) { return }
+        while true {
+            try parseValue(depth: depth)
+            skipWhitespace()
+            if consume(0x2C) { continue } // ,
+            if consume(0x5D) { return } // ]
+            throw BridgeCredentialStoreError.invalidHubBinding
         }
-        return !insideString && depth == 0
     }
 
-    private static func validBindingJSONObject(_ value: Any?) -> Bool {
-        guard let object = value as? [String: Any] else { return false }
-        return Set(object.keys) == Set([
-            "desktopHubId", "endpoint", "certificateSHA256", "scopes",
-            "enrolledAtEpochMs", "expiresAtEpochMs"
-        ])
+    private mutating func parseString() throws -> String {
+        guard consume(0x22) else { throw BridgeCredentialStoreError.invalidHubBinding }
+        let start = index - 1
+        while index < bytes.count {
+            let byte = bytes[index]
+            if byte == 0x22 {
+                index += 1
+                let encoded = Data(bytes[start..<index])
+                guard let value = try? JSONDecoder().decode(String.self, from: encoded) else {
+                    throw BridgeCredentialStoreError.invalidHubBinding
+                }
+                return value
+            }
+            if byte < 0x20 { throw BridgeCredentialStoreError.invalidHubBinding }
+            if byte == 0x5C {
+                index += 1
+                guard index < bytes.count else { throw BridgeCredentialStoreError.invalidHubBinding }
+                if bytes[index] == 0x75 {
+                    guard index + 4 < bytes.count else { throw BridgeCredentialStoreError.invalidHubBinding }
+                    index += 5
+                } else {
+                    index += 1
+                }
+            } else {
+                index += 1
+            }
+        }
+        throw BridgeCredentialStoreError.invalidHubBinding
+    }
+
+    private mutating func parsePrimitive() throws {
+        let start = index
+        while index < bytes.count,
+              !isWhitespace(bytes[index]),
+              bytes[index] != 0x2C, bytes[index] != 0x5D, bytes[index] != 0x7D {
+            index += 1
+        }
+        guard index > start else { throw BridgeCredentialStoreError.invalidHubBinding }
+    }
+
+    private mutating func skipWhitespace() {
+        while index < bytes.count && isWhitespace(bytes[index]) { index += 1 }
+    }
+
+    private func isWhitespace(_ byte: UInt8) -> Bool {
+        byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D
+    }
+
+    private mutating func consume(_ byte: UInt8) -> Bool {
+        guard index < bytes.count, bytes[index] == byte else { return false }
+        index += 1
+        return true
     }
 }
 
