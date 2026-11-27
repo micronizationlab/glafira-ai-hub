@@ -105,7 +105,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // A marker seen here belongs to this attempt: any previous journal was
                         // recovered before the selected archive was read. Successful re-sync and
                         // cleanup therefore confirm this attempt's durable commit.
-                        if ((committedThisAttempt || commitMarkerNeedsReconfirmation) && cleanupSucceeded) {
+                        // Once this attempt's commit marker was fsynced, cleanup failure is
+                        // not a restore failure: the selected data is committed. Leave the durable
+                        // journal for the next recovery pass and report the verified restore result.
+                        // A marker whose first directory fsync failed is different: it must be
+                        // re-confirmed by recovery before success can be reported.
+                        if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
                             completedVerification ?: throw error
                         } else throw error
                     }
