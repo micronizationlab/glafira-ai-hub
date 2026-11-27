@@ -135,7 +135,7 @@ private enum BridgeHubBindingValidation {
             return nil
         }
         components.scheme = "https"
-        components.host = host.lowercased()
+        components.host = host.contains(":") ? "[\(host.lowercased())]" : host.lowercased()
         guard let normalized = components.string,
               let normalizedURL = URL(string: normalized),
               normalizedURL.path == "/bridge/v1",
