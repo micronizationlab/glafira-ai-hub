@@ -77,8 +77,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         portable.readVerified(entry).also(portable::checkRestoreSupported)
                     }
                     prepareRollback(passphrase)
+                    var completedVerification: BackupVerification? = null
                     try {
                         val verification = BackupArchive.restore(app, selected, passphrase)
+                        completedVerification = verification
                         syncRestoredFiles()
                         portable.restore(snapshot)
                         recoverPendingAfterRestore(app)
@@ -91,7 +93,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
                             recoverInterruptedRestore(passphrase)
                             // A committed restore whose journal cleanup failed is still successful
                             // once recovery confirms cleanup. Do not invite a duplicate restore.
-                            if (!marker.exists() && !committedMarker.exists()) return@withPaused verification
+                            if (!marker.exists() && !committedMarker.exists()) {
+                                completedVerification?.let { return@withPaused it }
+                            }
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
                         }
