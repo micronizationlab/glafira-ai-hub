@@ -4,6 +4,8 @@ At the start of every session, follow `docs/engineering/ELEVENTH_WORKSTREAM_PR_I
 
 # GitHub Copilot collaboration rules for GLAFIRA
 
+**Mandatory repair rule:** all Copilot agents and other helpers with write authority must follow [`docs/GLAFIRA_CODEX.md`](docs/GLAFIRA_CODEX.md). When a defect is found, batch related defects, fix them immediately in the same cycle, run only the necessary regression/acceptance checks, and leave one repair report. Do not submit finding-only reviews or repeat cosmetic fixes. Read-only reviewers hand one deduplicated repair register to the named implementer.
+
 ## Mandatory first-session startup — read before accepting any assignment
 
 Every newly joining AI helper, coding agent or collaborator must begin with the following sequence on its first visit to this repository, before implementing its assigned subproject:

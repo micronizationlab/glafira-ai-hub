@@ -1,6 +1,7 @@
 # Mandatory instructions for all GLAFIRA contributors and agents
 
 Before any work, read in full:
+0. `docs/GLAFIRA_CODEX.md` — mandatory immediate repair and one-pass defect closure for all participants.
 1. `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md` — permanent project/task numbering and strict step order.
 2. `docs/GLAFIRA_EXECUTION_CONTROL.md` — startup, ownership, tests, CI, review, merge and reporting gates.
 3. `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md` and `docs/GLAFIRA_EXECUTION_LEDGER.md` — current acceptance plan and evidence history.
@@ -22,3 +23,7 @@ If the required WBS node does not exist, stop and ask the coordinator to registe
 - Global cross-PR build serialization is NOT IMPLEMENTED. Android uses PR-keyed concurrency, iOS uses ref-keyed concurrency, and Windows Agent/deployment/Desktop workflows lack a shared global queue. Issue #744 tracks a durable non-dropping FIFO queue/lock. Until it is implemented and verified, parallel platform build dispatch is BLOCKED; do not describe separate PR runs as serialized. Skipped/cancelled/queued/in-progress are not passes.
 
 - PR-size exceptions require written owner/integrator approval **before implementation begins**. A file-count-only exception permits 6–10 files only for a coherent change of <=200 changed lines, with rationale and exact file list. A 201–300-line change requires a separate prior written line-count approval. If a 201–300-line change also touches 6–10 files, both exceptions and both rationales/file list are required. More than 300 changed lines or more than 10 files must be split.
+
+## Mandatory repair-on-discovery rule
+
+Every participant with write authority must follow `docs/GLAFIRA_CODEX.md`: correct every safely actionable defect in the same cycle, batch related defects into one repair register/implementation, and leave only a repair report with committed changes and evidence. Finding-only comments, repeated cosmetic fixes and test-only activity are not acceptable cycle outcomes.
