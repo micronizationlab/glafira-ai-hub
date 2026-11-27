@@ -85,10 +85,10 @@ jobs:
           repo="$1"
           query='query($endCursor: String) {
             repository(owner: "micronizationlab", name: "glafira-ai-hub") {
-              pullRequests(first: 100, after: $endCursor, states: OPEN) {
+              pullRequests(first: 100, after: $endCursor, states: [OPEN, CLOSED, MERGED], orderBy: {field: CREATED_AT, direction: ASC}) {
                 pageInfo { hasNextPage endCursor }
                 nodes {
-                  number title headRefName headRefOid baseRefOid isDraft url
+                  number state title headRefName headRefOid baseRefOid isDraft url
                   statusCheckRollup { contexts(first: 100) { nodes {
                     __typename
                     ... on CheckRun { name status conclusion detailsUrl }
@@ -98,9 +98,17 @@ jobs:
               }
             }
           }'
-          if pages="$(gh api graphql --paginate -f query="$query" 2>/dev/null)" && jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null <<< "$pages"; then
+          if pages="$(gh api graphql --paginate -f query="$query" 2>/dev/null)" && jq -s -e '
+            length > 0
+            and all(.[]; (.errors // [] | length) == 0
+              and .data.repository.pullRequests.nodes != null
+              and (.data.repository.pullRequests.pageInfo.hasNextPage | type) == "boolean")
+            and all(.[0:-1][]; .data.repository.pullRequests.pageInfo.hasNextPage == true)
+            and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
+          ' >/dev/null <<< "$pages"; then
             jq -s '[
               .[].data.repository.pullRequests.nodes[] |
+              select(.state == "OPEN") |
               {
                 number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
                 statusCheckRollup: [
@@ -117,9 +125,11 @@ jobs:
             exit 0
           fi
           # REST fallback retains exact head/base identity and paginates all open PRs.
-          rest_pages="$(gh api --paginate "repos/$repo/pulls?state=open&per_page=100")"
+          # Include closed/merged PRs in the ordered cursor set so a concurrent
+          # close cannot remove an item from the middle of offset-based pages.
+          rest_pages="$(gh api --paginate "repos/$repo/pulls?state=all&sort=created&direction=asc&per_page=100")"
           jq -s '[
-            add[] |
+            add[] | select(.state == "open") |
             {
               number, title,
               headRefName: .head.ref,
@@ -161,6 +171,15 @@ jobs:
           set -euo pipefail
           previous_file="$1"
           latest_file="$2"
+          # Diagnose local snapshot failures before invoking jq.
+          if [[ ! -f "$previous_file" || ! -r "$previous_file" ]]; then
+            echo "ERROR: previous PR inventory snapshot is missing or unreadable: $previous_file" >&2
+            exit 2
+          fi
+          if [[ ! -f "$latest_file" || ! -r "$latest_file" ]]; then
+            echo "ERROR: latest PR inventory snapshot is missing or unreadable: $latest_file" >&2
+            exit 2
+          fi
           # Keep inventories in files: a full JSON snapshot must never be passed in argv.
           set +e
           comparison_result="$(jq -r -s --slurpfile latest "$latest_file" '
@@ -222,6 +241,16 @@ jobs:
             *) echo "UNKNOWN: PR inventory comparison failed (exit $comparison_status)." >&2; exit 1 ;;
           esac
           RECONCILE
+          cat > "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" <<'SUMMARY'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          summary_file="$1"
+          {
+            echo "## ERROR: Dispatcher reconciliation incomplete"
+            echo ""
+            echo "Second PR inventory fetch or exact PR/head/base comparison failed. Current identity is UNKNOWN; this run is not a successful reconciliation."
+          } >> "$summary_file"
+          SUMMARY
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -427,6 +456,54 @@ jobs:
             [[ "$?" -eq 1 ]]
           fi
           echo "dispatcher fail-closed integration: second-fetch and injected-jq failures return non-zero: PASS"
+
+          # A valid inventory delta is CHANGED (not UNKNOWN) through the production wrapper.
+          jq '. + [{number: 5001, headRefOid: "head-new", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/large-prs-wrapper-delta.json"
+          cat > "$tmp/fetch-changed-prs.sh" <<'FETCH_CHANGED'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cat "$DISPATCHER_CHANGED_INVENTORY"
+          FETCH_CHANGED
+          chmod +x "$tmp/fetch-changed-prs.sh"
+          changed_result="$(DISPATCHER_CHANGED_INVENTORY="$tmp/large-prs-wrapper-delta.json" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-changed-prs.sh" "$comparator" unused)"
+          [[ "$changed_result" == "CHANGED" ]]
+
+          # Missing/unreadable local snapshots are explicit comparator errors.
+          if bash "$comparator" "$tmp/does-not-exist.json" "$tmp/large-prs-same.json" 2>"$tmp/snapshot-open.err"; then
+            echo "missing previous snapshot was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+            grep -q "previous PR inventory snapshot is missing or unreadable" "$tmp/snapshot-open.err"
+          fi
+
+          # The production failure-summary helper must leave an explicit non-green diagnostic.
+          bash "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" "$tmp/summary.md"
+          grep -q "ERROR: Dispatcher reconciliation incomplete" "$tmp/summary.md"
+          grep -q "Current identity is UNKNOWN" "$tmp/summary.md"
+
+          # Simulate a PR closing while the second inventory page is fetched.
+          # Querying all PR states in created-at order keeps the closed PR in the
+          # cursor set; it is filtered only after every page has been collected.
+          mkdir -p "$tmp/paged-gh"
+          cat > "$tmp/paged-gh/gh" <<'FAKE_GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [[ "$1" == "api" && "$2" == "graphql" ]] || exit 90
+          for arg in "$@"; do
+            case "$arg" in
+              query=*) [[ "$arg" == *"states: [OPEN, CLOSED, MERGED]"* && "$arg" == *"CREATED_AT"* ]] || exit 91 ;;
+            esac
+          done
+          cat "$DISPATCHER_GRAPHQL_PAGES"
+          FAKE_GH
+          chmod +x "$tmp/paged-gh/gh"
+          cat > "$tmp/graphql-pages.jsonl" <<'PAGES'
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-1"},"nodes":[{"number":7001,"state":"OPEN","title":"still open","headRefName":"feature/open","headRefOid":"head-open","baseRefOid":"base","isDraft":false,"url":"https://example.test/7001","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":7002,"state":"CLOSED","title":"closed during pagination","headRefName":"feature/closed","headRefOid":"head-closed","baseRefOid":"base","isDraft":false,"url":"https://example.test/7002","statusCheckRollup":{"contexts":{"nodes":[]}}},{"number":7003,"state":"OPEN","title":"new open","headRefName":"feature/new","headRefOid":"head-new","baseRefOid":"base","isDraft":false,"url":"https://example.test/7003","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          PAGES
+          paged_inventory="$(PATH="$tmp/paged-gh:$PATH" DISPATCHER_GRAPHQL_PAGES="$tmp/graphql-pages.jsonl" bash "$fetch_prs" unused)"
+          jq -e 'length == 2 and map(.number) == [7001,7003]' <<< "$paged_inventory" >/dev/null
+          echo "dispatcher stable all-state pagination, CHANGED wrapper, snapshot-open diagnostics and failure summary: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
@@ -474,11 +551,7 @@ jobs:
                 ;;
             esac
           else
-            {
-              echo "## ERROR: Dispatcher reconciliation incomplete"
-              echo ""
-              echo "Second PR inventory fetch or exact PR/head/base comparison failed. Current identity is UNKNOWN; this run is not a successful reconciliation."
-            } >> "$GITHUB_STEP_SUMMARY"
+            bash "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           {
