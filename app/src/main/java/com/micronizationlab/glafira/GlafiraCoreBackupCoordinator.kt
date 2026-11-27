@@ -67,6 +67,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
         runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 recoverInterruptedRestore(passphrase)
+                // Commit state is local to this restore attempt; a prior cleanup failure must
+                // never make a later rollback look like a successful restore.
+                var committedThisAttempt = false
                 val selected = File(app.cacheDir, "glafira-selected-${UUID.randomUUID()}.glb")
                 try {
                     require(archive.isFile && archive.length() in 1..MAX_ARCHIVE_BYTES)
@@ -86,10 +89,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         recoverPendingAfterRestore(app)
                         runtimeHooks.pauseForRestore(app)
                         checkpointDatabase()
-                        clearJournal()
+                        clearJournal { committedThisAttempt = true }
                         verification
                     } catch (error: Exception) {
-                        val commitWasPublished = committedRestoreInProgress || committedMarker.exists()
                         val cleanupSucceeded = try {
                             recoverInterruptedRestore(passphrase)
                             !marker.exists() && !committedMarker.exists()
@@ -97,9 +99,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
                             error.addSuppressed(rollback)
                             false
                         }
-                        // Only a durably committed restore may be reported as successful after
-                        // cleanup retry. A successful rollback must still report the original failure.
-                        if (commitWasPublished && cleanupSucceeded) completedVerification ?: throw error else throw error
+                        // Only this attempt's durably published commit can turn a cleanup retry
+                        // into success. A rollback (even when complete) preserves the original error.
+                        if (committedThisAttempt && cleanupSucceeded) completedVerification ?: throw error else throw error
                     }
                 } finally {
                     selected.delete()
@@ -160,10 +162,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private fun recoverInterruptedRestore(passphrase: CharArray) {
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
-            check(!commitDurabilityUncertain) {
-                "Не удалось подтвердить долговечность отметки завершения; журнал сохранён до перезапуска."
-            }
-            committedRestoreInProgress = true
+            // Re-sync this journal before deleting rollback evidence. Uncertainty is scoped
+            // to the journal path, so unrelated fixture journals remain independent.
+            syncDirectory(journal)
+            commitDurabilityUncertainJournals.remove(journal.absolutePath)
             cleanupCommittedJournal()
             return
         }
@@ -201,17 +203,16 @@ class GlafiraCoreBackupCoordinator internal constructor(
      * recover() sees COMMITTED_MARKER and resumes cleanup instead of attempting an obsolete rollback.
      * The pending marker and rollback artifacts remain intact until the commit marker is durable.
      */
-    private fun clearJournal() {
-        publishCommittedMarker()
+    private fun clearJournal(onCommitted: () -> Unit = {}) {
+        publishCommittedMarker(onCommitted)
         cleanupCommittedJournal()
     }
 
-    private fun publishCommittedMarker() {
+    private fun publishCommittedMarker(onCommitted: () -> Unit = {}) {
         if (committedMarker.exists()) {
-            check(!commitDurabilityUncertain) {
-                "Не удалось подтвердить долговечность отметки завершения; журнал сохранён до перезапуска."
-            }
-            committedRestoreInProgress = true
+            syncDirectory(journal)
+            commitDurabilityUncertainJournals.remove(journal.absolutePath)
+            onCommitted()
             return
         }
         val temporary = File(journal, "$COMMITTED_MARKER.tmp")
@@ -224,9 +225,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
         try {
             syncDirectory(journal)
-            committedRestoreInProgress = true
+            commitDurabilityUncertainJournals.remove(journal.absolutePath)
+            onCommitted()
         } catch (error: Exception) {
-            commitDurabilityUncertain = true
+            commitDurabilityUncertainJournals.add(journal.absolutePath)
             throw error
         }
     }
@@ -254,8 +256,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         check(committedMarker.delete()) { "Не удалось удалить маркер завершения восстановления." }
         syncDirectory(journal)
         // All rollback evidence and both markers are now durably gone; only empty-directory
-        // removal and its parent fsync remain, so a later unrelated failure is not a restore commit.
-        committedRestoreInProgress = false
+        // removal and its parent fsync remain. The restore caller already recorded its commit.
         check(journal.deleteRecursively()) { "Не удалось удалить каталог журнала восстановления." }
         syncDirectory(app.noBackupFilesDir)
     }
@@ -289,11 +290,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
         private const val JOURNAL_MARKER = "restore.pending"
         private const val COMMITTED_MARKER = "restore.committed"
         private const val COMMITTED_VALUE = "GLAFIRA_RESTORE_COMMITTED_V1"
-        // Process-wide: a new coordinator instance in this process must not bypass an fsync failure.
-        // It resets only after process restart, when the persisted marker can be re-evaluated.
-        @Volatile private var commitDurabilityUncertain = false
-        // Remains true through every post-commit cleanup step, including final directory fsync.
-        @Volatile private var committedRestoreInProgress = false
+        // Scope a failed marker-directory fsync to its journal. Before cleanup, recovery
+        // re-syncs that same directory; unrelated coordinators are not blocked.
+        private val commitDurabilityUncertainJournals =
+            java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext

@@ -38,7 +38,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         override suspend fun <T> withPaused(block: () -> T): T = block()
-        override fun pauseForRestore(context: Context) = Unit
+        val pauseContexts = mutableListOf<Context>()
+        override fun pauseForRestore(context: Context) { pauseContexts += context }
         override fun beforeCommittedJournalCleanup() {
             if (failCommittedCleanupOnce) {
                 failCommittedCleanupOnce = false
@@ -51,6 +52,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Before
     fun setUp() = runBlocking {
         testRunId = UUID.randomUUID().toString()
+        fixtureRuntimeHooks.pauseContexts.clear()
         val aliasSuffix = testRunId.replace("-", "")
         rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
         check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -1054,6 +1056,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
                 })
                 assertTrue("No decrypted rollback recovery temp may remain", remainingTemps.isEmpty())
+                assertEquals("Rollback recovery must invoke the pause hook exactly once", 1, fixtureRuntimeHooks.pauseContexts.size)
+                assertTrue("Rollback recovery must pass the fixture context by identity", fixtureRuntimeHooks.pauseContexts.single() === context)
                 assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
             } catch (error: Throwable) {
                 primaryFailure = error
@@ -1099,15 +1103,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val source = File(context.cacheDir, "alias-isolation-source.db")
         val firstEncrypted = File(context.cacheDir, "alias-isolation-first.enc")
         val secondEncrypted = File(context.cacheDir, "alias-isolation-second.enc")
-        val productionEncrypted = File(context.cacheDir, "alias-isolation-production.enc")
-        var testCreatedProductionKey = false
         try {
             source.writeText("fixture-alias-isolation")
-            // Establish a real production-key canary so this test cannot pass vacuously.
-            if (!productionKeyExistedBefore) {
-                productionCipher.encrypt(source, productionEncrypted)
-                testCreatedProductionKey = true
-            }
             rollbackCipher.encrypt(source, firstEncrypted)
             secondFixture.encrypt(source, secondEncrypted)
             assertTrue(rollbackCipher.keyExists())
@@ -1117,16 +1114,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             rollbackCipher.deleteKey()
             assertFalse(rollbackCipher.keyExists())
             assertTrue(secondFixture.keyExists())
-            assertTrue("Fixture deletion must not delete the production rollback key", productionCipher.keyExists())
+            if (productionKeyExistedBefore) {
+                assertTrue("Fixture deletion must not delete the existing production rollback key", productionCipher.keyExists())
+            }
         } finally {
             source.delete()
             firstEncrypted.delete()
             secondEncrypted.delete()
-            productionEncrypted.delete()
             rollbackCipher.deleteKey()
             secondFixture.deleteKey()
-            if (testCreatedProductionKey) productionCipher.deleteKey()
-            assertEquals(productionKeyExistedBefore, productionCipher.keyExists())
+            if (productionKeyExistedBefore) {
+                assertTrue("The test must not delete the production rollback key", productionCipher.keyExists())
+            }
         }
         }
     }
