@@ -193,6 +193,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         if (marker.exists()) {
             check(marker.readText(Charsets.UTF_8) == runId) { "Refusing to clear another rollback generation." }
             check(marker.delete()) { "Could not clear test rollback owner marker." }
+            syncMarkerDirectory(checkNotNull(marker.parentFile))
         }
     }
 
