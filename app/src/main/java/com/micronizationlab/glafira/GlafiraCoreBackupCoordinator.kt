@@ -168,10 +168,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private fun recoverInterruptedRestore(passphrase: CharArray) {
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
-            // Re-sync this journal before deleting rollback evidence. Uncertainty is scoped
-            // to the journal path, so unrelated fixture journals remain independent.
+            // Re-sync this exact journal before deleting rollback evidence, including
+            // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
-            commitDurabilityUncertainJournals.remove(journal.absolutePath)
             cleanupCommittedJournal()
             return
         }
@@ -220,7 +219,6 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private fun publishCommittedMarker(onCommitted: () -> Unit = {}) {
         if (committedMarker.exists()) {
             syncDirectory(journal)
-            commitDurabilityUncertainJournals.remove(journal.absolutePath)
             onCommitted()
             return
         }
@@ -232,14 +230,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
         check(temporary.renameTo(committedMarker)) {
             "Не удалось зафиксировать завершение восстановления; журнал сохранён."
         }
-        try {
-            syncDirectory(journal)
-            commitDurabilityUncertainJournals.remove(journal.absolutePath)
-            onCommitted()
-        } catch (error: Exception) {
-            commitDurabilityUncertainJournals.add(journal.absolutePath)
-            throw error
-        }
+        syncDirectory(journal)
+        onCommitted()
     }
 
     /** Idempotent after the durable commit marker; never discards that marker on partial cleanup. */
@@ -299,10 +291,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
         private const val JOURNAL_MARKER = "restore.pending"
         private const val COMMITTED_MARKER = "restore.committed"
         private const val COMMITTED_VALUE = "GLAFIRA_RESTORE_COMMITTED_V1"
-        // Scope a failed marker-directory fsync to its journal. Before cleanup, recovery
-        // re-syncs that same directory; unrelated coordinators are not blocked.
-        private val commitDurabilityUncertainJournals =
-            java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        // Marker durability is re-confirmed by fsyncing its exact journal directory
+        // whenever a committed marker is observed, including from a fresh coordinator.
 
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
