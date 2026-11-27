@@ -163,7 +163,7 @@ jobs:
           latest_file="$2"
           # Keep large inventories in files; --argjson would exceed the OS argv limit.
           jq -e --slurpfile latest "$latest_file" '
-            all(.[] as $old; any($latest[0][]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
+            all(.[]; . as $old | any($latest[0][]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
           ' "$previous_file" >/dev/null
           COMPARE
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
