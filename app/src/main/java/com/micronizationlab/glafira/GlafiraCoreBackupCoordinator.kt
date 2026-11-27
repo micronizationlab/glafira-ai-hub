@@ -5,7 +5,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 
-/** Runtime boundary used by backup maintenance. Instrumentation injects a fixture-local no-op. */
+/** Runtime boundary used by backup maintenance. Production defaults pause the real runtime; only tests that explicitly inject fixture-local hooks bypass those side effects. */
 internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
