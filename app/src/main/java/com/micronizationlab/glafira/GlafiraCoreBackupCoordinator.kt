@@ -32,9 +32,6 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private val committedMarker get() = File(journal, COMMITTED_MARKER)
     private val safetyDatabase get() = File(journal, "database.db")
     private val safetyArchive get() = File(journal, "files.glb")
-    // If directory fsync fails after publishing COMMITTED_MARKER, this process must fail closed.
-    // A fresh process may re-evaluate the marker after the filesystem has recovered. 
-    @Volatile private var commitDurabilityUncertain = false
 
     suspend fun create(passphrase: CharArray): File = GlafiraCoreMaintenanceGate.withExclusive {
         runtimeHooks.withPaused {
@@ -257,6 +254,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
         private const val JOURNAL_MARKER = "restore.pending"
         private const val COMMITTED_MARKER = "restore.committed"
         private const val COMMITTED_VALUE = "GLAFIRA_RESTORE_COMMITTED_V1"
+        // Process-wide: a new coordinator instance in this process must not bypass an fsync failure.
+        // It resets only after process restart, when the persisted marker can be re-evaluated.
+        @Volatile private var commitDurabilityUncertain = false
+
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
             val marker = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER)
