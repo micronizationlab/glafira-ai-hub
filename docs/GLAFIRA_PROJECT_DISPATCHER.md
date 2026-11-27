@@ -1,6 +1,6 @@
 # GLAFIRA Project Dispatcher — v1
 
-Status: implementation branch / draft PR pending CI.
+Status: PR #797 implementation hardening; exact-head CI and independent review pending.
 
 ## Purpose
 
@@ -21,11 +21,11 @@ The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `
 
 1. Inspect all open PRs, not only the PR that triggered the latest event.
 2. For fallback Actions evidence, require exact PR number, exact current head SHA and a non-empty exact current base SHA. Older-head/base runs are stale.
-3. Re-read PR refs after collecting runs. A valid PR/head/base delta is `CHANGED` and is rendered against the latest complete snapshot; a failed fetch, malformed/partial page sequence, unreadable snapshot or comparator error is `UNKNOWN` and makes the Dispatcher job fail.
+3. Re-read PR refs after collecting runs. Require two consecutive identical complete snapshots, with at most three bounded fetches. A valid membership/head/base delta that stabilizes is `CHANGED` and is rendered against the latest stable snapshot; a failed fetch, malformed/partial page sequence, unreadable snapshot, non-stabilizing inventory or comparator error is `UNKNOWN` and makes the Dispatcher job fail.
 4. Exclude METADATA_ONLY only for GLAFIRA Java Format Check; similarly named commit titles in other workflows remain valid CI evidence.
 5. Distinguish queued/in-progress from completed success/failure/cancelled.
 6. The historical inventory scan does not request `statusCheckRollup`; fallback Actions runs must match exact PR number, exact current head SHA and non-empty exact current base SHA. If a future implementation reintroduces PR rollup checks, label them HEAD-ONLY / BASE NOT VERIFIED and never count them as exact-base acceptance.
-7. Build a pagination-stable PR cursor set from all PR states ordered by `CREATED_AT ASC`, then filter to `OPEN` only after all pages are collected. A concurrent close therefore does not remove an item from the middle of an offset-based open-only inventory. Validate every GraphQL page for errors, non-null nodes and `pageInfo`; a page advertising a next cursor must contain nodes and a non-empty cursor, and the page chain must end explicitly. Do not request `statusCheckRollup` for the historical all-state scan: use the bounded Actions-run fallback for the resulting open PRs, matching exact PR number/head/base. REST fallback uses `state=all` with the same created-at ordering. Cap workflow history at the newest 1,000 runs and fetch it only when fallback evidence is needed.
+7. Query `OPEN` PRs only in both GraphQL and REST; do not scan closed/merged repository history. Validate every GraphQL page and node before rendering: no GraphQL errors, nodes must be arrays of complete open-PR identities, every non-final page must contain nodes and a non-empty cursor, non-final cursors must be unique, PR numbers must not overlap across pages, and the final page must explicitly end the chain. If GraphQL is malformed, use REST `state=open`; reject malformed REST pages/records rather than silently filtering them. Because offset pagination can shift when an open PR closes during a fetch, compare successive complete snapshots and require two consecutive identical snapshots within three bounded fetches; otherwise return `UNKNOWN`. Do not request `statusCheckRollup`; use the bounded Actions-run fallback for current open PRs, matching exact PR number/head/base. Cap workflow history at the newest 1,000 runs and fetch it only when fallback evidence is needed.
 8. Keep Draft PRs Draft. Human review and integration remain separate decisions.
 9. Never alter branch dependency stacks or merge into main.
 10. Escape contributor-controlled PR titles and branch names before inserting them into Markdown.
@@ -34,9 +34,9 @@ The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `
 ## Inventory failure semantics
 
 - `UNCHANGED` means the complete ordered snapshots contain the same PR number/head/base identities.
-- `CHANGED` means both snapshots are complete and valid, but PR membership or identity changed; render the second complete snapshot and retain exact run matching.
+- `CHANGED` means complete snapshots differed but the latest snapshot was confirmed by a consecutive identical fetch; render that latest stable snapshot and retain exact run matching.
 - `UNKNOWN` means either snapshot could not be fetched completely, page metadata is inconsistent, a local snapshot cannot be opened, or jq/comparator execution failed. Emit an explicit failure summary and exit non-zero; never turn UNKNOWN into a successful report.
-- The regression harness covers a 5,000-PR inventory, valid CHANGED wrapper output, injected jq and fetch failures, missing-snapshot diagnostics, failure-summary output, empty-intermediate-page rejection, and a multi-page close-during-pagination fixture.
+- The regression harness drives the production fetcher with mocked `gh` responses and covers mixed-state filtering, malformed/null GraphQL nodes, missing state, empty continuing pages, repeated cursors, overlapping PRs, malformed REST records, bounded stabilization, a 5,000-PR inventory, valid CHANGED wrapper output, injected jq/fetch failures, missing-snapshot diagnostics, and the production failure-summary path.
 
 ## Current operational workflow
 
