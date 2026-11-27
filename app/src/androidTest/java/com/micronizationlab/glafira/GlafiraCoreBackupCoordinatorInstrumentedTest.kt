@@ -1158,7 +1158,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         } finally {
             passphrase.fill(0.toChar())
             // If recovery did not remove the committed marker, retain the complete fixture evidence.
-            if (!committed.exists()) check(journal.deleteRecursively())
+            if (!committed.exists() && journal.exists()) check(journal.deleteRecursively())
         }
     }
 

@@ -193,6 +193,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
             taskStore.verifyConsistentSnapshot(rollbackDatabase)
             BackupArchive.verify(app, safetyArchive, passphrase)
             BackupArchive.restore(app, safetyArchive, passphrase)
+            // The rollback archive's files must be durable before SQLite is checkpointed
+            // and the committed marker makes this recovery irreversible.
+            syncRestoredFiles()
             taskStore.restoreConsistentSnapshot(rollbackDatabase)
             runtimeHooks.pauseForRestore(app)
             checkpointDatabase()
