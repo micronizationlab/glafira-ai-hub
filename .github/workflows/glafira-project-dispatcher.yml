@@ -72,7 +72,7 @@ jobs:
                 .[] as $run
                 | ($run.pullRequests // [])[]? as $association
                 | select($association.number != null and ($association.base.sha // "") != "" and ($run.headSha // "") != "")
-                | select(($run.workflowName // $run.name // "") != "GLAFIRA Java Format Check" or (((if ($run.displayTitle | type) == "string" then $run.displayTitle else "" end) | startswith("METADATA_ONLY -")) | not))
+                | select(($run.workflowName // $run.name // "") != "GLAFIRA Java Format Check" or ((($run.displayTitle | type) == "string") and ($run.displayTitle | startswith("VALIDATION - Java format"))))
                 | {key: ([$association.number, $run.headSha, $association.base.sha] | tojson), run: $run}
               ]
               | group_by(.key)
@@ -478,6 +478,7 @@ jobs:
             {"headSha":"sha-meta-rollup","workflowName":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:11:00Z","url":"https://example.test/run/format-rollup-fallback","pullRequests":[{"number":566,"base":{"sha":"base-meta-rollup"}}]},
             {"headSha":"sha-pipe","workflowName":"Windows | Agent CI","displayTitle":"Windows CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:12:00Z","url":"https://example.test/run/pipe","pullRequests":[{"number":567,"base":{"sha":"base-pipe"}}]},
             {"headSha":"sha-bad-title","workflowName":"GLAFIRA Java Format Check","displayTitle":42,"status":"completed","conclusion":"success","createdAt":"2026-11-24T12:13:00Z","url":"https://example.test/run/bad-title","pullRequests":[{"number":568,"base":{"sha":"base-bad-title"}}]},
+            {"headSha":"sha-bad-title","workflowName":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:12:00Z","url":"https://example.test/run/format-older-failure","pullRequests":[{"number":568,"base":{"sha":"base-bad-title"}}]},
             {"headSha":"sha-unassociated","workflowName":"No PR association","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:14:00Z","url":"https://example.test/run/no-pr","pullRequests":[]}
           ]
           JSON
@@ -501,7 +502,9 @@ jobs:
           grep -q 'Security Scan: COMPLETED/success' <<< "$row565"
           grep -q 'GLAFIRA Java Format Check: COMPLETED/success' <<< "$(grep -F '| [#566]' <<< "$output")"
           grep -q 'Windows / Agent CI: COMPLETED/success' <<< "$(grep -F '| [#567]' <<< "$output")"
-          grep -q 'GLAFIRA Java Format Check: COMPLETED/success' <<< "$(grep -F '| [#568]' <<< "$output")"
+          row568="$(grep -F '| [#568]' <<< "$output")"
+          grep -q 'GLAFIRA Java Format Check: COMPLETED/failure' <<< "$row568"
+          ! grep -q 'bad-title' <<< "$row568"
           ! grep -q 'evil.test' <<< "$output"
           ! grep -q '\[link\]' <<< "$output"
 
