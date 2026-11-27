@@ -33,7 +33,7 @@ class GlafiraRollbackSnapshotCipherInstrumentedTest {
             damaged[damaged.lastIndex] = (damaged.last().toInt() xor 1).toByte()
             encrypted.writeBytes(damaged)
             assertThrows(Exception::class.java) {
-                GlafiraRollbackSnapshotCipher.decrypt(encrypted, restored)
+                cipher.decrypt(encrypted, restored)
             }
             assertFalse(restored.exists())
         } finally {
@@ -49,16 +49,17 @@ class GlafiraRollbackSnapshotCipherInstrumentedTest {
         val source = File(context.cacheDir, "rollback-missing-key-source.db")
         val encrypted = File(context.cacheDir, "rollback-missing-key-snapshot.enc")
         val restored = File(context.cacheDir, "rollback-missing-key-restored.db")
+        val cipher = GlafiraRollbackSnapshotCipher("glafira_test_missing_" + UUID.randomUUID().toString().replace("-", ""))
         try {
             source.writeText("rollback-key-loss-canary")
-            GlafiraRollbackSnapshotCipher.encrypt(source, encrypted)
-            GlafiraRollbackSnapshotCipher.deleteKey()
+            cipher.encrypt(source, encrypted)
+            cipher.deleteKey()
 
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            assertFalse(keyStore.containsAlias("glafira_core_rollback_v1"))
+            assertFalse(keyStore.containsAlias(cipher.keyAlias))
 
             val error = assertThrows(IllegalStateException::class.java) {
-                GlafiraRollbackSnapshotCipher.decrypt(encrypted, restored)
+                cipher.decrypt(encrypted, restored)
             }
             org.junit.Assert.assertEquals("ROLLBACK_KEY_MISSING", error.message)
             val afterDecrypt = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -68,7 +69,7 @@ class GlafiraRollbackSnapshotCipherInstrumentedTest {
             source.delete()
             encrypted.delete()
             restored.delete()
-            GlafiraRollbackSnapshotCipher.deleteKey()
+            cipher.deleteKey()
         }
     }
 
