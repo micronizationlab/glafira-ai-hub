@@ -1148,7 +1148,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertFalse(journal.exists())
             assertFalse(rollbackCipher.keyExists())
         } finally {
-            passphrase.fill('\\u0000')
+            passphrase.fill(0.toChar())
             // If recovery did not remove the committed marker, retain the complete fixture evidence.
             if (!committed.exists()) check(journal.deleteRecursively())
         }
