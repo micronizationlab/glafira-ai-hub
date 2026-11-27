@@ -45,9 +45,16 @@ class GlafiraPortableSnapshotInstrumentedTest {
         override fun getCacheDir(): File = cache
     }
 
+    private var fixturePauseCalls = 0
+    private var fixtureRestorePauseCalls = 0
     private val fixtureHooks = object : GlafiraBackupRuntimeHooks {
-        override suspend fun <T> withPaused(block: () -> T): T = block()
-        override fun pauseForRestore(context: Context) = Unit
+        override suspend fun <T> withPaused(block: () -> T): T {
+            fixturePauseCalls++
+            return block()
+        }
+        override fun pauseForRestore(context: Context) {
+            fixtureRestorePauseCalls++
+        }
         override fun beforeCommittedJournalCleanup() = Unit
     }
 
@@ -132,13 +139,15 @@ class GlafiraPortableSnapshotInstrumentedTest {
         coordinator.recover(passphrase)
         assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
         assertNotNull(store.getTask("preserved"))
+        assertTrue("Recovery must use fixture-local delivery hooks", fixturePauseCalls > 0)
+        assertTrue("Recovery must use fixture-local restore hooks", fixtureRestorePauseCalls > 0)
         passphrase.fill('\u0000')
     }
 
     @Test fun coordinatorEncryptsLocalRollbackDatabaseAndRecoversIt() = runBlocking {
         store.enqueue(task("preserved-encrypted"))
         val passphrase = "encrypted-local-rollback-passphrase".toCharArray()
-        val coordinator = GlafiraCoreBackupCoordinator(context, store, rollbackCipher)
+        val coordinator = coordinator()
         coordinator.prepareRollback(passphrase)
 
         val encrypted = File(journal, "database.db")
@@ -170,7 +179,7 @@ class GlafiraPortableSnapshotInstrumentedTest {
     @Test fun missingRollbackKeyKeepsCoreBlockedAndDoesNotRegenerateKey() = runBlocking {
         store.enqueue(task("preserved-missing-key"))
         val passphrase = "encrypted-local-rollback-passphrase".toCharArray()
-        val coordinator = GlafiraCoreBackupCoordinator(context, store, rollbackCipher)
+        val coordinator = coordinator()
         coordinator.prepareRollback(passphrase)
         store.writableDatabase.delete("core_tasks", null, null)
         assertNull(store.getTask("preserved-missing-key"))
@@ -195,7 +204,7 @@ class GlafiraPortableSnapshotInstrumentedTest {
         val guard = File(context.filesDir, "rollback-order-guard.txt").apply { writeText("before") }
         store.enqueue(task("preserved-tampered"))
         val passphrase = "encrypted-local-rollback-passphrase".toCharArray()
-        val coordinator = GlafiraCoreBackupCoordinator(context, store, rollbackCipher)
+        val coordinator = coordinator()
         try {
             coordinator.prepareRollback(passphrase)
             guard.writeText("after")
