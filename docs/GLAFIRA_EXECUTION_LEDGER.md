@@ -15,6 +15,8 @@ This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CO
 
 ## Work-item registry
 
+| GLAFIRA-CODEX-W01 | `1.7.1.1.1.1.1` | GLAFIRA | Project-wide immediate repair-on-discovery Codex; all eleven workstreams and all write-enabled helpers | IN_REVIEW | PR #761; `docs/GLAFIRA_CODEX.md`; one-pass defect register and repair report; pending exact-head CI/review/merge |
+
 | Work Item ID | Step | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|
 | GLAFIRA-GOV-W01 | Governance | GLAFIRA | Establish this control, update helper instructions and reconcile plan baseline | IN_PROGRESS | Branch `governance/program-150-single-source-of-truth`; PR to be opened after doc consistency check |
@@ -709,3 +711,5 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 - **Exact validation fields:** Docs CI, Security Scan, Project Dispatcher, independent CodeRabbit/Proofline findings and owner approval must be recorded for the reservation PR; each child implementation leaf must record exact-head JVM/emulator run IDs, named JUnit XML cases, logs, independent review, merge SHA and post-merge verification.
 - **Next eligible WBS ID:** none pre-authorized; after each leaf is DONE, re-scan dependencies and register the next eligible leaf.
 - **Status:** PROPOSED / NOT ACTIVE — stacked on PR #738; not mergeable to Main until recreated from the exact resulting Main SHA. No implementation leaf is started or authorized. Program Step 93 remains OPEN.
+
+- WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.
