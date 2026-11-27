@@ -701,3 +701,15 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 - **Status:** PROPOSED / NOT ACTIVE — refreshed from live Main after PR #738 merged. This parent reservation becomes active only when this focused PR merges; no implementation leaf is started or authorized before then. Program Step 93 remains OPEN.
 
 - WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.
+
+## WBS reservation — bounded shared file-maintenance lock — 2026-11-27
+
+- **Work Item / WBS / immediate parent / tracker:** `GLAFIRA-BACKUP-LOCK-W01` / executable leaf `1.2.1.2.2.1.1` / immediate parent `1.2.1.2.2.1 — Bounded file-maintenance lock acquisition and contention regression` / issue #775.
+- **Reservation branch / exact base:** `wbs/glafira-backup-lock-w01-1.2.1.2.2.1.1-20261127` / Main `f1ed37a72c9aa33ad0da3672fb8d8bb615d2d27d`.
+- **Exclusive implementation paths:** `app/src/main/java/com/micronizationlab/glafira/DurableJsonFile.kt`; new `app/src/test/java/com/micronizationlab/glafira/GlafiraFileMaintenanceTest.kt`. This reservation PR changes only the two WBS governance documents.
+- **Executor / reviewer:** GLAFIRA coordinator active author/delivery owner; independent CodeRabbit/Proofline review; owner-controlled merge.
+- **Predecessors / dependencies:** none for the lock primitive. This work is a production safety prerequisite for final acceptance of #769; #769 must not claim the maintenance-monitor finding resolved until this leaf is implemented and verified.
+- **Observed risk:** `GlafiraFileMaintenance.withExclusive` currently enters an unbounded JVM `synchronized` monitor. Coroutine `withTimeout` cannot interrupt a thread waiting to enter that monitor.
+- **Procedure:** replace the monitor with a fair reentrant lock using bounded `tryLock`; restore interrupt status and fail closed on interruption; throw a deterministic timeout exception before entering the protected block; preserve same-thread reentrancy and the lock order Core maintenance gate → file-maintenance lock → per-file lock; add deterministic contention, timeout, release/reuse, interruption and reentrancy tests; inspect every caller for error handling and partial-mutation risk.
+- **Acceptance:** waiter returns within the configured bound when another thread holds the lock; protected block is not entered on timeout/interruption; lock is usable after holder release; nested same-thread calls remain safe; all DurableJsonFile and Backup/Restore tests pass; exact-head Android JVM, Docs CI, Security Scan, Project Dispatcher and independent review pass.
+- **Lifecycle:** RESERVED / NOT IMPLEMENTED before and after reservation merge. A separate exact-SHA implementation pin amendment must merge before the implementation branch is created or either exclusive path is edited.
