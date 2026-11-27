@@ -307,7 +307,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             withOwnedRollbackKey {
                 assertThrows(IllegalArgumentException::class.java) {
-                    runBlocking { runBlocking { GlafiraCoreBackupCoordinator(context, store).restore(legacyArchive, passphrase) } }
+                    runBlocking { GlafiraCoreBackupCoordinator(context, store).restore(legacyArchive, passphrase) } }
                 }
                 assertEquals("existing-task", store.getTask("existing-task")?.taskId)
             }
@@ -557,7 +557,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             withOwnedRollbackKey {
                 assertThrows(Exception::class.java) {
-                    runBlocking { runBlocking { coordinator.restore(archive, wrongPassphrase) } }
+                    runBlocking { coordinator.restore(archive, wrongPassphrase) } }
                 }
                 assertEquals("must-remain", store.getTask("must-remain")?.taskId)
             }
@@ -634,7 +634,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             withOwnedRestoreJournal {
                 assertThrows(IllegalArgumentException::class.java) {
-                    runBlocking { runBlocking { GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase) } }
+                    runBlocking { GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase) } }
                 }
                 assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
                 assertFalse(File(context.noBackupFilesDir, "glafira-restore-journal/restore.pending").exists())
