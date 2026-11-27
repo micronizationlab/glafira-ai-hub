@@ -465,7 +465,7 @@ jobs:
           exit 2
           GH
           chmod +x "$tmp/fake-bin/gh"
-          if PATH="$tmp/fake-bin:$PATH" GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep" FAKE_SLEEP_LOG="$tmp/null-rest-sleep-log" bash "$fetch_prs" micronizationlab/glafira-ai-hub"; then
+          if PATH="$tmp/fake-bin:$PATH" GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep" FAKE_SLEEP_LOG="$tmp/null-rest-sleep-log" bash "$fetch_prs" micronizationlab/glafira-ai-hub; then
             echo "mixed REST array/null pages were incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
