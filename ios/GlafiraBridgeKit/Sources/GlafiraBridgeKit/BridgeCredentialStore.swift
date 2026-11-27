@@ -205,35 +205,6 @@ public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
     case keychainFailure(status: Int32)
 }
 
-private enum BridgeHubBindingValidation {
-    static func validIdentifier(_ value: String) -> Bool {
-        (1...128).contains(value.utf8.count) && value.allSatisfy {
-            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_")
-        }
-    }
-
-    static func validEndpoint(_ value: String) -> Bool {
-        guard let url = URL(string: value),
-              url.scheme?.lowercased() == "https", url.host != nil,
-              url.user == nil, url.password == nil,
-              url.query == nil, url.fragment == nil,
-              url.path == "/bridge/v1" else {
-            return false
-        }
-        return url.port == nil || (1...65_535).contains(url.port!)
-    }
-
-    static func validPin(_ value: String) -> Bool {
-        value.utf8.count == 64 && value.allSatisfy { $0.isHexDigit && !$0.isUppercase }
-    }
-
-    static func validScope(_ value: String) -> Bool {
-        (1...96).contains(value.utf8.count) && value.allSatisfy {
-            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_")
-        }
-    }
-}
-
 /// Stores one paired-device HMAC secret as a device-only Keychain item.
 /// The item is bound to the currently enrolled biometric set; adding/removing
 /// biometrics invalidates access rather than silently weakening protection.
