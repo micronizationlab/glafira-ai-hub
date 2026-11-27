@@ -471,7 +471,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             """\.glafira-test-key-owner-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(primary|second|third)\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.tmp"""
         )
         val abandonedTemporaryMarkers = ownerDirectory.listFiles { file ->
-            temporaryMarkerPattern.matches(file.name)
+            temporaryMarkerPattern.matches(file.name) &&
+                Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
         }.orEmpty()
         abandonedTemporaryMarkers.forEach { temporary ->
             check(!temporary.exists() || temporary.delete()) {
@@ -564,6 +565,23 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue("Pre-existing fixture-looking directory is preserved", canary.isFile)
         } finally {
             existing.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun nonFileKeyOwnerRecordsArePreservedWithoutBlockingCleanup() {
+        val runId = UUID.randomUUID().toString()
+        val directoryMarker = File(appContext.noBackupFilesDir, "glafira-test-key-owner-" + runId + "-primary")
+        assertTrue(directoryMarker.mkdir())
+        val temporaryDirectory = File(appContext.noBackupFilesDir, ".glafira-test-key-owner-" + runId + "-primary." + UUID.randomUUID() + ".tmp")
+        assertTrue(temporaryDirectory.mkdir())
+        try {
+            cleanupOwnedLeftoverRollbackFixture()
+            assertTrue("Directory masquerading as a key-owner marker is preserved", directoryMarker.isDirectory)
+            assertTrue("Directory masquerading as a temporary marker is preserved", temporaryDirectory.isDirectory)
+        } finally {
+            directoryMarker.delete()
+            temporaryDirectory.delete()
         }
     }
 
