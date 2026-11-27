@@ -33,7 +33,7 @@ jobs:
       ${{
         (
           github.event_name != 'workflow_run' &&
-          (github.event.action != 'edited' || github.event.changes.base != null)
+          (github.event.action != 'edited' || github.event.changes.base != null || github.event.changes.title != null)
         ) ||
         (
           github.event_name == 'workflow_run' &&
@@ -619,7 +619,7 @@ jobs:
           abort "dispatcher workflow completion subscriptions are incomplete" unless (required_workflows - workflow_run.fetch("workflows")).empty?
           guard = workflow.dig("jobs", "project-status", "if").to_s
           abort "job guard must scope metadata-only skip to Java formatter" unless guard.include?("workflow_run.name == 'GLAFIRA Java Format Check'") && guard.include?("workflow_run.event != 'schedule'") && guard.include?("METADATA_ONLY -")
-          abort "job guard must skip title/body edits but preserve base retargets" unless guard.include?("github.event.changes.base != null")
+          abort "job guard must skip body-only edits but refresh title/base changes" unless guard.include?("github.event.changes.base != null") && guard.include?("github.event.changes.title != null")
           concurrency_group = workflow.dig("concurrency", "group").to_s
           abort "metadata-only edits need a unique concurrency group" unless concurrency_group.include?("metadata-") && concurrency_group.include?("github.run_id")
           config = YAML.load_file(".coderabbit.yaml")
@@ -631,27 +631,28 @@ jobs:
           puts "actual workflow triggers, job guard, no-schedule policy and CodeRabbit YAML: PASS"
           RUBY
           should_reconcile() {
-            local event_name="$1" action="$2" base_changed="$3" upstream_event="$4" workflow_name="$5" display_title="$6"
-            if [[ "$event_name" == "pull_request" && "$action" == "edited" && "$base_changed" != "true" ]]; then return 1; fi
+            local event_name="$1" action="$2" base_changed="$3" title_changed="$4" upstream_event="$5" workflow_name="$6" display_title="$7"
+            if [[ "$event_name" == "pull_request" && "$action" == "edited" && "$base_changed" != "true" && "$title_changed" != "true" ]]; then return 1; fi
             if [[ "$event_name" == "workflow_run" ]]; then
               [[ "$upstream_event" != "schedule" ]] || return 1
               if [[ "$workflow_name" == "GLAFIRA Java Format Check" && "$display_title" == "METADATA_ONLY -"* ]]; then return 1; fi
             fi
             return 0
           }
-          if should_reconcile "workflow_run" "completed" "false" "schedule" "GLAFIRA CI — change-aware platform validation" "daily run"; then
+          if should_reconcile "workflow_run" "completed" "false" "false" "schedule" "GLAFIRA CI — change-aware platform validation" "daily run"; then
             echo "scheduled workflow_run must be ignored" >&2; exit 1
           fi
-          if should_reconcile "workflow_run" "completed" "false" "pull_request" "GLAFIRA Java Format Check" "METADATA_ONLY - PR metadata edit"; then
+          if should_reconcile "workflow_run" "completed" "false" "false" "pull_request" "GLAFIRA Java Format Check" "METADATA_ONLY - PR metadata edit"; then
             echo "formatter metadata-only workflow_run must be ignored" >&2; exit 1
           fi
-          if should_reconcile "pull_request" "edited" "false" "" "" ""; then
-            echo "title/body-only PR edit must not start reconciliation" >&2; exit 1
+          if should_reconcile "pull_request" "edited" "false" "false" "" "" ""; then
+            echo "body-only PR edit must not start reconciliation" >&2; exit 1
           fi
-          should_reconcile "pull_request" "edited" "true" "" "" ""
-          should_reconcile "pull_request" "synchronize" "false" "" "" ""
-          should_reconcile "workflow_run" "completed" "false" "pull_request" "GLAFIRA CI — change-aware platform validation" "METADATA_ONLY - title collision"
-          should_reconcile "workflow_run" "completed" "false" "pull_request" "Security Scan" "ordinary title"
+          should_reconcile "pull_request" "edited" "false" "true" "" "" ""
+          should_reconcile "pull_request" "edited" "true" "false" "" "" ""
+          should_reconcile "pull_request" "synchronize" "false" "false" "" "" ""
+          should_reconcile "workflow_run" "completed" "false" "false" "pull_request" "GLAFIRA CI — change-aware platform validation" "METADATA_ONLY - title collision"
+          should_reconcile "workflow_run" "completed" "false" "false" "pull_request" "Security Scan" "ordinary title"
           echo "event-driven dispatcher policy fixtures: PASS"
       - name: Build cross-workstream status report
         env:
