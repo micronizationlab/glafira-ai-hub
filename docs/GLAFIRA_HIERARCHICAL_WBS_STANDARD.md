@@ -222,3 +222,41 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
 - `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
+
+## 13. Independent Multi-AI and Token/GCU DESIGN registrations
+
+These owner-approved cross-step design leaves are independent siblings. They are not implementation authorization and do not claim any legacy Program 150 step complete.
+
+### Workstream 10 — Multi-AI selector UX
+
+- `1.10` — Multi-AI provider/model experience.
+- `1.10.1` — Owner-controlled model and provider selection.
+- `1.10.1.1` — Selector, availability and provider disclosure UX.
+- `1.10.1.1.1` — Cross-provider selection and fallback flows.
+- `1.10.1.1.1.1` — UX specification and acceptance matrix.
+- `1.10.1.1.1.1.1` — `docs/design/MULTI_AI_SELECTOR_UX.md`; Work Item `GLAFIRA-S000-W06`; issue #680 / umbrella #672.
+- Exclusive path: `docs/design/MULTI_AI_SELECTOR_UX.md` only. No provider integration, routing, API keys, billing, runtime code or shared token edits.
+- Predecessors: none. This leaf is independent of #679 and #767; provisional visual assumptions must be explicitly labeled if shared tokens remain pending.
+- Executor: GLAFIRA coordinator as active author/delivery owner. Amazon Q is optional secondary review only and is not the assigned executor.
+- Acceptance: provider/model lifecycle states; free/paid tier disclosure; data-sharing classification; cost estimate; fallback consent; owner grants/revocation; quota and unknown/error states; accessibility and small-screen behavior; independent review and owner acceptance.
+
+### Workstream 9 — Token/GCU owner experience
+
+- `1.9` — Token/GCU measurement and owner settlement experience.
+- `1.9.1` — GCU contribution, reward transparency and owner controls.
+- `1.9.1.1` — Measurement, consent, reward and wallet concept UX.
+- `1.9.1.1.1` — Owner-facing flows and disclosure.
+- `1.9.1.1.1.1` — UX specification and acceptance matrix.
+- `1.9.1.1.1.1.1` — `docs/design/TOKEN_GCU_UX.md`; Work Item `GLAFIRA-S000-W07`; issue #767 / umbrella #672.
+- Exclusive path: `docs/design/TOKEN_GCU_UX.md` only. No runtime code, token issuance, wallet writes, payments, marketplace, provider billing, background compute, protocol, database or API changes.
+- Predecessors: none. This leaf is independent of #679, #680, Core, Bridge and Desktop; no stacked PR or dependency wait.
+- Executor: GLAFIRA coordinator as active author/delivery owner. Amazon Q is optional secondary review only and is not the assigned executor.
+- Acceptance: GCU measurement/provenance/confidence; explicit separation from GLF settlement and no implied 1:1 conversion; consent-first resource caps/pause/revoke; estimate vs accepted/settled reward; concept-only wallet states and owner approvals; fees/energy/depreciation disclosures without income promises; offline/quota/revoked/disputed/error states; accessibility/privacy; independent review and owner acceptance.
+
+### Reservation and lifecycle
+
+- These two registrations become active only when the dedicated ledger reservation PR merges to Main. Their implementation branches must each start from then-current Main after that merge.
+- Each artifact is delivered in its own focused PR. The two work items are independent; neither is a predecessor of the other.
+- No bot-only assignment is permitted. A bot's label, assignment, review or promise is not evidence of artifact completion.
+- No runtime provider routing, GCU issuance, wallet settlement, payment, device reward or background compute is authorized by these design registrations.
+- Status at registration: RESERVED / NOT IMPLEMENTED. Both leaves remain OPEN until the artifact, independent review, owner acceptance and post-merge evidence are complete.
