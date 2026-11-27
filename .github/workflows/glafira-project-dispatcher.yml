@@ -524,13 +524,7 @@ jobs:
 
           # A valid inventory delta is CHANGED (not UNKNOWN) through the production wrapper.
           jq '. + [{number: 5001, headRefOid: "head-new", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/large-prs-wrapper-delta.json"
-          cat > "$tmp/fetch-changed-prs.sh" <<'FETCH_CHANGED'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          cat "$1"
-          FETCH_CHANGED
-          chmod +x "$tmp/fetch-changed-prs.sh"
-          changed_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-changed-prs.sh" "$comparator" "$tmp/large-prs-wrapper-delta.json")"
+          changed_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-wrapper-delta.json")"
           [[ "$changed_result" == "CHANGED" ]]
 
           # Missing/unreadable local snapshots are explicit comparator errors.
