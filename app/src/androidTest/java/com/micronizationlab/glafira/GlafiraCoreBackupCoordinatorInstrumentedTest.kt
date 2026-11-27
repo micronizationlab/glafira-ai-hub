@@ -51,11 +51,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Before
     fun setUp() = runBlocking {
+        withFixtureLocks { cleanupOwnedLeftoverRollbackFixture() }
         testRunId = UUID.randomUUID().toString()
         fixtureRuntimeHooks.pauseContexts.clear()
         val aliasSuffix = testRunId.replace("-", "")
         rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
         check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
+        registerFixtureKeyAlias(rollbackCipher.keyAlias, testRunId)
         testRoot = File(appContext.cacheDir, "glafira-backup-test-$testRunId").apply { check(mkdirs()) }
         ownsFixture = true
         context = IsolatedBackupTestContext(appContext, testRoot)
@@ -78,6 +80,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 check(!installationMarker.exists() && !fixtureJournal.exists()) {
                     "Preserving fixture root because rollback ownership/recovery evidence remains."
                 }
+                // Delete the test-owned Keystore key before its durable owner marker.
+                rollbackCipher.deleteKey()
+                clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
                 check(testRoot.deleteRecursively()) { "Could not remove isolated backup fixture." }
             }
         } catch (cleanup: Throwable) {
@@ -251,8 +256,64 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-    // Each run owns a unique alias and private filesystem root; never reclaim installation state.
-    private suspend fun cleanupOwnedLeftoverRollbackFixture() = Unit
+    private fun fixtureKeyOwnerMarker(runId: String): File =
+        File(appContext.noBackupFilesDir, "glafira-test-key-owner-$runId")
+
+    private fun registerFixtureKeyAlias(alias: String, runId: String) {
+        val expected = "glafira_test_rollback_${runId.replace("-", "")}"
+        require(alias == expected || alias == "${expected}_second") {
+            "Only this run's uniquely scoped fixture aliases may be registered."
+        }
+        val marker = fixtureKeyOwnerMarker(runId)
+        check(marker.createNewFile()) { "Fixture key ownership marker already exists." }
+        try {
+            FileOutputStream(marker, false).use {
+                it.write(alias.toByteArray(Charsets.UTF_8))
+                it.fd.sync()
+            }
+            syncMarkerDirectory(checkNotNull(marker.parentFile))
+        } catch (error: Throwable) {
+            marker.delete()
+            throw error
+        }
+    }
+
+    private fun clearFixtureKeyAliasOwner(alias: String, runId: String) {
+        val marker = fixtureKeyOwnerMarker(runId)
+        if (marker.exists()) {
+            check(marker.readText(Charsets.UTF_8) == alias) {
+                "Refusing to clear a fixture-key owner marker for another alias."
+            }
+            check(marker.delete()) { "Could not remove fixture-key owner marker." }
+            syncMarkerDirectory(checkNotNull(marker.parentFile))
+        }
+    }
+
+    // Reclaim only aliases whose durable owner marker proves this test created them.
+    // If a matching fixture journal remains, preserve its key and recovery evidence.
+    private suspend fun cleanupOwnedLeftoverRollbackFixture() {
+        val ownerDirectory = appContext.noBackupFilesDir
+        ownerDirectory.listFiles { file ->
+            file.name.startsWith("glafira-test-key-owner-")
+        }.orEmpty().forEach { marker ->
+            val runId = marker.name.removePrefix("glafira-test-key-owner-")
+            val parsed = try { UUID.fromString(runId) } catch (_: IllegalArgumentException) { null }
+            if (parsed == null || parsed.toString() != runId) return@forEach
+            val suffix = runId.replace("-", "")
+            val expected = "glafira_test_rollback_$suffix"
+            val alias = marker.readText(Charsets.UTF_8)
+            if (alias != expected && alias != "${expected}_second") return@forEach
+            val root = File(appContext.cacheDir, "glafira-backup-test-$runId")
+            val journal = File(root, "no-backup/glafira-restore-journal")
+            if (journal.exists()) return@forEach
+            GlafiraRollbackSnapshotCipher(alias).deleteKey()
+            check(marker.delete()) { "Could not remove stale fixture-key owner marker." }
+            syncMarkerDirectory(ownerDirectory)
+            if (root.exists()) check(root.deleteRecursively()) {
+                "Could not remove orphaned fixture root after its owned key was reclaimed."
+            }
+        }
+    }
 
     private suspend fun <T> withOwnedRollbackKey(block: suspend () -> T): T {
         assertNoActiveCoreWork()
@@ -1103,6 +1164,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val productionCipher = GlafiraRollbackSnapshotCipher()
         val productionKeyExistedBefore = productionCipher.keyExists()
         val secondFixture = GlafiraRollbackSnapshotCipher("glafira_test_rollback_${testRunId.replace("-", "")}_second")
+        registerFixtureKeyAlias(secondFixture.keyAlias, testRunId)
         val source = File(context.cacheDir, "alias-isolation-source.db")
         val firstEncrypted = File(context.cacheDir, "alias-isolation-first.enc")
         val secondEncrypted = File(context.cacheDir, "alias-isolation-second.enc")
@@ -1126,6 +1188,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             secondEncrypted.delete()
             rollbackCipher.deleteKey()
             secondFixture.deleteKey()
+            clearFixtureKeyAliasOwner(secondFixture.keyAlias, testRunId)
             if (productionKeyExistedBefore) {
                 assertTrue("The test must not delete the production rollback key", productionCipher.keyExists())
             }
