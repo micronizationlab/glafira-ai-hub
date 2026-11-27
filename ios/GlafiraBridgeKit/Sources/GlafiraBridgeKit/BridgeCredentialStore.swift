@@ -145,7 +145,7 @@ private enum BridgeHubBindingValidation {
     private static func isPrivateLanAddress(_ host: String) -> Bool {
         var ipv4 = in_addr()
         if host.withCString({ inet_pton(AF_INET, $0, &ipv4) }) == 1 {
-            let bytes = withUnsafeBytes(of: ipv4.s_addr.bigEndian, Array.init)
+            let bytes = withUnsafeBytes(of: ipv4.s_addr, Array.init)
             return bytes.count == 4 &&
                 (bytes[0] == 10 ||
                  (bytes[0] == 172 && (16...31).contains(bytes[1])) ||
