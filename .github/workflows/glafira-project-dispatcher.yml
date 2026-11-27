@@ -73,7 +73,9 @@ jobs:
                 [.[] |
                   select(.headSha == $sha) |
                   select($base != "" and any((.pullRequests // [])[]?; .number == $number and (.base.sha // "") != "" and .base.sha == $base)) |
-                  select((.workflowName // .name // "") != "GLAFIRA Java Format Check" or (.conclusion // "") != "skipped")
+                  # REST run history has no job-level status. Exclude formatter runs here;
+                  # the GraphQL PR check rollup remains the authoritative formatter evidence.
+                  select((.workflowName // .name // "") != "GLAFIRA Java Format Check")
                 ] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])
               ' <<< "$runs")"
               if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
@@ -342,14 +344,14 @@ jobs:
           grep -q 'Windows CI: COMPLETED/cancelled' <<< "$(grep -F '| [#559]' <<< "$output")"
           grep -q 'Agent CI: COMPLETED/failure' <<< "$(grep -F '| [#560]' <<< "$output")"
           row562="$(grep -F '| [#562]' <<< "$output")"
-          grep -q 'GLAFIRA Java Format Check: COMPLETED/failure' <<< "$row562"
+          ! grep -q 'GLAFIRA Java Format Check:' <<< "$row562"
           grep -q 'Security Scan: COMPLETED/success' <<< "$row562"
           ! grep -q 'metadata-skipped' <<< "$row562"
           grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#563]' <<< "$output")"
           grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#564]' <<< "$output")"
           row565="$(grep -F '| [#565]' <<< "$output")"
           grep -q 'Security Scan: COMPLETED/success' <<< "$row565"
-          grep -q 'GLAFIRA Java Format Check: COMPLETED/success' <<< "$(grep -F '| [#566]' <<< "$output")"
+          ! grep -q 'GLAFIRA Java Format Check:' <<< "$(grep -F '| [#566]' <<< "$output")"
           ! grep -q 'evil.test' <<< "$output"
           ! grep -q '\[link\]' <<< "$output"
 
