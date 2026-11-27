@@ -440,15 +440,15 @@ jobs:
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
-          printf '%s|%s|%s\n' "$#" "\${1:-missing}" "\${2:-missing}" >> "$FAKE_GH_ARGS"
-          if [[ "\${1:-}" == "api" && "\${2:-}" == "graphql" ]]; then
+          printf '%s|%s|%s\n' "$#" "${1:-missing}" "${2:-missing}" >> "$FAKE_GH_ARGS"
+          if [[ "${1:-}" == "api" && "${2:-}" == "graphql" ]]; then
             count=0
             [[ ! -f "$FAKE_GRAPHQL_CALLS" ]] || count="$(cat "$FAKE_GRAPHQL_CALLS")"
             count=$((count + 1))
             printf '%s' "$count" > "$FAKE_GRAPHQL_CALLS"
             exit 1
           fi
-          if [[ "\${1:-}" == "api" && "\${2:-}" == "--paginate" ]]; then
+          if [[ "${1:-}" == "api" && "${2:-}" == "--paginate" ]]; then
             count=0
             [[ ! -f "$FAKE_REST_CALLS" ]] || count="$(cat "$FAKE_REST_CALLS")"
             count=$((count + 1))
