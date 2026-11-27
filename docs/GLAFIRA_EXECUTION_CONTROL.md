@@ -13,7 +13,7 @@
 3. Reconcile the ledger with the actual repository. Never trust a remembered SHA, an earlier chat summary, an old PR base or an old green CI run.
 4. Search the plan and ledger for the exact step/acceptance criterion. Search current `main`, all open PR diffs and helper branches for the same behavior and files.
 5. If the behavior already exists, do not implement it again. Verify it against the criterion and either record evidence, record a precise gap, or mark the candidate SUPERSEDED.
-6. Reserve one unique Work Item ID, one Program Step ID (or explicitly approved cross-step task), one accountable executor, exact files, dependencies, tests and intended PR. Record reservation in the ledger before editing.
+6. Reserve one unique Work Item ID per registered parent task, one Program Step ID (or explicitly approved cross-step task), one accountable executor, exact files, dependencies, tests and intended PR. Child executable-leaf reservations under that same registered parent reference the same Work Item ID; they do not create duplicate parent tasks. Record each leaf reservation in the ledger before editing.
 7. If another active item touches the same behavior, API, schema, migration or files, stop and reconcile ownership before work begins.
 
 ## 2. Mandatory hierarchical WBS and strict sequence
@@ -27,7 +27,7 @@
 
 ## 3. Work item identity and ownership
 
-Every task has a stable ID: `GLAFIRA-S<step>-W<sequence>` (example: `GLAFIRA-S016-W01`). A task record must include:
+Every registered parent task has one stable Work Item ID: `GLAFIRA-S<step>-W<sequence>` (example: `GLAFIRA-S016-W01`); governance tasks may use `GLAFIRA-GOV-<domain>-W<sequence>` (for example, `GLAFIRA-GOV-WBS-W01`). Executable child leaves under the same parent reuse that parent's Work Item ID while retaining distinct WBS leaf IDs and distinct reservation records. Reuse across different parent tasks is prohibited. A task/reservation record must include:
 - Step ID(s), short objective and acceptance criteria;
 - one accountable executor (GLAFIRA or one named helper); reviewers are separate;
 - allowed file paths and explicit out-of-scope paths;
@@ -191,7 +191,7 @@ This section is the controlling clarification wherever earlier wording in this f
 
 - The canonical reservation ledger is the append-only ledger on protected `refs/heads/main`. A reservation is not active and no work may be dispatched until its reservation record is merged into the current mainline ledger.
 - All reservations, including direct owner assignments and overrides, use the same ledger-ref and the same compare-and-set rule: read the exact main SHA and ledger blob, prepare one reservation update, and submit it against that exact parent. If main advances or the expected blob/parent differs, reject the stale write, re-read and reconcile. Never accept two reservations based on the same stale ledger snapshot.
-- Reservation commits are serialized: one reservation/integration merge at a time; after each merge, re-read main and scan for duplicate WBS IDs, Work Item IDs, executors and file/behavior ownership before the next reservation or dispatch. A stale branch or a green check on an old base is not a reservation. The current GitHub ruleset `Protect main` (27810315) enforces non-fast-forward protection and required status contexts, but its strict-check policy is false, it has no merge queue, and privileged repository roles can bypass it. Therefore the single-flight reservation gate is currently a coordinator/owner procedure, not a repository-enforced mutex: if an owner bypass, concurrent merge or unexpected Main advance occurs, stop dispatch, re-read the ledger and reconcile before proceeding. Do not claim the ruleset alone provides atomic reservation.
+- Reservation commits use a single-flight coordinator procedure: one reservation/integration merge at a time; after each merge, re-read main and scan for duplicate WBS leaf IDs, cross-parent Work Item ID collisions, conflicting executor assignments and file/behavior ownership before the next reservation or dispatch. Repeated Work Item IDs across child leaves of the same registered parent are valid references to one parent task, not duplicate task identities. A stale branch or a green check on an old base is not a reservation. The current GitHub ruleset `Protect main` (27810315) enforces non-fast-forward protection and required status contexts, but its strict-check policy is false, it has no merge queue, and privileged repository roles can bypass it. Therefore the single-flight reservation gate is currently a coordinator/owner procedure, not a repository-enforced mutex: if an owner bypass, concurrent merge or unexpected Main advance occurs, stop dispatch, re-read the ledger and reconcile before proceeding. Do not claim the ruleset alone provides atomic reservation.
 - The reservation record must identify the canonical WBS executable leaf, owner-approved cross-step mapping where applicable, Work Item ID, predecessor(s), accountable executor, independent reviewer, exact allowed files, branch, base SHA, acceptance and status. File ownership is scoped to the listed paths/behavior; recording a ledger entry does not reserve the entire ledger file against unrelated append-only reservations.
 
 ### Durable handoff and lost acknowledgement
