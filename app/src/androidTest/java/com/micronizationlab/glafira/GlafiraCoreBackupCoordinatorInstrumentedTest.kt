@@ -448,6 +448,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val archive = coordinator.create(passphrase)
         try {
             store.enqueue(task("temporary-task"))
+            // The first post-commit cleanup is interrupted; restore() must retry cleanup
+            // and still report success because this exact restore attempt was committed.
+            fixtureRuntimeHooks.failCommittedCleanupOnce = true
             restoreOwned(coordinator, archive, passphrase)
 
             val restored = store.getTask("running-task")
