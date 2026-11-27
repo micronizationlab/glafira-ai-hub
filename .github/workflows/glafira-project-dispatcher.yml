@@ -527,10 +527,10 @@ jobs:
           cat > "$tmp/fetch-changed-prs.sh" <<'FETCH_CHANGED'
           #!/usr/bin/env bash
           set -euo pipefail
-          cat "$DISPATCHER_CHANGED_INVENTORY"
+          cat "$1"
           FETCH_CHANGED
           chmod +x "$tmp/fetch-changed-prs.sh"
-          changed_result="$(DISPATCHER_CHANGED_INVENTORY="$tmp/large-prs-wrapper-delta.json" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-changed-prs.sh" "$comparator" unused)"
+          changed_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-changed-prs.sh" "$comparator" "$tmp/large-prs-wrapper-delta.json")"
           [[ "$changed_result" == "CHANGED" ]]
 
           # Missing/unreadable local snapshots are explicit comparator errors.
