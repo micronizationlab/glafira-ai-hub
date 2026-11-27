@@ -21,15 +21,22 @@ The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `
 
 1. Inspect all open PRs, not only the PR that triggered the latest event.
 2. For fallback Actions evidence, require exact PR number, exact current head SHA and a non-empty exact current base SHA. Older-head/base runs are stale.
-3. Re-read PR refs after collecting runs. If refs moved, render against latest refs; if the second inventory read fails, fallback status is UNKNOWN.
+3. Re-read PR refs after collecting runs. A valid PR/head/base delta is `CHANGED` and is rendered against the latest complete snapshot; a failed fetch, malformed/partial page sequence, unreadable snapshot or comparator error is `UNKNOWN` and makes the Dispatcher job fail.
 4. Exclude METADATA_ONLY only for GLAFIRA Java Format Check; similarly named commit titles in other workflows remain valid CI evidence.
 5. Distinguish queued/in-progress from completed success/failure/cancelled.
 6. Rollup checks are head-associated only and must be labelled BASE NOT VERIFIED.
-7. Paginate open-PR inventory. Cap workflow history at the newest 1,000 runs and fetch it only when fallback evidence is needed.
+7. Build a pagination-stable PR cursor set from all PR states ordered by `CREATED_AT ASC`, then filter to `OPEN` only after all pages are collected. A concurrent close therefore does not remove an item from the middle of an offset-based open-only inventory. Validate every GraphQL page for errors, nodes and `pageInfo`; the page chain must end explicitly. REST fallback uses `state=all` with the same created-at ordering. Cap workflow history at the newest 1,000 runs and fetch it only when fallback evidence is needed.
 8. Keep Draft PRs Draft. Human review and integration remain separate decisions.
 9. Never alter branch dependency stacks or merge into main.
 10. Escape contributor-controlled PR titles and branch names before inserting them into Markdown.
 11. PR-triggered renderer tests use per-PR concurrency; each workflow_run completion gets its own run-ID group; scheduled/manual reconciliations use unique run IDs.
+
+## Inventory failure semantics
+
+- `UNCHANGED` means the complete ordered snapshots contain the same PR number/head/base identities.
+- `CHANGED` means both snapshots are complete and valid, but PR membership or identity changed; render the second complete snapshot and retain exact run matching.
+- `UNKNOWN` means either snapshot could not be fetched completely, page metadata is inconsistent, a local snapshot cannot be opened, or jq/comparator execution failed. Emit an explicit failure summary and exit non-zero; never turn UNKNOWN into a successful report.
+- The regression harness covers a 5,000-PR inventory, valid CHANGED wrapper output, injected jq and fetch failures, unreadable snapshots, failure-summary output, and a multi-page close-during-pagination fixture.
 
 ## Current operational workflow
 
