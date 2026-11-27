@@ -251,7 +251,7 @@ jobs:
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
           tmp="$(mktemp -d)"
-          trap 'status=$?; echo "DISPATCHER_TEST_EXIT status=$status command=$BASH_COMMAND" >&2; rm -rf "$tmp"' EXIT
+          trap 'rm -rf "$tmp"' EXIT
           cat > "$tmp/prs.json" <<'JSON'
           [
             {"number":553,"title":"current [link](https://evil.test) | title","headRefName":"docs/reconcile","headRefOid":"sha-current","baseRefOid":"base-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
@@ -517,7 +517,7 @@ jobs:
           echo "dispatcher stable all-state pagination, CHANGED wrapper, snapshot-open diagnostics and failure summary: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
-          bash -x "$RUNNER_TEMP/test-renderer.sh"
+          bash "$RUNNER_TEMP/test-renderer.sh"
       - name: Build cross-workstream status report
         env:
           GH_TOKEN: ${{ github.token }}
@@ -574,5 +574,5 @@ jobs:
             echo "|---:|---|---|---|:---:|"
             bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
             echo ""
-            echo "Policy: fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Formatter metadata-only runs are excluded only for the Java formatter workflow. Rollup checks are head-associated and labelled base-unverified. Workflow history is capped at 1,000 recent runs and fetched only when fallback is needed. No matching evidence is UNKNOWN/not a pass; skipped, cancelled, queued, partial or unknown states are not acceptance passes."
+            echo "Policy: historical PR inventory does not request statusCheckRollup; fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Formatter metadata-only runs are excluded only for the Java formatter workflow. Workflow history is capped at 1,000 recent runs. No matching evidence is UNKNOWN/not a pass; skipped, cancelled, queued, partial or unknown states are not acceptance passes."
           } >> "$GITHUB_STEP_SUMMARY"
