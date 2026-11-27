@@ -257,7 +257,7 @@ jobs:
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
           tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
+          trap 'status=$?; echo "DISPATCHER_TEST_EXIT status=$status command=$BASH_COMMAND" >&2; rm -rf "$tmp"' EXIT
           cat > "$tmp/prs.json" <<'JSON'
           [
             {"number":553,"title":"current [link](https://evil.test) | title","headRefName":"docs/reconcile","headRefOid":"sha-current","baseRefOid":"base-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
@@ -523,7 +523,7 @@ jobs:
           echo "dispatcher stable all-state pagination, CHANGED wrapper, snapshot-open diagnostics and failure summary: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
-          bash "$RUNNER_TEMP/test-renderer.sh"
+          bash -x "$RUNNER_TEMP/test-renderer.sh"
       - name: Build cross-workstream status report
         env:
           GH_TOKEN: ${{ github.token }}
