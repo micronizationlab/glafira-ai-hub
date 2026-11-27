@@ -476,8 +476,7 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-1"},"nodes":[{"number":1,"state":"OPEN","title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
-          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":2,"state":"OPEN","title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":1,"state":"OPEN","title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}},{"number":2,"state":"OPEN","title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
             exit 0
           fi
