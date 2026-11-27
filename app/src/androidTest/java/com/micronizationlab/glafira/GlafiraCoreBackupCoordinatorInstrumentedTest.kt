@@ -293,7 +293,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     // Reclaim only aliases whose durable owner marker proves this test created them.
     // If a matching fixture journal remains, preserve its key and recovery evidence.
-    private suspend fun cleanupOwnedLeftoverRollbackFixture() {
+    private fun cleanupOwnedLeftoverRollbackFixture() {
         val ownerDirectory = appContext.noBackupFilesDir
         ownerDirectory.listFiles { file ->
             file.name.startsWith("glafira-test-key-owner-")
