@@ -166,7 +166,7 @@ The following owner-approved task maps to legacy Program Step 93. This is a pare
 
 ### Reservation and exact-base sequence
 
-- PR #738 is a mandatory merge predecessor. This reservation PR is stacked on #738 and must not merge before #738 lands on Main. After #738 merges, recreate the reservation branch from the exact resulting Main SHA, re-read the ledger and duplicate ownership, update the base pin, and rerun exact-head checks before merging.
+- PR #738 has merged to Main as `f938fcb93fda6d00a03167eee1f2413e40af9ae9`. This parent reservation PR #752 was recreated from that exact resulting Main SHA; the ledger and duplicate-ownership state were re-read before the refresh. PR #752 remains a separate parent reservation and must pass its own review/CI/owner gates before any child implementation leaf is pinned or started.
 - The parent reservation PR must merge first after Docs CI, Security Scan, Project Dispatcher, independent CodeRabbit/Proofline review, resolution of blocking findings and owner approval.
 - A separate leaf-pin amendment must then merge before each implementation branch is created. `.1` pin records exact Main SHA after the parent reservation. `.2` pin records exact `.1` implementation merge SHA. `.3` pin records exact `.2` implementation merge SHA. `.4` pin records exact Main SHA containing `.1`, `.2` and merged PR #703.
 - If Main advances incompatibly before a leaf branch is created, merge a pin-refresh amendment recording exact then-current Main SHA and full predecessor set before creating the branch. Do not create even an empty implementation branch before its pin amendment merges.
@@ -174,7 +174,7 @@ The following owner-approved task maps to legacy Program Step 93. This is a pare
 
 ### Current status
 
-- Parent reservation: PROPOSED / IN_REVIEW; stacked on #738 and not mergeable to Main until recreated on the exact resulting Main SHA.
+- Parent reservation: PROPOSED / IN_REVIEW in PR #752; predecessor #738 is merged, and this reservation is refreshed from exact Main SHA `f938fcb93fda6d00a03167eee1f2413e40af9ae9`. It remains inactive until its own merge gates pass and PR #752 is merged.
 - `.1`, `.2`, `.3`: NOT STARTED pending separate pin amendments and predecessor acceptance.
 - `.4`: BLOCKED until production PR #703 is merged and `.1`/`.2` are DONE.
 - Program Step 93 and parent task remain open until every required leaf, review, merge and post-merge acceptance is complete.
