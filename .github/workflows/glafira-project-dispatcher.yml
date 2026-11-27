@@ -755,7 +755,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          if ! count="$(bash "$RUNNER_TEMP/count-initial-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$GITHUB_STEP_SUMMARY")"; then
+          if ! bash "$RUNNER_TEMP/count-initial-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$GITHUB_STEP_SUMMARY" >/dev/null; then
             exit 1
           fi
           runs='[]'
