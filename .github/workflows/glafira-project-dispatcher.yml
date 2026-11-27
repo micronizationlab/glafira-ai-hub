@@ -14,7 +14,7 @@ on:
       - Security Scan
     types: [completed]
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, closed, converted_to_draft, edited]
+    types: [opened, synchronize, reopened, ready_for_review, closed, converted_to_draft]
   workflow_dispatch:
 
 permissions:
@@ -30,22 +30,9 @@ concurrency:
 jobs:
   project-status:
     name: Reconcile all active GLAFIRA workstreams
-    # Ignore scheduled upstream scans and only formatter metadata-only completions.
-    if: >-
-      ${{
-        (
-          github.event_name != 'workflow_run' &&
-          (github.event.action != 'edited' || github.event.changes.base != null || github.event.changes.title != null)
-        ) ||
-        (
-          github.event_name == 'workflow_run' &&
-          github.event.workflow_run.event != 'schedule' &&
-          !(
-            github.event.workflow_run.name == 'GLAFIRA Java Format Check' &&
-            startsWith(github.event.workflow_run.display_title || '', 'METADATA_ONLY -')
-          )
-        )
-      }}
+    # Ignore only scheduled upstream runs. Never trust contributor-controlled run titles
+    # to suppress a real workflow completion; metadata edits are reconciled via formatter completion.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.event != 'schedule' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout dispatcher policy sources
@@ -86,7 +73,7 @@ jobs:
                 [.[] |
                   select(.headSha == $sha) |
                   select($base != "" and any((.pullRequests // [])[]?; .number == $number and (.base.sha // "") != "" and .base.sha == $base)) |
-                  select((.workflowName // .name // "") != "GLAFIRA Java Format Check" or ((.displayTitle // "") | startswith("METADATA_ONLY -") | not))
+                  select((.workflowName // .name // "") != "GLAFIRA Java Format Check" or (.conclusion // "") != "skipped")
                 ] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])
               ' <<< "$runs")"
               if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
@@ -337,7 +324,7 @@ jobs:
             {"headSha":"sha-cancelled","workflowName":"Windows CI","status":"completed","conclusion":"cancelled","createdAt":"2026-11-24T12:06:00Z","url":"https://example.test/run/cancelled","pullRequests":[{"number":559,"base":{"sha":"base-cancelled"}}]},
             {"headSha":"sha-failed","workflowName":"Agent CI","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/failed","pullRequests":[{"number":560,"base":{"sha":"base-failed"}}]},
             {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:07:00Z","url":"https://example.test/run/format-failed","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]},
-            {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","displayTitle":"METADATA_ONLY - PR metadata edit","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:08:00Z","url":"https://example.test/run/metadata-skipped","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]},
+            {"headSha":"sha-meta","workflowName":"GLAFIRA Java Format Check","displayTitle":"METADATA_ONLY - PR metadata edit","status":"completed","conclusion":"skipped","createdAt":"2026-11-24T12:08:00Z","url":"https://example.test/run/metadata-skipped","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]},
             {"headSha":"sha-meta","workflowName":"Security Scan","displayTitle":"METADATA_ONLY - commit subject","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:09:00Z","url":"https://example.test/run/security-valid","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]},
             {"headSha":"sha-title","workflowName":"Security Scan","displayTitle":"METADATA_ONLY - ordinary commit title","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:10:00Z","url":"https://example.test/run/title-valid","pullRequests":[{"number":565,"base":{"sha":"base-title"}}]},
             {"headSha":"sha-meta-rollup","workflowName":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:11:00Z","url":"https://example.test/run/format-rollup-fallback","pullRequests":[{"number":566,"base":{"sha":"base-meta-rollup"}}]},
@@ -678,15 +665,14 @@ jobs:
           events = workflow["on"] || workflow[true]
           abort "dispatcher must not restore periodic schedule" if events.is_a?(Hash) && events.key?("schedule")
           pull_request_types = events.fetch("pull_request").fetch("types")
-          required_pr_types = %w[opened synchronize reopened ready_for_review closed converted_to_draft edited]
+          required_pr_types = %w[opened synchronize reopened ready_for_review closed converted_to_draft]
           abort "dispatcher PR lifecycle triggers are incomplete" unless (required_pr_types - pull_request_types).empty?
           abort "dispatcher must reconcile pushes to PR target branches" unless events.fetch("push").fetch("branches") == ["**"]
           workflow_run = events.fetch("workflow_run")
           required_workflows = ["GLAFIRA CI — change-aware platform validation", "GLAFIRA Windows Agent", "GLAFIRA Java Format Check", "Security Scan"]
           abort "dispatcher workflow completion subscriptions are incomplete" unless (required_workflows - workflow_run.fetch("workflows")).empty?
           guard = workflow.dig("jobs", "project-status", "if").to_s
-          abort "job guard must scope metadata-only skip to Java formatter" unless guard.include?("workflow_run.name == 'GLAFIRA Java Format Check'") && guard.include?("workflow_run.event != 'schedule'") && guard.include?("METADATA_ONLY -")
-          abort "job guard must skip body-only edits but refresh title/base changes" unless guard.include?("github.event.changes.base != null") && guard.include?("github.event.changes.title != null")
+          abort "job guard must exclude only scheduled workflow runs" unless guard.include?("workflow_run.event != 'schedule'") && !guard.include?("METADATA_ONLY -") && !guard.include?("display_title")
           concurrency_group = workflow.dig("concurrency", "group").to_s
           abort "metadata-only edits need a unique concurrency group" unless concurrency_group.include?("metadata-") && concurrency_group.include?("github.run_id")
           config = YAML.load_file(".coderabbit.yaml")
@@ -700,28 +686,24 @@ jobs:
           puts "actual workflow triggers, base-branch push reconciliation, job guard, no-schedule policy and CodeRabbit YAML: PASS"
           RUBY
           should_reconcile() {
-            local event_name="$1" action="$2" base_changed="$3" title_changed="$4" upstream_event="$5" workflow_name="$6" display_title="$7"
-            if [[ "$event_name" == "pull_request" && "$action" == "edited" && "$base_changed" != "true" && "$title_changed" != "true" ]]; then return 1; fi
-            if [[ "$event_name" == "workflow_run" ]]; then
-              [[ "$upstream_event" != "schedule" ]] || return 1
-              if [[ "$workflow_name" == "GLAFIRA Java Format Check" && "$display_title" == "METADATA_ONLY -"* ]]; then return 1; fi
-            fi
+            local event_name="$1" action="$2" upstream_event="$3"
+            if [[ "$event_name" == "workflow_run" && "$upstream_event" == "schedule" ]]; then return 1; fi
+            if [[ "$event_name" == "pull_request" && "$action" == "edited" ]]; then return 1; fi
             return 0
           }
-          if should_reconcile "workflow_run" "completed" "false" "false" "schedule" "GLAFIRA CI — change-aware platform validation" "daily run"; then
+          if should_reconcile "workflow_run" "completed" "schedule"; then
             echo "scheduled workflow_run must be ignored" >&2; exit 1
           fi
-          if should_reconcile "workflow_run" "completed" "false" "false" "pull_request" "GLAFIRA Java Format Check" "METADATA_ONLY - PR metadata edit"; then
-            echo "formatter metadata-only workflow_run must be ignored" >&2; exit 1
+          # A metadata-only formatter workflow is still the trusted event that refreshes
+          # the report after title/body edits; it is excluded only from CI evidence by
+          # its actual skipped conclusion, never by its contributor-controlled title.
+          should_reconcile "workflow_run" "completed" "pull_request"
+          should_reconcile "workflow_run" "completed" "pull_request"
+          should_reconcile "workflow_run" "completed" "pull_request"
+          should_reconcile "pull_request" "synchronize" ""
+          if should_reconcile "pull_request" "edited" ""; then
+            echo "direct edited events must be handled by formatter workflow completion" >&2; exit 1
           fi
-          if should_reconcile "pull_request" "edited" "false" "false" "" "" ""; then
-            echo "body-only PR edit must not start reconciliation" >&2; exit 1
-          fi
-          should_reconcile "pull_request" "edited" "false" "true" "" "" ""
-          should_reconcile "pull_request" "edited" "true" "false" "" "" ""
-          should_reconcile "pull_request" "synchronize" "false" "false" "" "" ""
-          should_reconcile "workflow_run" "completed" "false" "false" "pull_request" "GLAFIRA CI — change-aware platform validation" "METADATA_ONLY - title collision"
-          should_reconcile "workflow_run" "completed" "false" "false" "pull_request" "Security Scan" "ordinary title"
           echo "event-driven dispatcher policy fixtures: PASS"
       - name: Build cross-workstream status report
         env:
