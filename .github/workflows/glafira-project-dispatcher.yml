@@ -105,9 +105,11 @@ jobs:
           gh_cli="${GLAFIRA_GH_CLI:-gh}"
           sleep_bin="${GLAFIRA_SLEEP_BIN:-sleep}"
           gh_retry() {
+            local command="$1"
+            shift
             local attempt=1 delay=2 status=0 output
             while (( attempt <= 3 )); do
-              if output="$("$gh_cli" "$@")"; then
+              if output="$("$command" "$@")"; then
                 printf '%s\n' "$output"
                 return 0
               else
@@ -135,7 +137,7 @@ jobs:
               }
             }
           }'
-          if pages="$(gh_retry api graphql --paginate -f query="$query" 2>/dev/null)" && jq -s -e 'length > 0 and all(.[]; (.data.repository.pullRequests.nodes | type) == "array")' >/dev/null <<< "$pages"; then
+          if pages="$(gh_retry "$gh_cli" api graphql --paginate -f query="$query" 2>/dev/null)" && jq -s -e 'length > 0 and all(.[]; (.data.repository.pullRequests.nodes | type) == "array")' >/dev/null <<< "$pages"; then
             jq -s '[
               .[].data.repository.pullRequests.nodes[] |
               {
@@ -154,7 +156,7 @@ jobs:
             exit 0
           fi
           # REST fallback retains exact head/base identity and paginates all open PRs.
-          rest_pages="$(gh_retry api --paginate "repos/$repo/pulls?state=open&per_page=100")"
+          rest_pages="$(gh_retry "$gh_cli" api --paginate "repos/$repo/pulls?state=open&per_page=100")"
           jq -s '[
             add[] |
             {
@@ -175,9 +177,11 @@ jobs:
           gh_cli="${GLAFIRA_GH_CLI:-gh}"
           sleep_bin="${GLAFIRA_SLEEP_BIN:-sleep}"
           gh_retry() {
+            local command="$1"
+            shift
             local attempt=1 delay=2 status=0 output
             while (( attempt <= 3 )); do
-              if output="$("$gh_cli" "$@")"; then
+              if output="$("$command" "$@")"; then
                 printf '%s\n' "$output"
                 return 0
               else
@@ -195,7 +199,7 @@ jobs:
           : > "$tmp"
           # Bound each reconciliation to the newest 1,000 Actions runs.
           for page in $(seq 1 10); do
-            response="$(gh_retry api "repos/$repo/actions/runs?per_page=100&page=$page&sort=created&direction=desc")"
+            response="$(gh_retry "$gh_cli" api "repos/$repo/actions/runs?per_page=100&page=$page&sort=created&direction=desc")"
             count="$(jq '.workflow_runs | length' <<< "$response")"
             jq -c '.workflow_runs[]? | {
               headSha: .head_sha,
