@@ -35,6 +35,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var rollbackCipher: GlafiraRollbackSnapshotCipher
     private var ownsFixture = false
     private lateinit var testRunId: String
+    private var fixtureLifetimeFile: RandomAccessFile? = null
+    private var fixtureLifetimeFileLock: java.nio.channels.FileLock? = null
     private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         override suspend fun <T> withPaused(block: () -> T): T = block()
@@ -51,45 +53,91 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Before
     fun setUp() = runBlocking {
-        withFixtureLocks { cleanupOwnedLeftoverRollbackFixture() }
-        testRunId = UUID.randomUUID().toString()
-        fixtureRuntimeHooks.pauseContexts.clear()
-        val aliasSuffix = testRunId.replace("-", "")
-        rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
-        check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
-        registerFixtureKeyAlias(rollbackCipher.keyAlias, testRunId)
-        testRoot = File(appContext.cacheDir, "glafira-backup-test-$testRunId").apply { check(mkdirs()) }
-        ownsFixture = true
-        context = IsolatedBackupTestContext(appContext, testRoot)
-        store = GlafiraTaskStore(context)
-        assertEquals(File(testRoot, "databases/glafira_core_tasks.db").absolutePath, store.writableDatabase.path)
+        acquireFixtureLifetimeLock()
+        try {
+            // Keep the lifetime lock from before orphan reclamation through teardown so
+            // another test setup cannot reclaim a fixture that is still in use.
+            withFixtureLocks { cleanupOwnedLeftoverRollbackFixture() }
+            testRunId = UUID.randomUUID().toString()
+            fixtureRuntimeHooks.pauseContexts.clear()
+            val aliasSuffix = testRunId.replace("-", "")
+            rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
+            check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
+            registerFixtureKeyAlias(rollbackCipher.keyAlias, testRunId)
+            testRoot = File(appContext.cacheDir, "glafira-backup-test-$testRunId").apply { check(mkdirs()) }
+            ownsFixture = true
+            context = IsolatedBackupTestContext(appContext, testRoot)
+            store = GlafiraTaskStore(context)
+            assertEquals(File(testRoot, "databases/glafira_core_tasks.db").absolutePath, store.writableDatabase.path)
+        } catch (error: Throwable) {
+            releaseFixtureLifetimeLock()
+            throw error
+        }
     }
     @After
     fun tearDown(): Unit = runBlocking<Unit> {
-        if (!ownsFixture) return@runBlocking
-        var failure: Throwable? = null
         try {
-            if (::store.isInitialized) store.close()
-        } catch (error: Throwable) {
-            failure = error
-        }
-        try {
-            if (::testRoot.isInitialized && testRoot.exists()) {
-                val installationMarker = rollbackOwnerMarker()
-                val fixtureJournal = File(testRoot, "no-backup/glafira-restore-journal")
-                check(!installationMarker.exists() && !fixtureJournal.exists()) {
-                    "Preserving fixture root because rollback ownership/recovery evidence remains."
-                }
-                // Delete the test-owned Keystore key before its durable owner marker.
-                rollbackCipher.deleteKey()
-                clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
-                check(testRoot.deleteRecursively()) { "Could not remove isolated backup fixture." }
+            if (!ownsFixture) return@runBlocking
+            var failure: Throwable? = null
+            try {
+                if (::store.isInitialized) store.close()
+            } catch (error: Throwable) {
+                failure = error
             }
-        } catch (cleanup: Throwable) {
-            if (failure != null) failure!!.addSuppressed(cleanup) else failure = cleanup
+            try {
+                if (::testRoot.isInitialized && testRoot.exists()) {
+                    val installationMarker = rollbackOwnerMarker()
+                    val fixtureJournal = File(testRoot, "no-backup/glafira-restore-journal")
+                    check(!installationMarker.exists() && !fixtureJournal.exists()) {
+                        "Preserving fixture root because rollback ownership/recovery evidence remains."
+                    }
+                    // Delete the test-owned Keystore key before its durable owner marker.
+                    rollbackCipher.deleteKey()
+                    clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
+                    check(testRoot.deleteRecursively()) { "Could not remove isolated backup fixture." }
+                }
+            } catch (cleanup: Throwable) {
+                if (failure != null) failure!!.addSuppressed(cleanup) else failure = cleanup
+            }
+            if (failure != null) throw failure!!
+        } finally {
+            releaseFixtureLifetimeLock()
         }
-        if (failure != null) throw failure!!
     }
+    private fun acquireFixtureLifetimeLock() {
+        FIXTURE_LIFETIME_PROCESS_LOCK.lock()
+        try {
+            val lockFile = File(appContext.noBackupFilesDir, "glafira-backup-fixture-lifetime.lock")
+            fixtureLifetimeFile = RandomAccessFile(lockFile, "rw")
+            fixtureLifetimeFileLock = fixtureLifetimeFile!!.channel.lock()
+            check(fixtureLifetimeFileLock!!.isValid) { "Could not hold backup fixture lifetime lock." }
+        } catch (error: Throwable) {
+            try {
+                fixtureLifetimeFile?.close()
+            } finally {
+                fixtureLifetimeFile = null
+                FIXTURE_LIFETIME_PROCESS_LOCK.unlock()
+            }
+            throw error
+        }
+    }
+
+    private fun releaseFixtureLifetimeLock() {
+        try {
+            fixtureLifetimeFileLock?.release()
+        } finally {
+            fixtureLifetimeFileLock = null
+            try {
+                fixtureLifetimeFile?.close()
+            } finally {
+                fixtureLifetimeFile = null
+                if (FIXTURE_LIFETIME_PROCESS_LOCK.isHeldByCurrentThread) {
+                    FIXTURE_LIFETIME_PROCESS_LOCK.unlock()
+                }
+            }
+        }
+    }
+
     private fun isolatedCoordinator() =
         GlafiraCoreBackupCoordinator(context, store, rollbackCipher, fixtureRuntimeHooks)
 
@@ -300,6 +348,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     // Reclaim only aliases whose durable owner marker proves this test created them.
     // If a matching fixture journal remains, preserve its key and recovery evidence.
     private fun cleanupOwnedLeftoverRollbackFixture() {
+        check(fixtureLifetimeFileLock?.isValid == true) {
+            "Orphan fixture reclamation requires the lifetime lock held from setup through teardown."
+        }
         val ownerDirectory = appContext.noBackupFilesDir
         ownerDirectory.listFiles { file ->
             file.name.startsWith("glafira-test-key-owner-")
@@ -1251,5 +1302,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     companion object {
         private const val MAINTENANCE_TIMEOUT_MILLIS = 10_000L
+        private val FIXTURE_LIFETIME_PROCESS_LOCK = java.util.concurrent.locks.ReentrantLock(true)
     }
 }
