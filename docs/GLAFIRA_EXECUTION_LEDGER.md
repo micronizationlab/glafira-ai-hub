@@ -15,6 +15,8 @@ This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CO
 
 ## Work-item registry
 
+| GLAFIRA-CODEX-W01 | `1.7.1.1.1.1.1` | GLAFIRA | Project-wide immediate repair-on-discovery Codex; all eleven workstreams and all write-enabled helpers | IN_REVIEW | PR #761; `docs/GLAFIRA_CODEX.md`; one-pass defect register and repair report; pending exact-head CI/review/merge |
+
 | Work Item ID | Step | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|
 | GLAFIRA-GOV-W01 | Governance | GLAFIRA | Establish this control, update helper instructions and reconcile plan baseline | IN_PROGRESS | Branch `governance/program-150-single-source-of-truth`; PR to be opened after doc consistency check |
@@ -693,3 +695,5 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 - **PR-size acceptance:** the file-only exception is 6–10 files and no more than 200 changed lines, with prior written owner/integrator approval, rationale and exact file list. A 201–300-line PR requires a separate prior written owner/integrator line-count approval; if it also has 6–10 files, both exceptions and both rationales are required. More than 300 lines or more than 10 files must be split.
 - **Next eligible WBS ID:** none pre-authorized; after this leaf is DONE, the coordinator must re-scan and register the next eligible leaf rather than assuming a successor.
 - **Status:** PROPOSED / NOT ACTIVE — this PR is stacked on #738 and must be recreated from the exact resulting Main SHA after #738 merges. It is not mergeable as the final reservation on the current Main; no helper instruction edit or dispatch is authorized before the recreated reservation merges and follow-on PR #753 uses the exact new Main SHA.
+
+- WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.

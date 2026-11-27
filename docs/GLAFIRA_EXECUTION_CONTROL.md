@@ -40,6 +40,9 @@ One logical behavior has one active implementation owner. Helpers may independen
 
 ## 4. The mandatory implementation cycle
 
+**Repair-on-discovery:** every executor/reviewer with write authority follows `docs/GLAFIRA_CODEX.md`. Defects discovered during inventory, implementation or validation are consolidated by root cause and fixed in the same cycle wherever authorized. Do not finish a cycle with finding-only comments or tests-only work when a source correction is possible. The cycle produces one repair register/report with the committed changes and evidence. Read-only reviewers hand off one deduplicated register to the named file owner.
+
+
 1. **Inventory:** refresh main, PRs, branches, changed files and prior work.
 2. **Define:** write hypothesis, source evidence, smallest change, risks, dependencies and tests.
 3. **Reserve:** register Work Item ID and exclusive file/behavior ownership.
@@ -47,7 +50,7 @@ One logical behavior has one active implementation owner. Helpers may independen
 5. **Review diff:** verify only intended files changed; compare against all open PRs and main; reject duplicate hunks/behavior.
 6. **Test:** run targeted tests first. Expand only to required project checks.
 7. **Build/CI queue:** enqueue once per unique commit SHA + workflow/lane. Never run parallel builds. Reuse existing completed/in-progress run for the same SHA and workflow.
-8. **Inspect evidence:** read job results and failure logs. Classify source defect, test defect, environment failure, cancellation, timeout or skipped. A rerun requires a written reason and must reuse the same commit SHA unless code changed.
+8. **Inspect and repair evidence:** read job results and failure logs; aggregate all findings for the owned scope into one deduplicated repair register. Fix source/test/configuration defects in the same cycle, then rerun the relevant checks on the corrected SHA. Classify only genuine environment failures, cancellations, timeouts or external blockers as unresolved. Never stop at a test report when a safe correction is possible.
 9. **PR review:** one PR per independent change. Default target 50–150 changed lines, hard ceiling 200; larger work is split before implementation. No duplicate PR for an existing diff.
 10. **Merge gate:** fresh base; no unresolved overlap/conflict; required review; exact-head checks all passed; required platform tests actually executed; no skipped/cancelled jobs counted as success; dependency PRs merged in order; owner approval where required.
 11. **Merge and verify:** authorized maintainer merges; record merge commit; run/reuse post-merge checks for that exact main SHA; inspect logs.
@@ -62,7 +65,7 @@ One logical behavior has one active implementation owner. Helpers may independen
 - New commit SHA: new validation is required because the artifact changed.
 - Different workflow/lane or materially different configuration: separate check is valid, but must be explicitly registered.
 - Never create a second APK/installer for the same source SHA/configuration just to have another artifact. Record artifact SHA-256, version, source SHA and workflow run.
-- CI concurrency is serialized globally for release/build lanes; work on non-overlapping code may proceed independently, but builds do not run in parallel.
+- Global cross-PR CI/build serialization is NOT IMPLEMENTED. Android is PR-keyed, iOS is ref-keyed and Windows workflows lack a shared queue. Issue #744 tracks the durable non-dropping FIFO queue/lock. Until it is implemented and verified, parallel platform build dispatch is BLOCKED; do not claim builds are globally serialized.
 - Never call a cancelled, skipped, queued, in-progress or partial workflow a pass.
 
 ## 6. PR and branch rules
@@ -103,7 +106,7 @@ A physical-device, two-PC, cloud-provider or owner-approval requirement cannot b
 
 ## 9. Priority and sequencing
 
-Respect current owner priorities: P1 Core; P2 Backup & Recovery; P3 Bridge and Windows Desktop. Android and Desktop are the main runtime surfaces. iOS and specialist-agent feature work follow the foundation. All eleven streams remain active for non-conflicting analysis and documentation, but no stream may bypass dependency order or claim shared file ownership.
+Respect the complete owner-approved order: P1 Core → P2 Backup & Recovery → P3 Bridge / Windows Desktop-Hub / Android client integration → P4 iOS and specialist-agent feature work → P5 non-issuing Token/GCU. Android and Windows Desktop are the primary runtime surfaces, but client work does not displace Core or Backup. Bridge/Hub prerequisites precede dependent Android pairing. All eleven streams remain active for non-conflicting work without bypassing dependencies or shared-file ownership.
 
 ## 10. Current baseline and reconciliation
 
@@ -161,7 +164,7 @@ This rule applies whenever a lane would otherwise be idle for a cycle. It does n
 - A substantive response means a code/document change, commit, review that resolves or precisely answers findings, a completed required check with inspectable logs, or a concrete blocker report with evidence and a next action. A bot status ping, reaction, repeated promise, unchanged PR head, or comment that does not address the requested work is not a substantive response.
 - After THREE consecutive coordinator passes with no substantive response, the coordinator records the three pass dates/evidence and automatically transfers the task to GLAFIRA or another available qualified executor. The original bot/helper is removed from active ownership; preserve its branch/PR and history, but do not wait for it or permit overlapping edits.
 - The replacement executor first checks the exact current main SHA, WBS reservation, dependencies, changed files and existing work. It then takes ownership in a dedicated branch and continues from the last verified state; no work is discarded or duplicated.
-- The non-responsive bot/helper is reassigned one distinct, dependency-ready package from the separate GLAFIRA DESIGN project. The design package must have its own WBS leaf, issue, branch, allowed files, acceptance criteria and reservation. It must not overlap another active design reservation or replace the original implementation task's status.
+- After transfer, rescan the full ready-work queue. Assign the returning helper the highest-priority eligible implementation, validation, intake, review, merge or post-merge task available. Use GLAFIRA DESIGN only when no equal- or higher-priority ready task exists; any design package must have its own WBS leaf, issue, branch, allowed files, acceptance criteria and reservation. It must not overlap another active design reservation or replace the original implementation task's status.
 - If the original executor responds after transfer, it must stop editing the transferred implementation. It may contribute review evidence only when explicitly requested by the coordinator.
 - A genuine external dependency, unavailable permission, owner-only acceptance or infrastructure outage is a BLOCKED state, not proof of laziness. The coordinator still transfers actionable work where possible and records the exact blocker; design fallback is assigned only if no higher-priority ready task exists.
 - This escalation rule does not weaken dependency order, exact-head CI, review, owner approval, physical-device acceptance or merge gates. No direct merge to main is authorized by the transfer itself.
@@ -199,7 +202,7 @@ This section is the controlling clarification wherever earlier wording in this f
 ### One active assignment, transfer and DESIGN fallback
 
 - Each helper has at most one active bounded assignment. A planned successor is not an assignment. Before a blocked assignment is suspended or transferred, record its original status and blocker, transfer its exclusive reservation, and fence the former executor from editing. Only then may the replacement receive one new item.
-- After three completed coordinator passes without substantive, verifiable progress, GLAFIRA may take over the actionable implementation task. Preserve the original task's status and history; the returning helper must stop editing it. The helper receives a distinct DESIGN assignment only after the transfer is complete and only if it has no other active assignment.
+- After three consecutive completed coordinator passes without substantive, verifiable progress, GLAFIRA may take over the actionable implementation task; any substantive response resets the consecutive-pass count. Preserve the original task's status and history; the returning helper must stop editing it. The helper receives a distinct DESIGN assignment only after the transfer is complete and only if it has no other active assignment.
 - A helper that takes over a transferred task must not also receive a DESIGN fallback or a second global-ready task in the same cycle. Re-evaluate its slot only after the transferred task is completed or formally suspended/handed off.
 - Keep reservations while work is active, blocked, suspended or transferred. Release a reservation only after verified `DONE` or authorized terminal `CANCELLED`/`SUPERSEDED`; record the reason and replacement ID for the latter two. Never release merely because an executor missed an ACK or a task is temporarily blocked.
 

@@ -159,7 +159,10 @@ The following owner-approved cross-step governance work belongs to Workstream 11
 - `1.11.2.1.1` — Design fallback and ready-work governance; subtask `1.11.2.1.1.1`; executable leaf `1.11.2.1.1.1.1`; Work Item `GLAFIRA-S000-W01`; issue #685. This is the canonical corrected registration for PR #701.
 - `1.11.2.1.2` — Eleven-workstream batch-cycle governance; subtask `1.11.2.1.2.1`; executable leaf `1.11.2.1.2.1.1`; Work Item `GLAFIRA-S000-W02`; issue #548. This is the canonical corrected registration for PR #721.
 
-For both leaves, the owner is the priority/override authority; GLAFIRA is the operational coordinator; independent review is separate from authorship; the allowed files and exact base SHA must be recorded in the canonical ledger before edits. Dispatcher output is evidence only. Both Action Pools, issues, PRs, helper intake, branches and reservations must be reconciled.
+For both leaves, the owner is the priority/override authority; GLAFIRA is the operational coordinator; independent review is separate from authorship; the allowed files and exact base SHA must be recorded in the canonical ledger before edits. Dispatcher output is evidence only. Action Pool A, issues, PRs, helper intake, branches and reservations must always be reconciled. Pool B is checked only if it exists or when Pool A is exhausted and Pool B is due to be created.
+
+- `1.11.2.1.4` — Action Pool A priority and readiness reconciliation; subtask `1.11.2.1.4.1`; executable leaf `1.11.2.1.4.1.1`; Work Item `GLAFIRA-S000-W04`; issue #548. This is a WBS registration only; no active reservation or file edit is authorized until a separate exact-SHA reservation PR merges.
+- `1.11.2.1.5` — contributor PR-size exception policy alignment; subtask `1.11.2.1.5.1`; executable leaf `1.11.2.1.5.1.1`; Work Item `GLAFIRA-S000-W05`; issue #548. This is a WBS registration only; `CONTRIBUTING.md` remains unreserved and must not be edited until its separate exact-SHA reservation PR merges.
 
 ### Batch-cycle acceptance and sequencing
 
@@ -181,3 +184,12 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - This is an explicitly owner-approved cross-step DESIGN fallback task, not a Program 150 implementation step. It may be assigned only when the source lane has no eligible equal- or higher-priority ready work; its source lane's original status remains unchanged. Current source lane #123 is OPEN and READY AFTER the governance/WBS reservation gate, so W03 is NOT ACTIVE / NOT ASSIGNED and no design branch/draft is authorized yet. Re-evaluate only after a concrete blocker and complete ready-work scan are recorded on issue #674.
 - The six-component subtask is not itself an executable leaf. The seven-component ID above is the only executable reservation target. Drafting requires a separate pre-edit implementation reservation recording the exact current main SHA, implementation branch, executor, independent reviewer, exclusive file and acceptance.
 - Shared visual tokens remain PENDING until #679 is accepted. Information architecture may proceed only if issue #674 explicitly records the token-pending marker. Retain the ICQ flower in the product identity and acceptance criteria.
+
+
+## 11. Defect discovery and immediate repair — owner-approved Codex rule
+
+- `1.7.1` — Defect prevention and repair execution.
+- `1.7.1.1` — Consolidated defect repair.
+- `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
+- `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
+- `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
