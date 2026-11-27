@@ -130,7 +130,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             override fun apply() { commit() }
         }
     }
-    private suspend fun <T> withFixtureLocks(block: () -> T): T = withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
+    private suspend fun <T> withFixtureLocks(block: suspend () -> T): T = withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
         GlafiraCoreMaintenanceGate.withExclusive {
             PendingDeliveryRuntime.withPaused { block() }
         }
