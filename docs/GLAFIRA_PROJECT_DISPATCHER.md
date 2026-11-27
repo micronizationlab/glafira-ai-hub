@@ -11,11 +11,13 @@ The dispatcher prevents parallel engineering work from becoming siloed. Every re
 - Completion of the repository's main Android/Desktop validation workflow.
 - Completion of the Windows Agent workflow.
 - Completion of the GLAFIRA Java Format Check workflow, including validation after a PR base retarget.
-- Pull request opened, synchronized, reopened, or marked ready.
-- Scheduled reconciliation every 15 minutes.
+- Completion of Security Scan.
+- Pull request opened, synchronized, reopened, marked ready, closed, converted to Draft, or edited.
 - Manual workflow dispatch.
 
-The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `actions: read`. It does not merge, close, retarget, push, or rerun workflows.
+There is no periodic schedule. Scheduled upstream workflow completions are ignored so a daily maintenance scan does not start an idle reconciliation. To refresh manually, open **Actions → GLAFIRA Project Dispatcher → Run workflow**, select `main`, and dispatch it.
+
+The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `actions: read`. It does not merge, close, retarget, push, or rerun workflows. Inventory/API failures are retried up to three times with bounded backoff; if the current PR inventory still cannot be verified, the Dispatcher check fails rather than reporting a green reconciliation.
 
 ## Correctness rules
 
@@ -29,7 +31,7 @@ The workflow is read-only: it has `contents: read`, `pull-requests: read`, and `
 8. Keep Draft PRs Draft. Human review and integration remain separate decisions.
 9. Never alter branch dependency stacks or merge into main.
 10. Escape contributor-controlled PR titles and branch names before inserting them into Markdown.
-11. PR-triggered renderer tests use per-PR concurrency; each workflow_run completion gets its own run-ID group; scheduled/manual reconciliations use unique run IDs.
+11. PR-triggered renderer tests use per-PR concurrency; each workflow_run completion gets its own run-ID group; manual reconciliations use unique run IDs.
 
 ## Current operational workflow
 

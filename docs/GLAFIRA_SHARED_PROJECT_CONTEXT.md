@@ -2,7 +2,7 @@
 
 Purpose: provide a versioned, non-secret project knowledge pack that Android/Desktop agents and human developers can read before accepting work. This document is project context, not executable authority and not a substitute for owner approval.
 
-Last reviewed: 2026-11-23.
+Last reviewed: 2026-11-27.
 
 ## 1. Product intent
 
@@ -73,7 +73,7 @@ Project-specific knowledge can and should be shared through versioned project do
 ## 5. Current automation boundaries
 
 ### Project Dispatcher v1
-The dispatcher reads all open PRs, matches CI runs to exact current head SHAs, and reports the latest run for each workflow. It runs after the main Android/Desktop workflow, on PR updates, on a 15-minute schedule and manually. It is read-only and does not merge, push, rerun or assign code-writing tasks.
+The dispatcher reads all open PRs, matches CI runs to exact current head and base SHAs, and reports the latest run for each workflow. It runs after Android/Desktop, Windows Agent, Java Format and Security Scan completions; on PR lifecycle/title edits; and manually through GitHub Actions → GLAFIRA Project Dispatcher → Run workflow on `main`. There is no 15-minute polling schedule, and scheduled upstream scans do not trigger another reconciliation. Inventory/API failures receive bounded retries; unresolved failures make the Dispatcher check non-green. It is read-only and does not merge, push, rerun or assign code-writing tasks.
 
 ### Desktop worker
 The current Desktop Bridge task worker can poll owner-authorized tasks and run registered local handlers. The current CLI's worker mode expects local Ollama at `127.0.0.1:11434`. It is not yet a general autonomous programmer and does not have unrestricted repository write authority.
