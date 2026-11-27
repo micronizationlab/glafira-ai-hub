@@ -2,6 +2,8 @@ package com.micronizationlab.glafira
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
+import android.system.Os
+import android.system.OsConstants
 import android.database.sqlite.SQLiteException
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -147,10 +149,20 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun rollbackOwnerMarker(): File =
         File(appContext.noBackupFilesDir, "glafira-backup-instrumentation-owner")
 
+    private fun syncMarkerDirectory(directory: File) {
+        val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY or OsConstants.O_DIRECTORY, 0)
+        try {
+            Os.fsync(descriptor)
+        } finally {
+            Os.close(descriptor)
+        }
+    }
+
     private fun writeRollbackOwnerMarker(runId: String, beforePublish: () -> Unit = {}) {
         val marker = rollbackOwnerMarker()
+        val parent = checkNotNull(marker.parentFile)
         check(!marker.exists()) { "A previous test-owned rollback operation must be recovered first." }
-        val temporary = File(marker.parentFile, ".${marker.name}.$runId.tmp")
+        val temporary = File(parent, ".${marker.name}.$runId.tmp")
         check(!temporary.exists())
         try {
             FileOutputStream(temporary).use { output ->
@@ -158,13 +170,21 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 output.fd.sync()
             }
             beforePublish()
-            // A hard-link publish is atomic and fails if another generation already owns the marker.
+            // Publish atomically, then persist the directory entry before any rollback key can be created.
             Files.createLink(marker.toPath(), temporary.toPath())
+            syncMarkerDirectory(parent)
         } catch (error: Throwable) {
             if (temporary.exists()) check(temporary.delete()) { "Could not remove unpublished owner marker temp." }
+            if (marker.exists() && marker.readText(Charsets.UTF_8) == runId) {
+                check(marker.delete()) { "Could not remove failed owner marker publication." }
+            }
+            syncMarkerDirectory(parent)
             throw error
         } finally {
-            if (temporary.exists()) check(temporary.delete()) { "Could not remove published owner marker temp link." }
+            if (temporary.exists()) {
+                check(temporary.delete()) { "Could not remove published owner marker temp link." }
+                syncMarkerDirectory(parent)
+            }
         }
     }
 
