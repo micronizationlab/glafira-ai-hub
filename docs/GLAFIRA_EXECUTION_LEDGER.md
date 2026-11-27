@@ -813,3 +813,17 @@ The following findings were added by the review published against the subsequent
 ### Dispatcher defect #768 — repeated false-green evidence — 2026-11-27
 - PR #784 head `8bf34f38ac3f91390a7942b4d563ee810f22bdf0`, Dispatcher run `45957344426`, job `140366765046`: `/usr/bin/jq: Argument list too long` at `2026-11-27T07:16:44Z` while passing `$latest_prs` via `--argjson`; workflow reported success. This is a confirmed false-green reproduction, not a pass.
 - Issue #768 updated with this run/job and the current implementation gate. Reservation PR #776 remains based on old Main `f1ed37a72c9aa33ad0da3672fb8d8bb615d2d27d`; current observed Main/base is `eed7a9c4aeee721ed6ff04e35ed2f94813a87eef`. Refresh reservation and validate before any implementation edit.
+
+
+
+### PR #784 — latest independent review corrections (2026-11-27)
+The following five findings were published against head `de2f0028be338b454b09025b0eae48fed7feff93`. Corrections below are now present in this branch; exact-head Docs CI and independent re-review remain pending.
+
+| Finding ID | Exact concern | Correction | Required verification | Disposition |
+|---|---|---|---|---|
+| `PRRT_kwDOVx1ISc68so7h` | Registry join could omit sibling reservations. | Ledger and WBS now require every registry row to join to all detailed records matching Work Item ID and registered parent exactly once; missing/ambiguous joins fail closed. | Exact-head Docs CI and validator fixtures when implementation reservation is merged. | FIXED_PENDING_VERIFICATION |
+| `PRRT_kwDOVx1ISc68so7n` | Ledger path-overlap criteria rejected reuse after release. | Ledger now limits collision checks to active reservations and permits re-reservation after verified DONE or authorized terminal disposition; WBS rule remains authoritative. | Exact-head Docs CI and active/terminal path fixtures. | FIXED_PENDING_VERIFICATION |
+| `PRRT_kwDOVx1ISc68so7s` | Codex merge event lacked sequence, timestamp and reason. | Added event identity/sequence, exact GitHub merged_at `2026-11-26T23:27:19Z`, reason and existing merge SHA. | Exact diff review and exact-head Docs CI. | FIXED_PENDING_VERIFICATION |
+| `PRRT_kwDOVx1ISc68so7t` | Duplicate-Main recovery left replacement paths held by a BLOCKED reservation. | WBS now requires owner-authorized terminal SUPERSEDED disposition for the later conflict, branch quiescence/write revocation, replacement ID, and releases paths only after the terminal event; the narrow incidented historical duplicate exception is explicit. | Exact-head Docs CI and positive/negative duplicate-Main recovery fixtures. | FIXED_PENDING_VERIFICATION |
+| `PRRT_kwDOVx1ISc68so7x` | Codex closeout omitted separate NOT_REPRODUCED and WONT_FIX counts. | Codex now requires all five disposition counts to sum to total, with correction/verification metrics reported separately. | Exact-head Docs CI and count reconciliation review. | FIXED_PENDING_VERIFICATION |
+
