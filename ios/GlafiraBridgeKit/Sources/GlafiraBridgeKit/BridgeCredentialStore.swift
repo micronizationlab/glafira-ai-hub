@@ -2,6 +2,44 @@ import Foundation
 import Security
 import LocalAuthentication
 
+/// Non-secret lifecycle identity of the authoritative Windows Hub enrollment.
+public struct BridgeHubBinding: Codable, Equatable, Sendable {
+    public let desktopHubId: String
+    public let endpoint: String
+    public let certificateSHA256: String
+    public let scopes: [String]
+    public let enrolledAtEpochMs: Int64
+    public let expiresAtEpochMs: Int64
+
+    public init(
+        desktopHubId: String,
+        endpoint: String,
+        certificateSHA256: String,
+        scopes: [String],
+        enrolledAtEpochMs: Int64,
+        expiresAtEpochMs: Int64
+    ) throws {
+        let normalizedScopes = scopes.sorted()
+        guard BridgeHubBindingValidation.validIdentifier(desktopHubId),
+              BridgeHubBindingValidation.validEndpoint(endpoint),
+              BridgeHubBindingValidation.validPin(certificateSHA256),
+              !normalizedScopes.isEmpty,
+              normalizedScopes.count == Set(normalizedScopes).count,
+              normalizedScopes.count <= 32,
+              normalizedScopes.allSatisfy(BridgeHubBindingValidation.validScope),
+              enrolledAtEpochMs > 0,
+              expiresAtEpochMs > enrolledAtEpochMs else {
+            throw BridgeCredentialStoreError.invalidHubBinding
+        }
+        self.desktopHubId = desktopHubId
+        self.endpoint = endpoint
+        self.certificateSHA256 = certificateSHA256
+        self.scopes = normalizedScopes
+        self.enrolledAtEpochMs = enrolledAtEpochMs
+        self.expiresAtEpochMs = expiresAtEpochMs
+    }
+}
+
 public struct BridgeDeviceCredential: Equatable, Sendable {
     public let deviceId: String
     public let hmacSecret: Data
@@ -27,12 +65,42 @@ public struct BridgeDeviceCredential: Equatable, Sendable {
 public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
     case invalidDeviceIdentifier
     case invalidSecret
+    case invalidHubBinding
     case biometricProtectionUnavailable
     case credentialAlreadyExists
     case credentialNotFound
     case authenticationCancelled
     case authenticationFailed
     case keychainFailure(status: Int32)
+}
+
+private enum BridgeHubBindingValidation {
+    static func validIdentifier(_ value: String) -> Bool {
+        (1...128).contains(value.utf8.count) && value.allSatisfy {
+            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_")
+        }
+    }
+
+    static func validEndpoint(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              url.scheme?.lowercased() == "https", url.host != nil,
+              url.user == nil, url.password == nil,
+              url.query == nil, url.fragment == nil,
+              url.path == "/bridge/v1" else {
+            return false
+        }
+        return url.port == nil || (1...65_535).contains(url.port!)
+    }
+
+    static func validPin(_ value: String) -> Bool {
+        value.utf8.count == 64 && value.allSatisfy { $0.isHexDigit && !$0.isUppercase }
+    }
+
+    static func validScope(_ value: String) -> Bool {
+        (1...96).contains(value.utf8.count) && value.allSatisfy {
+            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_")
+        }
+    }
 }
 
 /// Stores one paired-device HMAC secret as a device-only Keychain item.
