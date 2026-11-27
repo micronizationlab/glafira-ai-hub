@@ -38,6 +38,8 @@ Every task has a stable ID: `GLAFIRA-S<step>-W<sequence>` (example: `GLAFIRA-S01
 
 One logical behavior has one active implementation owner. Helpers may independently review or research, but must not implement overlapping changes. The eleventh workstream collects helper work first and reconciles it before new implementation.
 
+**Owner-directive exception to dispatch ownership:** when the owner directly instructs GLAFIRA to perform a task, GLAFIRA is the accountable executor and must personally inspect, implement, test, diagnose, repair and prepare safe integration. Do not delegate that task to helpers or replace execution with comments/review requests. Helpers continue their current assignments in parallel and may contribute non-conflicting independent evidence. Any true permission, device, secret, dependency or safety blocker must be stated precisely only after all independently actionable work is completed. This does not bypass WBS, file ownership, review, CI or merge gates.
+
 ## 4. The mandatory implementation cycle
 
 **Repair-on-discovery:** every executor/reviewer with write authority follows `docs/GLAFIRA_CODEX.md`. Defects discovered during inventory, implementation or validation are consolidated by root cause and fixed in the same cycle wherever authorized. Do not finish a cycle with finding-only comments or tests-only work when a source correction is possible. The cycle produces one repair register/report with the committed changes and evidence. Read-only reviewers hand off one deduplicated register to the named file owner.
