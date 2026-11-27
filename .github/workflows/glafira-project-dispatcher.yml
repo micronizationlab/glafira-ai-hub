@@ -89,11 +89,6 @@ jobs:
                 pageInfo { hasNextPage endCursor }
                 nodes {
                   number state title headRefName headRefOid baseRefOid isDraft url
-                  statusCheckRollup { contexts(first: 100) { nodes {
-                    __typename
-                    ... on CheckRun { name status conclusion detailsUrl }
-                    ... on StatusContext { context state targetUrl }
-                  } } }
                 }
               }
             }
@@ -102,7 +97,11 @@ jobs:
             length > 0
             and all(.[]; (.errors // [] | length) == 0
               and .data.repository.pullRequests.nodes != null
-              and (.data.repository.pullRequests.pageInfo.hasNextPage | type) == "boolean")
+              and (.data.repository.pullRequests.pageInfo.hasNextPage | type) == "boolean"
+              and ((.data.repository.pullRequests.pageInfo.hasNextPage == false)
+                or ((.data.repository.pullRequests.nodes | length) > 0
+                  and (.data.repository.pullRequests.pageInfo.endCursor | type) == "string"
+                  and .data.repository.pullRequests.pageInfo.endCursor != "")))
             and all(.[0:-1][]; .data.repository.pullRequests.pageInfo.hasNextPage == true)
             and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
           ' >/dev/null <<< "$pages"; then
@@ -334,7 +333,7 @@ jobs:
           GH
           chmod +x "$tmp/fake-bin/gh"
           gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
-          jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup[0].name == "Android CI" and .[1].number == 2' <<< "$gql_prs" >/dev/null
+          jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup == [] and .[1].number == 2' <<< "$gql_prs" >/dev/null
 
           # REST fallback also paginates the open PR inventory.
           cat > "$tmp/fake-bin/gh" <<'GH'
@@ -505,15 +504,9 @@ jobs:
             select(.state == "OPEN") |
             {
               number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
-              statusCheckRollup: [
-                .statusCheckRollup.contexts.nodes[]? |
-                {
-                  name: (.name // .context // "check"),
-                  status: (.status // .state // "unknown"),
-                  conclusion: (.conclusion // null),
-                  detailsUrl: (.detailsUrl // .targetUrl // "")
-                }
-              ]
+              # Avoid querying status rollups for closed historical PRs.
+              # The bounded Actions-run fallback below resolves only current open PR identities.
+              statusCheckRollup: []
             }
           ]' "$tmp/graphql-pages.jsonl")"
           jq -e 'length == 2 and map(.number) == [7001,7003]' <<< "$paged_inventory" >/dev/null
@@ -521,8 +514,18 @@ jobs:
           {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-never-followed"},"nodes":[]}}}}
           INCOMPLETE
           if jq -s -e "$page_validation" "$tmp/graphql-incomplete.jsonl" >/dev/null; then
-            echo "incomplete GraphQL page chain was incorrectly accepted" >&2; exit 1
+            echo "empty intermediate GraphQL page was incorrectly accepted" >&2; exit 1
           fi
+          : > "$tmp/unreadable-snapshot.json"
+          chmod 000 "$tmp/unreadable-snapshot.json"
+          if bash "$comparator" "$tmp/unreadable-snapshot.json" "$tmp/large-prs-same.json" 2>"$tmp/snapshot-unreadable.err"; then
+            chmod 600 "$tmp/unreadable-snapshot.json"
+            echo "existing unreadable snapshot was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+            grep -q "previous PR inventory snapshot is missing or unreadable" "$tmp/snapshot-unreadable.err"
+          fi
+          chmod 600 "$tmp/unreadable-snapshot.json"
           echo "dispatcher stable all-state pagination, CHANGED wrapper, snapshot-open diagnostics and failure summary: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
