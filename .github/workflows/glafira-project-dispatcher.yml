@@ -683,8 +683,8 @@ jobs:
           abort "initial CodeRabbit PR review must remain enabled" unless auto_review["enabled"] == true
           abort "incremental CodeRabbit reviews must remain disabled" unless auto_review["auto_incremental_review"] == false
           abort "CodeRabbit auto replies must remain disabled" unless chat["auto_reply"] == false
-          grep -q 'baseRefName' .github/workflows/glafira-project-dispatcher.yml
-          grep -q 'baseRefName: .base.ref' .github/workflows/glafira-project-dispatcher.yml
+          source = File.read(".github/workflows/glafira-project-dispatcher.yml")
+          abort "GraphQL and REST PR inventories must include target branch names" unless source.include?("baseRefName") && source.include?("baseRefName: .base.ref")
           puts "actual workflow triggers, base-branch push reconciliation, job guard, no-schedule policy and CodeRabbit YAML: PASS"
           RUBY
           should_reconcile() {
