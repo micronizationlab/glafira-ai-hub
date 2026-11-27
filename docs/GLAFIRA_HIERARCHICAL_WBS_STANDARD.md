@@ -222,3 +222,15 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
 - `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
+
+
+### Bounded Core file-maintenance lock acquisition — GLAFIRA-S000-W08
+
+- `1.2.1.2` — Interrupted restore recovery and restart re-entry (existing parent).
+- `1.2.1.2.2` — Bounded, interruptible acquisition of the shared file-maintenance lock; Work Item `GLAFIRA-S000-W08`; issue #775.
+- **Exclusive implementation paths:** `app/src/main/java/com/micronizationlab/glafira/DurableJsonFile.kt`; `app/src/test/java/com/micronizationlab/glafira/GlafiraFileMaintenanceTest.kt`.
+- **Predecessors:** none. This leaf is independent of `1.2.1.2.1`'s coordinator-reconstruction instrumentation test and does not modify its reserved test file.
+- **Executor / reviewer:** GLAFIRA coordinator as author; independent CodeRabbit/Proofline review; owner-controlled merge.
+- **Procedure:** inspect all callers and lock order; replace unbounded monitor acquisition with a reentrant bounded wait; preserve interrupt status and fail closed on timeout/interruption; add timeout, interruption, reentrancy and release/reacquisition tests; verify no file mutation occurs without lock ownership and no lock-order inversion is introduced.
+- **Acceptance:** bounded timeout; interruption is propagated with interrupt flag restored; lock is reusable after release; nested same-thread acquisition remains reentrant; no partial primary/backup/temp-file mutation on failed acquisition; exact-head Android JVM, Debug APK, Shared Contracts, Security Scan, Project Dispatcher, Docs CI and independent review pass.
+- **Lifecycle:** reservation PR merge leaves the leaf `RESERVED / NOT IMPLEMENTED`; implementation starts from the resulting Main SHA in one focused PR. No additional leaf-pin PR is permitted.
