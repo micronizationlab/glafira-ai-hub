@@ -156,6 +156,72 @@ jobs:
           done
           jq -s '.' "$tmp"
           RUNS
+          cat > "$RUNNER_TEMP/compare-pr-inventory.sh" <<'COMPARE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          previous_file="$1"
+          latest_file="$2"
+          # Keep inventories in files: a full JSON snapshot must never be passed in argv.
+          set +e
+          comparison_result="$(jq -r -s --slurpfile latest "$latest_file" '
+            if length != 1 or (.[0] | type) != "array" or ($latest | length) != 1 or ($latest[0] | type) != "array" then
+              error("each PR inventory must contain exactly one JSON array")
+            else
+              .[0] as $previous
+              | $latest[0] as $current
+              | if (
+                  ([$previous[].number] | unique | length) != ($previous | length)
+                  or ([$current[].number] | unique | length) != ($current | length)
+                  or any($previous[]; (.number | type) != "number" or .number < 1 or .number != (.number | floor) or (.headRefOid | type) != "string" or .headRefOid == "" or (.baseRefOid | type) != "string" or .baseRefOid == "")
+                  or any($current[]; (.number | type) != "number" or .number < 1 or .number != (.number | floor) or (.headRefOid | type) != "string" or .headRefOid == "" or (.baseRefOid | type) != "string" or .baseRefOid == "")
+                ) then
+                  error("PR inventory contains duplicate numbers or incomplete identity")
+                else
+                  ($current | reduce .[] as $pr ({}; .[($pr.number | tostring)] = $pr)) as $latest_by_number
+                  | ($previous | length) == ($current | length)
+                    and all($previous[]; . as $old |
+                      ($latest_by_number[($old.number | tostring)] // null) as $new |
+                      $new != null
+                      and $new.headRefOid == $old.headRefOid
+                      and $new.baseRefOid == $old.baseRefOid
+                    )
+                end
+            end
+          ' "$previous_file")"
+          jq_status=$?
+          set -e
+          if [[ "$jq_status" -ne 0 ]]; then
+            echo "ERROR: PR inventory comparison failed (jq exit $jq_status)." >&2
+            exit 2
+          fi
+          case "$comparison_result" in
+            true) exit 0 ;; # inventories match
+            false) exit 1 ;; # valid inventory delta
+            *) echo "ERROR: PR inventory comparison returned unexpected output." >&2; exit 2 ;;
+          esac
+          COMPARE
+          cat > "$RUNNER_TEMP/reconcile-pr-inventory.sh" <<'RECONCILE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          previous_file="$1"
+          latest_file="$2"
+          fetch_script="$3"
+          comparator="$4"
+          repo="$5"
+          if ! bash "$fetch_script" "$repo" > "$latest_file"; then
+            echo "UNKNOWN: second PR inventory fetch failed." >&2
+            exit 1
+          fi
+          set +e
+          bash "$comparator" "$previous_file" "$latest_file"
+          comparison_status=$?
+          set -e
+          case "$comparison_status" in
+            0) echo "UNCHANGED" ;;
+            1) echo "CHANGED" ;;
+            *) echo "UNKNOWN: PR inventory comparison failed (exit $comparison_status)." >&2; exit 1 ;;
+          esac
+          RECONCILE
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -279,6 +345,88 @@ jobs:
           }' "$tmp/raw-workflow-runs.json")"
           projected_array="$(jq -s '.' <<< "$projected")"
           jq -e 'length == 2 and .[0].pullRequests[0].number == 999 and .[0].pullRequests[0].base.sha == "base-999" and .[0].displayTitle == "METADATA_ONLY - sample title" and .[1].pullRequests == []' <<< "$projected_array" >/dev/null
+
+          # A 5,000-PR snapshot exceeds Linux's per-argument size limit. File-based
+          # comparison must still distinguish equality from real inventory changes.
+          comparator="$RUNNER_TEMP/compare-pr-inventory.sh"
+          jq -n '[range(0; 5000) as $n | {number: ($n + 1), headRefOid: ("head-" + ($n | tostring)), baseRefOid: "base"}]' > "$tmp/large-prs.json"
+          cp "$tmp/large-prs.json" "$tmp/large-prs-same.json"
+          bash "$comparator" "$tmp/large-prs.json" "$tmp/large-prs-same.json"
+          jq '.[4999].headRefOid = "changed"' "$tmp/large-prs.json" > "$tmp/large-prs-head-delta.json"
+          if bash "$comparator" "$tmp/large-prs.json" "$tmp/large-prs-head-delta.json"; then
+            echo "changed PR head was incorrectly treated as an identical inventory" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          jq '.[4999].baseRefOid = "changed-base"' "$tmp/large-prs.json" > "$tmp/large-prs-base-delta.json"
+          if bash "$comparator" "$tmp/large-prs.json" "$tmp/large-prs-base-delta.json"; then
+            echo "changed PR base was incorrectly treated as an identical inventory" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          jq '. + [{number: 5001, headRefOid: "head-new", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/large-prs-added.json"
+          if bash "$comparator" "$tmp/large-prs.json" "$tmp/large-prs-added.json"; then
+            echo "added PR was incorrectly ignored" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          jq '.[0:4999]' "$tmp/large-prs.json" > "$tmp/large-prs-removed.json"
+          if bash "$comparator" "$tmp/large-prs.json" "$tmp/large-prs-removed.json"; then
+            echo "removed PR was incorrectly ignored" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+
+          # jq execution/parse failures are not inventory deltas and must be surfaced.
+          mkdir -p "$tmp/failing-jq"
+          cat > "$tmp/failing-jq/jq" <<'JQ'
+          #!/usr/bin/env bash
+          exit 42
+          JQ
+          chmod +x "$tmp/failing-jq/jq"
+          if PATH="$tmp/failing-jq:$PATH" bash "$comparator" "$tmp/large-prs.json" "$tmp/large-prs-same.json"; then
+            echo "jq invocation failure was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          # A jq process exiting 1 is also a process failure, not a valid delta.
+          mkdir -p "$tmp/failing-jq-exit-one"
+          cat > "$tmp/failing-jq-exit-one/jq" <<'JQ_ONE'
+          #!/usr/bin/env bash
+          exit 1
+          JQ_ONE
+          chmod +x "$tmp/failing-jq-exit-one/jq"
+          if PATH="$tmp/failing-jq-exit-one:$PATH" bash "$comparator" "$tmp/large-prs.json" "$tmp/large-prs-same.json"; then
+            echo "jq exit 1 was incorrectly treated as a valid inventory comparison" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          echo "dispatcher inventory comparison: 5,000 PRs, head/base/add/remove deltas and jq exit 1/42 injection: PASS"
+
+          # Exercise the same fetch+compare wrapper used by the production step.
+          reconcile="$RUNNER_TEMP/reconcile-pr-inventory.sh"
+          cat > "$tmp/fetch-same-prs.sh" <<'FETCH_SAME'
+          #!/usr/bin/env bash
+          cat "$1"
+          FETCH_SAME
+          cat > "$tmp/fetch-failed-prs.sh" <<'FETCH_FAIL'
+          #!/usr/bin/env bash
+          exit 23
+          FETCH_FAIL
+          chmod +x "$tmp/fetch-same-prs.sh" "$tmp/fetch-failed-prs.sh"
+          reconcile_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-latest.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json")"
+          [[ "$reconcile_result" == "UNCHANGED" ]]
+          if bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-fetch-failed.json" "$tmp/fetch-failed-prs.sh" "$comparator" unused; then
+            echo "second PR inventory fetch failure was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          if PATH="$tmp/failing-jq:$PATH" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json"; then
+            echo "injected jq failure was incorrectly accepted by production reconciliation wrapper" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          echo "dispatcher fail-closed integration: second-fetch and injected-jq failures return non-zero: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
@@ -289,7 +437,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! prs="$(bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO")"; then
+          if ! bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO" > "$RUNNER_TEMP/glafira-open-prs.json"; then
             {
               echo "# GLAFIRA Project Dispatcher"
               echo ""
@@ -297,7 +445,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          count="$(jq 'length' <<< "$prs")"
+          count="$(jq 'length' "$RUNNER_TEMP/glafira-open-prs.json")"
           if [[ "$count" -eq 0 ]]; then
             {
               echo "# GLAFIRA Project Dispatcher"
@@ -306,26 +454,33 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
           runs='[]'
-          if jq -e 'any(.[]; ([.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)] | length) == 0)' >/dev/null <<< "$prs"; then
+          if jq -e 'any(.[]; ([.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)] | length) == 0)' "$RUNNER_TEMP/glafira-open-prs.json" >/dev/null; then
             if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then :; else runs='null'; fi
           fi
           printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
-          # Re-read PR refs after run collection. If head/base moved, render against
-          # the latest identity so older runs cannot be displayed as current.
-          if latest_prs="$(bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO")"; then
-            if ! jq -e --argjson latest "$latest_prs" '
-              all(.[] as $old; any($latest[]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
-            ' >/dev/null <<< "$prs"; then
-              echo "PR head/base inventory changed during reconciliation; latest refs are used and exact matching is required." >> "$GITHUB_STEP_SUMMARY"
-            fi
-            prs="$latest_prs"
+          # Re-read and compare the PR inventory through the same tested wrapper.
+          if reconciliation_result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh" "$GH_REPO")"; then
+            case "$reconciliation_result" in
+              UNCHANGED)
+                echo "PR inventory unchanged during reconciliation; exact PR/head/base identity re-confirmed." >> "$GITHUB_STEP_SUMMARY"
+                ;;
+              CHANGED)
+                echo "PR inventory changed during reconciliation; rendering the latest snapshot. Exact run matching remains mandatory." >> "$GITHUB_STEP_SUMMARY"
+                ;;
+              *)
+                echo "ERROR: unexpected reconciliation result '$reconciliation_result'." >> "$GITHUB_STEP_SUMMARY"
+                exit 1
+                ;;
+            esac
           else
-            echo "WARNING: second PR inventory read failed; fallback CI is UNKNOWN because current refs could not be re-verified." >> "$GITHUB_STEP_SUMMARY"
-            runs='null'
+            {
+              echo "## ERROR: Dispatcher reconciliation incomplete"
+              echo ""
+              echo "Second PR inventory fetch or exact PR/head/base comparison failed. Current identity is UNKNOWN; this run is not a successful reconciliation."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
-          printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.latest.json"
           {
             echo "# GLAFIRA Project Dispatcher"
             echo ""

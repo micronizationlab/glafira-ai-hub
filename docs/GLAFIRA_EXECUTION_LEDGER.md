@@ -844,7 +844,7 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 
 | Work Item ID | Registered parent | Step / executable leaf | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|---|
-| GLAFIRA-S000-W06 | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher PR inventory reconciliation; bounded JSON transport, fail-closed comparison, pagination consistency and regression tests; issue #768 | READY | Docs-only reservation PR #788 on exact Main base `8f0a8354434c031e1b6f331f2b69b15256d9d7c5`; implementation candidate PR #795 is not merge-eligible until post-reservation refresh and exact-head gates |
+| GLAFIRA-S000-W06 | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher PR inventory reconciliation; bounded JSON transport, fail-closed comparison, pagination consistency and regression tests; issue #768 | IN_PROGRESS | Docs-only reservation PR #788 on exact Main base `8f0a8354434c031e1b6f331f2b69b15256d9d7c5`; implementation candidate PR #795 is not merge-eligible until post-reservation refresh and exact-head gates |
 
 ### W06 lifecycle event — PROPOSED → READY
 
@@ -871,3 +871,11 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 - **Current candidate:** PR #795, branch `fix/dispatcher-fail-closed-inventory-20261127`, current pre-reservation head `ce186427baf06c1525a7f5c2e262c11d9f43bf9d`.
 - **Earlier candidate:** PR #791 is frozen and superseded for this repair.
 - **Gate:** after #788 merges, rebase #795 onto exact current Main, preserve its single-file W06 scope, and create a new authorized post-reservation commit. Do not merge until the corrected Dispatcher check and all applicable exact-head checks pass.
+
+
+### W06 lifecycle events after reservation merge — PR #795
+
+| Sequence | Unique event ID | Transition | Timestamp | Actor | Reason / evidence |
+|---|---|---|---|---|---|
+| 0002 | `WBS-2026-11-27-GLAFIRA-S000-W06-READY-RESERVED-002` | READY → RESERVED | 2026-11-27T20:02:26Z | GLAFIRA | PR #788 merged; merge SHA `532c8051b87b13fc994706999d2deec8db9cd2be` |
+| 0003 | `WBS-2026-11-27-GLAFIRA-S000-W06-RESERVED-IN-PROGRESS-003` | RESERVED → IN_PROGRESS | 2026-11-27T20:12:41Z | GLAFIRA | First post-reservation implementation commit on PR #795; exact commit SHA is recorded in the PR's post-commit evidence comment |
