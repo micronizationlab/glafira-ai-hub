@@ -157,6 +157,10 @@ jobs:
           fi
           # REST fallback retains exact head/base identity and paginates all open PRs.
           rest_pages="$(gh_retry "$gh_cli" api --paginate "repos/$repo/pulls?state=open&per_page=100")"
+          if ! jq -s -e 'length > 0 and all(.[]; type == "array")' >/dev/null 2>&1 <<< "$rest_pages"; then
+            echo "ERROR: REST PR inventory must contain one or more array-valued pages." >&2
+            exit 1
+          fi
           jq -s '[
             add[] |
             {
@@ -200,6 +204,10 @@ jobs:
           # Bound each reconciliation to the newest 1,000 Actions runs.
           for page in $(seq 1 10); do
             response="$(gh_retry "$gh_cli" api "repos/$repo/actions/runs?per_page=100&page=$page&sort=created&direction=desc")"
+            if ! jq -e 'type == "object" and (.workflow_runs | type) == "array"' >/dev/null 2>&1 <<< "$response"; then
+              echo "ERROR: Actions run page is missing an array-valued workflow_runs field." >&2
+              exit 1
+            fi
             count="$(jq '.workflow_runs | length' <<< "$response")"
             jq -c '.workflow_runs[]? | {
               headSha: .head_sha,
@@ -231,8 +239,8 @@ jobs:
               | if (
                   ([$previous[].number] | unique | length) != ($previous | length)
                   or ([$current[].number] | unique | length) != ($current | length)
-                  or any($previous[]; (.number | type) != "number" or (.headRefOid | type) != "string" or .headRefOid == "" or (.baseRefOid | type) != "string" or .baseRefOid == "")
-                  or any($current[]; (.number | type) != "number" or (.headRefOid | type) != "string" or .headRefOid == "" or (.baseRefOid | type) != "string" or .baseRefOid == "")
+                  or any($previous[]; (.number | type) != "number" or .number < 1 or .number != (.number | floor) or (.headRefOid | type) != "string" or .headRefOid == "" or (.baseRefOid | type) != "string" or .baseRefOid == "")
+                  or any($current[]; (.number | type) != "number" or .number < 1 or .number != (.number | floor) or (.headRefOid | type) != "string" or .headRefOid == "" or (.baseRefOid | type) != "string" or .baseRefOid == "")
                 ) then
                   error("inventory contains duplicate PR numbers or incomplete PR identity")
                 else
@@ -280,12 +288,20 @@ jobs:
             fi
           fi
           RECONCILE
+          cat > "$RUNNER_TEMP/needs-actions-history.sh" <<'HISTORY'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          inventory_file="$1"
+          jq -e 'any(.[]; ([.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)] | length) == 0)' "$inventory_file" >/dev/null
+          HISTORY
+          chmod +x "$RUNNER_TEMP/needs-actions-history.sh"
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
+          needs_history="$RUNNER_TEMP/needs-actions-history.sh"
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           cat > "$tmp/prs.json" <<'JSON'
@@ -436,6 +452,25 @@ jobs:
           empty_graphql_fallback="$(PATH="$tmp/fake-bin:$PATH" GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep" FAKE_SLEEP_LOG="$tmp/empty-graphql-sleep-log" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 1 and .[0].number == 9' <<< "$empty_graphql_fallback" >/dev/null
 
+          # REST pagination must reject a mixed array/null response after retry.
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then exit 1; fi
+          if [[ "$1" == "api" && "$2" == "--paginate" ]]; then
+            printf '%s\\n' '[{"number":10,"title":"one","head":{"ref":"a","sha":"h"},"base":{"sha":"b"},"draft":false,"html_url":"https://example.test/10"}]'
+            printf '%s\\n' 'null'
+            exit 0
+          fi
+          exit 2
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          if PATH="$tmp/fake-bin:$PATH" GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep" FAKE_SLEEP_LOG="$tmp/null-rest-sleep-log" bash "$fetch_prs" micronizationlab/glafira-ai-hub"; then
+            echo "mixed REST array/null pages were incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+
           # Actions run inventory also succeeds on attempt three with a nonempty result.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
@@ -478,6 +513,20 @@ jobs:
           [[ "$(cat "$tmp/run-fail-count")" -eq 3 ]]
           [[ "$(paste -sd, "$tmp/run-fail-sleep-log")" == "2,4" ]]
 
+          # A zero-exit malformed retry must not be mistaken for an empty last page.
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "api" && "$2" == repos/*/actions/runs* ]]; then printf '%s\\n' '{}'; exit 0; fi
+          exit 2
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          if PATH="$tmp/fake-bin:$PATH" GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep" bash "$fetch_runs" micronizationlab/glafira-ai-hub"; then
+            echo "malformed Actions run response was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
@@ -504,7 +553,7 @@ jobs:
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
           # Exercise inventory comparison with a payload larger than the OS argv limit.
-          jq -n '[range(0; 5000) | {number: ., headRefOid: "head", baseRefOid: "base"}]' > "$RUNNER_TEMP/large-pr-inventory.json"
+          jq -n '[range(1; 5001) | {number: ., headRefOid: "head", baseRefOid: "base"}]' > "$RUNNER_TEMP/large-pr-inventory.json"
           cp "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-latest.json"
           bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-latest.json"
           jq '.[4999].headRefOid = "changed"' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-delta.json"
@@ -531,9 +580,15 @@ jobs:
           else
             [[ "$?" -eq 2 ]]
           fi
-          jq '.[4999].number = 0' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-duplicate.json"
+          jq '.[4999].number = 1' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-duplicate.json"
           if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-duplicate.json"; then
             echo "duplicate PR numbers were incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          jq '.[4999].number = 0' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/large-pr-inventory-zero-number.json"
+          if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/large-pr-inventory-zero-number.json"; then
+            echo "zero PR number was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 2 ]]
           fi
@@ -582,6 +637,14 @@ jobs:
           report_status="$(FAKE_INVENTORY_SOURCE="$RUNNER_TEMP/large-pr-inventory.json" bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" test/repo "$RUNNER_TEMP/large-pr-inventory.json" "$RUNNER_TEMP/report-latest-prs.json" "$RUNNER_TEMP/fetch-mocked-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh")"
           [[ "$report_status" == "CHANGED" ]]
           jq -e '.[4999].headRefOid == "changed"' "$RUNNER_TEMP/report-latest-prs.json" >/dev/null
+          # A final REST verification snapshot can have no rollups even if the
+          # initial GraphQL snapshot did. The final snapshot must request Actions history.
+          jq '[.[] | .statusCheckRollup = []]' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/final-rest-fallback.json"
+          if bash "$needs_history" "$RUNNER_TEMP/final-rest-fallback.json"; then
+            :
+          else
+            echo "final REST snapshot without rollups failed to request Actions history" >&2; exit 1
+          fi
           cat > "$RUNNER_TEMP/fetch-invalid-prs.sh" <<'FETCH'
           #!/usr/bin/env bash
           printf '{invalid json'
@@ -679,16 +742,6 @@ jobs:
             exit 0
           fi
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.json"
-          runs='[]'
-          if jq -e 'any(.[]; ([.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)] | length) == 0)' >/dev/null <<< "$prs"; then
-            if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then
-              :
-            else
-              echo "ERROR: Actions run inventory unavailable; fallback CI evidence is UNKNOWN." >> "$GITHUB_STEP_SUMMARY"
-              exit 1
-            fi
-          fi
-          printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           # Re-read PR refs through the same tested fetch+compare path used by fixtures.
           if reconciliation_status="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$GH_REPO" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest-check.json" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh")"; then
             if [[ "$reconciliation_status" == "CHANGED" ]]; then
@@ -700,6 +753,16 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.latest.json"
+          runs='[]'
+          if bash "$RUNNER_TEMP/needs-actions-history.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json"; then
+            if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then
+              :
+            else
+              echo "ERROR: Actions run inventory unavailable; fallback CI evidence is UNKNOWN." >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+          fi
+          printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
           {
             echo "# GLAFIRA Project Dispatcher"
             echo ""
