@@ -257,13 +257,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     private fun fixtureKeyOwnerMarker(alias: String, runId: String): File {
-        val kind = if (alias.endsWith("_second")) "second" else "primary"
+        val expected = "glafira_test_rollback_" + runId.replace("-", "")
+        val kind = when (alias) {
+            expected -> "primary"
+            expected + "_second" -> "second"
+            expected + "_third" -> "third"
+            else -> error("Alias is not owned by this fixture run.")
+        }
         return File(appContext.noBackupFilesDir, "glafira-test-key-owner-$runId-$kind")
     }
 
     private fun registerFixtureKeyAlias(alias: String, runId: String) {
-        val expected = "glafira_test_rollback_${runId.replace("-", "")}"
-        require(alias == expected || alias == "${expected}_second") {
+        val expected = "glafira_test_rollback_" + runId.replace("-", "")
+        require(alias == expected || alias == expected + "_second" || alias == expected + "_third") {
             "Only this run's uniquely scoped fixture aliases may be registered."
         }
         val marker = fixtureKeyOwnerMarker(alias, runId)
@@ -299,13 +305,22 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             file.name.startsWith("glafira-test-key-owner-")
         }.orEmpty().forEach { marker ->
             val markerName = marker.name.removePrefix("glafira-test-key-owner-")
-            val second = markerName.endsWith("-second")
-            val runId = markerName.removeSuffix(if (second) "-second" else "-primary")
+            val kind = when {
+                markerName.endsWith("-second") -> "second"
+                markerName.endsWith("-third") -> "third"
+                markerName.endsWith("-primary") -> "primary"
+                else -> return@forEach
+            }
+            val runId = markerName.removeSuffix("-" + kind)
             val parsed = try { UUID.fromString(runId) } catch (_: IllegalArgumentException) { null }
             if (parsed == null || parsed.toString() != runId) return@forEach
-            val expected = "glafira_test_rollback_${runId.replace("-", "")}"
+            val expected = "glafira_test_rollback_" + runId.replace("-", "")
             val alias = marker.readText(Charsets.UTF_8)
-            val expectedAlias = if (second) "${expected}_second" else expected
+            val expectedAlias = when (kind) {
+                "second" -> expected + "_second"
+                "third" -> expected + "_third"
+                else -> expected
+            }
             if (alias != expectedAlias) return@forEach
             val root = File(appContext.cacheDir, "glafira-backup-test-$runId")
             val journal = File(root, "no-backup/glafira-restore-journal")
@@ -1163,41 +1178,42 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    fun fixtureCipherUsesIndependentAliasesAndCannotDeleteProductionKey() = runBlocking {
+    fun fixtureCipherUsesIndependentAliasesAndCannotDeleteOtherFixtureKeys() = runBlocking {
         withFixtureLocks {
-        val productionCipher = GlafiraRollbackSnapshotCipher()
-        val productionKeyExistedBefore = productionCipher.keyExists()
-        val secondFixture = GlafiraRollbackSnapshotCipher("glafira_test_rollback_${testRunId.replace("-", "")}_second")
-        registerFixtureKeyAlias(secondFixture.keyAlias, testRunId)
-        val source = File(context.cacheDir, "alias-isolation-source.db")
-        val firstEncrypted = File(context.cacheDir, "alias-isolation-first.enc")
-        val secondEncrypted = File(context.cacheDir, "alias-isolation-second.enc")
-        try {
-            source.writeText("fixture-alias-isolation")
-            rollbackCipher.encrypt(source, firstEncrypted)
-            secondFixture.encrypt(source, secondEncrypted)
-            assertTrue(rollbackCipher.keyExists())
-            assertTrue(secondFixture.keyExists())
-            // Production alias may legitimately be absent on a clean test installation.
-            // If it existed before the fixture, only then assert that fixture deletion preserves it.
-            assertFalse(rollbackCipher.keyAlias == secondFixture.keyAlias)
-            rollbackCipher.deleteKey()
-            assertFalse(rollbackCipher.keyExists())
-            assertTrue(secondFixture.keyExists())
-            if (productionKeyExistedBefore) {
-                assertTrue("Fixture deletion must not delete the existing production rollback key", productionCipher.keyExists())
+            val suffix = testRunId.replace("-", "")
+            val secondFixture = GlafiraRollbackSnapshotCipher("glafira_test_rollback_" + suffix + "_second")
+            val thirdFixture = GlafiraRollbackSnapshotCipher("glafira_test_rollback_" + suffix + "_third")
+            registerFixtureKeyAlias(secondFixture.keyAlias, testRunId)
+            registerFixtureKeyAlias(thirdFixture.keyAlias, testRunId)
+            val source = File(context.cacheDir, "alias-isolation-source.db")
+            val firstEncrypted = File(context.cacheDir, "alias-isolation-first.enc")
+            val secondEncrypted = File(context.cacheDir, "alias-isolation-second.enc")
+            val thirdEncrypted = File(context.cacheDir, "alias-isolation-third.enc")
+            try {
+                source.writeText("fixture-alias-isolation")
+                rollbackCipher.encrypt(source, firstEncrypted)
+                secondFixture.encrypt(source, secondEncrypted)
+                thirdFixture.encrypt(source, thirdEncrypted)
+                assertTrue(rollbackCipher.keyExists())
+                assertTrue(secondFixture.keyExists())
+                assertTrue(thirdFixture.keyExists())
+                assertNotEquals(rollbackCipher.keyAlias, secondFixture.keyAlias)
+                assertNotEquals(rollbackCipher.keyAlias, thirdFixture.keyAlias)
+                rollbackCipher.deleteKey()
+                assertFalse(rollbackCipher.keyExists())
+                assertTrue("Deleting the primary fixture key must preserve the second fixture key", secondFixture.keyExists())
+                assertTrue("Deleting the primary fixture key must preserve the third fixture canary", thirdFixture.keyExists())
+            } finally {
+                source.delete()
+                firstEncrypted.delete()
+                secondEncrypted.delete()
+                thirdEncrypted.delete()
+                rollbackCipher.deleteKey()
+                secondFixture.deleteKey()
+                clearFixtureKeyAliasOwner(secondFixture.keyAlias, testRunId)
+                thirdFixture.deleteKey()
+                clearFixtureKeyAliasOwner(thirdFixture.keyAlias, testRunId)
             }
-        } finally {
-            source.delete()
-            firstEncrypted.delete()
-            secondEncrypted.delete()
-            rollbackCipher.deleteKey()
-            secondFixture.deleteKey()
-            clearFixtureKeyAliasOwner(secondFixture.keyAlias, testRunId)
-            if (productionKeyExistedBefore) {
-                assertTrue("The test must not delete the production rollback key", productionCipher.keyExists())
-            }
-        }
         }
     }
 
