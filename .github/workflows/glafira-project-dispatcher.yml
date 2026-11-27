@@ -9,9 +9,10 @@ on:
       - GLAFIRA CI — change-aware platform validation
       - GLAFIRA Windows Agent
       - GLAFIRA Java Format Check
+      - Security Scan
     types: [completed]
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, closed, converted_to_draft, edited]
   workflow_dispatch:
 
 permissions:
@@ -27,8 +28,18 @@ concurrency:
 jobs:
   project-status:
     name: Reconcile all active GLAFIRA workstreams
-    # Ignore formatter runs caused only by bot-authored PR metadata edits.
-    if: ${{ github.event_name != 'workflow_run' || !startsWith(github.event.workflow_run.display_title || '', 'METADATA_ONLY -') }}
+    # Ignore scheduled upstream scans and only formatter metadata-only completions.
+    if: >-
+      ${{
+        github.event_name != 'workflow_run' ||
+        (
+          github.event.workflow_run.event != 'schedule' &&
+          !(
+            github.event.workflow_run.name == 'GLAFIRA Java Format Check' &&
+            startsWith(github.event.workflow_run.display_title || '', 'METADATA_ONLY -')
+          )
+        )
+      }}
     runs-on: ubuntu-latest
     steps:
       - name: Prepare and test exact-head renderer
@@ -164,7 +175,14 @@ jobs:
           # Keep large inventories in files; --argjson would exceed the OS argv limit.
           set +e
           jq -e --slurpfile latest "$latest_file" '
-            (length == ($latest[0] | length)) and all(.[]; . as $old | any($latest[0][]; .number == $old.number and .headRefOid == $old.headRefOid and .baseRefOid == $old.baseRefOid))
+            ($latest[0] | reduce .[] as $pr ({}; .[($pr.number | tostring)] = $pr)) as $latest_by_number
+            | (length == ($latest[0] | length))
+              and all(.[]; . as $old |
+                ($latest_by_number[($old.number | tostring)] // null) as $current |
+                $current != null
+                and $current.headRefOid == $old.headRefOid
+                and $current.baseRefOid == $old.baseRefOid
+              )
           ' "$previous_file" >/dev/null
           status=$?
           set -e
@@ -174,6 +192,31 @@ jobs:
             *) echo "ERROR: PR inventory comparison failed (jq exit $status)." >&2; exit 2 ;;
           esac
           COMPARE
+          cat > "$RUNNER_TEMP/reconcile-pr-inventory.sh" <<'RECONCILE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          repo="$1"
+          previous_file="$2"
+          latest_file="$3"
+          fetch_script="$4"
+          compare_script="$5"
+          if ! latest_prs="$(bash "$fetch_script" "$repo")"; then
+            echo "ERROR: current PR inventory fetch failed." >&2
+            exit 2
+          fi
+          printf '%s\n' "$latest_prs" > "$latest_file"
+          if bash "$compare_script" "$previous_file" "$latest_file"; then
+            echo "UNCHANGED"
+          else
+            status=$?
+            if [[ "$status" -eq 1 ]]; then
+              echo "CHANGED"
+            else
+              echo "ERROR: inventory comparison failed (exit $status)." >&2
+              exit 2
+            fi
+          fi
+          RECONCILE
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -373,24 +416,14 @@ jobs:
             fi
           fi
           printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
-          # Re-read PR refs after run collection. If head/base moved, render against
-          # the latest identity so older runs cannot be displayed as current.
-          if latest_prs="$(bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO")"; then
-            printf '%s\n' "$latest_prs" > "$RUNNER_TEMP/glafira-open-prs.latest-check.json"
-            if bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest-check.json"; then
-              :
-            else
-              comparison_status=$?
-              if [[ "$comparison_status" -eq 1 ]]; then
-                echo "PR head/base inventory changed during reconciliation; latest refs are used and exact matching is required." >> "$GITHUB_STEP_SUMMARY"
-              else
-                echo "ERROR: PR head/base inventory comparison failed (exit $comparison_status); status is UNKNOWN." >> "$GITHUB_STEP_SUMMARY"
-                exit 1
-              fi
+          # Re-read PR refs through the same tested fetch+compare path used by fixtures.
+          if reconciliation_status="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$GH_REPO" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest-check.json" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh")"; then
+            if [[ "$reconciliation_status" == "CHANGED" ]]; then
+              echo "PR inventory changed during reconciliation; report uses the latest refs and exact matching." >> "$GITHUB_STEP_SUMMARY"
             fi
-            prs="$latest_prs"
+            prs="$(cat "$RUNNER_TEMP/glafira-open-prs.latest-check.json")"
           else
-            echo "ERROR: second PR inventory read failed; current refs cannot be re-verified, so dispatcher status is UNKNOWN." >> "$GITHUB_STEP_SUMMARY"
+            echo "ERROR: PR inventory could not be re-verified; dispatcher status is UNKNOWN." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           printf '%s\n' "$prs" > "$RUNNER_TEMP/glafira-open-prs.latest.json"
