@@ -583,7 +583,22 @@ jobs:
           fi
           echo "dispatcher snapshot budget: A→B→B stabilizes; A→B→C fails after two additional fetches: PASS"
 
+          # Empty inventories use the same stabilization contract: []→[] confirms
+          # empty, while []→[PR]→[PR] renders the newly opened PR.
+          printf '[]\n' > "$tmp/empty-inventory.json"
+          printf '%s\n' "$(<"$tmp/empty-inventory.json")" "$(<"$tmp/empty-inventory.json")" > "$tmp/sequence-empty-empty.jsonl"
+          : > "$tmp/sequence-empty-empty.calls"
+          empty_result="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-empty-empty.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-empty-empty.calls" bash "$reconcile" "$tmp/empty-inventory.json" "$tmp/empty-empty.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
+          [[ "$empty_result" == "UNCHANGED" && "$(cat "$tmp/sequence-empty-empty.calls")" -eq 1 ]]
+          printf '%s\n' "$(<"$tmp/snapshot-b.json")" "$(<"$tmp/snapshot-b.json")" > "$tmp/sequence-empty-pr-pr.jsonl"
+          : > "$tmp/sequence-empty-pr-pr.calls"
+          opened_result="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-empty-pr-pr.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-empty-pr-pr.calls" bash "$reconcile" "$tmp/empty-inventory.json" "$tmp/empty-pr.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
+          [[ "$opened_result" == "CHANGED" && "$(cat "$tmp/sequence-empty-pr-pr.calls")" -eq 2 ]]
+          jq -e 'length == 5001 and .[-1].number == 5001' "$tmp/empty-pr.latest.json" >/dev/null
+          echo "dispatcher empty inventory: []→[] confirms empty; []→[PR]→[PR] renders PR: PASS"
+
           # The original snapshot remains byte-for-byte unchanged even after a valid delta.
+          jq '. + [{number: 5001, headRefOid: "head-new", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/large-prs-wrapper-delta.json"
           cp "$tmp/large-prs.json" "$tmp/original-preserved.json"
           if bash "$reconcile" "$tmp/original-preserved.json" "$tmp/preserved-latest.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-wrapper-delta.json" >/dev/null; then
             cmp -s "$tmp/original-preserved.json" "$tmp/large-prs.json"
@@ -592,7 +607,6 @@ jobs:
           fi
 
           # A valid inventory delta is CHANGED (not UNKNOWN) through the production wrapper.
-          jq '. + [{number: 5001, headRefOid: "head-new", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/large-prs-wrapper-delta.json"
           changed_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-wrapper-delta.json")"
           [[ "$changed_result" == "CHANGED" ]]
 
@@ -684,6 +698,12 @@ jobs:
           printf '%s\n' '[{"number":9,"state":"closed","head":{"sha":"h"},"base":{"sha":"b"}}]' > "$tmp/rest-invalid.json"
           if DISPATCHER_GRAPHQL_FIXTURE="$tmp/graphql-missing-state.jsonl" DISPATCHER_REST_FIXTURE="$tmp/rest-invalid.json" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub; then
             echo "malformed REST inventory was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          printf '%s\n' '[{"number":7001,"state":"open","head":{"sha":"h1"},"base":{"sha":"b1"}}]' '[{"number":7001,"state":"open","head":{"sha":"h1"},"base":{"sha":"b1"}}]' > "$tmp/rest-duplicate.jsonl"
+          if DISPATCHER_GRAPHQL_FIXTURE="$tmp/graphql-missing-state.jsonl" DISPATCHER_REST_FIXTURE="$tmp/rest-duplicate.jsonl" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub; then
+            echo "overlapping REST pages were incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 2 ]]
           fi
