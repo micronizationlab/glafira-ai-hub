@@ -72,7 +72,7 @@ jobs:
                 .[] as $run
                 | ($run.pullRequests // [])[]? as $association
                 | select($association.number != null and ($association.base.sha // "") != "" and ($run.headSha // "") != "")
-                | select(($run.workflowName // $run.name // "") != "GLAFIRA Java Format Check" or ((($run.displayTitle // "") | startswith("METADATA_ONLY -")) | not))
+                | select(($run.workflowName // $run.name // "") != "GLAFIRA Java Format Check" or (((if ($run.displayTitle | type) == "string" then $run.displayTitle else "" end) | startswith("METADATA_ONLY -")) | not))
                 | {key: ([$association.number, $run.headSha, $association.base.sha] | tojson), run: $run}
               ]
               | group_by(.key)
@@ -90,7 +90,7 @@ jobs:
                     | if ($matching | length) == 0 then
                         "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | NO MATCHING RUN FOR EXACT PR/HEAD/BASE | \($pr.isDraft // false) |"
                       else
-                        "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | \($matching | map((.workflowName // .name // "workflow") + ": " + run_status + " ([run](\(.url // "")))") | join("<br>")) | \($pr.isDraft // false) |"
+                        "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | \($matching | map(((.workflowName // .name // "workflow") | gsub("[|]"; "/")) + ": " + run_status + " ([run](\(.url // "")))") | join("<br>")) | \($pr.isDraft // false) |"
                       end
                   end
               ]
