@@ -1122,7 +1122,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "committed-cleanup-reentry".toCharArray()
         try {
             fixtureRuntimeHooks.failCommittedCleanupOnce = true
-            assertThrows(IllegalStateException::class.java) {
+            assertThrows(IOException::class.java) {
                 runBlocking { isolatedCoordinator().recover(passphrase) }
             }
             assertTrue("Committed marker is preserved after interrupted cleanup", committed.exists())
