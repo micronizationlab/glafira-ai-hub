@@ -253,6 +253,9 @@ These owner-approved cross-step design leaves are independent siblings. They are
 - Executor: GLAFIRA coordinator as active author/delivery owner. Amazon Q is optional secondary review only and is not the assigned executor.
 - Acceptance: GCU measurement/provenance/confidence; explicit separation from GLF settlement and no implied 1:1 conversion; consent-first resource caps/pause/revoke; estimate vs accepted/settled reward; concept-only wallet states and owner approvals; fees/energy/depreciation disclosures without income promises; offline/quota/revoked/disputed/error states; accessibility/privacy; independent review and owner acceptance.
 
+
+- **Priority gate:** registration/reservation is not dispatch. Before either leaf starts, GLAFIRA must complete and record a full ready-work scan across all eleven lanes. Any dependency-ready Core/P1, Backup/P2, Bridge/Desktop/P3, Android/CI acceptance, review, merge or post-merge item of equal/higher owner priority keeps these design leaves `BLOCKED_PRIORITY`; no owner priority exception has been granted. A reserved leaf may not displace such work.
+- **Leaf-pin gate:** after the reservation PR merges, a separate pin amendment for each artifact must record its unique implementation branch, exact current Main SHA, executor, reviewer, exclusive path and acceptance. The pin amendment must merge before the implementation branch is created or the artifact is edited. Refresh the pin if Main advances before dispatch.
 ### Reservation and lifecycle
 
 - These two registrations become active only when the dedicated ledger reservation PR merges to Main. Their implementation branches must each start from then-current Main after that merge.
