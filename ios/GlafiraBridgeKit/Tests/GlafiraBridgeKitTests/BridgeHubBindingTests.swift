@@ -179,6 +179,28 @@ final class BridgeHubBindingTests: XCTestCase {
         }
     }
 
+    func testPersistenceRejectsNonIntegerNumericTokens() throws {
+        let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
+        let expiresAt = enrolledAt + oneHour
+        let invalidVariants = [
+            validJSON.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":1.0"),
+            validJSON.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":1e0"),
+            validJSON.replacingOccurrences(
+                of: "\"enrolledAtEpochMs\":\(enrolledAt)",
+                with: "\"enrolledAtEpochMs\":\(enrolledAt).0"
+            ),
+            validJSON.replacingOccurrences(
+                of: "\"expiresAtEpochMs\":\(expiresAt)",
+                with: "\"expiresAtEpochMs\":\(expiresAt)e0"
+            )
+        ]
+        for payload in invalidVariants {
+            XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(payload.utf8))) { error in
+                XCTAssertEqual(error as? BridgeCredentialStoreError, .invalidHubBinding)
+            }
+        }
+    }
+
     func testPersistenceDecodeCanonicalizesEndpointBeforeReturning() throws {
         let encoded = try BridgeHubBindingPersistence.encode(binding())
         var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
