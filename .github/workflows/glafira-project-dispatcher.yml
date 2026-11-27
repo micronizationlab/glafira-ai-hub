@@ -305,7 +305,7 @@ jobs:
           summary_file="$6"
           if result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$previous_file" "$latest_file" "$fetch_script" "$comparator" "$repo")"; then
             case "$result" in
-              UNCHANGED|CHANGED) printf '%s\\n' "$result" ;;
+              UNCHANGED|CHANGED) printf '%s\n' "$result" ;;
               *)
                 echo "ERROR: unexpected reconciliation result '$result'." >> "$summary_file"
                 exit 1
@@ -584,7 +584,7 @@ jobs:
 
           # Closed nodes, null nodes, missing state, empty continuing pages and repeated cursors
           # must reject GraphQL and exercise the real REST fallback, not a copied jq filter.
-          for malformed in closed null-node missing-state empty-page repeated-cursor; do
+          for malformed in closed null-node missing-state empty-page repeated-cursor overlapping-prs; do
             case "$malformed" in
               closed)
                 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":7002,"state":"CLOSED","headRefOid":"h","baseRefOid":"b"}]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
@@ -596,6 +596,8 @@ jobs:
                 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-empty"},"nodes":[]}}}}' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
               repeated-cursor)
                 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"same"},"nodes":[{"number":1,"state":"OPEN","headRefOid":"h1","baseRefOid":"b1"}]}}}}' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"same"},"nodes":[{"number":2,"state":"OPEN","headRefOid":"h2","baseRefOid":"b2"}]}}}}' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
+              overlapping-prs)
+                printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-1"},"nodes":[{"number":1,"state":"OPEN","headRefOid":"h1","baseRefOid":"b1"}]}}}}' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":1,"state":"OPEN","headRefOid":"h1","baseRefOid":"b1"}]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
             esac
             fallback="$(DISPATCHER_GRAPHQL_FIXTURE="$tmp/graphql-$malformed.jsonl" DISPATCHER_REST_FIXTURE="$tmp/rest-valid.json" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
             jq -e 'length == 1 and .[0].number == 1' <<< "$fallback" >/dev/null
