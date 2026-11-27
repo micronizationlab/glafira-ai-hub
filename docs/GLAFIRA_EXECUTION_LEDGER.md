@@ -861,7 +861,12 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 
 - **Work Item ID:** `GLAFIRA-S000-W06`
 - **Registered parent / WBS leaf:** `1.7.2.1.1.1` / `1.7.2.1.1.1.1`
+- **Event sequence:** `0001`
+- **Unique event ID:** `WBS-2026-11-27-GLAFIRA-S000-W06-READY-RESERVED-001`
 - **Transition:** `READY → RESERVED`
+- **Transition timestamp:** `2026-11-27T16:39:17Z` (commit `a85e02d8ea7f771b53081158693f7d48e5f9f292` that first recorded this reservation event)
+- **Transition actor:** `GLAFIRA` (ledger recording actor), under explicit repository-owner authorization
+- **Reason:** register the exclusive Dispatcher inventory-reconciliation work item and its exact path ownership so the false-green CI defect can be fixed without competing reservations; reservation only, no production-source merge is authorized
 - **Reservation PR / exact Main base:** #788 / `8f0a8354434c031e1b6f331f2b69b15256d9d7c5`; the final reviewed PR head and its exact-head check/run evidence must be appended in the final pre-merge event after all review-driven commits.
 - **Owner authorization:** on 2026-11-27 the repository owner explicitly authorized PR #788 to refresh and merge this documentation-only reservation despite the known Project Dispatcher false-green; this is not authorization to merge Dispatcher implementation or production source.
 - **False-green evidence:** PR #788 prior head `3a38c5919d7f72de0c9632f71398d00b9fd4a2fb`, Actions run `46033550520`, job `140623132644`; GitHub reported success while the job log ended with `/usr/bin/jq: Argument list too long`. The check remains NOT PASSED and is waived only for this docs-only reservation PR.
