@@ -121,8 +121,11 @@ private enum BridgeHubBindingValidation {
     static func canonicalEndpoint(_ value: String) -> String? {
         guard var components = URLComponents(string: value),
               components.scheme?.lowercased() == "https",
-              let host = components.host,
-              isPrivateLanAddress(host),
+              let rawHost = components.host else {
+            return nil
+        }
+        let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        guard isPrivateLanAddress(host),
               components.user == nil,
               components.password == nil,
               components.query == nil,
