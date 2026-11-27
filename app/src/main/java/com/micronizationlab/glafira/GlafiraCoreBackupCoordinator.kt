@@ -269,10 +269,16 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     /** Make restored payload and directory entries durable before publishing COMMITTED_MARKER. */
     private fun syncRestoredFiles() {
-        val root = app.filesDir
-        val files = root.walkTopDown().filter { it.isFile }.toList()
-        files.forEach(::sync)
-        root.walkTopDown().filter { it.isDirectory }.toList().asReversed().forEach(::syncDirectory)
+        // Safe preferences are restored under dataDir/shared_prefs, not filesDir.
+        // Their contents and directory entries must be durable before COMMITTED is published.
+        val roots = listOf(
+            app.filesDir,
+            File(app.applicationInfo.dataDir, "shared_prefs")
+        ).filter { it.exists() && it.isDirectory }
+        roots.forEach { root ->
+            root.walkTopDown().filter { it.isFile }.toList().forEach(::sync)
+            root.walkTopDown().filter { it.isDirectory }.toList().asReversed().forEach(::syncDirectory)
+        }
     }
 
     private fun checkpointDatabase() {
