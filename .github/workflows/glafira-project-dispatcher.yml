@@ -523,8 +523,12 @@ jobs:
             local event_name="$1" upstream_event="$2" workflow_name="$3" display_title="$4"
             [[ "$event_name" != "workflow_run" || ( "$upstream_event" != "schedule" && ( "$workflow_name" != "GLAFIRA Java Format Check" || "$display_title" != "METADATA_ONLY -"* ) ) ]]
           }
-          ! should_reconcile "workflow_run" "schedule" "GLAFIRA CI — change-aware platform validation" "daily run"
-          ! should_reconcile "workflow_run" "pull_request" "GLAFIRA Java Format Check" "METADATA_ONLY - PR metadata edit"
+          if should_reconcile "workflow_run" "schedule" "GLAFIRA CI — change-aware platform validation" "daily run"; then
+            echo "scheduled workflow_run must be ignored" >&2; exit 1
+          fi
+          if should_reconcile "workflow_run" "pull_request" "GLAFIRA Java Format Check" "METADATA_ONLY - PR metadata edit"; then
+            echo "formatter metadata-only workflow_run must be ignored" >&2; exit 1
+          fi
           should_reconcile "workflow_run" "pull_request" "GLAFIRA CI — change-aware platform validation" "METADATA_ONLY - title collision"
           should_reconcile "workflow_run" "pull_request" "Security Scan" "ordinary title"
           should_reconcile "pull_request" "pull_request" "" ""
