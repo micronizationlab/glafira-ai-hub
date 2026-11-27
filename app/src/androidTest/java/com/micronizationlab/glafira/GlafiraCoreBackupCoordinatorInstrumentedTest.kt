@@ -1383,7 +1383,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-commit-resync-cleanup".toCharArray()
         val archive = coordinator.create(passphrase)
-        val archivedTask = checkNotNull(store.getTask(taskId))
         assertTrue(
             "Test must remove the archived task before restore",
             store.transition(
@@ -1395,7 +1394,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 "REMOVED_TO_VERIFY_RESTORE"
             )
         )
-        assertNull("Archived task is absent before restore", store.getTask(taskId)?.takeIf { it.state != GlafiraTaskState.CANCELLED })
+        assertEquals("Archived task is cancelled before restore", GlafiraTaskState.CANCELLED, store.getTask(taskId)?.state)
         fixtureRuntimeHooks.committedMarkerSyncCalls = 0
         fixtureRuntimeHooks.committedCleanupCalls = 0
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
