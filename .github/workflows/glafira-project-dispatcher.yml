@@ -117,6 +117,10 @@ jobs:
                 [.[0:-1][].data.repository.pullRequests.pageInfo.endCursor] as $cursors
                 | ($cursors | length) == ($cursors | unique | length)
               )
+              and (
+                [.[].data.repository.pullRequests.nodes[].number] as $numbers
+                | ($numbers | length) == ($numbers | unique | length)
+              )
             ' >/dev/null
           }
           if pages="$(gh api graphql --paginate -f query="$query" 2>/dev/null)" && valid_graphql_pages <<< "$pages"; then
