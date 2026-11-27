@@ -39,6 +39,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var store: GlafiraTaskStore
     private lateinit var rollbackCipher: GlafiraRollbackSnapshotCipher
     private var ownsFixture = false
+    private var createdFixtureRoot = false
     private lateinit var testRunId: String
     private var fixtureLifetimeFile: RandomAccessFile? = null
     private var fixtureLifetimeFileLock: java.nio.channels.FileLock? = null
@@ -78,6 +79,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             registerFixtureKeyAlias(rollbackCipher.keyAlias, testRunId)
             testRoot = File(appContext.cacheDir, "glafira-backup-test-$testRunId")
             check(testRoot.mkdir()) { "Could not exclusively create isolated backup fixture root." }
+            createdFixtureRoot = true
             writeFixtureRootOwnerMarker(testRunId, testRoot)
             ownsFixture = true
             context = IsolatedBackupTestContext(appContext, testRoot)
@@ -88,14 +90,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             // store construction fails. Before ownership publication, only remove the
             // directory this setup just created exclusively; never infer ownership later.
             if (!ownsFixture) {
-                if (::testRoot.isInitialized && testRoot.isDirectory &&
-                    !Files.isSymbolicLink(testRoot.toPath()) &&
-                    !fixtureRootOwnerMarker(testRunId).exists()
-                ) {
-                    deleteTreeWithoutFollowingLinks(testRoot.toPath())
-                    if (rollbackCipher.keyExists()) rollbackCipher.deleteKey()
-                    clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
-                }
+                cleanupUnclaimedFixtureRoot(
+                    root = if (::testRoot.isInitialized) testRoot else null,
+                    createdByThisSetup = createdFixtureRoot,
+                    runId = if (::testRunId.isInitialized) testRunId else null
+                )
                 releaseFixtureLifetimeLock()
             }
             throw error
@@ -336,6 +335,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
+    private fun cleanupUnclaimedFixtureRoot(root: File?, createdByThisSetup: Boolean, runId: String?) {
+        // A failed mkdir means the path may belong to somebody else. Never infer ownership
+        // from the absence of a marker or from a predictable fixture-looking directory name.
+        if (!createdByThisSetup || root == null || runId == null) return
+        check(root.isDirectory && !Files.isSymbolicLink(root.toPath()))
+        check(!fixtureRootOwnerMarker(runId).exists()) {
+            "A published fixture owner marker must be handled by @After, not setup rollback."
+        }
+        deleteTreeWithoutFollowingLinks(root.toPath())
+        if (rollbackCipher.keyExists()) rollbackCipher.deleteKey()
+        clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, runId)
+    }
+
     private fun fixtureRootOwnerMarker(runId: String): File =
         File(appContext.noBackupFilesDir, "glafira-test-root-owner-$runId")
 
@@ -478,6 +490,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 else -> expected
             }
             if (alias != expectedAlias) return@forEach
+            // The lifetime lock protects the scan from other test processes, but this
+            // process's current fixture is still live and must never be reclaimed.
+            if (::testRunId.isInitialized && runId == testRunId) return@forEach
             val root = File(appContext.cacheDir, "glafira-backup-test-$runId")
             if (Files.isSymbolicLink(root.toPath())) return@forEach
             if (root.exists()) {
@@ -496,6 +511,22 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             clearFixtureRootOwnerMarker(runId)
             check(marker.delete()) { "Could not remove stale fixture-key owner marker." }
             syncMarkerDirectory(ownerDirectory)
+        }
+    }
+
+    @Test
+    fun failedExclusiveMkdirNeverDeletesPreexistingFixtureLookingDirectory() {
+        val runId = UUID.randomUUID().toString()
+        val existing = File(appContext.cacheDir, "glafira-backup-test-" + runId)
+        assertTrue(existing.mkdir())
+        val canary = File(existing, "unowned.txt").apply { writeText("must-survive") }
+        try {
+            // This is the exact failure path when mkdir() returns false: the setup did not
+            // create the directory, so its cleanup helper must be a no-op.
+            cleanupUnclaimedFixtureRoot(existing, createdByThisSetup = false, runId = runId)
+            assertTrue("Pre-existing fixture-looking directory is preserved", canary.isFile)
+        } finally {
+            existing.deleteRecursively()
         }
     }
 
@@ -536,7 +567,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             File(appContext.noBackupFilesDir, ".glafira-test-key-owner-" + validRun.uppercase() + "-primary." + UUID.randomUUID() + ".tmp")
         ).onEach { it.writeText("unowned") }
         try {
+            val activeDatabase = File(store.writableDatabase.path)
+            val activeAliasMarker = fixtureKeyOwnerMarker(rollbackCipher.keyAlias, testRunId)
             cleanupOwnedLeftoverRollbackFixture()
+            assertTrue("Current test database survives orphan reclamation", activeDatabase.exists())
+            assertTrue("Current fixture owner marker survives orphan reclamation", activeAliasMarker.exists())
+            assertTrue("Current fixture root ownership record survives orphan reclamation", fixtureRootOwnerMarker(testRunId).exists())
             assertFalse("Canonical interrupted registration is reclaimed", validTemp.exists())
             malformed.forEach { assertTrue("Malformed unrelated marker is preserved", it.exists()) }
         } finally {
