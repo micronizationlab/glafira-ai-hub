@@ -277,6 +277,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
                                 val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
                                 val journalOwner = File(journal, "test-owner")
+                                if (primaryFailure != null && (journal.exists() || rollbackKeyExists())) {
+                                    throw IllegalStateException(
+                                        "Preserving fixture root, journal and fixture key after a failed test."
+                                    )
+                                }
                                 if (journal.exists()) {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
                                         "Refusing to claim or delete a rollback journal without matching fixture ownership."
@@ -1062,6 +1067,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     withFixtureLocks {
                         run {
                             if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
+                                if (primaryFailure != null && (journal.exists() || rollbackKeyExists())) {
+                                    throw IllegalStateException(
+                                        "Preserving V3 fixture journal and key after a failed recovery assertion."
+                                    )
+                                }
                                 if (journal.exists()) {
                                     check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
                                     check(journal.deleteRecursively())
