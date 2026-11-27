@@ -635,6 +635,44 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun ownedJournalCleanupRejectsLinkedNoBackupRootBeforeKeyDeletion() {
+        val runId = testRunId
+        val noBackupRoot = File(testRoot, "no-backup")
+        val originalNoBackup = File(testRoot, "no-backup-original")
+        val outside = File(appContext.cacheDir, "linked-no-backup-outside-$runId").apply { check(mkdir()) }
+        val externalJournal = File(outside, "glafira-restore-journal").apply { check(mkdir()) }
+        val externalOwner = File(externalJournal, "test-owner").apply { writeText(runId) }
+        val externalCanary = File(externalJournal, "outside-canary.txt").apply { writeText("must-survive") }
+        val keySource = File(context.cacheDir, "linked-no-backup-key-source.txt").apply { writeText("fixture-key-canary") }
+        val encrypted = File(context.cacheDir, "linked-no-backup-key.enc")
+        var beforeDeleteRan = false
+        try {
+            rollbackCipher.encrypt(keySource, encrypted)
+            assertTrue("Fixture rollback key exists before path attack", rollbackCipher.keyExists())
+            check(noBackupRoot.renameTo(originalNoBackup))
+            Files.createSymbolicLink(noBackupRoot.toPath(), outside.toPath())
+            val linkedJournal = File(context.noBackupFilesDir, "glafira-restore-journal")
+            assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(linkedJournal, runId) {
+                    beforeDeleteRan = true
+                    rollbackCipher.deleteKey()
+                }
+            }
+            assertFalse("Linked no-backup root must be rejected before key deletion", beforeDeleteRan)
+            assertTrue("Fixture rollback key remains intact", rollbackCipher.keyExists())
+            assertEquals("must-survive", externalCanary.readText())
+            assertEquals(runId, externalOwner.readText())
+        } finally {
+            if (Files.isSymbolicLink(noBackupRoot.toPath())) Files.delete(noBackupRoot.toPath())
+            if (originalNoBackup.exists() && !noBackupRoot.exists()) check(originalNoBackup.renameTo(noBackupRoot))
+            rollbackCipher.deleteKey()
+            keySource.delete()
+            encrypted.delete()
+            if (outside.exists()) deleteTreeWithoutFollowingLinks(outside.toPath())
+        }
+    }
+
+    @Test
     fun ownedJournalCleanupRejectsLinkedOwnerMarkerBeforeKeyDeletion() {
         val runId = testRunId
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdir()) }
