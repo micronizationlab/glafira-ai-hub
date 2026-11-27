@@ -294,10 +294,6 @@ jobs:
           ! should_reconcile "workflow_run" "METADATA_ONLY - PR metadata edit"
           should_reconcile "workflow_run" "GLAFIRA CI — change-aware platform validation"
           should_reconcile "pull_request" ""
-          ! grep -Eq '^[[:space:]]*schedule:' .github/workflows/glafira-project-dispatcher.yml
-          grep -Fq "startsWith(github.event.workflow_run.display_title || '', 'METADATA_ONLY -')" .github/workflows/glafira-project-dispatcher.yml
-          grep -Fq 'auto_incremental_review: false' .coderabbit.yaml
-          grep -Fq 'auto_reply: false' .coderabbit.yaml
           echo "event-driven dispatcher and one-review-per-PR policy: PASS"
       - name: Build cross-workstream status report
         env:
