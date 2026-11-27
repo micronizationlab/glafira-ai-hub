@@ -595,6 +595,57 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun ownedJournalCleanupRejectsLinkedJournalBeforeKeyDeletion() {
+        val runId = UUID.randomUUID().toString()
+        val root = File(appContext.cacheDir, "journal-root-link-test-$runId").apply { check(mkdir()) }
+        val outside = File(appContext.cacheDir, "journal-root-link-outside-$runId").apply { check(mkdir()) }
+        val canary = File(outside, "canary.txt").apply { writeText("must-survive") }
+        val linkedJournal = File(root, "journal")
+        val owner = File(root, "owner").apply { writeText(runId) }
+        var beforeDeleteRan = false
+        try {
+            Files.createSymbolicLink(linkedJournal.toPath(), outside.toPath())
+            assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(linkedJournal, owner, runId) {
+                    beforeDeleteRan = true
+                }
+            }
+            assertFalse("Linked journal must be rejected before key deletion", beforeDeleteRan)
+            assertEquals("must-survive", canary.readText())
+            assertTrue("Linked journal path is preserved for inspection", Files.isSymbolicLink(linkedJournal.toPath()))
+        } finally {
+            if (root.exists()) deleteTreeWithoutFollowingLinks(root.toPath())
+            if (outside.exists()) deleteTreeWithoutFollowingLinks(outside.toPath())
+        }
+    }
+
+    @Test
+    fun ownedJournalCleanupRejectsLinkedOwnerMarkerBeforeKeyDeletion() {
+        val runId = UUID.randomUUID().toString()
+        val root = File(appContext.cacheDir, "journal-owner-link-test-$runId").apply { check(mkdir()) }
+        val outside = File(appContext.cacheDir, "journal-owner-link-outside-$runId").apply { check(mkdir()) }
+        val canary = File(outside, "owner.txt").apply { writeText(runId) }
+        val journal = File(root, "journal").apply { check(mkdir()) }
+        val linkedOwner = File(journal, "test-owner")
+        var beforeDeleteRan = false
+        try {
+            Files.createSymbolicLink(linkedOwner.toPath(), canary.toPath())
+            assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, linkedOwner, runId) {
+                    beforeDeleteRan = true
+                }
+            }
+            assertFalse("Linked owner marker must be rejected before key deletion", beforeDeleteRan)
+            assertEquals(runId, canary.readText())
+            assertTrue("Journal remains when its ownership marker is linked", journal.isDirectory)
+        } finally {
+            if (journal.exists()) deleteTreeWithoutFollowingLinks(journal.toPath())
+            if (root.exists()) deleteTreeWithoutFollowingLinks(root.toPath())
+            if (outside.exists()) deleteTreeWithoutFollowingLinks(outside.toPath())
+        }
+    }
+
+    @Test
     fun failedExclusiveMkdirNeverDeletesPreexistingFixtureLookingDirectory() {
         val runId = UUID.randomUUID().toString()
         val existing = File(appContext.cacheDir, "glafira-backup-test-" + runId)
@@ -1590,6 +1641,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
         val pending = File(journal, "restore.pending").apply { writeText("GLAFIRA_RESTORE_ROLLBACK_V3") }
         val committed = File(journal, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
+        File(journal, "test-owner").apply { writeText(testRunId) }
         val database = File(journal, "database.db").apply { writeText("encrypted-fixture-placeholder") }
         val archive = File(journal, "files.glb").apply { writeText("encrypted-fixture-placeholder") }
         val plaintextSnapshot = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
