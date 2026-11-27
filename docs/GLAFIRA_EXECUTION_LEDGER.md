@@ -17,7 +17,7 @@ This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CO
 
 | Work Item ID | Step | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|
-| GLAFIRA-CODEX-W01 | `1.7.1.1.1.1.1` | GLAFIRA | Project-wide immediate repair-on-discovery Codex; all eleven workstreams and all write-enabled helpers | MERGED | PR #761 merge commit `c40cc0033e65b3df74f53e846e331e685c59d05f`; separate owner-directive accountability amendment PR #783 is Main `eed7a9c4aeee721ed6ff04e35ed2f94813a87eef`; `docs/GLAFIRA_CODEX.md` |
+| GLAFIRA-CODEX-W01 | `1.7.1.1.1.1.1` | GLAFIRA | Project-wide immediate repair-on-discovery Codex; all eleven workstreams and all write-enabled helpers | MERGED | Append-only transition event recorded below: PR #761 merge commit `c40cc0033e65b3df74f53e846e331e685c59d05f`; PR #783 Main SHA `eed7a9c4aeee721ed6ff04e35ed2f94813a87eef` is a separate accountability amendment; `docs/GLAFIRA_CODEX.md` |
 | GLAFIRA-GOV-WBS-W01 | `1.7.1.2.1.1.1` | GLAFIRA | Required strict-Main WBS reservation uniqueness PR check, parser and regression fixtures; no legacy Program 150 mapping | RESERVED | Issue #736; refreshed reservation PR; implementation paths reserved below; implementation blocked until reservation merges and exact Main is reread |
 | GLAFIRA-GOV-W01 | Governance | GLAFIRA | Establish this control, update helper instructions and reconcile plan baseline | IN_PROGRESS | Branch `governance/program-150-single-source-of-truth`; PR to be opened after doc consistency check |
 | GLAFIRA-S016-W01 | 16 | GLAFIRA | Core failure-injection matrix | BLOCKED | First refresh exact current-main tests/PRs; do not duplicate already merged failure-injection coverage |
@@ -753,6 +753,16 @@ GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and en
 
 
 
+## Append-only WBS status transition — GLAFIRA-CODEX-W01 — 2026-11-27
+
+- **Reservation / WBS / tracker:** `GLAFIRA-CODEX-W01` / `1.7.1.1.1.1.1` / PR #761.
+- **Transition:** `IN_REVIEW` → `MERGED`.
+- **Actor / authority:** repository owner merge action; coordinator records the observed transition.
+- **Merge evidence:** PR #761 merge commit `c40cc0033e65b3df74f53e846e331e685c59d05f` (GitHub PR #761 merge record).
+- **Separate follow-up:** PR #783 produced Main SHA `eed7a9c4aeee721ed6ff04e35ed2f94813a87eef`; it is not the PR #761 merge SHA and does not replace this transition evidence.
+- **Projection:** the registry's `MERGED` value is supported by this append-only event; the historical reservation identity and prior events remain unchanged.
+
+
 ### 2026-11-27 — owner-directed universal Codex trace rule (PR #784 scope amendment)
 - Owner instruction: preserve a one-to-one trace for every finding: all findings → all corrections → all verification checks, and make the rule mandatory for every workstream in Codex.
 - Updated `docs/GLAFIRA_CODEX.md` section 8 on branch `wbs/reserve-strict-main-wbs-uniqueness-refresh-20261127`; commit `f5b8d305b940f91789b78550b50b3a0c16436ebd`.
@@ -766,10 +776,10 @@ The following findings were added by the review published against the subsequent
 
 | Finding ID | Exact concern | Correction link | Required verification | Disposition |
 |---|---|---|---|---|
-| `PRRT_kwDOVx1ISc68rdyN` | `GLAFIRA-CODEX-W01` was changed to MERGED in the registry without a corresponding append-only transition event and PR #761 merge evidence. | Pending; audit registry status and append the missing event with PR #761 merge SHA `c40cc0033e65b3df74f53e846e331e685c59d05f`. | Reconcile registry projection with append-only event history; inspect exact diff and verify PR #761 merge evidence. | OPEN — not corrected or verified |
-| `PRRT_kwDOVx1ISc68rdyR` | Legacy IDs `GLAFIRA-GOV-W01` and `GLAFIRA-CI-W01` are not covered by the new ID grammar/legacy rule. | Pending; choose explicit legacy compatibility or audited migration, then align standard and registry. | Add positive/negative validator fixtures for both IDs and run exact parser test suite once implementation is authorized. | OPEN — not corrected or verified |
-| `PRRT_kwDOVx1ISc68rdyY` | BLOCKED cannot resume to `MERGED` when `blocked_from=MERGED`, preventing later transition to DONE. | Pending; allow only evidence-backed resume to saved MERGED state, retaining no direct jump to DONE. | Add state-machine fixture BLOCKED(from MERGED) → MERGED → DONE and negative bypass fixture; run validator tests. | OPEN — not corrected or verified |
-| `PRRT_kwDOVx1ISc68rdyc` | No audit-safe recovery procedure is defined if two duplicate WBS leaves have already reached Main through concurrent bypass merges. | Pending; define append-only conflict disposition/repair without deleting or rewriting either historical reservation. | Add fixture with two already-merged duplicate records; prove deterministic conflict reconciliation, preserved audit history and fail-closed behavior. | OPEN — not corrected or verified |
+| `PRRT_kwDOVx1ISc68rdyN` | `GLAFIRA-CODEX-W01` registry transition lacked append-only evidence. | Added the missing `IN_REVIEW` → `MERGED` event with exact PR #761 merge SHA `c40cc0033e65b3df74f53e846e331e685c59d05f`; registry projection remains MERGED. | Pending: exact diff review and docs/ledger CI on final PR head. | FIXED_PENDING_VERIFICATION |
+| `PRRT_kwDOVx1ISc68rdyR` | Legacy IDs `GLAFIRA-GOV-W01` and `GLAFIRA-CI-W01` were not covered by the new grammar. | Standard now grandfathered these exact existing records as immutable aliases; new/relocated uses are forbidden. | Pending: add positive/negative parser fixtures for both exact IDs and run validator tests when implementation reservation is merged. | FIXED_PENDING_VERIFICATION |
+| `PRRT_kwDOVx1ISc68rdyY` | BLOCKED could not resume to MERGED when `blocked_from=MERGED`. | Standard now explicitly permits evidence-backed resume to saved MERGED state, followed by ordinary MERGED→DONE gate. | Pending: add BLOCKED(from MERGED) → MERGED → DONE fixture and negative direct-jump fixture; run validator tests. | FIXED_PENDING_VERIFICATION |
+| `PRRT_kwDOVx1ISc68rdyc` | No audit-safe recovery procedure existed for duplicate WBS leaves already merged to Main. | Standard now defines append-only conflict incident, BLOCKED disposition, branch quarantine, owner-authorized replacement reservation and preserved historical records. | Pending: fixture with two already-merged duplicates must prove append-only recovery, deterministic conflict disposition and fail-closed validation. | FIXED_PENDING_VERIFICATION |
 
 - Snapshot after the latest push: 25 review threads total; 21 earlier threads are resolved/outdated; these 4 follow-up threads remain unresolved. The 21 earlier mappings remain in the table above and are not proof that these new findings are addressed.
 - Latest PR head at this snapshot: `bc61861238bb16f3940f5d92cd2d18e48c788f37`. Combined commit status returned no status checks and no PR-triggered workflow runs were returned for this SHA. Therefore this head is NOT validated and PR #784 is not eligible for merge.
