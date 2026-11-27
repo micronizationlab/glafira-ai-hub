@@ -12,6 +12,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.FileVisitResult
 import java.nio.file.attribute.BasicFileAttributes
@@ -40,6 +41,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var rollbackCipher: GlafiraRollbackSnapshotCipher
     private var ownsFixture = false
     private var createdFixtureRoot = false
+    private var createdFixtureStagingRoot = false
+    private lateinit var fixtureStagingRoot: File
     private lateinit var testRunId: String
     private var fixtureLifetimeFile: RandomAccessFile? = null
     private var fixtureLifetimeFileLock: java.nio.channels.FileLock? = null
@@ -76,13 +79,21 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
-            registerFixtureKeyAlias(rollbackCipher.keyAlias, testRunId)
+            fixtureStagingRoot = File(appContext.cacheDir, ".glafira-backup-test-staging-$testRunId")
+            check(fixtureStagingRoot.mkdir()) { "Could not exclusively create backup fixture staging root." }
+            createdFixtureStagingRoot = true
+            writeFixtureRootOwnerMarker(testRunId, fixtureStagingRoot, rollbackCipher.keyAlias)
             testRoot = File(appContext.cacheDir, "glafira-backup-test-$testRunId")
-            check(testRoot.mkdir()) { "Could not exclusively create isolated backup fixture root." }
+            check(!testRoot.exists() && !Files.isSymbolicLink(testRoot.toPath())) {
+                "Refusing to replace an existing backup fixture root."
+            }
+            check(fixtureStagingRoot.renameTo(testRoot)) { "Could not atomically publish the owned backup fixture directory." }
+            createdFixtureStagingRoot = false
             createdFixtureRoot = true
-            writeFixtureRootOwnerMarker(testRunId, testRoot)
+            syncMarkerDirectory(appContext.cacheDir)
             ownsFixture = true
             context = IsolatedBackupTestContext(appContext, testRoot)
+            registerFixtureKeyAlias(rollbackCipher.keyAlias, testRunId)
             store = GlafiraTaskStore(context)
             assertEquals(File(testRoot, "databases/glafira_core_tasks.db").absolutePath, store.writableDatabase.path)
         } catch (error: Throwable) {
@@ -91,6 +102,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             // directory this setup just created exclusively; never infer ownership later.
             if (!ownsFixture) {
                 try {
+                    if (createdFixtureStagingRoot && ::fixtureStagingRoot.isInitialized) {
+                        cleanupUnclaimedFixtureRoot(fixtureStagingRoot, true, if (::testRunId.isInitialized) testRunId else null)
+                    }
                     cleanupUnclaimedFixtureRoot(
                         root = if (::testRoot.isInitialized) testRoot else null,
                         createdByThisSetup = createdFixtureRoot,
@@ -129,7 +143,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     rollbackCipher.deleteKey()
                     deleteTreeWithoutFollowingLinks(testRoot.toPath())
                     syncMarkerDirectory(checkNotNull(testRoot.parentFile))
-                    clearFixtureRootOwnerMarker(testRunId)
                     clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
                 }
             } catch (cleanup: Throwable) {
@@ -341,30 +354,27 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     private fun cleanupUnclaimedFixtureRoot(root: File?, createdByThisSetup: Boolean, runId: String?) {
-        // A failed mkdir means the path may belong to somebody else. Never infer ownership
-        // from the absence of a marker or from a predictable fixture-looking directory name.
+        // The caller must prove it won the exclusive mkdir or staging-directory creation.
+        // A fixture-looking path or absent marker is never ownership evidence.
         if (!createdByThisSetup || root == null || runId == null) return
         check(root.isDirectory && !Files.isSymbolicLink(root.toPath()))
-        check(!fixtureRootOwnerMarker(runId).exists()) {
-            "A published fixture owner marker must be handled by @After, not setup rollback."
-        }
         deleteTreeWithoutFollowingLinks(root.toPath())
-        if (rollbackCipher.keyExists()) rollbackCipher.deleteKey()
-        clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, runId)
+        if (::rollbackCipher.isInitialized && rollbackCipher.keyExists()) rollbackCipher.deleteKey()
+        if (::rollbackCipher.isInitialized) clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, runId)
+        syncMarkerDirectory(appContext.cacheDir)
     }
 
-    private fun fixtureRootOwnerMarker(runId: String): File =
-        File(appContext.noBackupFilesDir, "glafira-test-root-owner-$runId")
+    private fun fixtureRootOwnerMarker(root: File): File = File(root, "fixture.owner")
 
-    private fun writeFixtureRootOwnerMarker(runId: String, root: File) {
-        val marker = fixtureRootOwnerMarker(runId)
+    private fun writeFixtureRootOwnerMarker(runId: String, root: File, alias: String) {
+        val marker = fixtureRootOwnerMarker(root)
         check(marker.createNewFile()) { "Fixture root ownership marker already exists." }
         try {
             FileOutputStream(marker, false).use { output ->
-                output.write(root.canonicalPath.toByteArray(Charsets.UTF_8))
+                output.write("$runId\n$alias".toByteArray(Charsets.UTF_8))
                 output.fd.sync()
             }
-            syncMarkerDirectory(checkNotNull(marker.parentFile))
+            syncMarkerDirectory(root)
         } catch (error: Throwable) {
             if (marker.exists()) marker.delete()
             throw error
@@ -372,9 +382,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     private fun checkFixtureRootOwnership(runId: String, root: File) {
-        val marker = fixtureRootOwnerMarker(runId)
-        check(marker.isFile && marker.readText(Charsets.UTF_8) == root.canonicalPath) {
-            "Refusing to reclaim a fixture root without its post-mkdir ownership record."
+        val marker = fixtureRootOwnerMarker(root)
+        val expectedAlias = "glafira_test_rollback_" + runId.replace("-", "")
+        check(marker.isFile && !Files.isSymbolicLink(marker.toPath()) &&
+            marker.readText(Charsets.UTF_8) == "$runId\n$expectedAlias"
+        ) {
+            "Refusing to reclaim a fixture root without its pre-published ownership record."
         }
         check(root.parentFile?.canonicalFile == appContext.cacheDir.canonicalFile) {
             "Fixture root escaped the application cache directory."
@@ -384,13 +397,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-    private fun clearFixtureRootOwnerMarker(runId: String) {
-        val marker = fixtureRootOwnerMarker(runId)
-        if (marker.exists()) {
-            check(marker.delete()) { "Could not remove fixture-root owner marker." }
-            syncMarkerDirectory(checkNotNull(marker.parentFile))
-        }
-    }
+    private fun clearFixtureRootOwnerMarker(runId: String) = Unit
 
     private fun deleteTreeWithoutFollowingLinks(root: Path) {
         check(!Files.isSymbolicLink(root)) { "Refusing to recursively delete a symbolic-link fixture root." }
@@ -477,6 +484,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         ownerDirectory.listFiles { file ->
             file.name.startsWith("glafira-test-key-owner-")
         }.orEmpty().forEach { marker ->
+            if (!Files.isRegularFile(marker.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
             val markerName = marker.name.removePrefix("glafira-test-key-owner-")
             val kind = when {
                 markerName.endsWith("-second") -> "second"
@@ -501,10 +509,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val root = File(appContext.cacheDir, "glafira-backup-test-$runId")
             if (Files.isSymbolicLink(root.toPath())) return@forEach
             if (root.exists()) {
-                val rootOwner = fixtureRootOwnerMarker(runId)
-                if (!rootOwner.isFile || rootOwner.readText(Charsets.UTF_8) != root.canonicalPath) {
-                    return@forEach
-                }
+                if (!Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
+                val rootOwner = fixtureRootOwnerMarker(root)
+                if (!rootOwner.isFile || Files.isSymbolicLink(rootOwner.toPath()) ||
+                    rootOwner.readText(Charsets.UTF_8) != "$runId\n$expectedAlias"
+                ) return@forEach
             }
             val journal = File(root, "no-backup/glafira-restore-journal")
             if (journal.exists()) return@forEach
@@ -513,9 +522,34 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 deleteTreeWithoutFollowingLinks(root.toPath())
                 syncMarkerDirectory(appContext.cacheDir)
             }
-            clearFixtureRootOwnerMarker(runId)
             check(marker.delete()) { "Could not remove stale fixture-key owner marker." }
             syncMarkerDirectory(ownerDirectory)
+        }
+        // Reclaim staging/final fixture roots whose process died before publishing the
+        // separate Keystore-alias marker. Their owner record was fsynced before atomic rename.
+        val orphanRoots = appContext.cacheDir.listFiles { file ->
+            file.name.startsWith(".glafira-backup-test-staging-") ||
+                file.name.startsWith("glafira-backup-test-")
+        }.orEmpty()
+        orphanRoots.forEach { root ->
+            if (Files.isSymbolicLink(root.toPath()) ||
+                !Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)
+            ) return@forEach
+            val prefix = if (root.name.startsWith(".glafira-backup-test-staging-"))
+                ".glafira-backup-test-staging-" else "glafira-backup-test-"
+            val runId = root.name.removePrefix(prefix)
+            val parsed = try { UUID.fromString(runId) } catch (_: IllegalArgumentException) { null }
+            if (parsed == null || parsed.toString() != runId) return@forEach
+            if (::testRunId.isInitialized && runId == testRunId) return@forEach
+            val owner = fixtureRootOwnerMarker(root)
+            val alias = "glafira_test_rollback_" + runId.replace("-", "")
+            if (!owner.isFile || Files.isSymbolicLink(owner.toPath()) ||
+                owner.readText(Charsets.UTF_8) != "$runId\n$alias"
+            ) return@forEach
+            if (File(root, "no-backup/glafira-restore-journal").exists()) return@forEach
+            GlafiraRollbackSnapshotCipher(alias).deleteKey()
+            deleteTreeWithoutFollowingLinks(root.toPath())
+            syncMarkerDirectory(appContext.cacheDir)
         }
     }
 
