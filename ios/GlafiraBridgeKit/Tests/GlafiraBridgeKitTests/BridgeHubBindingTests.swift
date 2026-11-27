@@ -38,6 +38,12 @@ final class BridgeHubBindingTests: XCTestCase {
         XCTAssertEqual(value.transportOrigin, "https://192.168.1.20:8443")
     }
 
+    func testAcceptsAndCanonicalizesIPv6UniqueLocalHubEndpoint() throws {
+        let value = try binding(endpoint: "HTTPS://[FD12:3456:789A::1]:8443/bridge/v1")
+        XCTAssertEqual(value.endpoint, "https://[fd12:3456:789a::1]:8443/bridge/v1")
+        XCTAssertEqual(value.transportOrigin, "https://[fd12:3456:789a::1]:8443")
+    }
+
     func testRejectsPublicLoopbackAndHostnameEndpoints() {
         for invalid in [
             "https://8.8.8.8:8443/bridge/v1",
