@@ -85,8 +85,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertEquals(File(testRoot, "databases/glafira_core_tasks.db").absolutePath, store.writableDatabase.path)
         } catch (error: Throwable) {
             // Once a fixture is claimed, @After owns lock release and cleanup even if
-            // store construction fails. Releasing here would let another setup reclaim it.
-            if (!ownsFixture) releaseFixtureLifetimeLock()
+            // store construction fails. Before ownership publication, only remove the
+            // directory this setup just created exclusively; never infer ownership later.
+            if (!ownsFixture) {
+                if (::testRoot.isInitialized && testRoot.isDirectory &&
+                    !Files.isSymbolicLink(testRoot.toPath()) &&
+                    !fixtureRootOwnerMarker(testRunId).exists()
+                ) {
+                    deleteTreeWithoutFollowingLinks(testRoot.toPath())
+                    if (rollbackCipher.keyExists()) rollbackCipher.deleteKey()
+                    clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
+                }
+                releaseFixtureLifetimeLock()
+            }
             throw error
         }
     }
@@ -485,6 +496,33 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             clearFixtureRootOwnerMarker(runId)
             check(marker.delete()) { "Could not remove stale fixture-key owner marker." }
             syncMarkerDirectory(ownerDirectory)
+        }
+    }
+
+    @Test
+    fun orphanCleanupPreservesSymlinkRootsAndTheirTargets() {
+        val runId = UUID.randomUUID().toString()
+        val alias = "glafira_test_rollback_" + runId.replace("-", "")
+        val marker = File(appContext.noBackupFilesDir, "glafira-test-key-owner-" + runId + "-primary")
+        FileOutputStream(marker).use { output ->
+            output.write(alias.toByteArray(Charsets.UTF_8))
+            output.fd.sync()
+        }
+        val target = File(appContext.cacheDir, "unrelated-target-" + runId).apply {
+            mkdir()
+            File(this, "keep.txt").writeText("must-survive")
+        }
+        val root = File(appContext.cacheDir, "glafira-backup-test-" + runId)
+        try {
+            Os.symlink(target.absolutePath, root.absolutePath)
+            cleanupOwnedLeftoverRollbackFixture()
+            assertTrue("Symlink target remains untouched", File(target, "keep.txt").isFile)
+            assertTrue("Symlink root is preserved", Files.isSymbolicLink(root.toPath()))
+            assertTrue("Alias owner marker is preserved for manual recovery", marker.exists())
+        } finally {
+            if (Files.isSymbolicLink(root.toPath())) Os.remove(root.absolutePath)
+            target.deleteRecursively()
+            marker.delete()
         }
     }
 
