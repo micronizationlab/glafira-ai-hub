@@ -51,6 +51,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failCommittedCleanupCount = 0
         var failPlaintextSnapshotDirectorySyncOnce = false
         var failCommittedMarkerSyncOnce = false
+        var committedMarkerSyncCalls = 0
+        var committedCleanupCalls = 0
         var pauseCount = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
@@ -59,6 +61,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val pauseContexts = mutableListOf<Context>()
         override fun pauseForRestore(context: Context) { pauseContexts += context }
         override fun beforeCommittedJournalCleanup() {
+            committedCleanupCalls++
             if (failCommittedCleanupOnce || failCommittedCleanupCount > 0) {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
@@ -72,6 +75,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
         override fun beforeCommittedMarkerSync() {
+            committedMarkerSyncCalls++
             if (failCommittedMarkerSyncOnce) {
                 failCommittedMarkerSyncOnce = false
                 throw IOException("injected first committed-marker directory fsync failure")
@@ -1374,22 +1378,41 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
     @Test
     fun restoreReportsSuccessWhenRecoveryResyncsCommitBeforeCleanupFailure() = runBlocking {
-        store.enqueue(task("commit-resync-before-cleanup"))
+        val taskId = "commit-resync-before-cleanup"
+        store.enqueue(task(taskId))
         val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-commit-resync-cleanup".toCharArray()
         val archive = coordinator.create(passphrase)
+        val archivedTask = checkNotNull(store.getTask(taskId))
+        assertTrue(
+            "Test must remove the archived task before restore",
+            store.transition(
+                taskId,
+                setOf(GlafiraTaskState.QUEUED),
+                GlafiraTaskState.CANCELLED,
+                System.currentTimeMillis(),
+                null,
+                "REMOVED_TO_VERIFY_RESTORE"
+            )
+        )
+        assertNull("Archived task is absent before restore", store.getTask(taskId)?.takeIf { it.state != GlafiraTaskState.CANCELLED })
+        fixtureRuntimeHooks.committedMarkerSyncCalls = 0
+        fixtureRuntimeHooks.committedCleanupCalls = 0
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         try {
             withOwnedRollbackKey {
                 fixtureRuntimeHooks.failCommittedMarkerSyncOnce = true
                 fixtureRuntimeHooks.failCommittedCleanupOnce = true
                 val verification = coordinator.restore(archive, passphrase)
+                assertEquals("Initial marker publication and recovery must both reach the fsync boundary", 2, fixtureRuntimeHooks.committedMarkerSyncCalls)
+                assertEquals("Recovery must actually attempt committed cleanup", 1, fixtureRuntimeHooks.committedCleanupCalls)
+                assertFalse("The injected cleanup failure must be consumed", fixtureRuntimeHooks.failCommittedCleanupOnce)
                 assertTrue("Commit marker remains after cleanup interruption", File(journal, "restore.committed").isFile)
                 assertTrue("Rollback evidence remains for the next cleanup pass", File(journal, "database.db").isFile)
                 fixtureRuntimeHooks.failCommittedCleanupOnce = false
                 isolatedCoordinator().recover(passphrase)
                 assertFalse("Recovery removes the committed journal", journal.exists())
-                assertTrue("Selected archive content was restored", store.getTask("commit-resync-before-cleanup") != null)
+                assertEquals("Restore reinstates the archived queued task", GlafiraTaskState.QUEUED, store.getTask(taskId)?.state)
                 assertTrue("Verification result remains successful", verification.fileCount > 0 && verification.totalBytes > 0)
             }
         } finally {
