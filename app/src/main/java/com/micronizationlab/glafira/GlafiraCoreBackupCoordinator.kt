@@ -3,6 +3,13 @@ package com.micronizationlab.glafira
 import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 
 /** Runtime boundary used by backup maintenance. The production implementation pauses pending delivery and the Core runtime. Only tests that explicitly inject fixture-local hooks bypass those production side effects; tests using the public two-argument constructor still exercise the real pause behavior. */
@@ -245,6 +252,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
             "Некорректная отметка завершения восстановления; журнал сохранён."
         }
         runtimeHooks.beforeCommittedJournalCleanup()
+        // The portable export is plaintext (task/result fields are decrypted during export).
+        // A process death after COMMITTED must not leave it behind until the next backup.
+        deleteCommittedPortableSnapshot()
         check(!safetyArchive.exists() || safetyArchive.delete()) {
             "Не удалось удалить архив отката; журнал завершения сохранён."
         }
@@ -265,6 +275,25 @@ class GlafiraCoreBackupCoordinator internal constructor(
         // removal and its parent fsync remain. The restore caller already recorded its commit.
         check(journal.deleteRecursively()) { "Не удалось удалить каталог журнала восстановления." }
         syncDirectory(app.noBackupFilesDir)
+    }
+
+    /** Delete the crash-left plaintext portable export without following symlinks. */
+    private fun deleteCommittedPortableSnapshot() {
+        val snapshot = File(app.filesDir, ".glafira-core-snapshot").toPath()
+        if (!Files.exists(snapshot, LinkOption.NOFOLLOW_LINKS)) return
+        Files.walkFileTree(snapshot, object : SimpleFileVisitor<Path>() {
+            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                Files.delete(file)
+                return FileVisitResult.CONTINUE
+            }
+
+            override fun postVisitDirectory(dir: Path, error: IOException?): FileVisitResult {
+                if (error != null) throw error
+                Files.delete(dir)
+                return FileVisitResult.CONTINUE
+            }
+        })
+        syncDirectory(app.filesDir)
     }
 
     /** Make restored payload and directory entries durable before publishing COMMITTED_MARKER. */
