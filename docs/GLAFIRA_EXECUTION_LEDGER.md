@@ -458,7 +458,8 @@ This checkpoint updates the live integration state after the previous Outbox/res
 
 ## MaintenanceGate contention test — 2026-11-25 (integrated after Core ownership receiver)
 
-- **Work item:** GLAFIRA-S016-W01 / registered parent `1.1 Core` / WBS leaf `1.1.4`; tracker #638, sprint #634; PR #648.
+- **Work item:** GLAFIRA-S016-W01 / WBS 1.1.4; tracker #638, sprint #634; PR #648.
+- **Append-only registry-parent clarification — 2026-11-27:** the existing #638 issue identifies the parent as `1.1 Core` and the executable child leaf as `1.1.4`; the registry's `Registered parent` column records `1.1 Core`. This clarification supplements, and does not rewrite, the 2026-11-25 historical work-item entry.
 - **Change:** host-JVM regression test holds an execution lease, enters exclusive maintenance, verifies 100 waiters remain suspended, then releases maintenance and verifies all 100 resume; optional ThreadMXBean CPU measurement is reflection-only and safely unavailable on unsupported VMs.
 - **Exact-head evidence before reconciliation:** CI #45599259011 passed Android JVM (321 tests, 0 failures/errors/skips), Android Debug APK and Shared contracts; emulator/iOS/Windows/workflow lint were skipped by change-aware routing. Dispatcher #45599259055 passed.
 - **Integration note:** PR branch conflicted after Core receiver PR #627 merged. The branch is reconciled onto Main with the concurrency test preserved and this ledger entry appended to the current Main ledger. Fresh exact-head CI is required for the reconciled head.
