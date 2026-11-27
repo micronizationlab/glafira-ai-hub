@@ -40,84 +40,140 @@ jobs:
           set -euo pipefail
           prs_file="$1"
           runs_file="$2"
-          prs="$(cat "$prs_file")"
-          runs="$(cat "$runs_file")"
-          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$prs"; then
+          if ! jq -e 'type == "array"' "$prs_file" >/dev/null 2>&1; then
             echo "pull request input must be a JSON array" >&2
             exit 2
           fi
-          while IFS= read -r pr; do
-            number="$(jq -r '.number' <<< "$pr")"
-            # PR titles and branch names are contributor-controlled: strip Markdown syntax.
-            title="$(jq -r '.title // "" | gsub("https?://[^ )]+"; "") | gsub("[|]"; "/") | gsub("[^[:alnum:] _.,:;!?-]"; " ")' <<< "$pr")"
-            branch="$(jq -r '.headRefName // "" | gsub("[^[:alnum:] _.,:/-]"; " ")' <<< "$pr")"
-            sha="$(jq -r '.headRefOid // ""' <<< "$pr")"
-            base_sha="$(jq -r '.baseRefOid // ""' <<< "$pr")"
-            draft="$(jq -r '.isDraft // false' <<< "$pr")"
-            url="$(jq -r '.url // ""' <<< "$pr")"
-            checks="$(jq -c '[.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)]' <<< "$pr")"
-            if [[ "$(jq 'length' <<< "$checks")" -gt 0 ]]; then
-              ci="HEAD-ONLY / BASE NOT VERIFIED: $(jq -r 'map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")' <<< "$checks")"
-            elif ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$runs"; then
-              ci="UNKNOWN / ACTIONS API UNAVAILABLE"
-            else
-              matching="$(jq -c --arg sha "$sha" --arg base "$base_sha" --argjson number "$number" '
-                [.[] |
-                  select(.headSha == $sha) |
-                  select($base != "" and any((.pullRequests // [])[]?; .number == $number and (.base.sha // "") != "" and .base.sha == $base)) |
-                  select((.workflowName // .name // "") != "GLAFIRA Java Format Check" or ((.displayTitle // "") | startswith("METADATA_ONLY -") | not))
-                ] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0])
-              ' <<< "$runs")"
-              if [[ "$(jq 'length' <<< "$matching")" -eq 0 ]]; then
-                ci="NO MATCHING RUN FOR EXACT PR/HEAD/BASE"
-              else
-                ci="$(jq -r 'map((.workflowName // .name // "workflow") + ": " + (if .status == "queued" then "QUEUED" elif .status == "in_progress" then "IN_PROGRESS" elif .status == "completed" then ("COMPLETED/" + (.conclusion // "UNKNOWN")) else "UNKNOWN/" + (.status // "missing") end) + " ([run](\(.url // "")))") | join("<br>")' <<< "$matching")"
-              fi
-            fi
-            short_sha="$(cut -c1-12 <<< "$sha")"
-            echo "| [#$number]($url) $title | <code>$branch</code> | <code>$short_sha</code> | $ci | $draft |"
-          done < <(jq -c '.[]' <<< "$prs")
+          # Normalize unavailable/malformed Actions history so it cannot erase PR rows.
+          normalized_runs="$RUNNER_TEMP/dispatcher-normalized-runs.json"
+          if ! jq -e 'type == "array"' "$runs_file" >/dev/null 2>&1; then
+            printf 'null\n' > "$normalized_runs"
+          else
+            cp "$runs_file" "$normalized_runs"
+          fi
+          # Build the exact PR/head/base run index once, then render all PR rows in
+          # one jq pass. This avoids rescanning the 1,000-run history for every PR.
+          jq -r --slurpfile runs "$normalized_runs" '
+            def clean_title:
+              (.title // "")
+              | gsub("https?://[^ )]+"; "")
+              | gsub("[|]"; "/")
+              | gsub("[^[:alnum:] _.,:;!?-]"; " ");
+            def clean_branch:
+              (.headRefName // "") | gsub("[^[:alnum:] _.,:/-]"; " ");
+            def run_status:
+              if .status == "queued" then "QUEUED"
+              elif .status == "in_progress" then "IN_PROGRESS"
+              elif .status == "completed" then "COMPLETED/" + (.conclusion // "UNKNOWN")
+              else "UNKNOWN/" + (.status // "missing") end;
+            . as $prs
+            | (if (($runs | length) == 1 and ($runs[0] | type) == "array") then $runs[0] else null end) as $valid_runs
+            | ($valid_runs // [] | [
+                .[] as $run
+                | ($run.pullRequests // [])[]? as $association
+                | select($association.number != null and ($association.base.sha // "") != "" and ($run.headSha // "") != "")
+                | select(($run.workflowName // $run.name // "") != "GLAFIRA Java Format Check" or ((($run.displayTitle | type) == "string") and ($run.displayTitle | startswith("VALIDATION - Java format"))))
+                | {key: ([$association.number, $run.headSha, $association.base.sha] | tojson), run: $run}
+              ]
+              | group_by(.key)
+              | map({key: .[0].key, value: ([.[].run] | sort_by(.createdAt // "") | reverse | group_by(.workflowName // .name // "unknown") | map(.[0]))})
+              | from_entries) as $run_index
+            | [
+                $prs[] as $pr
+                | ([$pr.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)]) as $checks
+                | if ($checks | length) > 0 then
+                    "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | HEAD-ONLY / BASE NOT VERIFIED: \($checks | map("\(.name // .context // "check"): \(.status // .state // "unknown")/\(.conclusion // "pending") ([check](\(.detailsUrl // .targetUrl // "")))") | join("<br>")) | \($pr.isDraft // false) |"
+                  elif $valid_runs == null then
+                    "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | UNKNOWN / ACTIONS API UNAVAILABLE | \($pr.isDraft // false) |"
+                  else
+                    ($run_index[([$pr.number, ($pr.headRefOid // ""), ($pr.baseRefOid // "")] | tojson)] // []) as $matching
+                    | if ($matching | length) == 0 then
+                        "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | NO MATCHING RUN FOR EXACT PR/HEAD/BASE | \($pr.isDraft // false) |"
+                      else
+                        "| [#\($pr.number)](\($pr.url // "")) \($pr | clean_title) | <code>\($pr | clean_branch)</code> | <code>\(($pr.headRefOid // "")[0:12])</code> | \($matching | map(((.workflowName // .name // "workflow") | gsub("[|]"; "/")) + ": " + run_status + " ([run](\(.url // "")))") | join("<br>")) | \($pr.isDraft // false) |"
+                      end
+                  end
+              ]
+            | .[]
+          ' "$prs_file"
           SCRIPT
 
           cat > "$RUNNER_TEMP/fetch-open-prs.sh" <<'FETCH'
           #!/usr/bin/env bash
           set -euo pipefail
           repo="$1"
-          query='query($endCursor: String) {
+          # One bounded GraphQL request only. If more than 100 open PRs exist,
+          # fall back to REST pagination rather than letting gh --paginate follow
+          # an untrusted/repeated endCursor indefinitely.
+          query='query {
             repository(owner: "micronizationlab", name: "glafira-ai-hub") {
-              pullRequests(first: 100, after: $endCursor, states: OPEN) {
+              pullRequests(first: 100, states: [OPEN], orderBy: {field: CREATED_AT, direction: ASC}) {
                 pageInfo { hasNextPage endCursor }
                 nodes {
-                  number title headRefName headRefOid baseRefOid isDraft url
-                  statusCheckRollup { contexts(first: 100) { nodes {
-                    __typename
-                    ... on CheckRun { name status conclusion detailsUrl }
-                    ... on StatusContext { context state targetUrl }
-                  } } }
+                  number state title headRefName headRefOid baseRefOid isDraft url
                 }
               }
             }
           }'
-          if pages="$(gh api graphql --paginate -f query="$query" 2>/dev/null)" && jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null <<< "$pages"; then
+          valid_graphql_pages() {
+            jq -s -e '
+              length > 0
+              and all(.[]; (.errors // [] | length) == 0
+                and (.data.repository.pullRequests | type) == "object"
+                and (.data.repository.pullRequests.nodes | type) == "array"
+                and (.data.repository.pullRequests.pageInfo.hasNextPage | type) == "boolean"
+                and all(.data.repository.pullRequests.nodes[];
+                  type == "object"
+                  and .state == "OPEN"
+                  and (.number | type) == "number" and .number > 0 and .number == (.number | floor)
+                  and (.headRefOid | type) == "string" and .headRefOid != ""
+                  and (.baseRefOid | type) == "string" and .baseRefOid != ""
+                )
+                and ((.data.repository.pullRequests.pageInfo.hasNextPage == false)
+                  or ((.data.repository.pullRequests.nodes | length) > 0
+                    and (.data.repository.pullRequests.pageInfo.endCursor | type) == "string"
+                    and .data.repository.pullRequests.pageInfo.endCursor != "")))
+              and length == 1
+              and (.[0].data.repository.pullRequests.pageInfo.hasNextPage == false)
+              and (
+                [.[0].data.repository.pullRequests.nodes[].number] as $numbers
+                | ($numbers | length) == ($numbers | unique | length)
+              )
+            ' >/dev/null
+          }
+          if pages="$(gh api graphql -f query="$query" 2>/dev/null)" && valid_graphql_pages <<< "$pages"; then
             jq -s '[
               .[].data.repository.pullRequests.nodes[] |
               {
                 number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
-                statusCheckRollup: [
-                  .statusCheckRollup.contexts.nodes[]? |
-                  {
-                    name: (.name // .context // "check"),
-                    status: (.status // .state // "unknown"),
-                    conclusion: (.conclusion // null),
-                    detailsUrl: (.detailsUrl // .targetUrl // "")
-                  }
-                ]
+                statusCheckRollup: []
               }
             ]' <<< "$pages"
             exit 0
           fi
-          # REST fallback retains exact head/base identity and paginates all open PRs.
-          rest_pages="$(gh api --paginate "repos/$repo/pulls?state=open&per_page=100")"
+          # Fail closed on malformed REST pages; never turn bad records into an empty report.
+          # state=open keeps pagination bounded by active PRs rather than repository history.
+          rest_pages="$(gh api --paginate "repos/$repo/pulls?state=open&sort=created&direction=asc&per_page=100")"
+          jq -s -e '
+            length > 0
+            and all(.[];
+              type == "array"
+              and all(.[];
+                type == "object"
+                and .state == "open"
+                and (.number | type) == "number" and .number > 0 and .number == (.number | floor)
+                and (.head.sha | type) == "string" and .head.sha != ""
+                and (.base.sha | type) == "string" and .base.sha != ""
+              )
+            )
+            and (
+              [.[].[] | .number] as $numbers
+              | ($numbers | length) == ($numbers | unique | length)
+            )
+          ' >/dev/null <<< "$rest_pages" || {
+            echo "ERROR: REST open-PR inventory contains malformed pages or records." >&2
+            exit 2
+          }
           jq -s '[
             add[] |
             {
@@ -141,6 +197,10 @@ jobs:
           # Bound each reconciliation to the newest 1,000 Actions runs.
           for page in $(seq 1 10); do
             response="$(gh api "repos/$repo/actions/runs?per_page=100&page=$page&sort=created&direction=desc")"
+            if ! jq -e '.workflow_runs | type == "array"' <<< "$response" >/dev/null 2>&1; then
+              echo "ERROR: malformed Actions history page $page: workflow_runs must be an array." >&2
+              exit 2
+            fi
             count="$(jq '.workflow_runs | length' <<< "$response")"
             jq -c '.workflow_runs[]? | {
               headSha: .head_sha,
@@ -161,6 +221,15 @@ jobs:
           set -euo pipefail
           previous_file="$1"
           latest_file="$2"
+          # Diagnose local snapshot failures before invoking jq.
+          if [[ ! -f "$previous_file" || ! -r "$previous_file" ]]; then
+            echo "ERROR: previous PR inventory snapshot is missing or unreadable: $previous_file" >&2
+            exit 2
+          fi
+          if [[ ! -f "$latest_file" || ! -r "$latest_file" ]]; then
+            echo "ERROR: latest PR inventory snapshot is missing or unreadable: $latest_file" >&2
+            exit 2
+          fi
           # Keep inventories in files: a full JSON snapshot must never be passed in argv.
           set +e
           comparison_result="$(jq -r -s --slurpfile latest "$latest_file" '
@@ -208,20 +277,161 @@ jobs:
           fetch_script="$3"
           comparator="$4"
           repo="$5"
-          if ! bash "$fetch_script" "$repo" > "$latest_file"; then
-            echo "UNKNOWN: second PR inventory fetch failed." >&2
+          runs_fetch_script="${6:-}"
+          runs_file="${7:-}"
+          runs_fetched=false
+          comparison_file="$(mktemp)"
+          trap 'rm -f "$comparison_file"' EXIT
+          # Diagnose the caller's snapshot before copying it into private working state.
+          if [[ ! -f "$previous_file" || ! -r "$previous_file" ]]; then
+            echo "UNKNOWN: previous PR inventory snapshot is missing or unreadable: $previous_file" >&2
             exit 1
           fi
-          set +e
-          bash "$comparator" "$previous_file" "$latest_file"
-          comparison_status=$?
-          set -e
-          case "$comparison_status" in
-            0) echo "UNCHANGED" ;;
-            1) echo "CHANGED" ;;
-            *) echo "UNKNOWN: PR inventory comparison failed (exit $comparison_status)." >&2; exit 1 ;;
-          esac
+          # Preserve the caller's initial snapshot; only the private working copy
+          # advances between attempts, so UNKNOWN never mutates the original input.
+          cp "$previous_file" "$comparison_file"
+          previous_working_file="$comparison_file"
+          changed_seen=false
+          # A close/open during offset pagination can shift an open-only REST page.
+          # The initial production inventory is snapshot one. Allow only two
+          # additional snapshots: A→B→B stabilizes; A→B→C is UNKNOWN.
+          for attempt in 1 2; do
+            if ! bash "$fetch_script" "$repo" > "$latest_file"; then
+              echo "UNKNOWN: PR inventory fetch failed on reconciliation attempt $attempt." >&2
+              exit 1
+            fi
+            set +e
+            bash "$comparator" "$previous_working_file" "$latest_file"
+            comparison_status=$?
+            set -e
+            case "$comparison_status" in
+              0)
+                if [[ "$attempt" -eq 1 ]] && jq -e 'length > 0' "$latest_file" >/dev/null 2>&1; then
+                  # Fetch fallback evidence before the final confirming PR snapshot.
+                  if [[ "$runs_fetched" == false && -n "$runs_fetch_script" && -n "$runs_file" ]]; then
+                    if runs="$(bash "$runs_fetch_script" "$repo")"; then :; else runs='null'; fi
+                    printf '%s\n' "$runs" > "$runs_file"
+                    runs_fetched=true
+                  fi
+                  continue
+                fi
+                if [[ "$changed_seen" == true ]]; then echo "CHANGED"; else echo "UNCHANGED"; fi
+                exit 0
+                ;;
+              1)
+                changed_seen=true
+                cp "$latest_file" "$comparison_file"
+                previous_working_file="$comparison_file"
+                if [[ "$attempt" -eq 1 ]] && jq -e 'length > 0' "$latest_file" >/dev/null 2>&1; then
+                  # A PR opened during reconciliation also needs evidence before snapshot 3.
+                  if [[ "$runs_fetched" == false && -n "$runs_fetch_script" && -n "$runs_file" ]]; then
+                    if runs="$(bash "$runs_fetch_script" "$repo")"; then :; else runs='null'; fi
+                    printf '%s\n' "$runs" > "$runs_file"
+                    runs_fetched=true
+                  fi
+                fi
+                ;;
+              *)
+                echo "UNKNOWN: PR inventory comparison failed (exit $comparison_status)." >&2
+                exit 1
+                ;;
+            esac
+          done
+          echo "UNKNOWN: PR inventory did not stabilize after two additional snapshots (three total)." >&2
+          exit 1
           RECONCILE
+          cat > "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" <<'SUMMARY'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          summary_file="$1"
+          failure_detail="${2:-PR inventory fetch or exact PR/head/base comparison failed.}"
+          {
+            echo "## ERROR: Dispatcher reconciliation incomplete"
+            echo ""
+            echo "Reason: $failure_detail"
+            echo ""
+            echo "Current identity is UNKNOWN; this run is not a successful reconciliation."
+          } >> "$summary_file"
+          SUMMARY
+          cat > "$RUNNER_TEMP/reconcile-and-report.sh" <<'REPORT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          previous_file="$1"
+          latest_file="$2"
+          fetch_script="$3"
+          comparator="$4"
+          repo="$5"
+          summary_file="$6"
+          runs_fetch_script="${7:-}"
+          runs_file="${8:-}"
+          reconciliation_error="$RUNNER_TEMP/reconciliation-error.log"
+          if result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$previous_file" "$latest_file" "$fetch_script" "$comparator" "$repo" "$runs_fetch_script" "$runs_file" 2>"$reconciliation_error")"; then
+            case "$result" in
+              UNCHANGED|CHANGED) printf '%s\n' "$result" ;;
+              *)
+                echo "ERROR: unexpected reconciliation result '$result'." >> "$summary_file"
+                exit 1
+                ;;
+            esac
+          else
+            failure_detail="$(cat "$reconciliation_error" 2>/dev/null || true)"
+            if [[ -z "$failure_detail" ]]; then
+              failure_detail="PR inventory reconciliation failed; diagnostic log was unavailable."
+            fi
+            bash "$RUNNER_TEMP/write-reconciliation-failure-summary.sh" "$summary_file" "$failure_detail"
+            exit 1
+          fi
+          REPORT
+          cat > "$RUNNER_TEMP/count-initial-inventory.sh" <<'COUNT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          snapshot_file="$1"
+          summary_file="$2"
+          if ! count="$(jq -er 'if type == "array" then length else error("initial PR inventory must be a JSON array") end' "$snapshot_file")"; then
+            {
+              echo "## ERROR: Dispatcher initial inventory unavailable"
+              echo ""
+              echo "Initial PR inventory snapshot is unreadable or malformed. Current identity is UNKNOWN; this run is not a successful reconciliation."
+            } >> "$summary_file"
+            exit 1
+          fi
+          printf '%s\n' "$count"
+          COUNT
+          cat > "$RUNNER_TEMP/render-stable-report.sh" <<'STABLE_REPORT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          prs_file="$1"
+          runs_file="$2"
+          summary_file="$3"
+          if ! jq -e 'type == "array"' "$prs_file" >/dev/null 2>&1; then
+            echo "stable PR inventory is not a JSON array" >&2
+            exit 2
+          fi
+          if ! jq -e 'type == "array"' "$runs_file" >/dev/null 2>&1; then
+            printf 'null\n' > "$RUNNER_TEMP/stable-report-unavailable-runs.json"
+            runs_file="$RUNNER_TEMP/stable-report-unavailable-runs.json"
+          fi
+          count="$(jq 'length' "$prs_file")"
+          if [[ "$count" -eq 0 ]]; then
+            {
+              echo "# GLAFIRA Project Dispatcher"
+              echo ""
+              echo "No open pull requests (confirmed by two identical complete snapshots)."
+            } >> "$summary_file"
+            exit 0
+          fi
+          {
+            echo "# GLAFIRA Project Dispatcher"
+            echo ""
+            echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo ""
+            echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
+            echo "|---:|---|---|---|:---:|"
+            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$prs_file" "$runs_file"
+            echo ""
+            echo "Policy: historical PR inventory does not request statusCheckRollup; fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Formatter metadata-only runs are excluded only for the Java formatter workflow. Workflow history is capped at 1,000 recent runs. No matching evidence is UNKNOWN/not a pass; skipped, cancelled, queued, partial or unknown states are not acceptance passes."
+          } >> "$summary_file"
+          STABLE_REPORT
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -244,7 +454,9 @@ jobs:
             {"number":563,"title":"same head different base","headRefName":"feature/other-base","headRefOid":"sha-meta","baseRefOid":"base-meta-563","isDraft":false,"url":"https://example.test/pr/563","statusCheckRollup":[]},
             {"number":564,"title":"same head and base different PR","headRefName":"feature/other-pr","headRefOid":"sha-meta","baseRefOid":"base-meta-562","isDraft":false,"url":"https://example.test/pr/564","statusCheckRollup":[]},
             {"number":565,"title":"metadata-looking commit title","headRefName":"feature/title","headRefOid":"sha-title","baseRefOid":"base-title","isDraft":false,"url":"https://example.test/pr/565","statusCheckRollup":[]},
-            {"number":566,"title":"metadata rollup falls back","headRefName":"feature/metadata-rollup","headRefOid":"sha-meta-rollup","baseRefOid":"base-meta-rollup","isDraft":false,"url":"https://example.test/pr/566","statusCheckRollup":[{"name":"PR metadata edit — formatter not run","status":"COMPLETED","conclusion":"SKIPPED","detailsUrl":"https://example.test/metadata"}]}
+            {"number":566,"title":"metadata rollup falls back","headRefName":"feature/metadata-rollup","headRefOid":"sha-meta-rollup","baseRefOid":"base-meta-rollup","isDraft":false,"url":"https://example.test/pr/566","statusCheckRollup":[{"name":"PR metadata edit — formatter not run","status":"COMPLETED","conclusion":"SKIPPED","detailsUrl":"https://example.test/metadata"}]},
+            {"number":567,"title":"pipe workflow label","headRefName":"feature/pipe","headRefOid":"sha-pipe","baseRefOid":"base-pipe","isDraft":false,"url":"https://example.test/pr/567","statusCheckRollup":[]},
+            {"number":568,"title":"malformed formatter metadata","headRefName":"feature/bad-title","headRefOid":"sha-bad-title","baseRefOid":"base-bad-title","isDraft":false,"url":"https://example.test/pr/568","statusCheckRollup":[]}
           ]
           JSON
           cat > "$tmp/runs.json" <<'JSON'
@@ -264,7 +476,10 @@ jobs:
             {"headSha":"sha-meta","workflowName":"Security Scan","displayTitle":"METADATA_ONLY - commit subject","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:09:00Z","url":"https://example.test/run/security-valid","pullRequests":[{"number":562,"base":{"sha":"base-meta-562"}}]},
             {"headSha":"sha-title","workflowName":"Security Scan","displayTitle":"METADATA_ONLY - ordinary commit title","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:10:00Z","url":"https://example.test/run/title-valid","pullRequests":[{"number":565,"base":{"sha":"base-title"}}]},
             {"headSha":"sha-meta-rollup","workflowName":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:11:00Z","url":"https://example.test/run/format-rollup-fallback","pullRequests":[{"number":566,"base":{"sha":"base-meta-rollup"}}]},
-            {"headSha":"sha-unassociated","workflowName":"No PR association","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:12:00Z","url":"https://example.test/run/no-pr","pullRequests":[]}
+            {"headSha":"sha-pipe","workflowName":"Windows | Agent CI","displayTitle":"Windows CI","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:12:00Z","url":"https://example.test/run/pipe","pullRequests":[{"number":567,"base":{"sha":"base-pipe"}}]},
+            {"headSha":"sha-bad-title","workflowName":"GLAFIRA Java Format Check","displayTitle":42,"status":"completed","conclusion":"success","createdAt":"2026-11-24T12:13:00Z","url":"https://example.test/run/bad-title","pullRequests":[{"number":568,"base":{"sha":"base-bad-title"}}]},
+            {"headSha":"sha-bad-title","workflowName":"GLAFIRA Java Format Check","displayTitle":"VALIDATION - Java format","status":"completed","conclusion":"failure","createdAt":"2026-11-24T12:12:00Z","url":"https://example.test/run/format-older-failure","pullRequests":[{"number":568,"base":{"sha":"base-bad-title"}}]},
+            {"headSha":"sha-unassociated","workflowName":"No PR association","status":"completed","conclusion":"success","createdAt":"2026-11-24T12:14:00Z","url":"https://example.test/run/no-pr","pullRequests":[]}
           ]
           JSON
           output="$(bash "$renderer" "$tmp/prs.json" "$tmp/runs.json")"
@@ -286,18 +501,21 @@ jobs:
           row565="$(grep -F '| [#565]' <<< "$output")"
           grep -q 'Security Scan: COMPLETED/success' <<< "$row565"
           grep -q 'GLAFIRA Java Format Check: COMPLETED/success' <<< "$(grep -F '| [#566]' <<< "$output")"
+          grep -q 'Windows / Agent CI: COMPLETED/success' <<< "$(grep -F '| [#567]' <<< "$output")"
+          row568="$(grep -F '| [#568]' <<< "$output")"
+          grep -q 'GLAFIRA Java Format Check: COMPLETED/failure' <<< "$row568"
+          ! grep -q 'bad-title' <<< "$row568"
           ! grep -q 'evil.test' <<< "$output"
           ! grep -q '\[link\]' <<< "$output"
 
           mkdir -p "$tmp/fake-bin"
-          # GraphQL pagination preserves base SHA and check-rollup data.
+          # Inventory projection preserves base SHA but intentionally omits check-rollup data.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":1,"state":"OPEN","title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}},{"number":2,"state":"OPEN","title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Windows CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check-2"}]}}}]}}}}
           JSON
             exit 0
           fi
@@ -305,7 +523,7 @@ jobs:
           GH
           chmod +x "$tmp/fake-bin/gh"
           gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
-          jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup[0].name == "Android CI" and .[1].number == 2' <<< "$gql_prs" >/dev/null
+          jq -e 'length == 2 and .[0].baseRefOid == "b1" and all(.[]; .statusCheckRollup == []) and .[1].number == 2' <<< "$gql_prs" >/dev/null
 
           # REST fallback also paginates the open PR inventory.
           cat > "$tmp/fake-bin/gh" <<'GH'
@@ -313,8 +531,8 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then exit 1; fi
           if [[ "$1" == "api" && "$2" == "--paginate" ]]; then
-            printf '%s\n' '[{"number":1,"title":"one","head":{"ref":"a","sha":"h1"},"base":{"sha":"b1"},"draft":false,"html_url":"https://example.test/1"}]'
-            printf '%s\n' '[{"number":2,"title":"two","head":{"ref":"b","sha":"h2"},"base":{"sha":"b2"},"draft":true,"html_url":"https://example.test/2"}]'
+            printf '%s\n' '[{"number":1,"state":"open","title":"one","head":{"ref":"a","sha":"h1"},"base":{"sha":"b1"},"draft":false,"html_url":"https://example.test/1"}]'
+            printf '%s\n' '[{"number":2,"state":"open","title":"two","head":{"ref":"b","sha":"h2"},"base":{"sha":"b2"},"draft":true,"html_url":"https://example.test/2"}]'
             exit 0
           fi
           exit 2
@@ -427,6 +645,224 @@ jobs:
             [[ "$?" -eq 1 ]]
           fi
           echo "dispatcher fail-closed integration: second-fetch and injected-jq failures return non-zero: PASS"
+
+          # Initial A plus at most two additional snapshots: A→B→B is CHANGED,
+          # while A→B→C is UNKNOWN after exactly two fetches (never a fourth snapshot).
+          cat > "$tmp/fetch-sequence.sh" <<'FETCH_SEQUENCE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          sequence_file="${DISPATCHER_SEQUENCE_FILE:?}"
+          calls_file="${DISPATCHER_CALLS_FILE:?}"
+          event_file="${DISPATCHER_EVENT_FILE:-}"
+          [[ -z "$event_file" ]] || printf 'snapshot\n' >> "$event_file"
+          count=0
+          [[ ! -f "$calls_file" ]] || count="$(cat "$calls_file")"
+          count=$((count + 1))
+          printf '%s' "$count" > "$calls_file"
+          sed -n "${count}p" "$sequence_file"
+          FETCH_SEQUENCE
+          cat > "$tmp/fetch-runs-fixture.sh" <<'FETCH_RUNS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          event_file="${DISPATCHER_EVENT_FILE:-}"
+          [[ -z "$event_file" ]] || printf 'runs\n' >> "$event_file"
+          cat "$DISPATCHER_RUNS_FIXTURE"
+          FETCH_RUNS
+          chmod +x "$tmp/fetch-sequence.sh" "$tmp/fetch-runs-fixture.sh"
+          jq '. + [{number: 5001, headRefOid: "head-b", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/snapshot-b.json"
+          jq '. + [{number: 5002, headRefOid: "head-c", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/snapshot-c.json"
+          jq -c . "$tmp/snapshot-b.json" > "$tmp/sequence-b-b.jsonl"
+          jq -c . "$tmp/snapshot-b.json" >> "$tmp/sequence-b-b.jsonl"
+          : > "$tmp/sequence-b-b.calls"
+          stable_delta="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-b-b.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-b-b.calls" bash "$reconcile" "$tmp/large-prs.json" "$tmp/sequence-b-b.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
+          [[ "$stable_delta" == "CHANGED" && "$(cat "$tmp/sequence-b-b.calls")" -eq 2 ]]
+          jq -c . "$tmp/snapshot-b.json" > "$tmp/sequence-b-c.jsonl"
+          jq -c . "$tmp/snapshot-c.json" >> "$tmp/sequence-b-c.jsonl"
+          : > "$tmp/sequence-b-c.calls"
+          if DISPATCHER_SEQUENCE_FILE="$tmp/sequence-b-c.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-b-c.calls" bash "$reconcile" "$tmp/large-prs.json" "$tmp/sequence-b-c.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused; then
+            echo "unstable A→B→C inventory was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 && "$(cat "$tmp/sequence-b-c.calls")" -eq 2 ]]
+          fi
+          echo "dispatcher snapshot budget: A→B→B stabilizes; A→B→C fails after two additional fetches: PASS"
+
+          # Production ordering: fetch history between the second and final PR snapshots.
+          jq -c . "$tmp/large-prs.json" > "$tmp/runs-order.sequence"
+          jq -c . "$tmp/large-prs.json" >> "$tmp/runs-order.sequence"
+          : > "$tmp/runs-order.calls"
+          printf 'snapshot\n' > "$tmp/runs-order.events"
+          printf '[]\n' > "$tmp/runs-order.fixture"
+          DISPATCHER_SEQUENCE_FILE="$tmp/runs-order.sequence" DISPATCHER_CALLS_FILE="$tmp/runs-order.calls" DISPATCHER_EVENT_FILE="$tmp/runs-order.events" DISPATCHER_RUNS_FIXTURE="$tmp/runs-order.fixture" bash "$reconcile" "$tmp/large-prs.json" "$tmp/runs-order.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused "$tmp/fetch-runs-fixture.sh" "$tmp/runs-order.json" >/dev/null
+          [[ "$(cat "$tmp/runs-order.events")" == $'snapshot\nsnapshot\nruns\nsnapshot' ]]
+
+          # A ref change during history collection must fail closed; old-head runs cannot match the new head.
+          jq '.[0].headRefOid = "head-changed-during-runs"' "$tmp/large-prs.json" > "$tmp/runs-order.changed-head.json"
+          jq -c . "$tmp/large-prs.json" > "$tmp/runs-order-changing.sequence"
+          jq -c . "$tmp/runs-order.changed-head.json" >> "$tmp/runs-order-changing.sequence"
+          : > "$tmp/runs-order-changing.calls"
+          printf 'snapshot\n' > "$tmp/runs-order-changing.events"
+          jq -n '[{headSha:"head-0",workflowName:"GLAFIRA CI",status:"completed",conclusion:"success",createdAt:"2026-11-27T00:00:00Z",url:"https://example.test/run/old-head",pullRequests:[{number:1,base:{sha:"base"}}]}]' > "$tmp/runs-order-changing.fixture"
+          if DISPATCHER_SEQUENCE_FILE="$tmp/runs-order-changing.sequence" DISPATCHER_CALLS_FILE="$tmp/runs-order-changing.calls" DISPATCHER_EVENT_FILE="$tmp/runs-order-changing.events" DISPATCHER_RUNS_FIXTURE="$tmp/runs-order-changing.fixture" bash "$reconcile" "$tmp/large-prs.json" "$tmp/runs-order-changing.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused "$tmp/fetch-runs-fixture.sh" "$tmp/runs-order-changing.json" >/dev/null; then
+            echo "PR head change during Actions collection was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ "$(cat "$tmp/runs-order-changing.events")" == $'snapshot\nsnapshot\nruns\nsnapshot' ]]
+          stale_head_report="$(bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$tmp/runs-order.changed-head.json" "$tmp/runs-order-changing.json")"
+          grep -Fq 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#1]' <<< "$stale_head_report")"
+          echo "dispatcher stale-run protection: PASS"
+          printf '[]\n' > "$tmp/empty-inventory.json"
+          printf '%s\n' "$(<"$tmp/empty-inventory.json")" "$(<"$tmp/empty-inventory.json")" > "$tmp/sequence-empty-empty.jsonl"
+          : > "$tmp/sequence-empty-empty.calls"
+          empty_result="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-empty-empty.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-empty-empty.calls" bash "$reconcile" "$tmp/empty-inventory.json" "$tmp/empty-empty.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
+          [[ "$empty_result" == "UNCHANGED" && "$(cat "$tmp/sequence-empty-empty.calls")" -eq 1 ]]
+          jq -c . "$tmp/snapshot-b.json" > "$tmp/sequence-empty-pr-pr.jsonl"
+          jq -c . "$tmp/snapshot-b.json" >> "$tmp/sequence-empty-pr-pr.jsonl"
+          : > "$tmp/sequence-empty-pr-pr.calls"
+          opened_result="$(DISPATCHER_SEQUENCE_FILE="$tmp/sequence-empty-pr-pr.jsonl" DISPATCHER_CALLS_FILE="$tmp/sequence-empty-pr-pr.calls" bash "$reconcile" "$tmp/empty-inventory.json" "$tmp/empty-pr.latest.json" "$tmp/fetch-sequence.sh" "$comparator" unused)"
+          [[ "$opened_result" == "CHANGED" && "$(cat "$tmp/sequence-empty-pr-pr.calls")" -eq 2 ]]
+          jq -e 'length == 5001 and .[-1].number == 5001' "$tmp/empty-pr.latest.json" >/dev/null
+          : > "$tmp/empty-report.md"
+          printf '[]\n' > "$tmp/no-runs.json"
+          RUNNER_TEMP="$RUNNER_TEMP" bash "$RUNNER_TEMP/render-stable-report.sh" "$tmp/empty-empty.latest.json" "$tmp/no-runs.json" "$tmp/empty-report.md"
+          grep -Fq 'No open pull requests (confirmed by two identical complete snapshots).' "$tmp/empty-report.md"
+          jq -n '[{headSha:"head-b",workflowName:"GLAFIRA CI",status:"completed",conclusion:"success",createdAt:"2026-11-27T00:00:00Z",url:"https://example.test/run/5001",pullRequests:[{number:5001,base:{sha:"base"}}]}]' > "$tmp/opened-pr-runs.json"
+          : > "$tmp/opened-pr-report.md"
+          RUNNER_TEMP="$RUNNER_TEMP" bash "$RUNNER_TEMP/render-stable-report.sh" "$tmp/empty-pr.latest.json" "$tmp/opened-pr-runs.json" "$tmp/opened-pr-report.md"
+          grep -Fq '[#5001]' "$tmp/opened-pr-report.md"
+          grep -Fq 'COMPLETED/success' "$tmp/opened-pr-report.md"
+          echo "dispatcher production report: []→[] confirmed empty; []→[PR]→[PR] includes exact matching Actions status: PASS"
+
+          # The original snapshot remains byte-for-byte unchanged even after a valid delta.
+          jq '. + [{number: 5001, headRefOid: "head-new", baseRefOid: "base"}]' "$tmp/large-prs.json" > "$tmp/large-prs-wrapper-delta.json"
+          cp "$tmp/large-prs.json" "$tmp/original-preserved.json"
+          if bash "$reconcile" "$tmp/original-preserved.json" "$tmp/preserved-latest.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-wrapper-delta.json" >/dev/null; then
+            cmp -s "$tmp/original-preserved.json" "$tmp/large-prs.json"
+          else
+            echo "valid changed inventory unexpectedly failed" >&2; exit 1
+          fi
+
+          # A valid inventory delta is CHANGED (not UNKNOWN) through the production wrapper.
+          changed_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-wrapper-delta.json")"
+          [[ "$changed_result" == "CHANGED" ]]
+
+          # Missing/unreadable local snapshots are explicit comparator errors.
+          if bash "$comparator" "$tmp/does-not-exist.json" "$tmp/large-prs-same.json" 2>"$tmp/snapshot-open.err"; then
+            echo "missing previous snapshot was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+            grep -q "previous PR inventory snapshot is missing or unreadable" "$tmp/snapshot-open.err"
+          fi
+
+          # Exercise the exact production report wrapper: injected fetch failure must
+          # both fail the step and write the diagnostic to its supplied summary path.
+          : > "$tmp/production-summary.md"
+          if bash "$RUNNER_TEMP/reconcile-and-report.sh" "$tmp/large-prs.json" "$tmp/report-latest.json" "$tmp/fetch-failed-prs.sh" "$comparator" unused "$tmp/production-summary.md"; then
+            echo "production report wrapper accepted a failed inventory fetch" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          if ! grep -q "ERROR: Dispatcher reconciliation incomplete" "$tmp/production-summary.md" || ! grep -q "Current identity is UNKNOWN" "$tmp/production-summary.md"; then
+            echo "production failure summary did not contain both required diagnostics:" >&2
+            cat "$tmp/production-summary.md" >&2
+            exit 1
+          fi
+          echo "dispatcher production failure-summary route: PASS"
+
+          # The exact initial-inventory count helper must report UNKNOWN on a malformed snapshot.
+          printf '{' > "$tmp/initial-malformed.json"
+          : > "$tmp/initial-summary.md"
+          if bash "$RUNNER_TEMP/count-initial-inventory.sh" "$tmp/initial-malformed.json" "$tmp/initial-summary.md"; then
+            echo "malformed initial inventory was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -q "Initial PR inventory snapshot is unreadable or malformed" "$tmp/initial-summary.md"
+          grep -q "Current identity is UNKNOWN" "$tmp/initial-summary.md"
+          echo "dispatcher initial-inventory UNKNOWN summary route: PASS"
+
+          # Exercise the production fetcher against mixed, malformed and unstable page fixtures.
+          grep -Fq 'states: [OPEN]' "$fetch_prs"
+          grep -Fq 'state=open&sort=created&direction=asc' "$fetch_prs"
+          if grep -Fq 'states: [OPEN, CLOSED, MERGED]' "$fetch_prs"; then
+            echo "forbidden all-state GraphQL query found" >&2; exit 1
+          fi
+          if grep -Fq 'state=all&sort=created&direction=asc' "$fetch_prs"; then
+            echo "forbidden all-state REST query found" >&2; exit 1
+          fi
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            [[ "$3" == "-f" && "$4" == query=* ]] || exit 91
+            if [[ -n "${DISPATCHER_GRAPHQL_QUERY_CAPTURE:-}" ]]; then
+              printf '%s' "$4" > "$DISPATCHER_GRAPHQL_QUERY_CAPTURE"
+            fi
+            cat "$DISPATCHER_GRAPHQL_FIXTURE"
+            exit 0
+          fi
+          if [[ "$1" == "api" && "$2" == "--paginate" ]]; then
+            [[ "$3" == *"/pulls?state=open&sort=created&direction=asc&per_page=100" ]] || exit 93
+            cat "$DISPATCHER_REST_FIXTURE"
+            exit 0
+          fi
+          exit 94
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          cat > "$tmp/graphql-mixed.jsonl" <<'PAGES'
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":7001,"state":"OPEN","title":"still open","headRefName":"feature/open","headRefOid":"head-open","baseRefOid":"base","isDraft":false,"url":"https://example.test/7001"},{"number":7003,"state":"OPEN","title":"new open","headRefName":"feature/new","headRefOid":"head-new","baseRefOid":"base","isDraft":false,"url":"https://example.test/7003"}]}}}}
+          PAGES
+          printf '%s\n' '[{"number":7001,"state":"open","title":"one","head":{"ref":"a","sha":"h1"},"base":{"sha":"b1"},"draft":false,"html_url":"https://example.test/1"}]' > "$tmp/rest-valid.json"
+          gql_output="$(DISPATCHER_GRAPHQL_FIXTURE="$tmp/graphql-mixed.jsonl" DISPATCHER_REST_FIXTURE="$tmp/rest-valid.json" DISPATCHER_GRAPHQL_QUERY_CAPTURE="$tmp/graphql-query.txt" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 2 and map(.number) == [7001,7003] and all(.[]; .statusCheckRollup == [])' <<< "$gql_output" >/dev/null
+          grep -Fq 'states: [OPEN]' "$tmp/graphql-query.txt"
+          if grep -Eq 'states: \[OPEN, CLOSED, MERGED\]|state=all' "$tmp/graphql-query.txt"; then
+            echo "forbidden all-state filter was sent in the actual GraphQL request" >&2; exit 1
+          fi
+
+          # A valid continuation marker must also reject the one-page GraphQL result
+          # and exercise REST fallback; the fetcher must never accept a partial inventory.
+          printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"next-page"},"nodes":[{"number":7002,"state":"OPEN","headRefOid":"h","baseRefOid":"b"}]}}}}' > "$tmp/graphql-continuing.jsonl"
+          continuation_fallback="$(DISPATCHER_GRAPHQL_FIXTURE="$tmp/graphql-continuing.jsonl" DISPATCHER_REST_FIXTURE="$tmp/rest-valid.json" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 1 and .[0].number == 7001' <<< "$continuation_fallback" >/dev/null
+          # Closed nodes, null nodes, missing state and malformed pages must reject
+          # GraphQL and exercise the real REST fallback, not a copied jq filter.
+          for malformed in closed null-node missing-state empty-page repeated-cursor overlapping-prs; do
+            case "$malformed" in
+              closed)
+                printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":7002,"state":"CLOSED","headRefOid":"h","baseRefOid":"b"}]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
+              null-node)
+                printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[null]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
+              missing-state)
+                printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":7002,"headRefOid":"h","baseRefOid":"b"}]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
+              empty-page)
+                printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-empty"},"nodes":[]}}}}' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
+              repeated-cursor)
+                printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"same"},"nodes":[{"number":1,"state":"OPEN","headRefOid":"h1","baseRefOid":"b1"}]}}}}' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"same"},"nodes":[{"number":2,"state":"OPEN","headRefOid":"h2","baseRefOid":"b2"}]}}}}' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
+              overlapping-prs)
+                printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-1"},"nodes":[{"number":1,"state":"OPEN","headRefOid":"h1","baseRefOid":"b1"}]}}}}' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":1,"state":"OPEN","headRefOid":"h1","baseRefOid":"b1"}]}}}}' > "$tmp/graphql-$malformed.jsonl" ;;
+            esac
+            fallback="$(DISPATCHER_GRAPHQL_FIXTURE="$tmp/graphql-$malformed.jsonl" DISPATCHER_REST_FIXTURE="$tmp/rest-valid.json" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+            jq -e 'length == 1 and .[0].number == 7001' <<< "$fallback" >/dev/null
+          done
+
+          # REST malformed state/identity must fail instead of silently producing an empty inventory.
+          printf '%s\n' '[{"number":9,"state":"closed","head":{"sha":"h"},"base":{"sha":"b"}}]' > "$tmp/rest-invalid.json"
+          if DISPATCHER_GRAPHQL_FIXTURE="$tmp/graphql-missing-state.jsonl" DISPATCHER_REST_FIXTURE="$tmp/rest-invalid.json" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub; then
+            echo "malformed REST inventory was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+          printf '%s\n' '[{"number":7001,"state":"open","head":{"sha":"h1"},"base":{"sha":"b1"}}]' '[{"number":7001,"state":"open","head":{"sha":"h1"},"base":{"sha":"b1"}}]' > "$tmp/rest-duplicate.jsonl"
+          if DISPATCHER_GRAPHQL_FIXTURE="$tmp/graphql-missing-state.jsonl" DISPATCHER_REST_FIXTURE="$tmp/rest-duplicate.jsonl" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub; then
+            echo "overlapping REST pages were incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 2 ]]
+          fi
+
+          # The preceding production CHANGED fixture returns the same new snapshot
+          # on consecutive fetches, proving the bounded retry accepts only a stable result.
+          echo "dispatcher production fetcher: mixed-state filtering, malformed GraphQL fallback, malformed REST fail-closed, cursor validation and bounded stabilization: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
@@ -445,50 +881,23 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          count="$(jq 'length' "$RUNNER_TEMP/glafira-open-prs.json")"
-          if [[ "$count" -eq 0 ]]; then
-            {
-              echo "# GLAFIRA Project Dispatcher"
-              echo ""
-              echo "No open pull requests."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+          if ! bash "$RUNNER_TEMP/count-initial-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$GITHUB_STEP_SUMMARY" >/dev/null; then
+            exit 1
           fi
-          runs='[]'
-          if jq -e 'any(.[]; ([.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)] | length) == 0)' "$RUNNER_TEMP/glafira-open-prs.json" >/dev/null; then
-            if runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then :; else runs='null'; fi
-          fi
-          printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
-          # Re-read and compare the PR inventory through the same tested wrapper.
-          if reconciliation_result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh" "$GH_REPO")"; then
+          # Collect fallback Actions evidence inside reconciliation, before the final
+          # confirming PR-ref snapshot. Empty inventories do not trigger a runs fetch.
+          printf '[]\n' > "$RUNNER_TEMP/glafira-workflow-runs.json"
+          if reconciliation_result="$(bash "$RUNNER_TEMP/reconcile-and-report.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh" "$GH_REPO" "$GITHUB_STEP_SUMMARY" "$RUNNER_TEMP/fetch-workflow-runs.sh" "$RUNNER_TEMP/glafira-workflow-runs.json")"; then
             case "$reconciliation_result" in
               UNCHANGED)
                 echo "PR inventory unchanged during reconciliation; exact PR/head/base identity re-confirmed." >> "$GITHUB_STEP_SUMMARY"
                 ;;
               CHANGED)
-                echo "PR inventory changed during reconciliation; rendering the latest snapshot. Exact run matching remains mandatory." >> "$GITHUB_STEP_SUMMARY"
-                ;;
-              *)
-                echo "ERROR: unexpected reconciliation result '$reconciliation_result'." >> "$GITHUB_STEP_SUMMARY"
-                exit 1
+                echo "PR inventory changed during reconciliation; rendering the latest stable snapshot. Exact run matching remains mandatory." >> "$GITHUB_STEP_SUMMARY"
                 ;;
             esac
           else
-            {
-              echo "## ERROR: Dispatcher reconciliation incomplete"
-              echo ""
-              echo "Second PR inventory fetch or exact PR/head/base comparison failed. Current identity is UNKNOWN; this run is not a successful reconciliation."
-            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          {
-            echo "# GLAFIRA Project Dispatcher"
-            echo ""
-            echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            echo ""
-            echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
-            echo "|---:|---|---|---|:---:|"
-            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
-            echo ""
-            echo "Policy: fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Formatter metadata-only runs are excluded only for the Java formatter workflow. Rollup checks are head-associated and labelled base-unverified. Workflow history is capped at 1,000 recent runs and fetched only when fallback is needed. No matching evidence is UNKNOWN/not a pass; skipped, cancelled, queued, partial or unknown states are not acceptance passes."
-          } >> "$GITHUB_STEP_SUMMARY"
+          bash "$RUNNER_TEMP/count-initial-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$GITHUB_STEP_SUMMARY" >/dev/null
+          bash "$RUNNER_TEMP/render-stable-report.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json" "$GITHUB_STEP_SUMMARY"

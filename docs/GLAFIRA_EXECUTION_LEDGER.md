@@ -844,7 +844,7 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 
 | Work Item ID | Registered parent | Step / executable leaf | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|---|
-| GLAFIRA-S000-W06 | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher PR inventory reconciliation; bounded JSON transport, fail-closed comparison, pagination consistency and regression tests; issue #768 | IN_PROGRESS | Docs-only reservation PR #788 on exact Main base `8f0a8354434c031e1b6f331f2b69b15256d9d7c5`; implementation candidate PR #795 is not merge-eligible until post-reservation refresh and exact-head gates |
+| GLAFIRA-S000-W06 | `1.7.2.1.1.1` | `1.7.2.1.1.1.1` | GLAFIRA | Dispatcher PR inventory reconciliation; bounded JSON transport, fail-closed comparison, pagination consistency and regression tests; issue #768 | IN_REVIEW | Implementation and regression-hardening PR #797 on Main base `fa4dd61c766b57d750bc5f08a10355866a9330c6`; exact-head CI, complete job logs and independent review remain mandatory |
 
 ### W06 lifecycle event — PROPOSED → READY
 
@@ -879,3 +879,11 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 |---|---|---|---|---|---|
 | 0002 | `WBS-2026-11-27-GLAFIRA-S000-W06-READY-RESERVED-002` | READY → RESERVED | 2026-11-27T20:02:26Z | GLAFIRA | PR #788 merged; merge SHA `532c8051b87b13fc994706999d2deec8db9cd2be` |
 | 0003 | `WBS-2026-11-27-GLAFIRA-S000-W06-RESERVED-IN-PROGRESS-003` | RESERVED → IN_PROGRESS | 2026-11-27T20:12:41Z | GLAFIRA | First post-reservation implementation commit on PR #795; exact commit SHA is recorded in the PR's post-commit evidence comment |
+
+
+### W06 lifecycle event — PR #797 follow-up hardening
+
+| Sequence | Unique event ID | Transition | Timestamp | Actor | Reason / evidence |
+|---|---|---|---|---|---|
+| 0004 | `WBS-2026-11-27-GLAFIRA-S000-W06-IN_PROGRESS-IN_REVIEW-004` | IN_PROGRESS → IN_REVIEW | 2026-11-27T20:43:49Z | GLAFIRA | Follow-up PR #797 opened on Main base `fa4dd61c766b57d750bc5f08a10355866a9330c6`; review candidate head at opening `77b7ef9a5397df9da5e922155f3adf0445439ef7`. Scope is the existing W06 reservation: stable open-only inventory, bounded GraphQL-to-REST fallback, duplicate-page rejection, three-snapshot stabilization, empty-inventory confirmation, snapshot-preservation diagnostics and production failure-summary assertions. Exact final head and CI evidence must be refreshed after this ledger append. |
+
