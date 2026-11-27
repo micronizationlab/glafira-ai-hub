@@ -9,11 +9,13 @@ import java.util.UUID
 internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
+    fun beforeCommittedJournalCleanup()
 }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
     override suspend fun <T> withPaused(block: () -> T): T = PendingDeliveryRuntime.withPaused(block)
     override fun pauseForRestore(context: Context) = GlafiraCoreRuntimeOwner.pauseForRestore(context)
+    override fun beforeCommittedJournalCleanup() = Unit
 }
 
 /** Portable logical Core data inside an authenticated archive; raw SQLite is local rollback only. */
@@ -213,6 +215,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         require(committedMarker.isFile && committedMarker.readText(Charsets.UTF_8) == COMMITTED_VALUE) {
             "Некорректная отметка завершения восстановления; журнал сохранён."
         }
+        runtimeHooks.beforeCommittedJournalCleanup()
         check(!safetyArchive.exists() || safetyArchive.delete()) {
             "Не удалось удалить архив отката; журнал завершения сохранён."
         }
