@@ -30,6 +30,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private val committedMarker get() = File(journal, COMMITTED_MARKER)
     private val safetyDatabase get() = File(journal, "database.db")
     private val safetyArchive get() = File(journal, "files.glb")
+    // If directory fsync fails after publishing COMMITTED_MARKER, this process must fail closed.
+    // A fresh process may re-evaluate the marker after the filesystem has recovered. 
+    @Volatile private var commitDurabilityUncertain = false
 
     suspend fun create(passphrase: CharArray): File = GlafiraCoreMaintenanceGate.withExclusive {
         runtimeHooks.withPaused {
@@ -142,6 +145,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private fun recoverInterruptedRestore(passphrase: CharArray) {
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
+            check(!commitDurabilityUncertain) {
+                "Не удалось подтвердить долговечность отметки завершения; журнал сохранён до перезапуска."
+            }
             cleanupCommittedJournal()
             return
         }
@@ -194,8 +200,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
         check(temporary.renameTo(committedMarker)) {
             "Не удалось зафиксировать завершение восстановления; журнал сохранён."
         }
-        syncDirectory(journal)
-        syncDirectory(app.noBackupFilesDir)
+        try {
+            syncDirectory(journal)
+        } catch (error: Exception) {
+            commitDurabilityUncertain = true
+            throw error
+        }
     }
 
     /** Idempotent after the durable commit marker; never discards that marker on partial cleanup. */
