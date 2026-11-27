@@ -543,8 +543,12 @@ jobs:
           else
             [[ "$?" -eq 1 ]]
           fi
-          grep -q "ERROR: Dispatcher reconciliation incomplete" "$tmp/production-summary.md"
-          grep -q "Current identity is UNKNOWN" "$tmp/production-summary.md"
+          if ! grep -q "ERROR: Dispatcher reconciliation incomplete" "$tmp/production-summary.md" || ! grep -q "Current identity is UNKNOWN" "$tmp/production-summary.md"; then
+            echo "production failure summary did not contain both required diagnostics:" >&2
+            cat "$tmp/production-summary.md" >&2
+            exit 1
+          fi
+          echo "dispatcher production failure-summary route: PASS"
 
           # Exercise the production fetcher against mixed, malformed and unstable page fixtures.
           grep -Fq 'states: [OPEN]' "$fetch_prs"
