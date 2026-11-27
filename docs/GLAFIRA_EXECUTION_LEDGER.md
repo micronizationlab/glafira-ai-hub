@@ -15,6 +15,8 @@ This is the append-only execution journal required by `docs/GLAFIRA_EXECUTION_CO
 
 ## Work-item registry
 
+| GLAFIRA-CODEX-W01 | `1.7.1.1.1.1.1` | GLAFIRA | Project-wide immediate repair-on-discovery Codex; all eleven workstreams and all write-enabled helpers | IN_REVIEW | PR #761; `docs/GLAFIRA_CODEX.md`; one-pass defect register and repair report; pending exact-head CI/review/merge |
+
 | Work Item ID | Step | Owner | Scope | Status | Evidence / next action |
 |---|---|---|---|---|---|
 | GLAFIRA-GOV-W01 | Governance | GLAFIRA | Establish this control, update helper instructions and reconcile plan baseline | IN_PROGRESS | Branch `governance/program-150-single-source-of-truth`; PR to be opened after doc consistency check |
@@ -677,3 +679,5 @@ This append-only entry supersedes contradictory reservation metadata in the earl
 ### Infrastructure caveat — current Main reservation serialization (verified 2026-11-26)
 
 GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and enforces non-fast-forward protection plus required status contexts, but `strict_required_status_checks_policy` is false, no merge queue is configured, and privileged repository roles have bypass permission. The separate branch-protection endpoint was not readable by the installed integration (403), so no additional protection is claimed. Consequently, single-flight reservation merges and exact-SHA rechecks are currently a coordinator/owner procedure, not a repository-enforced mutex. If a privileged bypass or concurrent merge advances Main, dispatch stops until the ledger is re-read and reconciled. The enforcement follow-up is tracked in issue #744 and remains BLOCKED/unreserved until a WBS leaf and exact-base reservation are approved. It must add a durable non-dropping reservation/merge/build queue or equivalent CAS mechanism; do not represent documentation as runtime enforcement.
+
+- WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.

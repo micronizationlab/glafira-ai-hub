@@ -184,3 +184,12 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - This is an explicitly owner-approved cross-step DESIGN fallback task, not a Program 150 implementation step. It may be assigned only when the source lane has no eligible equal- or higher-priority ready work; its source lane's original status remains unchanged. Current source lane #123 is OPEN and READY AFTER the governance/WBS reservation gate, so W03 is NOT ACTIVE / NOT ASSIGNED and no design branch/draft is authorized yet. Re-evaluate only after a concrete blocker and complete ready-work scan are recorded on issue #674.
 - The six-component subtask is not itself an executable leaf. The seven-component ID above is the only executable reservation target. Drafting requires a separate pre-edit implementation reservation recording the exact current main SHA, implementation branch, executor, independent reviewer, exclusive file and acceptance.
 - Shared visual tokens remain PENDING until #679 is accepted. Information architecture may proceed only if issue #674 explicitly records the token-pending marker. Retain the ICQ flower in the product identity and acceptance criteria.
+
+
+## 11. Defect discovery and immediate repair — owner-approved Codex rule
+
+- `1.7.1` — Defect prevention and repair execution.
+- `1.7.1.1` — Consolidated defect repair.
+- `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
+- `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
+- `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.

@@ -40,6 +40,9 @@ One logical behavior has one active implementation owner. Helpers may independen
 
 ## 4. The mandatory implementation cycle
 
+**Repair-on-discovery:** every executor/reviewer with write authority follows `docs/GLAFIRA_CODEX.md`. Defects discovered during inventory, implementation or validation are consolidated by root cause and fixed in the same cycle wherever authorized. Do not finish a cycle with finding-only comments or tests-only work when a source correction is possible. The cycle produces one repair register/report with the committed changes and evidence. Read-only reviewers hand off one deduplicated register to the named file owner.
+
+
 1. **Inventory:** refresh main, PRs, branches, changed files and prior work.
 2. **Define:** write hypothesis, source evidence, smallest change, risks, dependencies and tests.
 3. **Reserve:** register Work Item ID and exclusive file/behavior ownership.
@@ -47,7 +50,7 @@ One logical behavior has one active implementation owner. Helpers may independen
 5. **Review diff:** verify only intended files changed; compare against all open PRs and main; reject duplicate hunks/behavior.
 6. **Test:** run targeted tests first. Expand only to required project checks.
 7. **Build/CI queue:** enqueue once per unique commit SHA + workflow/lane. Never run parallel builds. Reuse existing completed/in-progress run for the same SHA and workflow.
-8. **Inspect evidence:** read job results and failure logs. Classify source defect, test defect, environment failure, cancellation, timeout or skipped. A rerun requires a written reason and must reuse the same commit SHA unless code changed.
+8. **Inspect and repair evidence:** read job results and failure logs; aggregate all findings for the owned scope into one deduplicated repair register. Fix source/test/configuration defects in the same cycle, then rerun the relevant checks on the corrected SHA. Classify only genuine environment failures, cancellations, timeouts or external blockers as unresolved. Never stop at a test report when a safe correction is possible.
 9. **PR review:** one PR per independent change. Default target 50–150 changed lines, hard ceiling 200; larger work is split before implementation. No duplicate PR for an existing diff.
 10. **Merge gate:** fresh base; no unresolved overlap/conflict; required review; exact-head checks all passed; required platform tests actually executed; no skipped/cancelled jobs counted as success; dependency PRs merged in order; owner approval where required.
 11. **Merge and verify:** authorized maintainer merges; record merge commit; run/reuse post-merge checks for that exact main SHA; inspect logs.
