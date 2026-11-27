@@ -219,7 +219,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         archive: File,
         passphrase: CharArray
     ): BackupVerification = withOwnedRollbackKey { coordinator.restore(archive, passphrase) }
-    private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T = withOwnedRollbackKey(block)
+    private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T = block()
     private fun rollbackKeyExists(): Boolean =
         KeyStore.getInstance("AndroidKeyStore").run { load(null); containsAlias("glafira_core_rollback_v1") }
     private fun task(id: String) = GlafiraTask(
@@ -731,7 +731,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val journalOwner = File(journal, "test-owner")
         val owner = File(context.noBackupFilesDir, "glafira-rollback-canary-owner")
-        val runId = UUID.randomUUID().toString()
+        val runId = testRunId
         val passphrase = "GLAFIRA-rollback-canary-test-2026".toCharArray()
         var ownsFixture = false
         try {
@@ -834,7 +834,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val owner = File(context.noBackupFilesDir, "glafira-v3-reentry-test-owner")
             val knownGood = File(context.filesDir, "v3-reentry-known-good.txt")
             val createdAfterMarker = File(context.filesDir, "v3-reentry-created-after-marker.txt")
-            val runId = UUID.randomUUID().toString()
+            val runId = testRunId
                 val passphrase = "GLAFIRA-${UUID.randomUUID()}-${UUID.randomUUID()}".toCharArray()
             var expectedTask: GlafiraTask? = null
             var ownsFixture = false
