@@ -5,17 +5,34 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 
+/** Runtime boundary used by backup maintenance. Instrumentation injects a fixture-local no-op. */
+internal interface GlafiraBackupRuntimeHooks {
+    suspend fun <T> withPaused(block: () -> T): T
+    fun pauseForRestore(context: Context)
+}
+
+private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
+    override suspend fun <T> withPaused(block: () -> T): T = PendingDeliveryRuntime.withPaused(block)
+    override fun pauseForRestore(context: Context) = GlafiraCoreRuntimeOwner.pauseForRestore(context)
+}
+
 /** Portable logical Core data inside an authenticated archive; raw SQLite is local rollback only. */
-class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: GlafiraTaskStore) {
+class GlafiraCoreBackupCoordinator internal constructor(
+    context: Context,
+    private val taskStore: GlafiraTaskStore,
+    private val rollbackCipher: GlafiraRollbackSnapshotCipher = GlafiraRollbackSnapshotCipher(),
+    private val runtimeHooks: GlafiraBackupRuntimeHooks = ProductionGlafiraBackupRuntimeHooks
+) {
     private val app = context.applicationContext
     private val portable = GlafiraPortableCoreSnapshot(taskStore)
     private val journal get() = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
     private val marker get() = File(journal, JOURNAL_MARKER)
+    private val committedMarker get() = File(journal, COMMITTED_MARKER)
     private val safetyDatabase get() = File(journal, "database.db")
     private val safetyArchive get() = File(journal, "files.glb")
 
     suspend fun create(passphrase: CharArray): File = GlafiraCoreMaintenanceGate.withExclusive {
-        PendingDeliveryRuntime.withPaused {
+        runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 check(!hasInterruptedRestore(app)) { "Сначала завершите восстановление с прежним паролем." }
                 createArchive(passphrase)
@@ -57,7 +74,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
                         val verification = BackupArchive.restore(app, selected, passphrase)
                         portable.restore(snapshot)
                         recoverPendingAfterRestore(app)
-                        GlafiraCoreRuntimeOwner.pauseForRestore(app)
+                        runtimeHooks.pauseForRestore(app)
                         checkpointDatabase()
                         clearJournal()
                         verification
@@ -92,7 +109,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
             synchronized(taskStore) {
                 val consistentDatabase = taskStore.prepareConsistentSnapshotSource()
                 sync(consistentDatabase)
-                GlafiraRollbackSnapshotCipher.encrypt(consistentDatabase, safetyDatabase)
+                rollbackCipher.encrypt(consistentDatabase, safetyDatabase)
             }
             sync(safetyDatabase)
             val archive = BackupArchive.create(app, passphrase)
@@ -124,6 +141,10 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
 
     private fun recoverInterruptedRestore(passphrase: CharArray) {
         cleanupStaleDecryptedRollbackSnapshots()
+        if (committedMarker.exists()) {
+            cleanupCommittedJournal()
+            return
+        }
         if (!marker.exists()) return
         require(safetyArchive.isFile && safetyDatabase.isFile) { "Повреждён журнал восстановления; Core заблокирован." }
         val markerVersion = marker.readText(Charsets.UTF_8).trim()
@@ -138,7 +159,7 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         try {
             // Decrypt and validate the database before applying the safety archive to live files.
             // A missing Keystore key must fail closed without regenerating a key or partially restoring files.
-            if (encryptedRollback) GlafiraRollbackSnapshotCipher.decrypt(safetyDatabase, rollbackDatabase)
+            if (encryptedRollback) rollbackCipher.decrypt(safetyDatabase, rollbackDatabase)
             taskStore.verifyConsistentSnapshot(rollbackDatabase)
             BackupArchive.verify(app, safetyArchive, passphrase)
             BackupArchive.restore(app, safetyArchive, passphrase)
@@ -153,15 +174,53 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         }
     }
 
+    /**
+     * Commit is made durable before destructive cleanup starts. If cleanup is interrupted,
+     * recover() sees COMMITTED_MARKER and resumes cleanup instead of attempting an obsolete rollback.
+     * The pending marker and rollback artifacts remain intact until the commit marker is durable.
+     */
     private fun clearJournal() {
-        check(marker.delete()) { "Не удалось завершить журнал восстановления." }
+        publishCommittedMarker()
+        cleanupCommittedJournal()
+    }
+
+    private fun publishCommittedMarker() {
+        if (committedMarker.exists()) return
+        val temporary = File(journal, "$COMMITTED_MARKER.tmp")
+        FileOutputStream(temporary).use {
+            it.write(COMMITTED_VALUE.toByteArray(Charsets.UTF_8))
+            it.fd.sync()
+        }
+        check(temporary.renameTo(committedMarker)) {
+            "Не удалось зафиксировать завершение восстановления; журнал сохранён."
+        }
         syncDirectory(journal)
-        check(journal.deleteRecursively()) { "Не удалось удалить журнал восстановления." }
         syncDirectory(app.noBackupFilesDir)
-        // Delete the installation-local key only after the pending journal and encrypted
-        // rollback snapshot are gone. A cleanup failure must not destroy an otherwise usable
-        // rollback snapshot while its pending marker still exists.
-        GlafiraRollbackSnapshotCipher.deleteKey()
+    }
+
+    /** Idempotent after the durable commit marker; never discards that marker on partial cleanup. */
+    private fun cleanupCommittedJournal() {
+        require(committedMarker.isFile && committedMarker.readText(Charsets.UTF_8) == COMMITTED_VALUE) {
+            "Некорректная отметка завершения восстановления; журнал сохранён."
+        }
+        check(!safetyArchive.exists() || safetyArchive.delete()) {
+            "Не удалось удалить архив отката; журнал завершения сохранён."
+        }
+        check(!safetyDatabase.exists() || safetyDatabase.delete()) {
+            "Не удалось удалить снимок отката; журнал завершения сохранён."
+        }
+        syncDirectory(journal)
+        // The rollback key is no longer needed because the restored DB was checkpointed before
+        // the durable commit marker was published. A key-delete failure leaves COMMITTED_MARKER.
+        rollbackCipher.deleteKey()
+        check(!marker.exists() || marker.delete()) {
+            "Не удалось удалить маркер восстановления; маркер завершения сохранён."
+        }
+        syncDirectory(journal)
+        check(committedMarker.delete()) { "Не удалось удалить маркер завершения восстановления." }
+        syncDirectory(journal)
+        check(journal.deleteRecursively()) { "Не удалось удалить каталог журнала восстановления." }
+        syncDirectory(app.noBackupFilesDir)
     }
 
     private fun checkpointDatabase() {
@@ -183,10 +242,13 @@ class GlafiraCoreBackupCoordinator(context: Context, private val taskStore: Glaf
         private const val MAX_ARCHIVE_BYTES = 512L * 1024L * 1024L
         private const val JOURNAL_DIRECTORY = "glafira-restore-journal"
         private const val JOURNAL_MARKER = "restore.pending"
+        private const val COMMITTED_MARKER = "restore.committed"
+        private const val COMMITTED_VALUE = "GLAFIRA_RESTORE_COMMITTED_V1"
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
             val marker = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER)
-            if (marker.exists()) return true
+            val committed = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), COMMITTED_MARKER)
+            if (marker.exists() || committed.exists()) return true
             val stale = app.cacheDir.listFiles { file ->
                 file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
             }.orEmpty()
