@@ -41,6 +41,16 @@ The root is always `1 GLAFIRA`. Its first-level subprojects map to the eleven pe
 
 A workstream may contain many chapters, sections, tasks, subtasks and steps. The workstream list is stable; owner-approved scope changes may add children but must not silently repurpose an existing identifier.
 
+### Owner operational direction-number crosswalk
+
+The owner's operational direction numbering is not identical to the WBS top-level numbering. Preserve both labels in all dispatch and status reports:
+
+- Owner direction **10 — Multi-AI / specialists** maps to WBS `1.10`.
+- Owner direction **11 — Token / GCU** maps to WBS `1.9`.
+- WBS `1.11` is the cross-cutting helper-intake, review and integration function. It is not a substitute for owner direction 11 and does not remove the requirement to give Token/GCU its own work or DESIGN fallback.
+
+Do not renumber stable WBS identifiers to make the labels look sequential. The coordinator must show the owner direction number and WBS ID side by side so that Multi-AI and Token/GCU cannot disappear behind the integration lane.
+
 ## 3. Identifier stability and compatibility
 
 1. Every node receives one unique permanent ID when it is first approved.
@@ -69,6 +79,10 @@ Every participant MUST work in this order:
 
 - Default execution within a task is sequential: `step N` before `step N+1`.
 - Parallel work is allowed only for explicitly independent sibling tasks whose dependency graph, files, APIs, schemas and resources do not overlap.
+- The eleven workstreams are independent delivery/release lanes by default. A cross-lane dependency is valid only when a specific API, schema, protocol, migration or artifact is technically required by the consumer; administrative sequencing, a shared parent issue or a shared documentation file is not enough.
+- Independent PRs start from current Main and target Main. Do not stack PRs on unmerged PR branches unless the changes are inseparable parts of one deliverable and the technical dependency is documented. Do not create parent-reservation/child-reservation chains for unrelated work.
+- Each accepted lane slice is released independently as soon as its own review, CI, security and acceptance gates pass. Do not hold it for unrelated lanes or bundle unrelated changes into one release. Keep cross-lane indexes in a separate integrator-owned update so shared docs do not block product releases.
+- A lane with no concrete dependency-ready implementation/review/research task is assigned a standalone GLAFIRA DESIGN work item in that cycle, including deferred Multi-AI and Token/GCU. Preserve the implementation lane's DEFERRED/BLOCKED status; design is a separate deliverable, not implementation acceptance.
 - Every parallel item needs its own WBS leaf ID, owner, branch, file reservation and acceptance criteria.
 - One logical behavior or shared file set has one active implementation owner. Reviewers may inspect but must not create competing implementations.
 - The eleventh workstream must collect helper work, map it to WBS IDs, deduplicate it and reserve ownership before integration.
@@ -88,7 +102,7 @@ Each leaf step must have:
 - implementation procedure in numbered micro-steps;
 - acceptance criteria and positive, negative, failure, concurrency and recovery tests as relevant;
 - exact CI workflow/job/run IDs and log evidence;
-- status: `PROPOSED`, `READY`, `RESERVED`, `IN_PROGRESS`, `BLOCKED`, `IN_REVIEW`, `MERGED`, `DONE`, `CANCELLED` or `SUPERSEDED`;
+- status: `PROPOSED`, `READY`, `RESERVED`, `QUEUED_PRIORITY`, `IN_PROGRESS`, `BLOCKED`, `BLOCKED_DEPENDENCY`, `IN_REVIEW`, `MERGED`, `DONE`, `CANCELLED` or `SUPERSEDED`;
 - merge SHA, post-merge validation and next eligible WBS ID.
 
 A plan checkbox, document statement, green unrelated CI run or successful build alone is not completion evidence.
@@ -164,19 +178,21 @@ The following owner-approved task maps to legacy Program Step 93. This is a pare
 - `.3` acceptance: (1) owner-bound fixtures; (2) allowed/disallowed state and attempt cases; (3) owner-Core/generation fencing for target and descendants; (4) project/dependency isolation and bounded fan-out; (5) unknown outcomes, read-only expiry and deadline edges; (6) approval audit and claim/cancel race; (7) repeated-cancel idempotence; (8) exact-head JVM/emulator CI.
 - `.4` restore race: (1) create a test-owned journal generation marker; (2) hold restore under maintenance gate; (3) allow cancellation initial precheck to complete; (4) assert cancellation blocks on the held gate; (5) release gate and assert cancellation rechecks/rejects without mutation; (6) verify task/file restoration and unrelated-temp preservation; (7) force journal deletion failure and verify key preservation; (8) exact-head instrumentation and post-merge validation.
 
-### Reservation and exact-base sequence
+### Reservation and exact-base sequence — independent PR correction
 
-- PR #738 has merged to Main as `f938fcb93fda6d00a03167eee1f2413e40af9ae9`. This parent reservation PR #752 was recreated from that exact resulting Main SHA; the ledger and duplicate-ownership state were re-read before the refresh. PR #752 remains a separate parent reservation and must pass its own review/CI/owner gates before any child implementation leaf is pinned or started.
-- The parent reservation PR must merge first after Docs CI, Security Scan, Project Dispatcher, independent CodeRabbit/Proofline review, resolution of blocking findings and owner approval.
-- A separate leaf-pin amendment must then merge before each implementation branch is created. `.1` pin records exact Main SHA after the parent reservation. `.2` pin records exact `.1` implementation merge SHA. `.3` pin records exact `.2` implementation merge SHA. `.4` pin records exact Main SHA containing `.1`, `.2` and merged PR #703.
-- If Main advances incompatibly before a leaf branch is created, merge a pin-refresh amendment recording exact then-current Main SHA and full predecessor set before creating the branch. Do not create even an empty implementation branch before its pin amendment merges.
-- Reservation PR is documentation-only and does not count emulator tests as passed. Emulator evidence is required on each implementation leaf's exact head.
+- PR #738 and parent reservation PR #752 are already merged. PR #752's parent WBS hierarchy is active on Main; do not recreate it or create another parent-reservation PR.
+- **One canonical reservation update, then implementation; no parent/leaf-pin chain.** Before reserving, scan the current Main ledger and every open PR/draft for duplicate WBS/Work Item/behavior and overlapping paths. Prepare one focused reservation update against the exact Main SHA and ledger blob, then merge that reservation into Main before any source edit or implementation dispatch, as required by Execution Control §14. Re-read Main and repeat the duplicate/path scan after the reservation merge. This is a manual single-flight coordinator control, not a GitHub-enforced mutex; do not claim races are technically impossible. Start implementation from the resulting current Main SHA in one focused implementation PR. Do not create additional parent, leaf-pin or reservation-refresh PRs unless a genuine ownership conflict or changed acceptance boundary requires one.
+- `.1` is the next eligible implementation leaf after parent #752. `.2` starts only after `.1` is merged and accepted. `.3` and `.4` are separate sibling PRs after `.1` and `.2` are merged; `.4` additionally requires production PR #703 merged and recorded DONE. `.3` does not wait for #703, and `.4` does not wait for `.3`.
+- Each independent leaf PR targets Main, not another unmerged branch. Re-read live Main and compare the PR base immediately before merge. If Main advanced, refresh only that leaf branch and rerun its exact-head checks; do not create a separate pin-refresh PR unless a real conflict or ownership change requires an independent review.
+- Reservation commit is governance evidence only. Emulator evidence is still required on the implementation PR's exact head; a docs-only reservation must never be reported as platform acceptance.
 
 ### Current status
 
-- Parent reservation: PROPOSED / IN_REVIEW in PR #752; predecessor #738 is merged, and this reservation is refreshed from exact Main SHA `f938fcb93fda6d00a03167eee1f2413e40af9ae9`. It remains inactive until its own merge gates pass and PR #752 is merged.
-- `.1`, `.2`, `.3`: NOT STARTED pending separate pin amendments and predecessor acceptance.
-- `.4`: BLOCKED until production PR #703 is merged and `.1`/`.2` are DONE.
+- Parent reservation #752: MERGED to Main as `f1ed37a72c9aa33ad0da3672fb8d8bb615d2d27d`.
+- `.1` (`1.1.3.1.1.1.1`): NEXT ELIGIBLE; no implementation is claimed started. Its one canonical leaf-reservation update must merge into Main before the implementation branch is created; no second leaf-pin amendment is required.
+- `.2`: BLOCKED_DEPENDENCY until `.1` is merged and accepted.
+- `.3`: BLOCKED_DEPENDENCY until `.1` and `.2` are merged and accepted; then independent of `.4` and #703.
+- `.4`: BLOCKED_DEPENDENCY until `.1`/`.2` are merged and production PR #703 is merged and recorded DONE.
 - Program Step 93 and parent task remain open until every required leaf, review, merge and post-merge acceptance is complete.
 
 ## 12. Canonical coordinator-governance WBS registrations
@@ -186,7 +202,7 @@ The following owner-approved cross-step governance work belongs to Workstream 11
 - `1.11.2` — Coordinator execution governance.
 - `1.11.2.1` — Cycle serialization and work assignment.
 - `1.11.2.1.1` — Design fallback and ready-work governance; subtask `1.11.2.1.1.1`; executable leaf `1.11.2.1.1.1.1`; Work Item `GLAFIRA-S000-W01`; issue #685. This is the canonical corrected registration for PR #701.
-- `1.11.2.1.2` — Eleven-workstream batch-cycle governance; subtask `1.11.2.1.2.1`; executable leaf `1.11.2.1.2.1.1`; Work Item `GLAFIRA-S000-W02`; issue #548. This is the canonical corrected registration for PR #721.
+- `1.11.2.1.2` — Eleven-workstream batch-cycle governance; subtask `1.11.2.1.2.1`; executable leaf `1.11.2.1.2.1.1`; Work Item `GLAFIRA-S000-W02`; issue #548. This is the canonical corrected registration for PR #721. The canonical per-cycle 11-lane matrix is defined in `docs/GLAFIRA_EXECUTION_CONTROL.md` Section 11; the current correction aligns that section with the WBS/Codex matrix schema.
 
 For both leaves, the owner is the priority/override authority; GLAFIRA is the operational coordinator; independent review is separate from authorship; the allowed files and exact base SHA must be recorded in the canonical ledger before edits. Dispatcher output is evidence only. Action Pool A, issues, PRs, helper intake, branches and reservations must always be reconciled. Pool B is checked only if it exists or when Pool A is exhausted and Pool B is due to be created.
 
@@ -197,13 +213,17 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 
 - The coordinator may plan 3–5 real executable leaves per lane where the dependency graph permits; this is a planning target, not a quota. Do not fabricate steps, duplicate work or bypass predecessors.
 - Each helper has at most one active assignment. A blocked or transferred assignment is suspended/handed off first, with its original status preserved and its reservation transferred; only then may the helper receive another assignment. A replacement taking over a task cannot also receive a DESIGN or second global-ready assignment.
-- DESIGN fallback is eligible only after the complete ready-work scan finds no equal- or higher-priority dependency-ready implementation, validation, intake, review, merge or post-merge item.
+- For each lane, scan its complete lane-local ready queue and active assignments, including implementation, validation/test, research, intake, review, merge, post-merge verification and active DESIGN. An active DESIGN package counts as assigned work and must be continued/handed off, never duplicated. A skipped CI lane is not platform acceptance.
+- DESIGN fallback is governed by the complete global ready-work queue, not only a lane-local scan. First dispatch any equal- or higher-owner-priority dependency-ready implementation, validation/test, research, intake, review, merge or post-merge item anywhere in the program. Only when no such item is ready may DESIGN be actively dispatched to lanes whose own queues have no eligible work.
+- Deferred Multi-AI/specialists and Token/GCU explicitly receive registered DESIGN packages while runtime implementation remains DEFERRED. If higher-priority work is ready, retain the package with a named executor and next dispatch point as `QUEUED_PRIORITY`; do not report it as actively executing, but do not omit the lane. This does not change implementation status.
+- If the global priority gate permits DESIGN, first resume the lane's retained DESIGN package with its named executor only when its declared predecessors are ready. If any declared predecessor is pending, preserve the reservation and mark `BLOCKED_DEPENDENCY`; do not start any part of that leaf. A genuinely independent scope must be registered as a separate WBS leaf with no dependency on the pending predecessor, its own exclusive path and acceptance; never bypass the original leaf's predecessor order. Never give one helper a second active package. Otherwise retain the blocked package and its next unblock action; do not mislabel a dependency block as an owner/permission/security blocked cycle. Create a replacement package only when no retained package exists or it has been closed by an authorized terminal `CANCELLED` or `SUPERSEDED` transition. Stop otherwise-ready work only for a genuine owner/permission/security boundary with named blocker and unblock action.
+
 - Preserve reservations through active, blocked, suspended and transferred states. Release only on verified DONE or authorized terminal CANCELLED/SUPERSEDED, with reason and replacement recorded.
 - Cross-workstream tasks retain their owning Core/Workstream; they are not collapsed into a single runtime Core queue. Workstream 11 is an integration/intake view, not a second durable assignment queue.
 - Global cross-PR build serialization is currently NOT IMPLEMENTED: current workflows use per-PR/per-ref groups or no workflow-level concurrency. Until a durable non-dropping FIFO queue/lock is implemented and verified (tracked in issue #744), parallel platform build dispatch remains BLOCKED. A fixed GitHub Actions group with one replaceable pending slot is not sufficient.
 - The PR-size policy permits a separate file-count-only exception for one coherent task of up to 200 changed lines and 6–10 files, only with written owner/integrator approval before implementation. This is independent of the 201–300-line exception.
-- The cycle report records numeric counts per lane for planned, started, DONE, blocked, in-review, CI-passed, merged and post-merge-verified leaves. Sub-actions are not separate WBS steps.
-- Acceptance requires consistency across Execution Control, Completion Plan, Ledger, AGENTS.md and Copilot instructions; exact-head docs/security/dispatcher checks; independent review; owner approval; and post-merge verification.
+- Every cycle report uses the canonical 11-lane matrix defined in `docs/GLAFIRA_EXECUTION_CONTROL.md` Section 11 and records numeric counts per lane for planned, started, DONE, blocked, in-review, CI-passed, merged and post-merge-verified leaves. Sub-actions are not separate WBS steps.
+- The same matrix schema is normative across Codex, Execution Control, Completion Plan, Ledger, AGENTS.md and Copilot instructions; other documents may add fields but must not contradict it, and a lane may not be omitted or reported only as DEFERRED. Exact-head docs/security/dispatcher checks, independent review, owner approval and post-merge verification remain required.
 
 ### Windows Desktop / Hub UX design registration
 
@@ -222,3 +242,32 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - `1.7.1.1.1` — Repair actionable defects in the same execution cycle.
 - `1.7.1.1.1.1` — One-pass defect register, implementation and evidence.
 - `1.7.1.1.1.1.1` — Apply the mandatory GLAFIRA CODEX to all eleven workstreams and all participants with write authority. Normative procedure: `docs/GLAFIRA_CODEX.md`. This registration does not authorize bypassing ownership, dependencies, review, CI or owner approval.
+
+
+### Independent deferred-lane design fallback registrations
+
+These are standalone, owner-directed DESIGN deliverables for lanes whose runtime implementation is deferred. They are not dependent on a shared design-token release, each other, or any Core/Desktop release. The source implementation lanes remain DEFERRED.
+
+#### Multi-AI and specialist experience — issue #680
+
+- `1.10.1` — Multi-AI provider selection and specialist experience.
+- `1.10.1.1` — Owner-facing model/provider selection UX.
+- `1.10.1.1.1` — Standalone deferred-lane design package.
+- `1.10.1.1.1.1` — Provider selection, availability, quota and privacy states.
+- `1.10.1.1.1.1.1` — `docs/design/MULTI_AI_SELECTOR_UX.md`; Work Item `GLAFIRA-S000-W06`; issue #680.
+- **Executor / status:** GLAFIRA coordinator is the active author and delivery owner; `QUEUED_PRIORITY` while P1 Core, P2 Backup & Recovery and P3 Bridge/Desktop have dependency-ready work. The working specification in issue #680 is preparatory evidence, not the reserved artifact or implementation completion. Amazon Q is optional secondary review only, not the assigned executor. Runtime Multi-AI/provider integration remains DEFERRED.
+- **Numbered design procedure:** (1) inventory provider/model choices and define default-vs-task override; (2) specify connection, quota, rate-limit, auth-expired, degraded and unknown-outcome states; (3) define owner-grant and data-classification gates, including default-deny for vault/credentials; (4) specify free/paid tier, price provenance and pre-dispatch cost confirmation; (5) define explicit fallback and no-silent-retry behavior; (6) specify keyboard, screen-reader, small-screen and reduced-motion requirements; (7) map each state to positive/negative/unknown-outcome acceptance cases; (8) submit artifact for independent review and owner design approval.
+- **Acceptance:** standalone `docs/design/MULTI_AI_SELECTOR_UX.md`; every state has entry/exit and recovery behavior; no provider dispatch without current owner grant and permitted data class; paid requests require pre-dispatch disclosure; unknown outcomes are reconciled, not blindly retried; no silent cross-provider fallback; accessibility checklist complete; exact-head Docs CI, Security Scan, Project Dispatcher and independent review pass. Shared-token-dependent visual details remain PENDING until #679 is accepted.
+
+#### Token/GCU owner experience — issue #767
+
+- `1.9.1` — Token/GCU product experience and compute economics.
+- `1.9.1.1` — Owner-facing GCU measurement, contribution and GLF settlement UX.
+- `1.9.1.1.1` — Standalone deferred-lane design package.
+- `1.9.1.1.1.1` — Consent, measurement, reward estimate, wallet and disclosure states.
+- `1.9.1.1.1.1.1` — `docs/design/TOKEN_GCU_UX.md`; Work Item `GLAFIRA-S000-W07`; issue #767.
+- **Executor / status:** GLAFIRA coordinator is the active author and delivery owner; `QUEUED_PRIORITY` while higher-priority Core/Backup/Bridge/Desktop work remains dependency-ready. The working specification in issue #767 is preparatory evidence, not the reserved artifact or implementation completion. Amazon Q is optional secondary review only, not the assigned executor. Runtime issuance, wallet settlement, compute rewards and marketplace implementation remain DEFERRED.
+- **Numbered design procedure:** (1) distinguish measured GCU, eligible GCU, accepted GCU and settled GLF; (2) specify per-device consent, resource caps, pause and revoke; (3) define reward lifecycle states and provenance; (4) design wallet views without enabling ledger writes or transfers; (5) specify cost/energy assumptions and prohibit guaranteed-return claims; (6) define outage, dispute, reversal and unknown-settlement handling; (7) specify privacy, retention and accessibility; (8) submit artifact for independent review and owner design approval.
+- **Acceptance:** standalone `docs/design/TOKEN_GCU_UX.md`; default contribution OFF; every resource cap is owner-visible and enforceable in the design; estimates are never balances; GCU and GLF are never conflated; transfers remain disabled pending separate owner authorization; unknown settlement is reconciled by transaction ID before retry; all lifecycle/error/accessibility states documented; exact-head Docs CI, Security Scan, Project Dispatcher and independent review pass. No issuance, payment, wallet mutation or compute execution is authorized.
+
+The two packages have one accountable GLAFIRA coordinator author/delivery owner and remain QUEUED_PRIORITY until the global priority gate permits design execution; Amazon Q is optional secondary review, not a substitute executor. Only one package may be ACTIVE per executor. Each artifact starts from current Main after its reservation is canonical and its exact-SHA pin amendment is merged; each requires independent review plus owner design approval. No runtime implementation is authorized by these registrations.
