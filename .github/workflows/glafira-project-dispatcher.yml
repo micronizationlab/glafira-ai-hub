@@ -338,6 +338,22 @@ jobs:
           gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup[0].name == "Android CI" and .[1].number == 2' <<< "$gql_prs" >/dev/null
 
+          # A transient GraphQL failure is retried before falling back to REST.
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            if [[ ! -f "$FAKE_GH_FAIL_ONCE" ]]; then touch "$FAKE_GH_FAIL_ONCE"; exit 1; fi
+            printf '%s\\n' '{"data":{"repository":{"pullRequests":{"nodes":[{"number":3,"title":"retry","headRefName":"r","headRefOid":"hr","baseRefOid":"br","isDraft":false,"url":"https://example.test/3","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}'
+            exit 0
+          fi
+          exit 2
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          retried_prs="$(PATH="$tmp/fake-bin:$PATH" FAKE_GH_FAIL_ONCE="$tmp/gh-fail-once" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 1 and .[0].number == 3' <<< "$retried_prs" >/dev/null
+          [[ -f "$tmp/gh-fail-once" ]]
+
           # REST fallback also paginates the open PR inventory.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
@@ -353,6 +369,22 @@ jobs:
           chmod +x "$tmp/fake-bin/gh"
           rest_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 2 and .[1].baseRefOid == "b2" and .[1].statusCheckRollup == []' <<< "$rest_prs" >/dev/null
+
+          # Actions run inventory retries a transient API error.
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "api" && "$2" == repos/*/actions/runs* ]]; then
+            if [[ ! -f "$FAKE_GH_FAIL_ONCE" ]]; then touch "$FAKE_GH_FAIL_ONCE"; exit 1; fi
+            printf '%s\\n' '{"workflow_runs":[]}'
+            exit 0
+          fi
+          exit 2
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          retried_runs="$(PATH="$tmp/fake-bin:$PATH" FAKE_GH_FAIL_ONCE="$tmp/runs-fail-once" bash "$fetch_runs" micronizationlab/glafira-ai-hub)"
+          jq -e 'length == 0' <<< "$retried_runs" >/dev/null
+          [[ -f "$tmp/runs-fail-once" ]]
 
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
