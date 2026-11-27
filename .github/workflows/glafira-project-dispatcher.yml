@@ -640,7 +640,7 @@ jobs:
           # A final REST verification snapshot can have no rollups even if the
           # initial GraphQL snapshot did. The final snapshot must request Actions history.
           jq '[.[] | .statusCheckRollup = []]' "$RUNNER_TEMP/large-pr-inventory.json" > "$RUNNER_TEMP/final-rest-fallback.json"
-          if bash "$needs_history" "$RUNNER_TEMP/final-rest-fallback.json"; then
+          if bash "$RUNNER_TEMP/needs-actions-history.sh" "$RUNNER_TEMP/final-rest-fallback.json"; then
             :
           else
             echo "final REST snapshot without rollups failed to request Actions history" >&2; exit 1
