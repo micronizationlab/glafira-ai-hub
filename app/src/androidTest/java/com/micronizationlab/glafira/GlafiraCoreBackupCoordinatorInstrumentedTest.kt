@@ -260,7 +260,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     private suspend fun <T> withOwnedRollbackKey(block: suspend () -> T): T {
         val runId = testRunId
-        withFixtureLocks { writeRollbackOwnerMarker(runId) }
+        withFixtureLocks {
+            assumeNoScheduledAppWork()
+            writeRollbackOwnerMarker(runId)
+        }
         var primaryFailure: Throwable? = null
         try {
             return block()
@@ -1003,6 +1006,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         createdAfterMarker.writeText("created-after-marker", Charsets.UTF_8)
                     }
                 }
+                // Runtime enablement is read-only verified as PAUSED; recheck app-owned
+                // unique work immediately before recovery, which pauses the production runtime.
+                assumeNoScheduledAppWork()
                 withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
                     GlafiraCoreBackupCoordinator(context, store).recover(passphrase)
                 }
