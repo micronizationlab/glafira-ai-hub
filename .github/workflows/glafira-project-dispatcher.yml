@@ -291,7 +291,10 @@ jobs:
             local display_title="$2"
             [[ "$event_name" != "workflow_run" || "$display_title" != "METADATA_ONLY -"* ]]
           }
-          ! should_reconcile "workflow_run" "METADATA_ONLY - PR metadata edit"
+          if should_reconcile "workflow_run" "METADATA_ONLY - PR metadata edit"; then
+            echo "metadata-only workflow_run must be ignored" >&2
+            exit 1
+          fi
           should_reconcile "workflow_run" "GLAFIRA CI — change-aware platform validation"
           should_reconcile "pull_request" ""
           echo "event-driven dispatcher and one-review-per-PR policy: PASS"
