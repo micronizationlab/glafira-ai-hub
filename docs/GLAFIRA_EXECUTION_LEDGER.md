@@ -651,4 +651,33 @@ This checkpoint updates the live integration state after the previous Outbox/res
 - **Out of scope:** Kotlin formatting, changing Java style rules, changing Jules authentication or treating its failure as a pass, modifying application source, weakening required checks, or changing security permissions.
 - **Status:** RESERVED; implementation is blocked until this reservation PR merges.
 
+
+## 2026-11-26 — Canonical WBS governance reservation reconciliation
+
+This append-only entry supersedes contradictory reservation metadata in the earlier PR #701 and PR #721 branch snapshots; it does not rewrite historical entries or claim either PR merged.
+
+### GLAFIRA-S000-W01 — coordinator fallback and reservation governance
+
+- **WBS / tracker:** executable leaf `1.11.2.1.1.1.1`; issue #685; owner-approved cross-step governance task, no legacy Program 150 step claimed. `S000` is the documented identity token for owner-approved cross-step work (including governance or design fallback) without a single legacy Program 150 step.
+- **Reservation branch / exact base SHA:** `governance/wbs-review-reconciliation-20261126` / `cf1017ddf4799b3ab1a2ce00491e09ebc72b0ae5`.
+- **Governance correction:** the current Main ledger did not contain an active reservation for the earlier #687 work when this reconciliation started. The edits in this PR therefore correct a documented process-order deviation; they do not claim that reservation preceded the historical edits. No new helper dispatch is authorized by this correction.
+- **Executor / independent reviewer / owner:** GLAFIRA coordinator / independent reviewer not involved in authorship / project owner.
+- **Allowed files:** `docs/GLAFIRA_EXECUTION_CONTROL.md`, `docs/GLAFIRA_EXECUTION_LEDGER.md`, `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md`, `docs/GLAFIRA_150_STEP_COMPLETION_PLAN.md`, `docs/engineering/PR_SIZE_AND_MERGE_POLICY.md`.
+- **Predecessor:** PR #673 is merged; no additional predecessor is asserted. The historical PR #687 reservation is superseded by this reconciled record; its five-file scope is transferred here, and the old branch/PR must not be merged.
+- **Canonical ledger ref and concurrency:** protected `main` is the only reservation ledger ref. This record becomes active only after its reservation PR merges against the exact current main SHA. All owner and coordinator reservations use the same ref and compare-and-set parent. One reservation merge at a time; re-read main and scan for duplicate Work Item/WBS/executor/file ownership after each merge.
+- **Handoff acceptance:** every delivery state is durable. `DISPATCHED_AWAITING_ACK` is not releasable on timeout alone; revoke the old assignment capability and commit a higher fencing generation before replacement dispatch. Preserve the old status/history and reject stale-generation writes. A lost ACK never creates a second live assignment.
+- **PR-size acceptance:** written approval before implementation for 201–300 lines; independent file-count exception for 6–10 files and <=200 lines, also approved before implementation; >300 lines or >10 files split.
+- **Status:** IN_REVIEW — this reservation applies only to the single governance correction PR #738. It is not a batch activation for W02 or W03. After merge, mark DONE only after exact post-merge checks; no separate helper assignment is activated.
+
+### W02 and W03 reservation activation — separate PR gates
+
+- WBS registrations for `GLAFIRA-S000-W02` (PR #721) and `GLAFIRA-S000-W03` (Windows Hub UX) are present in the WBS standard, but **no active ledger reservation is created by PR #738** for either item.
+- W02 requires its own reservation PR after #738, with its own exact Main SHA, branch, allowed files, reviewer, acceptance and status; no dispatch before that PR merges.
+- W03 is registered as a fallback but is currently NOT ACTIVE / NOT ASSIGNED. Source lane #123 is OPEN and its next Core↔Hub implementation slice is READY AFTER the governance/WBS reservation gate, not blocked or idle. Do not create a W03 reservation PR, implementation branch or draft until a later coordinator pass records a concrete #123 blocker and proves no equal/higher-priority ready work remains. At that time, use a separate exact-Main-SHA reservation PR with source-lane status/evidence, token-pending marker, branch and exclusive deliverable.
+- These are planned follow-ups, not active assignments. This keeps each reservation activation in a separate Main update with a fresh duplicate-ownership scan.
+
+### Infrastructure caveat — current Main reservation serialization (verified 2026-11-26)
+
+GitHub ruleset `Protect main` (ID `27810315`) was inspected. It is active and enforces non-fast-forward protection plus required status contexts, but `strict_required_status_checks_policy` is false, no merge queue is configured, and privileged repository roles have bypass permission. The separate branch-protection endpoint was not readable by the installed integration (403), so no additional protection is claimed. Consequently, single-flight reservation merges and exact-SHA rechecks are currently a coordinator/owner procedure, not a repository-enforced mutex. If a privileged bypass or concurrent merge advances Main, dispatch stops until the ledger is re-read and reconciled. The enforcement follow-up is tracked in issue #744 and remains BLOCKED/unreserved until a WBS leaf and exact-base reservation are approved. It must add a durable non-dropping reservation/merge/build queue or equivalent CAS mechanism; do not represent documentation as runtime enforcement.
+
 - WBS registration for GLAFIRA-CODEX-W01: `1.7.1.1.1.1.1` added to the canonical hierarchical WBS standard on PR #761. This makes the Codex governance change traceable.

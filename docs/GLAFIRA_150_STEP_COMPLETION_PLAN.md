@@ -1,7 +1,7 @@
 # GLAFIRA — ordered 150-step completion plan
 
 **Reconciliation baseline for this control revision:** `f2b5e4b087d4f2357e0354ec0cc56c228c0ed1ec` (actual `main` SHA observed on 2026-11-24 before the governance branch).
-**Owner priority (latest clarification, 2026-11-24):** P1 — GLAFIRA Core (durable queue, owner identity/generation, authorization, Trace, dispatcher and recovery); P2 — Backup & Recovery; P3 — Bridge and Windows Desktop integration. Android and Desktop remain the primary client/runtime surfaces, but they do not displace Core and Backup priorities. iOS and specialist-agent projects follow after the Core/Bridge/Desktop foundation; agent feature work remains lower priority. Keep all eleven workstreams active in parallel, with workstream 11 checking helper contributions first, splitting useful changes into small PRs, reviewing exact diffs and merging only after exact-head CI.  
+**Owner priority (current, reconfirmed 2026-11-26):** P1 — GLAFIRA Core; P2 — Backup & Recovery; P3 — Bridge / Windows Desktop-Hub / Android client integration; P4 — iOS and specialist-agent feature work; P5 — Token/GCU non-issuing calculator/specification only. Android and Windows Desktop remain primary runtime surfaces but do not displace Core or Backup. Bridge/Hub prerequisites precede dependent Android pairing. Workstream 11 is cross-cutting intake/integration, not a product priority.  
 **Target:** fastest safe route to an integrated private owner MVP across four apps, not a calendar promise.
 
 **Control notice (2026-11-24):** the previous mainline/PR/CI snapshot below this heading was superseded when the live repository check found `main=f2b5e4b087d4f2357e0354ec0cc56c228c0ed1ec`. Treat all older PR numbers, run states, and merge-base claims in this historical plan as snapshots only. Refresh GitHub before acting. The canonical execution rules and append-only status journal are `docs/GLAFIRA_EXECUTION_CONTROL.md` and `docs/GLAFIRA_EXECUTION_LEDGER.md`; issue #548 is the control issue. The last literal checklist audit found 27 checked of the original 150 and 27 of 200 total entries; this count is not re-certified for the new baseline until reconciliation is complete.
@@ -23,7 +23,7 @@ The original owner-requested Program 150 remains the first 150 numbered acceptan
 
 ## Ordered actions
 
-### P0 — Core: ownership и queue kernels
+### P1 — Core: ownership и queue kernels
 
 1. [x] Снять baseline main SHA, open PR/issues, CI runs и артефакты.
 2. [x] Составить dependency/file/commit map recovery stack из issue #91; не переносить ветку целиком.
@@ -51,7 +51,7 @@ The original owner-requested Program 150 remains the first 150 numbered acceptan
 24. [ ] Добавить scoped encrypted memory с provenance, confidence, expiry и owner correction/export/delete.
 25. [ ] Пройти Core corruption, key-loss, migration, backup/restore и security acceptance; merge slices по одному.
 
-### P1 — Android instrumentation и общий Bridge
+### P3 — Bridge and Android integration (Android instrumentation remains Core validation infrastructure)
 
 26. [x] Проверить AndroidJUnit4 suite в main и CI selection для Core/Bridge изменений.
 27. [x] Подтвердить, что managed emulator реально выполняет тесты и JUnit XML не пуст.
@@ -74,7 +74,7 @@ The original owner-requested Program 150 remains the first 150 numbered acceptan
 44. [ ] Провести private-LAN pairing acceptance на реальных устройствах и сохранить evidence.
 45. [ ] Зафиксировать Bridge v1 release gate; LIVE side effects остаются выключенными.
 
-### P2 — Windows Desktop: основной control center и Hub
+### P3 — Windows Desktop-Hub: primary runtime surface and Bridge host
 
 46. [ ] Сверить issue #95/#123 с фактическим WPF и Hub кодом.
 47. [ ] Закрепить границу: Core — authority; Desktop Hub — transport/fleet host, не второй Core.
@@ -102,7 +102,7 @@ The original owner-requested Program 150 remains the first 150 numbered acceptan
 69. [ ] Добавить safe File Intelligence parsing с limits/sandbox/no execution.
 70. [ ] Проверить installer, upgrade, firewall Private/LAN-only, uninstall retention и rollback.
 
-### P2 — Windows Agent: безопасный worker
+### P4 — Windows Agent: subordinate specialist worker
 
 71. [x] Закончить типизированный lease envelope: type/idempotency/payload hash/risk/approval/expiry.
 72. [x] Проверить strict metadata validation и capability subset.
@@ -125,7 +125,7 @@ The original owner-requested Program 150 remains the first 150 numbered acceptan
 89. [ ] Проверить restart, LAN loss, duplicate result, stale lease и revoke.
 90. [ ] Пройти двухкомпьютерное Windows acceptance и зафиксировать проверенные сценарии.
 
-### P4 — Android: owner mobile app
+### P3 — Android: owner mobile app and Bridge client
 
 91. [ ] Собрать regression matrix навигации, settings и критических controls.
 92. [ ] Закрыть Bridge entry point, Start/Stop, pairing и owner approval из issue #137.
@@ -171,7 +171,7 @@ The original owner-requested Program 150 remains the first 150 numbered acceptan
 129. [ ] Проверить clean install/upgrade/restore на чистом профиле.
 130. [ ] Получить owner acceptance native iOS build и зафиксировать parity gaps.
 
-### P4/P5 — Cross-platform release gates
+### Cross-cutting — platform release gates
 
 131. [ ] Собрать feature parity matrix Android/iOS/Windows Desktop/Windows Agent.
 132. [ ] Утвердить private MVP scope; wallet/token marketplace не включать в executable MVP.
@@ -197,7 +197,7 @@ The original owner-requested Program 150 remains the first 150 numbered acceptan
 ## Dispatch protocol
 
 1. Execute the lowest-numbered unblocked step; respect dependencies and avoid conflicting writers.
-2. While CI/hardware/review waits, execute the next independent action, then rescan from step 1.
+2. While CI/hardware/review waits, execute the next independent action, then rescan from the current owner priority order.
 3. Keep all four apps active: two peer Cores, one owner Core per task, Bridge as transport only; no dual-writable replicas or global authority assumption.
 4. Branch from current main for clean slices. Stale stacked PRs are source material, not merge candidates.
 5. Record exact head SHA, run IDs, executed tests/counts, skipped jobs, artifacts and unresolved risks.
@@ -262,7 +262,7 @@ The original owner-requested Program 150 remains the first 150 numbered acceptan
 
 ## New owner-directed workstream — identity, autonomy, continuity and updates (2026-11-21)
 
-Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. This workstream is added without displacing the existing P0/P1 order; execute its independent design/security slices in parallel and schedule implementation by dependency.
+Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. This workstream is added without displacing the current P1/P2/P3 order; execute its independent design/security slices only when they do not delay higher-priority work.
 
 - [ ] Owner identity: trusted immutable-by-chat policy for Корчагин Валерий Вячеславович; only the authenticated owner receives the address `папа`; exact canonical answer; multi-account isolation and prompt-injection tests.
 - [ ] Credential autonomy: OS-backed vault adapters, local credential broker, allowlisted browser/app automation, least-privilege grants, audit/revocation and owner confirmation for high-risk actions.
@@ -426,7 +426,7 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 - **Android accessibility follow-up / issue #350.** Diagnostics show UiAutomator found the Settings and backup action nodes with `clickable: false` and logged clicks on non-clickable nodes; the expected missing-folder guidance was not exposed. The existing UI handler appears to set guidance, so inspect Compose accessibility/action semantics and prove the handler executes. Do not weaken the regression assertion. Issue #138 and PR #347 contain the evidence and follow-up.
 - **Communications autonomy / issues #348 and #349.** Owner explicitly approved autonomous routine commercial communications without per-message approval, with escalation for complaints, refunds, uncertain facts, legal/reputational matters, out-of-band discounts, financial commitments and destructive/high-impact actions. #348 covers Telegram Business/Managed Bots and Instagram Professional APIs; #349 adds the MAX business Bot API. All three connectors must remain official-API-only, least-privilege, bot/account scoped, auditable, revocable and subject to owner-dependent OAuth/verification/consent steps. These are requirements/issues, not completed integrations.
 - **MAX onboarding constraints.** The MAX connector must verify current business-profile eligibility and platform bot limits at runtime; owner-only verification, bot moderation and consent steps cannot be bypassed. Never expose bot tokens in prompts, logs, telemetry, Git or plaintext backups.
-- **Parallel P0 continuation.** Keep #260 failure-injection matrix, #266 durable result outbox/exact ACK, and #258 owner identity/credential autonomy/ownership handoff active. Do not count issue creation, documentation, skipped CI jobs or partial platform checks as implementation completion.
+- **Parallel P1 Core continuation.** Keep #260 failure-injection matrix, #266 durable result outbox/exact ACK, and #258 owner identity/credential autonomy/ownership handoff active. Do not count issue creation, documentation, skipped CI jobs or partial platform checks as implementation completion.
 
 **Acceptance discipline:** PR #347 remains open and blocked by the emulator failure. The communications work is scoped but not implemented. Skipped platform jobs are not passes; no automatic cross-Core failover or unrestricted personal-account access is implied.
 
@@ -478,7 +478,7 @@ Normative specification: `docs/GLAFIRA_OWNER_IDENTITY_AUTONOMY_AND_UPDATES.md`. 
 
 ## Verification refresh — 2026-11-22 (Android/Desktop GitHub coding APIs and Core ownership audit)
 
-- **Owner priority correction:** the latest explicit owner instruction supersedes the older P0-first ordering above: Android GLAFIRA GitHub work first, Windows Desktop GitHub-capable Agent second, then the previous priorities. Ten workstreams remain active in parallel.
+- **Owner priority correction (2026-11-26):** this supersedes the older Android-first/P0-first wording above. Current order is P1 Core → P2 Backup & Recovery → P3 Bridge/Windows Desktop-Hub/Android integration → P4 iOS/specialists → P5 non-issuing Token/GCU. Ten product workstreams and Workstream 11 integration remain active without changing this order.
 - **PR #416 — Android branch-scoped GitHub coding API:** exact head `f035f031aa30f054a141f0aa2ee503a10eaa8150`, run `45003098387`. Shared contracts, Android JVM tests, debug APK and managed Android emulator acceptance passed; exact-head summary passed. Windows, iOS and Agent jobs were skipped. PR is Draft and stacked on #415/#404. Physical Realme 8i validation and owner-facing chat/Core/owner-unlock integration are still outstanding.
 - **PR #417 — Windows Desktop branch-scoped GitHub coding API:** exact head `b5a3aa562617387c2fe64dbdf09a4bbad2a17dd9`, CI run `45003398881`: Windows Desktop Hub tests/build, shared contract conformance and exact-head summary passed. Windows Desktop x64 and Windows Agent x64 packages passed in run `45003398913`. Android, iOS and Agent test jobs were skipped in the change-aware run. PR remains Draft, stacked on #411; WPF owner-facing coding workspace, owner unlock and Core task/Trace/ACK integration remain open.
 - **PR #418 — Windows Agent bounded result-artifact store:** exact head `b55fb551f5e0daab01e50d9468c058cdc6ab88e4`. Windows Agent tests/build, shared contracts and exact-head summary passed in run `45003345467`; Agent compile passed in `45003345452`; Agent and Desktop x64 package builds passed in `45003345456`. This is only the typed local artifact store. Production handler registration, durable Agent outbox/ACK acceptance and two-PC acceptance remain open under #384.
@@ -632,3 +632,14 @@ Current `main` now registers `AgentDiagnosticsSnapshotTaskHandler` in `windows-a
 - **Provider PR #449 CI diagnosis:** old exact-head run `45096541638` passed Android JVM and APK packaging but failed managed emulator on `BackupSettingsSmokeTest.manualBackupActionRemainsEnabledAndExplainsMissingFolder` (one failure among 115 tests). The changed files are provider/UI files; the failure is a stale backup UI expectation later corrected in #450 and passed on a subsequent clean mainline run. PR #449 still needs fresh exact-head validation on current main; finding recorded in comment 7099209826.
 - **Voice, Agent and multi-device coordination:** Agent's single bounded read-only `diagnostics.snapshot` handler and exact artifact ACK remain implemented; do not describe it as a general Windows coding agent. Android voice auto-speak/microphone acceptance still requires the owner's physical Realme 8i Android 13 test and Logcat evidence (#401). Coordination contracts remain normative documents, not production GitHub CAS election/lease runtime (#452).
 - **Program count unchanged:** 27/150 primary acceptance steps (18%) and 27/200 expanded ledger items (13.5%). No numbered step is checked by this audit, comments, or documentation changes. Physical-device and end-to-end gates remain open.
+
+
+## Coordinator governance clarification — owner authority and current priority order (2026-11-26)
+
+The owner retains ultimate authority to set priorities, directly assign or reserve work, approve cross-priority exceptions, override or stop assignments. GLAFIRA performs operational reconciliation, selection and dispatch within the owner's current decisions; the Project Dispatcher is PR/CI evidence only and cannot select or assign tasks.
+
+The complete current owner-approved order is **P1 Core → P2 Backup & Recovery → P3 Bridge / Windows Desktop-Hub / Android client integration → P4 iOS and specialist-agent feature work → P5 Token/GCU implementation**. Android and Windows Desktop remain the primary runtime surfaces, but no client feature work displaces Core or Backup. Within P3, Bridge protocol/Hub host prerequisites precede dependent Android pairing/client work; independent Android UX work is eligible only after Core and Backup dependencies are clear. Token/GCU remains non-issuing absent separate owner approval. Workstream 11 is cross-cutting intake/integration, not a product priority; it may perform required review/CI/merge/post-merge actions for eligible higher-priority items before lower-priority implementation.
+
+This priority order supersedes stale dispatcher rankings (including P0-first or Android/Bridge-first rankings) until the owner explicitly changes it. Before assigning fallback/design work, reconcile Action Pool A and Workstream 11 helper-intake/integration pool, plus issues, PRs, branches, reservations, reviews and CI/post-merge actions. Inspect Pool B only if it exists or Pool A is exhausted and Pool B is due to be created. The complete queue is not limited to items already represented by a PR or issue.
+
+Owner direct assignments are binding and must be recorded in the same canonical ledger as coordinator assignments. A helper cannot self-assign. Reservation becomes active only after its exact-main-SHA ledger record is committed; stale concurrent reservations are rejected and reconciled before dispatch.

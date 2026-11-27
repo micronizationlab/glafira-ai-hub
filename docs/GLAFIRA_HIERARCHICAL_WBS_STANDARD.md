@@ -150,6 +150,42 @@ Executor for each planned leaf: `micronizationlab`; independent reviewers: CodeR
 The parent reservation PR must be merged to Main. A separate leaf-reservation PR must then assign each executable leaf's unique branch, exact base SHA, executor, reviewer, file ownership, numbered procedure, predecessor and independent acceptance gates; that leaf-reservation PR must also be merged to Main before any source edit. The storage, UI/API and acceptance slices are separate focused PRs, each retaining the same Work Item ID and exact executable-step ID. Record each leaf's executor, branch, base, procedure, predecessor and independent acceptance gates in the ledger before future implementation begins; never apply a dependent leaf's gate to its predecessor. For cancellation, verify owner-Core identity and generation fencing for the target and every affected descendant, independently of biometric proof. Explicit state policy: `QUEUED`, `WAITING_FOR_NETWORK` and `WAITING_FOR_OWNER` are cancellable only when `attemptCount == 0` and no unresolved execution-outcome marker exists; any prior attempt, `RETRY_SCHEDULED`, or unknown/persistence-failure outcome is not cancellable. Test the allowlist and attempt-count guard independently. The `.4` restore/cancellation serialization check is mandatory and remains a separate leaf from `.3`. No slice may be marked DONE until its exact-head tests, review, merge and post-merge validation are complete; the parent task and Program Step 93 remain open until all required owner acceptance is satisfied.
 
 
+## 12. Canonical coordinator-governance WBS registrations
+
+The following owner-approved cross-step governance work belongs to Workstream 11. These are governance tasks, not claims that any Program 150 implementation step is complete. For work-item identity, `S000` is reserved for explicitly owner-approved cross-step work (governance, design fallback or another cross-program task) that has no single legacy Program 150 step; it does not imply legacy Program Step 0.
+
+- `1.11.2` — Coordinator execution governance.
+- `1.11.2.1` — Cycle serialization and work assignment.
+- `1.11.2.1.1` — Design fallback and ready-work governance; subtask `1.11.2.1.1.1`; executable leaf `1.11.2.1.1.1.1`; Work Item `GLAFIRA-S000-W01`; issue #685. This is the canonical corrected registration for PR #701.
+- `1.11.2.1.2` — Eleven-workstream batch-cycle governance; subtask `1.11.2.1.2.1`; executable leaf `1.11.2.1.2.1.1`; Work Item `GLAFIRA-S000-W02`; issue #548. This is the canonical corrected registration for PR #721.
+
+For both leaves, the owner is the priority/override authority; GLAFIRA is the operational coordinator; independent review is separate from authorship; the allowed files and exact base SHA must be recorded in the canonical ledger before edits. Dispatcher output is evidence only. Action Pool A, issues, PRs, helper intake, branches and reservations must always be reconciled. Pool B is checked only if it exists or when Pool A is exhausted and Pool B is due to be created.
+
+- `1.11.2.1.4` — Action Pool A priority and readiness reconciliation; subtask `1.11.2.1.4.1`; executable leaf `1.11.2.1.4.1.1`; Work Item `GLAFIRA-S000-W04`; issue #548. This is a WBS registration only; no active reservation or file edit is authorized until a separate exact-SHA reservation PR merges.
+- `1.11.2.1.5` — contributor PR-size exception policy alignment; subtask `1.11.2.1.5.1`; executable leaf `1.11.2.1.5.1.1`; Work Item `GLAFIRA-S000-W05`; issue #548. This is a WBS registration only; `CONTRIBUTING.md` remains unreserved and must not be edited until its separate exact-SHA reservation PR merges.
+
+### Batch-cycle acceptance and sequencing
+
+- The coordinator may plan 3–5 real executable leaves per lane where the dependency graph permits; this is a planning target, not a quota. Do not fabricate steps, duplicate work or bypass predecessors.
+- Each helper has at most one active assignment. A blocked or transferred assignment is suspended/handed off first, with its original status preserved and its reservation transferred; only then may the helper receive another assignment. A replacement taking over a task cannot also receive a DESIGN or second global-ready assignment.
+- DESIGN fallback is eligible only after the complete ready-work scan finds no equal- or higher-priority dependency-ready implementation, validation, intake, review, merge or post-merge item.
+- Preserve reservations through active, blocked, suspended and transferred states. Release only on verified DONE or authorized terminal CANCELLED/SUPERSEDED, with reason and replacement recorded.
+- Cross-workstream tasks retain their owning Core/Workstream; they are not collapsed into a single runtime Core queue. Workstream 11 is an integration/intake view, not a second durable assignment queue.
+- Global cross-PR build serialization is currently NOT IMPLEMENTED: current workflows use per-PR/per-ref groups or no workflow-level concurrency. Until a durable non-dropping FIFO queue/lock is implemented and verified (tracked in issue #744), parallel platform build dispatch remains BLOCKED. A fixed GitHub Actions group with one replaceable pending slot is not sufficient.
+- The PR-size policy permits a separate file-count-only exception for one coherent task of up to 200 changed lines and 6–10 files, only with written owner/integrator approval before implementation. This is independent of the 201–300-line exception.
+- The cycle report records numeric counts per lane for planned, started, DONE, blocked, in-review, CI-passed, merged and post-merge-verified leaves. Sub-actions are not separate WBS steps.
+- Acceptance requires consistency across Execution Control, Completion Plan, Ledger, AGENTS.md and Copilot instructions; exact-head docs/security/dispatcher checks; independent review; owner approval; and post-merge verification.
+
+### Windows Desktop / Hub UX design registration
+
+- `1.11.1.1.6` — Windows Desktop / Hub workspace UX task.
+- `1.11.1.1.6.1` — subtask: information architecture and screen inventory.
+- `1.11.1.1.6.1.1` — executable design deliverable: `docs/design/WINDOWS_DESKTOP_HUB_UX.md`; Work Item `GLAFIRA-S000-W03`; issue #674 / umbrella #672.
+- This is an explicitly owner-approved cross-step DESIGN fallback task, not a Program 150 implementation step. It may be assigned only when the source lane has no eligible equal- or higher-priority ready work; its source lane's original status remains unchanged. Current source lane #123 is OPEN and READY AFTER the governance/WBS reservation gate, so W03 is NOT ACTIVE / NOT ASSIGNED and no design branch/draft is authorized yet. Re-evaluate only after a concrete blocker and complete ready-work scan are recorded on issue #674.
+- The six-component subtask is not itself an executable leaf. The seven-component ID above is the only executable reservation target. Drafting requires a separate pre-edit implementation reservation recording the exact current main SHA, implementation branch, executor, independent reviewer, exclusive file and acceptance.
+- Shared visual tokens remain PENDING until #679 is accepted. Information architecture may proceed only if issue #674 explicitly records the token-pending marker. Retain the ICQ flower in the product identity and acceptance criteria.
+
+
 ## 11. Defect discovery and immediate repair — owner-approved Codex rule
 
 - `1.7.1` — Defect prevention and repair execution.
