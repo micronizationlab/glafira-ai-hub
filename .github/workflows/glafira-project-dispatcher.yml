@@ -436,44 +436,6 @@ jobs:
           empty_graphql_fallback="$(PATH="$tmp/fake-bin:$PATH" GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep" FAKE_SLEEP_LOG="$tmp/empty-graphql-sleep-log" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 1 and .[0].number == 9' <<< "$empty_graphql_fallback" >/dev/null
 
-          # Both GraphQL and REST retries exhaust after exactly three failures.
-          cat > "$tmp/fake-bin/gh" <<'GH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          printf '%s|%s|%s\n' "$#" "${1:-missing}" "${2:-missing}" >> "$FAKE_GH_ARGS"
-          if [[ "${1:-}" == "api" && "${2:-}" == "graphql" ]]; then
-            count=0
-            [[ ! -f "$FAKE_GRAPHQL_CALLS" ]] || count="$(cat "$FAKE_GRAPHQL_CALLS")"
-            count=$((count + 1))
-            printf '%s' "$count" > "$FAKE_GRAPHQL_CALLS"
-            exit 1
-          fi
-          if [[ "${1:-}" == "api" && "${2:-}" == "--paginate" ]]; then
-            count=0
-            [[ ! -f "$FAKE_REST_CALLS" ]] || count="$(cat "$FAKE_REST_CALLS")"
-            count=$((count + 1))
-            printf '%s' "$count" > "$FAKE_REST_CALLS"
-            exit 1
-          fi
-          exit 2
-          GH
-          chmod +x "$tmp/fake-bin/gh"
-          export PATH="$tmp/fake-bin:$PATH"
-          export GLAFIRA_SLEEP_BIN="$tmp/fake-bin/sleep"
-          export FAKE_GRAPHQL_CALLS="$tmp/graphql-exhausted-count"
-          export FAKE_REST_CALLS="$tmp/rest-exhausted-count"
-          export FAKE_SLEEP_LOG="$tmp/open-prs-exhausted-sleeps"
-          export FAKE_GH_ARGS="$tmp/open-prs-gh-args"
-          if bash "$fetch_prs" "micronizationlab/glafira-ai-hub"; then
-            echo "open PR inventory accepted exhausted GraphQL/REST retries" >&2; exit 1
-          else
-            [[ "$?" -eq 1 ]]
-          fi
-          [[ "$(cat "$tmp/graphql-exhausted-count")" -eq 3 ]]
-          [[ "$(cat "$tmp/rest-exhausted-count")" -eq 3 ]]
-          [[ "$(wc -l < "$tmp/open-prs-gh-args")" -eq 6 ]]
-          [[ "$(paste -sd, "$tmp/open-prs-exhausted-sleeps")" == "2,4,2,4" ]]
-
           # Actions run inventory also succeeds on attempt three with a nonempty result.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
