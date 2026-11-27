@@ -89,6 +89,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         clearJournal()
                         verification
                     } catch (error: Exception) {
+                        val commitWasPublished = committedRestoreInProgress || committedMarker.exists()
                         val cleanupSucceeded = try {
                             recoverInterruptedRestore(passphrase)
                             !marker.exists() && !committedMarker.exists()
@@ -96,9 +97,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
                             error.addSuppressed(rollback)
                             false
                         }
-                        // A committed restore whose journal cleanup failed is still successful
-                        // once recovery confirms cleanup. Do not invite a duplicate restore.
-                        if (cleanupSucceeded) completedVerification ?: throw error else throw error
+                        // Only a durably committed restore may be reported as successful after
+                        // cleanup retry. A successful rollback must still report the original failure.
+                        if (commitWasPublished && cleanupSucceeded) completedVerification ?: throw error else throw error
                     }
                 } finally {
                     selected.delete()
@@ -162,6 +163,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
             check(!commitDurabilityUncertain) {
                 "Не удалось подтвердить долговечность отметки завершения; журнал сохранён до перезапуска."
             }
+            committedRestoreInProgress = true
             cleanupCommittedJournal()
             return
         }
@@ -205,7 +207,13 @@ class GlafiraCoreBackupCoordinator internal constructor(
     }
 
     private fun publishCommittedMarker() {
-        if (committedMarker.exists()) return
+        if (committedMarker.exists()) {
+            check(!commitDurabilityUncertain) {
+                "Не удалось подтвердить долговечность отметки завершения; журнал сохранён до перезапуска."
+            }
+            committedRestoreInProgress = true
+            return
+        }
         val temporary = File(journal, "$COMMITTED_MARKER.tmp")
         FileOutputStream(temporary).use {
             it.write(COMMITTED_VALUE.toByteArray(Charsets.UTF_8))
@@ -216,6 +224,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
         try {
             syncDirectory(journal)
+            committedRestoreInProgress = true
         } catch (error: Exception) {
             commitDurabilityUncertain = true
             throw error
@@ -246,6 +255,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         syncDirectory(journal)
         check(journal.deleteRecursively()) { "Не удалось удалить каталог журнала восстановления." }
         syncDirectory(app.noBackupFilesDir)
+        committedRestoreInProgress = false
     }
 
     /** Make restored payload and directory entries durable before publishing COMMITTED_MARKER. */
@@ -280,6 +290,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
         // Process-wide: a new coordinator instance in this process must not bypass an fsync failure.
         // It resets only after process restart, when the persisted marker can be re-evaluated.
         @Volatile private var commitDurabilityUncertain = false
+        // Remains true through every post-commit cleanup step, including final directory fsync.
+        @Volatile private var committedRestoreInProgress = false
 
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext

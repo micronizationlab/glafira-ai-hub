@@ -1091,7 +1091,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    fun fixtureCipherUsesIndependentAliasesAndCannotDeleteProductionKey() {
+    fun fixtureCipherUsesIndependentAliasesAndCannotDeleteProductionKey() = runBlocking {
+        withFixtureLocks {
         val productionCipher = GlafiraRollbackSnapshotCipher()
         val productionKeyExistedBefore = productionCipher.keyExists()
         val secondFixture = GlafiraRollbackSnapshotCipher("glafira_test_rollback_${testRunId.replace("-", "")}_second")
@@ -1126,6 +1127,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             secondFixture.deleteKey()
             if (testCreatedProductionKey) productionCipher.deleteKey()
             assertEquals(productionKeyExistedBefore, productionCipher.keyExists())
+        }
         }
     }
 
