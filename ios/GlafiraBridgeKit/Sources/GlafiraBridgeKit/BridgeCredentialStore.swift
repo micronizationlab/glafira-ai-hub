@@ -1,15 +1,33 @@
 import Foundation
 import Security
 import LocalAuthentication
+import Darwin
 
 /// Non-secret lifecycle identity of the authoritative Windows Hub enrollment.
 public struct BridgeHubBinding: Codable, Equatable, Sendable {
     public let desktopHubId: String
+    /// Canonical HTTPS endpoint including the Windows Hub API base path.
     public let endpoint: String
     public let certificateSHA256: String
     public let scopes: [String]
     public let enrolledAtEpochMs: Int64
     public let expiresAtEpochMs: Int64
+
+    /// Origin accepted by PinnedBridgeHTTPSClient; endpoint retains /bridge/v1.
+    public var transportOrigin: String {
+        var components = URLComponents(string: endpoint)!
+        components.path = ""
+        return components.string!
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case desktopHubId
+        case endpoint
+        case certificateSHA256
+        case scopes
+        case enrolledAtEpochMs
+        case expiresAtEpochMs
+    }
 
     public init(
         desktopHubId: String,
@@ -19,24 +37,140 @@ public struct BridgeHubBinding: Codable, Equatable, Sendable {
         enrolledAtEpochMs: Int64,
         expiresAtEpochMs: Int64
     ) throws {
-        let normalizedScopes = scopes.sorted()
         guard BridgeHubBindingValidation.validIdentifier(desktopHubId),
-              BridgeHubBindingValidation.validEndpoint(endpoint),
+              let canonicalEndpoint = BridgeHubBindingValidation.canonicalEndpoint(endpoint),
               BridgeHubBindingValidation.validPin(certificateSHA256),
-              !normalizedScopes.isEmpty,
-              normalizedScopes.count == Set(normalizedScopes).count,
-              normalizedScopes.count <= 32,
-              normalizedScopes.allSatisfy(BridgeHubBindingValidation.validScope),
-              enrolledAtEpochMs > 0,
+              !scopes.isEmpty,
+              scopes.count == Set(scopes).count,
+              scopes.count <= 32,
+              scopes.allSatisfy(BridgeHubBindingValidation.validScope),
+              (1...BridgeHubBindingValidation.maximumUnixEpochMilliseconds).contains(enrolledAtEpochMs),
+              (1...BridgeHubBindingValidation.maximumUnixEpochMilliseconds).contains(expiresAtEpochMs),
               expiresAtEpochMs > enrolledAtEpochMs else {
             throw BridgeCredentialStoreError.invalidHubBinding
         }
+        let lifetime = expiresAtEpochMs - enrolledAtEpochMs
+        guard (BridgeHubBindingValidation.minimumLifetimeMilliseconds...BridgeHubBindingValidation.maximumLifetimeMilliseconds).contains(lifetime) else {
+            throw BridgeCredentialStoreError.invalidHubBinding
+        }
         self.desktopHubId = desktopHubId
-        self.endpoint = endpoint
+        self.endpoint = canonicalEndpoint
         self.certificateSHA256 = certificateSHA256
-        self.scopes = normalizedScopes
+        self.scopes = scopes.sorted()
         self.enrolledAtEpochMs = enrolledAtEpochMs
         self.expiresAtEpochMs = expiresAtEpochMs
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            desktopHubId: container.decode(String.self, forKey: .desktopHubId),
+            endpoint: container.decode(String.self, forKey: .endpoint),
+            certificateSHA256: container.decode(String.self, forKey: .certificateSHA256),
+            scopes: container.decode([String].self, forKey: .scopes),
+            enrolledAtEpochMs: container.decode(Int64.self, forKey: .enrolledAtEpochMs),
+            expiresAtEpochMs: container.decode(Int64.self, forKey: .expiresAtEpochMs)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        try validate()
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(desktopHubId, forKey: .desktopHubId)
+        try container.encode(endpoint, forKey: .endpoint)
+        try container.encode(certificateSHA256, forKey: .certificateSHA256)
+        try container.encode(scopes, forKey: .scopes)
+        try container.encode(enrolledAtEpochMs, forKey: .enrolledAtEpochMs)
+        try container.encode(expiresAtEpochMs, forKey: .expiresAtEpochMs)
+    }
+
+    public func validate() throws {
+        let canonical = try BridgeHubBinding(
+            desktopHubId: desktopHubId,
+            endpoint: endpoint,
+            certificateSHA256: certificateSHA256,
+            scopes: scopes,
+            enrolledAtEpochMs: enrolledAtEpochMs,
+            expiresAtEpochMs: expiresAtEpochMs
+        )
+        guard canonical == self else { throw BridgeCredentialStoreError.invalidHubBinding }
+    }
+}
+
+private enum BridgeHubBindingValidation {
+    static let maximumUnixEpochMilliseconds: Int64 = 253_402_300_799_999
+    static let minimumLifetimeMilliseconds: Int64 = 60 * 60 * 1_000
+    static let maximumLifetimeMilliseconds: Int64 = 365 * 24 * 60 * 60 * 1_000
+
+    private static let supportedScopes: Set<String> = [
+        "approval.request",
+        "conversation.append",
+        "conversation.read",
+        "desktop.task.claim",
+        "desktop.task.result",
+        "ownership.read",
+        "project.read"
+    ]
+
+    static func validIdentifier(_ value: String) -> Bool {
+        (1...128).contains(value.utf8.count) && value.allSatisfy {
+            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_")
+        }
+    }
+
+    static func canonicalEndpoint(_ value: String) -> String? {
+        guard var components = URLComponents(string: value),
+              components.scheme?.lowercased() == "https",
+              let rawHost = components.host else {
+            return nil
+        }
+        let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        guard isPrivateLanAddress(host),
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil,
+              components.path == "/bridge/v1",
+              components.port == nil || (1...65_535).contains(components.port!) else {
+            return nil
+        }
+        components.scheme = "https"
+        components.host = host.lowercased()
+        guard let normalized = components.string,
+              let normalizedURL = URL(string: normalized),
+              normalizedURL.path == "/bridge/v1",
+              normalizedURL.scheme == "https" else {
+            return nil
+        }
+        return normalizedURL.absoluteString
+    }
+
+    private static func isPrivateLanAddress(_ host: String) -> Bool {
+        var ipv4 = in_addr()
+        if host.withCString({ inet_pton(AF_INET, $0, &ipv4) }) == 1 {
+            let bytes = withUnsafeBytes(of: ipv4.s_addr, Array.init)
+            return bytes.count == 4 &&
+                (bytes[0] == 10 ||
+                 (bytes[0] == 172 && (16...31).contains(bytes[1])) ||
+                 (bytes[0] == 192 && bytes[1] == 168))
+        }
+
+        var ipv6 = in6_addr()
+        if host.withCString({ inet_pton(AF_INET6, $0, &ipv6) }) == 1 {
+            let bytes = withUnsafeBytes(of: ipv6, Array.init)
+            return bytes.count == 16 && (bytes[0] & 0xFE) == 0xFC
+        }
+        return false
+    }
+
+    static func validPin(_ value: String) -> Bool {
+        value.utf8.count == 64 && value.allSatisfy {
+            $0.isASCII && $0.isHexDigit && !$0.isUppercase
+        }
+    }
+
+    static func validScope(_ value: String) -> Bool {
+        supportedScopes.contains(value)
     }
 }
 
@@ -74,69 +208,87 @@ public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
     case keychainFailure(status: Int32)
 }
 
-private enum BridgeHubBindingValidation {
-    static func validIdentifier(_ value: String) -> Bool {
-        (1...128).contains(value.utf8.count) && value.allSatisfy {
-            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_")
-        }
-    }
-
-    static func validEndpoint(_ value: String) -> Bool {
-        guard let url = URL(string: value),
-              url.scheme?.lowercased() == "https", url.host != nil,
-              url.user == nil, url.password == nil,
-              url.query == nil, url.fragment == nil,
-              url.path == "/bridge/v1" else {
-            return false
-        }
-        return url.port == nil || (1...65_535).contains(url.port!)
-    }
-
-    static func validPin(_ value: String) -> Bool {
-        value.utf8.count == 64 && value.allSatisfy { $0.isHexDigit && !$0.isUppercase }
-    }
-
-    static func validScope(_ value: String) -> Bool {
-        (1...96).contains(value.utf8.count) && value.allSatisfy {
-            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_")
-        }
-    }
-}
-
-enum BridgeHubBindingPersistence {
+/// Strict, bounded persistence envelope for a validated Windows Hub binding.
+public enum BridgeHubBindingPersistence {
     private struct Envelope: Codable {
         let schemaVersion: Int
         let binding: BridgeHubBinding
     }
 
-    static func encode(_ binding: BridgeHubBinding) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode(Envelope(schemaVersion: 1, binding: binding))
-    }
+    static let maximumPayloadBytes = 4_096
+    static let maximumJSONNestingDepth = 16
 
-    static func decode(_ data: Data) throws -> BridgeHubBinding {
-        guard (1...4_096).contains(data.count),
-              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              Set(object.keys) == Set(["schemaVersion", "binding"]),
-              validJSONObject(object["binding"]),
-              let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
-              envelope.schemaVersion == 1,
-              let validated = try? BridgeHubBinding(
-                desktopHubId: envelope.binding.desktopHubId,
-                endpoint: envelope.binding.endpoint,
-                certificateSHA256: envelope.binding.certificateSHA256,
-                scopes: envelope.binding.scopes,
-                enrolledAtEpochMs: envelope.binding.enrolledAtEpochMs,
-                expiresAtEpochMs: envelope.binding.expiresAtEpochMs
-              ),
-              validated == envelope.binding else {
+    public static func encode(_ binding: BridgeHubBinding) throws -> Data {
+        do {
+            try binding.validate()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(Envelope(schemaVersion: 1, binding: binding))
+            try validatePayloadSize(data)
+            return data
+        } catch {
             throw BridgeCredentialStoreError.invalidHubBinding
         }
-        return validated
     }
 
-    private static func validJSONObject(_ value: Any?) -> Bool {
+    public static func decode(_ data: Data) throws -> BridgeHubBinding {
+        do {
+            try validatePayloadSize(data)
+            guard hasSafeJSONNestingDepth(data),
+                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  Set(object.keys) == Set(["schemaVersion", "binding"]),
+                  validBindingJSONObject(object["binding"]) else {
+                throw BridgeCredentialStoreError.invalidHubBinding
+            }
+            let envelope = try JSONDecoder().decode(Envelope.self, from: data)
+            guard envelope.schemaVersion == 1 else {
+                throw BridgeCredentialStoreError.invalidHubBinding
+            }
+            try envelope.binding.validate()
+            return envelope.binding
+        } catch {
+            throw BridgeCredentialStoreError.invalidHubBinding
+        }
+    }
+
+    static func validatePayloadSize(_ data: Data) throws {
+        guard (1...maximumPayloadBytes).contains(data.count) else {
+            throw BridgeCredentialStoreError.invalidHubBinding
+        }
+    }
+
+    private static func hasSafeJSONNestingDepth(_ data: Data) -> Bool {
+        var depth = 0
+        var insideString = false
+        var escaped = false
+        for byte in data {
+            if insideString {
+                if escaped {
+                    escaped = false
+                } else if byte == 0x5C {
+                    escaped = true
+                } else if byte == 0x22 {
+                    insideString = false
+                }
+                continue
+            }
+            switch byte {
+            case 0x22:
+                insideString = true
+            case 0x7B, 0x5B: // { [
+                depth += 1
+                if depth > maximumJSONNestingDepth { return false }
+            case 0x7D, 0x5D: // } ]
+                depth -= 1
+                if depth < 0 { return false }
+            default:
+                break
+            }
+        }
+        return !insideString && depth == 0
+    }
+
+    private static func validBindingJSONObject(_ value: Any?) -> Bool {
         guard let object = value as? [String: Any] else { return false }
         return Set(object.keys) == Set([
             "desktopHubId", "endpoint", "certificateSHA256", "scopes",
