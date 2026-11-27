@@ -233,4 +233,7 @@ For both leaves, the owner is the priority/override authority; GLAFIRA is the op
 - **Predecessors:** none for the lock primitive. The result is a production safety prerequisite for final acceptance of #769.
 - **Executor:** GLAFIRA coordinator active author; independent CodeRabbit/Proofline review; owner-controlled merge.
 - **Acceptance:** bounded timeout and interruption fail closed before protected mutation; reentrant same-thread use remains safe; lock order is preserved; deterministic contention/release/reuse tests pass; exact-head Android JVM, Docs CI, Security Scan, Project Dispatcher and independent review pass.
+- **Pre-merge freshness:** immediately before merge, fetch live Main SHA and rescan active/reserved ownership for the exact production/test paths; refresh the reservation and rerun exact-head checks if Main advanced. Never merge a stale reservation.
+- **Traceability:** the ledger must record reservation PR ID, exact base SHA, branch name, changed-file list and both Work Item and leaf IDs in commit subjects.
+- **Test routing:** exact-head Android JVM CI is required for implementation because the reserved test file is under `app/src/test`; skipped is not success.
 - **Lifecycle:** RESERVED / NOT IMPLEMENTED before and after reservation merge. Separate exact-SHA implementation pin amendment required before implementation; reservation merge does not activate the leaf.
