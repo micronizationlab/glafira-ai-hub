@@ -110,6 +110,25 @@ class MainActivitySmokeTest {
     }
 
     @Test
+    fun fixtureCleanupFailureStillRestoresBiometricPreference() {
+        var preferenceRestored = false
+
+        val cleanupFailure = assertThrows(IllegalStateException::class.java) {
+            cleanupAndRestorePreservingFailure(
+                primaryFailure = null,
+                cleanup = { error("injected fixture cleanup failure") },
+                restore = {
+                    preferenceRestored = true
+                    true
+                }
+            )
+        }
+
+        assertTrue(preferenceRestored)
+        assertTrue(cleanupFailure.message.orEmpty().contains("injected fixture cleanup failure"))
+    }
+
+    @Test
     fun hierarchySummaryPreservesRepresentativeHeadTailAndRespectsLimit() {
         val headNode = "<node id=\"startup-gate\" text=\"Recovery blocked\"/>"
         val tailNode = "<node id=\"active-screen\" text=\"Recovery screen\"/>"
@@ -145,18 +164,17 @@ class MainActivitySmokeTest {
             primaryFailure = failure
             throw failure
         } finally {
-            val fileCleanupFailure = runCatching {
-                if (parentFile.exists() && !parentFile.delete()) {
-                    error("Could not remove startup diagnostics fixture")
+            cleanupAndRestorePreservingFailure(
+                primaryFailure = primaryFailure,
+                cleanup = {
+                    if (parentFile.exists() && !parentFile.delete()) {
+                        error("Could not remove startup diagnostics fixture")
+                    }
+                },
+                restore = {
+                    preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
                 }
-            }.exceptionOrNull()
-            val failureToPreserve = primaryFailure ?: fileCleanupFailure
-            restorePreferencePreservingFailure(failureToPreserve) {
-                preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
-            }
-            if (primaryFailure == null && fileCleanupFailure != null) {
-                throw fileCleanupFailure
-            }
+            )
         }
     }
 
