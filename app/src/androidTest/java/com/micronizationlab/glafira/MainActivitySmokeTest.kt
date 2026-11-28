@@ -13,6 +13,7 @@ import androidx.test.uiautomator.UiDevice
 import java.io.File
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -75,12 +76,15 @@ class MainActivitySmokeTest {
     }
 
     @Test
-    fun hierarchySummaryPreservesHeadTailAndReportsTruncation() {
-        val hierarchy = "HEAD" + "x".repeat(12_100) + "TAIL"
+    fun hierarchySummaryPreservesRepresentativeHeadTailAndRespectsLimit() {
+        val headNode = "<node id=\"startup-gate\" text=\"Recovery blocked\"/>"
+        val tailNode = "<node id=\"active-screen\" text=\"Recovery screen\"/>"
+        val hierarchy = headNode + "x".repeat(12_100) + tailNode
         val summary = summarizeWindowHierarchy(hierarchy)
-        assertTrue(summary.startsWith("HEAD"))
-        assertTrue(summary.contains("truncated"))
-        assertTrue(summary.endsWith("TAIL"))
+        assertTrue(summary.contains(headNode))
+        assertTrue(summary.contains(tailNode))
+        assertTrue(summary.contains("hierarchy truncated"))
+        assertTrue(summary.length <= 12_000)
     }
 
     @Test
