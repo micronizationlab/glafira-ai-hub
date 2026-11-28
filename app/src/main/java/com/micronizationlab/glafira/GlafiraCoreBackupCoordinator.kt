@@ -450,11 +450,13 @@ class GlafiraCoreBackupCoordinator internal constructor(
     }
 
     private fun publishCommittedMarker(onCommitted: () -> Unit = {}) {
-        if (committedMarker.exists()) {
+        if (pathExistsNoFollow(committedMarker.toPath())) {
+            validateCommittedMarker()
             syncDirectory(journal)
             onCommitted()
             return
         }
+        validatePendingMarker()
         val temporary = File(journal, "$COMMITTED_MARKER.tmp")
         FileOutputStream(temporary).use {
             it.write(COMMITTED_VALUE.toByteArray(Charsets.UTF_8))
@@ -468,6 +470,19 @@ class GlafiraCoreBackupCoordinator internal constructor(
     }
 
     /** Idempotent after the durable commit marker; never discards that marker on partial cleanup. */
+    private fun validatePendingMarker() {
+        if (!Files.isRegularFile(marker.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            throw IOException("Отметка начала восстановления отсутствует или небезопасна; commit запрещён.")
+        }
+        if (marker.readText(Charsets.UTF_8).trim() !in setOf(
+                "GLAFIRA_RESTORE_ROLLBACK_V2",
+                "GLAFIRA_RESTORE_ROLLBACK_V3"
+            )
+        ) {
+            throw IOException("Некорректная отметка начала восстановления; commit запрещён.")
+        }
+    }
+
     private fun validateCommittedMarker() {
         if (!Files.isRegularFile(committedMarker.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             throw IOException("Отметка завершения восстановления отсутствует или небезопасна; журнал сохранён.")
