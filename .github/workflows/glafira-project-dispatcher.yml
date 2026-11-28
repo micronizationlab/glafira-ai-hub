@@ -324,7 +324,7 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             [[ " $* " == *" --paginate "* ]]
-            [[ "$*" == *"pageInfo"* && "$*" == *"endCursor"* && "$*" == *"after: $endCursor"* ]]
+            [[ "$*" == *"pageInfo"* && "$*" == *"endCursor"* && "$*" == *'after: $endCursor'* ]]
             echo graphql >> "$CALL_LOG"
             cat <<'JSON'
           {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-one"},"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
