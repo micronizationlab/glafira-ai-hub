@@ -103,7 +103,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // recovery below re-syncs this journal before treating it as committed.
                         val commitMarkerNeedsReconfirmation = committedMarker.isFile
                         val cleanupSucceeded = try {
-                            recoveryCleanedSnapshot = recoverInterruptedRestore(passphrase)
+                            recoveryCleanedSnapshot = recoverInterruptedRestore(passphrase) { committedThisAttempt = true }
                             !marker.exists() && !committedMarker.exists()
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
@@ -125,12 +125,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // A marker whose first directory fsync failed is different: it must be
                         // re-confirmed by recovery before success can be reported.
                         if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
-                            completedVerification ?: throw error
+                            val verified = completedVerification ?: throw error
+                            if (marker.isFile || committedMarker.isFile) verified.copy(recoveryRequired = true) else verified
                         } else throw error
                     }
                 } finally {
                     selected.delete()
-                    File(app.filesDir, ".glafira-core-snapshot").deleteRecursively()
                 }
             } }
         }
@@ -185,15 +185,23 @@ class GlafiraCoreBackupCoordinator internal constructor(
     }
 
     /** Returns true when journal recovery already performed portable-snapshot cleanup. */
-    private fun recoverInterruptedRestore(passphrase: CharArray): Boolean {
+    private fun recoverInterruptedRestore(passphrase: CharArray, onCommitted: () -> Unit = {}): Boolean {
         check(!Files.isSymbolicLink(journal.toPath())) {
             "Обнаружена символическая ссылка вместо журнала восстановления; чтение и очистка остановлены."
         }
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
-            // Re-sync this exact journal before deleting rollback evidence, including
-            // when recovery runs through a newly constructed coordinator.
+            require(
+                Files.isRegularFile(committedMarker.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+                    !Files.isSymbolicLink(committedMarker.toPath()) &&
+                    committedMarker.readText(Charsets.UTF_8) == COMMITTED_VALUE
+            ) {
+                "Некорректная отметка завершения восстановления; журнал сохранён."
+            }
+            // Confirm the exact marker is durable before notifying the active restore
+            // attempt; cleanup may still fail after the selected data is committed.
             syncDirectory(journal)
+            onCommitted()
             cleanupCommittedJournal()
             return true
         }

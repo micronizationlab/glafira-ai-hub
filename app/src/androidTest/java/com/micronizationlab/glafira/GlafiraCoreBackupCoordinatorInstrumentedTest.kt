@@ -56,6 +56,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var plaintextSnapshotAbsentAtParentDirectorySyncFailure = false
         var plaintextSnapshotDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCompletedCalls = 0
+        var failCommittedMarkerSyncCount = 0
+        var committedMarkerSyncCalls = 0
+        var committedMarkerSyncCompletedCalls = 0
+        var committedCleanupCalls = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
             return block()
@@ -73,6 +77,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
         override fun beforeCommittedJournalCleanup() {
+            committedCleanupCalls++
             if (failCommittedCleanupOnce || failCommittedCleanupCount > 0) {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
@@ -80,6 +85,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
         override fun beforeDirectorySync(directory: File) {
+            val journalDirectory = File(context.noBackupFilesDir, "glafira-restore-journal").absoluteFile
+            if (directory.absoluteFile == journalDirectory &&
+                Files.isRegularFile(File(journalDirectory, "restore.committed").toPath(), LinkOption.NOFOLLOW_LINKS)
+            ) {
+                committedMarkerSyncCalls++
+                if (failCommittedMarkerSyncCount > 0) {
+                    failCommittedMarkerSyncCount--
+                    throw IOException("injected committed-marker directory fsync failure")
+                }
+            }
             if (directory.absoluteFile == context.filesDir.absoluteFile) {
                 plaintextSnapshotDirectorySyncCalls++
                 if (failPlaintextSnapshotDirectorySyncOnce) {
@@ -91,6 +106,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
         override fun afterDirectorySync(directory: File) {
+            val journalDirectory = File(context.noBackupFilesDir, "glafira-restore-journal").absoluteFile
+            if (directory.absoluteFile == journalDirectory &&
+                Files.isRegularFile(File(journalDirectory, "restore.committed").toPath(), LinkOption.NOFOLLOW_LINKS)
+            ) {
+                committedMarkerSyncCompletedCalls++
+            }
             if (directory.absoluteFile == context.filesDir.absoluteFile) {
                 plaintextSnapshotDirectorySyncCompletedCalls++
             }
@@ -109,6 +130,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fixtureRuntimeHooks.pauseContexts.clear()
             fixtureRuntimeHooks.pauseCount = 0
             fixtureRuntimeHooks.failPauseForRestoreCount = 0
+            fixtureRuntimeHooks.failCommittedMarkerSyncCount = 0
+            fixtureRuntimeHooks.committedMarkerSyncCalls = 0
+            fixtureRuntimeHooks.committedMarkerSyncCompletedCalls = 0
+            fixtureRuntimeHooks.committedCleanupCalls = 0
             fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
@@ -1461,6 +1486,107 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
     @Test
+    fun restoreReportsSuccessWhenRecoveryResyncsCommitBeforeCleanupFailure() = runBlocking {
+        val taskId = "commit-resync-before-cleanup"
+        store.enqueue(task(taskId))
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-commit-resync-cleanup".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val expectedVerification = coordinator.verify(archive, passphrase)
+        assertTrue(
+            "Test must remove the archived task before restore",
+            store.transition(
+                taskId,
+                setOf(GlafiraTaskState.QUEUED),
+                GlafiraTaskState.CANCELLED,
+                System.currentTimeMillis(),
+                null,
+                "REMOVED_TO_VERIFY_RESTORE"
+            )
+        )
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        try {
+            withOwnedRollbackKey {
+                fixtureRuntimeHooks.committedMarkerSyncCalls = 0
+                fixtureRuntimeHooks.committedMarkerSyncCompletedCalls = 0
+                fixtureRuntimeHooks.committedCleanupCalls = 0
+                fixtureRuntimeHooks.failCommittedMarkerSyncCount = 1
+                fixtureRuntimeHooks.failCommittedCleanupOnce = true
+                val verification = coordinator.restore(archive, passphrase)
+                assertTrue("Restore result discloses that committed cleanup is still required", verification.recoveryRequired)
+                assertEquals("Initial marker sync and recovery re-sync are both attempted", 2,
+                    fixtureRuntimeHooks.committedMarkerSyncCalls)
+                assertEquals("Recovery completes the actual committed-marker directory fsync", 1,
+                    fixtureRuntimeHooks.committedMarkerSyncCompletedCalls)
+                assertEquals("Cleanup is attempted after the recovery fsync", 1, fixtureRuntimeHooks.committedCleanupCalls)
+                assertFalse("The injected cleanup failure is consumed", fixtureRuntimeHooks.failCommittedCleanupOnce)
+                assertTrue("Committed marker remains after cleanup interruption", File(journal, "restore.committed").isFile)
+                assertTrue("Rollback evidence remains for the next cleanup pass", File(journal, "database.db").isFile)
+                isolatedCoordinator().recover(passphrase)
+                assertFalse("Recovery removes the committed journal", journal.exists())
+                assertEquals("The selected archive task is restored for owner review",
+                    GlafiraTaskState.WAITING_FOR_OWNER, store.getTask(taskId)?.state)
+                assertEquals(expectedVerification.fileCount, verification.fileCount)
+                assertEquals(expectedVerification.totalBytes, verification.totalBytes)
+                assertEquals(expectedVerification.createdAt, verification.createdAt)
+            }
+        } finally {
+            fixtureRuntimeHooks.failCommittedMarkerSyncCount = 0
+            fixtureRuntimeHooks.failCommittedCleanupOnce = false
+            archive.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun restoreDoesNotReportSuccessUntilRecoveryReFsyncsCommit() = runBlocking {
+        val taskId = "commit-resync-must-succeed"
+        store.enqueue(task(taskId))
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-commit-resync-required".toCharArray()
+        val archive = coordinator.create(passphrase)
+        assertTrue(
+            "Test must remove the archived task before restore",
+            store.transition(
+                taskId,
+                setOf(GlafiraTaskState.QUEUED),
+                GlafiraTaskState.CANCELLED,
+                System.currentTimeMillis(),
+                null,
+                "REMOVED_TO_VERIFY_RESTORE"
+            )
+        )
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        try {
+            withOwnedRollbackKey {
+                fixtureRuntimeHooks.committedMarkerSyncCalls = 0
+                fixtureRuntimeHooks.committedMarkerSyncCompletedCalls = 0
+                fixtureRuntimeHooks.failCommittedMarkerSyncCount = 2
+                assertThrows(IOException::class.java) {
+                    runBlocking { coordinator.restore(archive, passphrase) }
+                }
+                assertEquals("Initial publish and recovery re-sync are both attempted", 2,
+                    fixtureRuntimeHooks.committedMarkerSyncCalls)
+                assertEquals("Neither failed marker sync is counted as complete", 0,
+                    fixtureRuntimeHooks.committedMarkerSyncCompletedCalls)
+                assertTrue("Unconfirmed commit marker remains for later recovery", File(journal, "restore.committed").isFile)
+                assertTrue("Rollback evidence remains until a later re-sync", File(journal, "database.db").isFile)
+                fixtureRuntimeHooks.failCommittedMarkerSyncCount = 0
+                isolatedCoordinator().recover(passphrase)
+                assertEquals("Later recovery completes the real marker-directory fsync", 1,
+                    fixtureRuntimeHooks.committedMarkerSyncCompletedCalls)
+                assertFalse("Later recovery removes the committed journal", journal.exists())
+                assertEquals("The archive task is restored only after a successful re-sync",
+                    GlafiraTaskState.WAITING_FOR_OWNER, store.getTask(taskId)?.state)
+            }
+        } finally {
+            fixtureRuntimeHooks.failCommittedMarkerSyncCount = 0
+            archive.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun committedRestoreReportsSuccessWhenJournalCleanupMustBeRetried() = runBlocking {
         store.enqueue(task("restore-cleanup-pending"))
         val coordinator = isolatedCoordinator()
@@ -1469,17 +1595,22 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         try {
             withOwnedRollbackKey {
+                store.enqueue(task("restore-created-after-backup"))
                 // Fail both the initial cleanup and its immediate recovery retry. The
                 // durable commit is already published, so restore must report success
                 // while preserving the journal for a later cleanup pass.
                 fixtureRuntimeHooks.failCommittedCleanupCount = 2
-                coordinator.restore(archive, passphrase)
+                val verification = coordinator.restore(archive, passphrase)
+                assertTrue("Restore result must disclose pending committed-journal cleanup", verification.recoveryRequired)
+                assertNull("Tasks created after the selected archive must not survive its restore",
+                    store.getTask("restore-created-after-backup"))
                 assertTrue("Committed journal remains available for later cleanup", File(journal, "restore.committed").isFile)
                 assertTrue("Rollback evidence remains while cleanup is pending", File(journal, "database.db").isFile)
                 fixtureRuntimeHooks.failCommittedCleanupCount = 0
                 isolatedCoordinator().recover(passphrase)
                 assertFalse("A later recovery pass removes the committed journal", journal.exists())
                 assertTrue("The selected archive's task remains restored", store.getTask("restore-cleanup-pending") != null)
+                assertNull("The post-archive task remains absent after recovery", store.getTask("restore-created-after-backup"))
             }
         } finally {
             fixtureRuntimeHooks.failCommittedCleanupCount = 0

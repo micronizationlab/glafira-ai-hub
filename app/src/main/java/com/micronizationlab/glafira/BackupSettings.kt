@@ -385,7 +385,10 @@ fun BackupSettingsSection() {
                                             temp.outputStream().use { output -> input.copyTo(output) }
                                         } ?: error("Не удалось прочитать выбранный файл.")
                                         val verification = withCoreBackupCoordinator(context) { it.restore(temp, recoveryPassphrase) }
-                                        "Восстановлено: ${verification.fileCount} файлов из копии от ${verification.createdAt}."
+                                        "Восстановлено: ${verification.fileCount} файлов из копии от ${verification.createdAt}." +
+                                            if (verification.recoveryRequired) {
+                                                " Данные применены, но очистка журнала отката не завершена. Нажмите «Завершить прерванное восстановление»."
+                                            } else ""
                                     } finally {
                                         temp.delete()
                                         recoveryPassphrase.fill('\u0000')
