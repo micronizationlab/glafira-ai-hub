@@ -45,16 +45,34 @@ enum BridgeOwnershipTrustValidation {
     }
 
     static func isValid(_ key: BridgeOwnershipTrustedSigningKey) -> Bool {
-        guard (8...128).contains(key.ownerCoreId.utf8.count),
-              key.ownerCoreId.allSatisfy({
+        isValid(
+            ownerCoreId: key.ownerCoreId,
+            signingKeyEpoch: key.signingKeyEpoch,
+            signingPublicKeySHA256: key.signingPublicKeySHA256,
+            derEncodedPublicKey: key.derEncodedPublicKey
+        )
+    }
+
+    /// The parser seam lets tests prove that the size limit rejects input before cryptographic parsing.
+    static func isValid(
+        ownerCoreId: String,
+        signingKeyEpoch: Int64,
+        signingPublicKeySHA256: String,
+        derEncodedPublicKey: Data,
+        publicKeyParser: (Data) -> Bool = {
+            (try? P256.Signing.PublicKey(derRepresentation: $0)) != nil
+        }
+    ) -> Bool {
+        guard (8...128).contains(ownerCoreId.utf8.count),
+              ownerCoreId.allSatisfy({
                   $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == ".")
               }),
-              key.signingKeyEpoch > 0,
-              isCanonicalFingerprint(key.signingPublicKeySHA256),
-              (1...maximumDEREncodedPublicKeyBytes).contains(key.derEncodedPublicKey.count),
-              SHA256.hash(data: key.derEncodedPublicKey).map({ String(format: "%02x", $0) }).joined() ==
-                key.signingPublicKeySHA256,
-              (try? P256.Signing.PublicKey(derRepresentation: key.derEncodedPublicKey)) != nil else {
+              signingKeyEpoch > 0,
+              isCanonicalFingerprint(signingPublicKeySHA256),
+              (1...maximumDEREncodedPublicKeyBytes).contains(derEncodedPublicKey.count),
+              SHA256.hash(data: derEncodedPublicKey).map({ String(format: "%02x", $0) }).joined() ==
+                signingPublicKeySHA256,
+              publicKeyParser(derEncodedPublicKey) else {
             return false
         }
         return true
