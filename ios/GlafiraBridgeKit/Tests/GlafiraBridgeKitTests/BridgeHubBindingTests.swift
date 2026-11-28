@@ -129,8 +129,9 @@ final class BridgeHubBindingTests: XCTestCase {
         let bindingType: Any.Type = BridgeHubBinding.self
         XCTAssertFalse(bindingType is Encodable.Type)
         XCTAssertFalse(bindingType is Decodable.Type)
-        let persisted = try BridgeHubBindingPersistence.encode(binding())
-        XCTAssertEqual(try BridgeHubBindingPersistence.decode(persisted), try binding())
+        let original = try binding()
+        let persisted = try BridgeHubBindingPersistence.encode(original)
+        XCTAssertEqual(try BridgeHubBindingPersistence.decode(persisted), original)
     }
 
     func testPersistenceRejectsInvalidBindingFields() throws {
