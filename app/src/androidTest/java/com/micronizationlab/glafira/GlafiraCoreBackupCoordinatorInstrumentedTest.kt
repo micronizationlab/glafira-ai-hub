@@ -943,6 +943,34 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun failedRestorePreflightStillRemovesStalePlaintextPortableExport() = runBlocking {
+        val coordinator = isolatedCoordinator()
+        val passphrase = "failed-restore-preflight-plaintext".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val journalTarget = File(context.cacheDir, "failed-preflight-journal-target").apply { check(mkdirs()) }
+        val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
+        val plaintextExport = File(snapshotDirectory, "core-portable-v2.json").apply {
+            writeText("stale plaintext snapshot from an earlier failed export")
+        }
+        try {
+            Files.createSymbolicLink(journal.toPath(), journalTarget.toPath())
+            assertThrows(IOException::class.java) {
+                runBlocking { coordinator.restore(archive, passphrase) }
+            }
+            assertFalse("Preflight failure must not leave a stale plaintext export", plaintextExport.exists())
+            assertFalse("The now-empty snapshot directory must be removed", snapshotDirectory.exists())
+            assertTrue("The unexpected journal symlink target must remain untouched", journalTarget.isDirectory)
+        } finally {
+            Files.deleteIfExists(journal.toPath())
+            check(!journalTarget.exists() || journalTarget.deleteRecursively())
+            check(!snapshotDirectory.exists() || snapshotDirectory.deleteRecursively())
+            archive.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun committedRestoreSurfacesJournalCleanupFailureWithoutRepeatingSnapshotDeletion() = runBlocking {
         val coordinator = isolatedCoordinator()
         val passphrase = "committed-cleanup-pending-contract".toCharArray()
@@ -959,6 +987,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue(
                 "A committed restore with incomplete journal cleanup must not be reported as success",
                 failure.message.orEmpty().contains("Восстановление зафиксировано")
+            )
+            val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+            assertTrue(
+                "If cleanup leaves the journal directory behind, a committed marker must remain to retry recovery",
+                !journal.exists() || File(journal, "restore.committed").isFile
             )
             assertEquals(
                 "The portable snapshot parent must be synced once; the catch path must not repeat deletion",
