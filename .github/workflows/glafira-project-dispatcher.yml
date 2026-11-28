@@ -535,7 +535,8 @@ jobs:
           [[ ! -s "$tmp/graphql-validation-jq42.out" ]]
           grep -Fq "GraphQL response validation failed (jq exit 42)" "$tmp/graphql-validation-jq42.err"
           [[ "$(cat "$tmp/graphql-validation-jq42-calls.log")" == "graphql" ]]
-          [[ $(grep -Fxc "validator" "$tmp/validation-jq-stages.log") -eq 1 ]]
+          validator_count="$(grep -Fxc validator "$tmp/validation-jq-stages.log")"
+          test "$validator_count" -eq 1
           echo "GraphQL malformed-page validation and injected jq exit 42 fail closed without REST fallback: PASS"
           mkdir -p "$tmp/failing-aggregation-jq"
           real_jq="$(command -v jq)"
