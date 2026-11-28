@@ -845,6 +845,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 "A symlinked journal must fail closed so callers show recovery instead of crashing",
                 GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
             )
+            assertTrue("Pending delivery must share the fail-closed recovery guard", isPendingDispatchBlocked(context))
         } finally {
             Files.deleteIfExists(journal.toPath())
             check(!target.exists() || target.deleteRecursively())
@@ -872,6 +873,24 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         } finally {
             Files.deleteIfExists(marker.toPath())
             check(!journal.exists() || journal.deleteRecursively())
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun recoverRemovesDanglingRollbackTempSymlinkWithoutFollowingTarget() = runBlocking {
+        val stale = File(context.cacheDir, "glafira-rollback-recovery-dangling.tmp")
+        val target = File(context.cacheDir, "missing-rollback-recovery-target")
+        val passphrase = "dangling-temp-link-cleanup".toCharArray()
+        try {
+            Files.createSymbolicLink(stale.toPath(), target.toPath())
+            assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            isolatedCoordinator().recover(passphrase)
+            assertFalse(Files.exists(stale.toPath(), LinkOption.NOFOLLOW_LINKS))
+            assertFalse(target.exists())
+            assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+        } finally {
+            Files.deleteIfExists(stale.toPath())
             passphrase.fill(0.toChar())
         }
     }
