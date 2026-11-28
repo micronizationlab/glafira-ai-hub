@@ -195,6 +195,8 @@ class MainActivitySmokeTest {
         val hierarchy = captureSafeWindowHierarchy(maximumNodes = 1, maximumCharacters = maximumCharacters)
         assertTrue("Truncated hierarchy must retain an explicit notice: $hierarchy",
             hierarchy.contains("<hierarchy summary bounded; nodes=1>"))
+        assertFalse("The node count must not be duplicated in the truncation notice",
+            hierarchy.contains("nodes=nodes="))
         assertTrue("Hierarchy output must respect its configured character bound",
             hierarchy.length <= maximumCharacters)
     }
