@@ -778,7 +778,7 @@ jobs:
           if [[ "$1" == "api" && "$2" == "graphql" && "$3" == "--paginate" ]]; then
             count="$(cat "$SCAN_COUNTER")"
             count=$((count + 1))
-            printf '%s\\n' "$count" > "$SCAN_COUNTER"
+            printf '%s\n' "$count" > "$SCAN_COUNTER"
             if [[ "$count" -gt 1 ]]; then
               echo "injected second inventory failure" >&2
               exit 32
@@ -788,13 +788,13 @@ jobs:
           JSON
             exit 0
           elif [[ "$1" == "api" && "$2" == "graphql" && "$3" == "-f" ]]; then
-            printf '%s\\n' '{"data":{"repository":{"pullRequests":{"totalCount":1,"nodes":[{"number":1}]}}}}'
+            printf '%s\n' '{"data":{"repository":{"pullRequests":{"totalCount":1,"nodes":[{"number":1}]}}}}'
             exit 0
           fi
           exit 99
           GH_SECOND_FAIL
           chmod +x "$tmp/fake-bin/gh"
-          printf '0\\n' > "$tmp/report-second-scan-count"
+          printf '0\n' > "$tmp/report-second-scan-count"
           if GH_REPO="micronizationlab/glafira-ai-hub" SCAN_COUNTER="$tmp/report-second-scan-count" GITHUB_STEP_SUMMARY="$tmp/report-second-failure.md" PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh" 2>"$tmp/report-second-failure.err"; then
             echo "production report accepted a failed second inventory fetch" >&2; exit 1
           else
@@ -815,21 +815,21 @@ jobs:
           if [[ "$1" == "api" && "$2" == "graphql" && "$3" == "--paginate" ]]; then
             count="$(cat "$SCAN_COUNTER")"
             count=$((count + 1))
-            printf '%s\\n' "$count" > "$SCAN_COUNTER"
+            printf '%s\n' "$count" > "$SCAN_COUNTER"
             if [[ "$count" -lt 3 ]]; then head="head-one"; base="base-one"; else head="new-head-000000"; base="new-base-000000"; fi
-            printf '%s\\n' "{\"data\":{\"repository\":{\"pullRequests\":{\"totalCount\":1,\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null},\"nodes\":[{\"number\":1,\"title\":\"snapshot-race\",\"headRefName\":\"main\",\"headRefOid\":\"$head\",\"baseRefOid\":\"$base\",\"isDraft\":false,\"url\":\"https://example.test/1\",\"statusCheckRollup\":{\"contexts\":{\"nodes\":[]}}}]}}}}"
+            printf '%s\n' "{\"data\":{\"repository\":{\"pullRequests\":{\"totalCount\":1,\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null},\"nodes\":[{\"number\":1,\"title\":\"snapshot-race\",\"headRefName\":\"main\",\"headRefOid\":\"$head\",\"baseRefOid\":\"$base\",\"isDraft\":false,\"url\":\"https://example.test/1\",\"statusCheckRollup\":{\"contexts\":{\"nodes\":[]}}}]}}}}"
             exit 0
           elif [[ "$1" == "api" && "$2" == "graphql" && "$3" == "-f" ]]; then
-            printf '%s\\n' '{"data":{"repository":{"pullRequests":{"totalCount":1,"nodes":[{"number":1}]}}}}'
+            printf '%s\n' '{"data":{"repository":{"pullRequests":{"totalCount":1,"nodes":[{"number":1}]}}}}'
             exit 0
           elif [[ "$1" == "api" && "$2" == repos/*/actions/runs* ]]; then
-            printf '%s\\n' '{"workflow_runs":[{"head_sha":"head-one","name":"Android CI","display_title":"old-head-success","status":"completed","conclusion":"success","created_at":"2026-11-28T12:00:00Z","html_url":"https://example.test/run/old","pull_requests":[{"number":1,"base":{"sha":"base-one"}}]}]}'
+            printf '%s\n' '{"workflow_runs":[{"head_sha":"head-one","name":"Android CI","display_title":"old-head-success","status":"completed","conclusion":"success","created_at":"2026-11-28T12:00:00Z","html_url":"https://example.test/run/old","pull_requests":[{"number":1,"base":{"sha":"base-one"}}]}]}'
             exit 0
           fi
           exit 99
           GH_STALE
           chmod +x "$tmp/fake-bin/gh"
-          printf '0\\n' > "$tmp/report-stale-scan-count"
+          printf '0\n' > "$tmp/report-stale-scan-count"
           if ! GH_REPO="micronizationlab/glafira-ai-hub" SCAN_COUNTER="$tmp/report-stale-scan-count" GITHUB_STEP_SUMMARY="$tmp/report-stale-snapshot.md" PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh"; then
             echo "production report failed on a changed final PR identity" >&2; exit 1
           fi
