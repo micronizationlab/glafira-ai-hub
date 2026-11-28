@@ -198,22 +198,10 @@ final class BridgeHubBindingTests: XCTestCase {
         let invalidVariants = [
             validJSON.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":1.0"),
             validJSON.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":1e0"),
-            validJSON.replacingOccurrences(
-                of: "\"enrolledAtEpochMs\":\(enrolledAt)",
-                with: "\"enrolledAtEpochMs\":\(enrolledAt).0"
-            ),
-            validJSON.replacingOccurrences(
-                of: "\"expiresAtEpochMs\":\(expiresAt)",
-                with: "\"expiresAtEpochMs\":\(expiresAt)e0"
-            ),
-            validJSON.replacingOccurrences(
-                of: "\"schemaVersion\":1",
-                with: "\"schemaVersion\":1E+0"
-            ),
-            validJSON.replacingOccurrences(
-                of: "\"enrolledAtEpochMs\":\(enrolledAt)",
-                with: "\"enrolledAtEpochMs\":\(enrolledAt).000"
-            )
+            validJSON.replacingOccurrences(of: "\"enrolledAtEpochMs\":\(enrolledAt)", with: "\"enrolledAtEpochMs\":\(enrolledAt).0"),
+            validJSON.replacingOccurrences(of: "\"expiresAtEpochMs\":\(expiresAt)", with: "\"expiresAtEpochMs\":\(expiresAt)e0"),
+            validJSON.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":1E+0"),
+            validJSON.replacingOccurrences(of: "\"enrolledAtEpochMs\":\(enrolledAt)", with: "\"enrolledAtEpochMs\":\(enrolledAt).000")
         ]
         for payload in invalidVariants {
             XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(payload.utf8))) { error in
