@@ -119,7 +119,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     }
                 } finally {
                     selected.delete()
-                    File(app.filesDir, ".glafira-core-snapshot").deleteRecursively()
+                    // Do not recursively remove this directory: it may contain unexpected
+                    // staging data that the guarded cleanup deliberately preserves.
                 }
             } }
         }
@@ -291,17 +292,23 @@ class GlafiraCoreBackupCoordinator internal constructor(
             if (exportExists && (!Files.isRegularFile(export, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(export))) {
                 throw IOException("Файл переносимого снимка Core заменён ссылкой или каталогом.")
             }
+            // Remove the known plaintext file before inspecting unrelated entries. An
+            // unexpected file must never keep decrypted task/result data on disk.
+            if (exportExists) Files.delete(export)
+            syncDirectory(app.filesDir)
+            var unexpectedEntry = false
             Files.newDirectoryStream(directory).use { entries ->
                 for (entry in entries) {
-                    if (entry.toAbsolutePath().normalize() != export) {
-                        throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные.")
-                    }
+                    if (entry.toAbsolutePath().normalize() != export) unexpectedEntry = true
                 }
             }
-            if (exportExists) Files.delete(export)
+            if (unexpectedEntry) {
+                throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные.")
+            }
             Files.delete(directory)
+        } else {
+            syncDirectory(app.filesDir)
         }
-        syncDirectory(app.filesDir)
     }
 
     /** Make restored payload and directory entries durable before publishing COMMITTED_MARKER. */
