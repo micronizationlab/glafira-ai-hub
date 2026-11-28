@@ -197,7 +197,9 @@ jobs:
             fi
           done
           exit 1
-          FETCH          cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
+          FETCH
+
+          cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
           #!/usr/bin/env bash
           set -euo pipefail
           repo="$1"
