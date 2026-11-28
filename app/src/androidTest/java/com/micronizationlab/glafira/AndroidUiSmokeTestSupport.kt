@@ -6,6 +6,9 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
+import java.io.RandomAccessFile
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
@@ -60,11 +63,13 @@ internal fun collectHomeScreenDiagnostics(
     val hierarchy = if (captureFailure != null) {
         "<dump failed: ${captureFailure.javaClass.simpleName}: ${captureFailure.message}>"
     } else {
-        val readResult = runCatching { summarizeWindowHierarchy(hierarchyFile.readText(Charsets.UTF_8)) }
+        val readResult = runCatching {
+            redactSensitiveHierarchyText(readBoundedWindowHierarchy(hierarchyFile))
+        }
         readResult.getOrNull()
             ?: "<read failed: ${readResult.exceptionOrNull()?.javaClass?.simpleName}: ${readResult.exceptionOrNull()?.message}>"
     }
-    val recoveryState = runCatching { GlafiraCoreBackupCoordinator.hasInterruptedRestore(context).toString() }
+    val recoveryState = runCatching { recoveryPendingForDiagnostics(context).toString() }
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
     val biometricState = runCatching { isBiometricEnabled(context).toString() }
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
@@ -93,6 +98,55 @@ internal fun awaitHomeScreen(
     val hierarchyFile = File(context.cacheDir, "android-ui-smoke-window-hierarchy.xml")
     val diagnostics = collectHomeScreenDiagnostics(device, context, hierarchyFile, waitStatus)
     throw IllegalStateException("Home workspace did not become accessible. $diagnostics", accessibilityWait.exceptionOrNull())
+}
+
+/**
+ * A diagnostic read must never reclaim a rollback temp file: recovery may be actively
+ * decrypting it. Treat any journal or stale temp as pending without mutating filesystem state.
+ */
+internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
+    val app = context.applicationContext
+    val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
+    if (Files.isSymbolicLink(journal.toPath()) || Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+        return true
+    }
+    val stale = app.cacheDir.listFiles { file ->
+        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+    }.orEmpty()
+    return stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+}
+
+/** Read at most four bytes per output character, preserving the head and tail of huge dumps. */
+internal fun readBoundedWindowHierarchy(file: File, maximumCharacters: Int = 12_000): String {
+    require(maximumCharacters > 0) { "Hierarchy summary limit must be positive." }
+    val maximumBytes = maximumCharacters.toLong() * 4L
+    val length = file.length()
+    if (length <= maximumBytes) {
+        return summarizeWindowHierarchy(file.readText(Charsets.UTF_8), maximumCharacters)
+    }
+    val marker = "\\n<... hierarchy middle omitted to bound diagnostic memory ...>\\n"
+    val contentBytes = (maximumBytes - marker.toByteArray(Charsets.UTF_8).size).toInt()
+    require(contentBytes > 0) { "Hierarchy summary limit is too small." }
+    val headBytes = contentBytes / 2
+    val tailBytes = contentBytes - headBytes
+    fun readRange(offset: Long, byteCount: Int): String =
+        RandomAccessFile(file, "r").use { source ->
+            source.seek(offset)
+            val bytes = ByteArray(byteCount)
+            val count = source.read(bytes)
+            if (count <= 0) "" else String(bytes, 0, count, Charsets.UTF_8)
+        }
+    val head = readRange(0L, headBytes)
+    val tail = readRange((length - tailBytes).coerceAtLeast(0L), tailBytes)
+    return summarizeWindowHierarchy(head + marker + tail, maximumCharacters)
+}
+
+/** Remove revealed password-vault values before hierarchy text can enter JUnit artifacts. */
+internal fun redactSensitiveHierarchyText(hierarchy: String): String {
+    val revealedPassword = Regex("""((?:text|content-desc)="Пароль:\\s*)[^"]*(")""")
+    return revealedPassword.replace(hierarchy) { match ->
+        "${match.groupValues[1]}[REDACTED]${match.groupValues[2]}"
+    }
 }
 
 /** Keep both the start and end of large UI hierarchies; screen identity often appears near the tail. */
