@@ -393,8 +393,13 @@ fun BackupSettingsSection() {
                                 }
                             }
                             status = when (val failure = result.exceptionOrNull()) {
-                                is CommittedRestoreCleanupPendingException ->
-                                    "Данные восстановлены: ${failure.verification.fileCount} файлов. Очистка временных данных ожидает recovery; Core остаётся заблокирован до завершения очистки."
+                                is CommittedRestoreCleanupPendingException -> {
+                                    if (GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
+                                        "Данные восстановлены: ${failure.verification.fileCount} файлов. Требуется завершить очистку журнала восстановления; Core остаётся заблокирован до recovery."
+                                    } else {
+                                        "Данные восстановлены: ${failure.verification.fileCount} файлов. Не удалось удалить временную зашифрованную копию архива: ${failure.message}"
+                                    }
+                                }
                                 null -> result.getOrThrow()
                                 else -> "Ошибка восстановления: ${failure.message ?: "неизвестная ошибка"}"
                             }
