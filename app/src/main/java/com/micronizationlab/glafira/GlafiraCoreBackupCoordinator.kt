@@ -115,7 +115,13 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         )
                         verification
                     } catch (error: Exception) {
-                        val commitMarkerNeedsReconfirmation = pathExistsNoFollow(committedMarker.toPath())
+                        val commitMarkerProbe = runCatching {
+                            pathExistsNoFollow(committedMarker.toPath())
+                        }
+                        val commitMarkerNeedsReconfirmation = commitMarkerProbe.getOrElse {
+                            error.addSuppressed(it)
+                            true
+                        }
                         val cleanupSucceeded = try {
                             recoverInterruptedRestore(passphrase) {
                                 recoveryCleanedSnapshot = true
@@ -305,8 +311,23 @@ class GlafiraCoreBackupCoordinator internal constructor(
             cleanupCommittedJournal(onSnapshotCleaned)
             return true
         }
-        if (!pathExistsNoFollow(marker.toPath())) return false
-        require(safetyArchive.isFile && safetyDatabase.isFile) { "Повреждён журнал восстановления; Core заблокирован." }
+        if (!pathExistsNoFollow(marker.toPath())) {
+            if (pathExistsNoFollow(journal.toPath())) {
+                val unexpectedEntries = Files.newDirectoryStream(journal.toPath()).use { entries ->
+                    entries.any()
+                }
+                if (unexpectedEntries) {
+                    throw IOException("В журнале восстановления обнаружены данные без маркера; Core остаётся заблокирован для проверки.")
+                }
+                Files.delete(journal.toPath())
+                syncDirectory(app.noBackupFilesDir)
+            }
+            return false
+        }
+        require(
+            Files.isRegularFile(safetyArchive.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+                Files.isRegularFile(safetyDatabase.toPath(), LinkOption.NOFOLLOW_LINKS)
+        ) { "Повреждён журнал восстановления; Core заблокирован." }
         val markerVersion = marker.readText(Charsets.UTF_8).trim()
         val encryptedRollback = markerVersion == "GLAFIRA_RESTORE_ROLLBACK_V3"
         require(encryptedRollback || markerVersion == "GLAFIRA_RESTORE_ROLLBACK_V2") {
@@ -529,6 +550,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
                 val committed = File(journal, COMMITTED_MARKER)
                 if (pathExistsNoFollow(marker.toPath()) || pathExistsNoFollow(committed.toPath())) {
                     return@runCatching true
+                }
+                if (pathExistsNoFollow(journal.toPath())) {
+                    val unexpectedEntries = Files.newDirectoryStream(journal.toPath()).use { entries ->
+                        entries.any()
+                    }
+                    if (unexpectedEntries) return@runCatching true
                 }
                 val stale = app.cacheDir.listFiles { file ->
                     file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
