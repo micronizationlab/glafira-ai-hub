@@ -60,10 +60,11 @@ class GlafiraCoreBackupCoordinator internal constructor(
             }
         }
 
-    suspend fun recover(passphrase: CharArray) = GlafiraCoreMaintenanceGate.withExclusive {
+    suspend fun recover(passphrase: CharArray): Unit = GlafiraCoreMaintenanceGate.withExclusive {
         runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 recoverInterruptedRestore(passphrase)
+                Unit
             } }
         }
     }
@@ -361,8 +362,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
-            val marker = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER)
-            val committed = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), COMMITTED_MARKER)
+            val journal = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
+            check(!Files.isSymbolicLink(journal.toPath())) {
+                "Обнаружена символическая ссылка вместо журнала восстановления; проверка состояния остановлена."
+            }
+            val marker = File(journal, JOURNAL_MARKER)
+            val committed = File(journal, COMMITTED_MARKER)
             if (marker.exists() || committed.exists()) return true
             val stale = app.cacheDir.listFiles { file ->
                 file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
