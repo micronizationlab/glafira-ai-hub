@@ -512,7 +512,7 @@ jobs:
           exit 2
           GH       GH
           chmod +x "$tmp/fake-bin/gh"
-          if output="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-validation.err")"; then
+          if output="$(env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-validation.err")"; then
             echo "incomplete cursor chain was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
@@ -556,7 +556,7 @@ jobs:
           GH_STABLE
           chmod +x "$tmp/fake-bin/gh"
           : > "$tmp/stable-boundary.log"
-          stable_boundary_prs="$(CALL_LOG="$tmp/stable-boundary.log" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+          stable_boundary_prs="$(CALL_LOG="$tmp/stable-boundary.log" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           printf 'stable-boundary fixture returned PR numbers: %s; scans=%s; boundary checks=%s\n' "$(jq -c '[.[].number]' <<< "$stable_boundary_prs")" "$(cat "$tmp/stable-boundary.log.scan-count")" "$(cat "$tmp/stable-boundary.log.boundary-count")"
           jq -e 'length == 3 and .[0].number == 3 and .[1].number == 1 and .[2].number == 2' <<< "$stable_boundary_prs" >/dev/null
           [[ "$(cat "$tmp/stable-boundary.log.scan-count")" == "2" ]]
@@ -575,7 +575,7 @@ jobs:
           exit 99
           GH
           chmod +x "$tmp/fake-bin/gh"
-          if output="$(CALL_LOG="$tmp/gh-calls.log" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-outage.err")"; then
+          if output="$(CALL_LOG="$tmp/gh-calls.log" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-outage.err")"; then
             echo "GraphQL outage was incorrectly accepted; calls=$(cat "$tmp/gh-calls.log" 2>/dev/null || true); stderr=$(tail -n 3 "$tmp/graphql-outage.err" 2>/dev/null || true)" >&2; exit 1
           else
             [[ "$?" -eq 23 ]]
@@ -765,7 +765,7 @@ jobs:
           exit 31
           GH_INITIAL_FAIL
           chmod +x "$tmp/fake-bin/gh"
-          if GH_REPO="micronizationlab/glafira-ai-hub" GITHUB_STEP_SUMMARY="$tmp/report-initial-failure.md" PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh" 2>"$tmp/report-initial-failure.err"; then
+          if GH_REPO="micronizationlab/glafira-ai-hub" GITHUB_STEP_SUMMARY="$tmp/report-initial-failure.md" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh" 2>"$tmp/report-initial-failure.err"; then
             echo "production report accepted an unavailable initial inventory" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
@@ -801,7 +801,7 @@ jobs:
           GH_SECOND_FAIL
           chmod +x "$tmp/fake-bin/gh"
           printf '0\n' > "$tmp/report-second-scan-count"
-          if GH_REPO="micronizationlab/glafira-ai-hub" SCAN_COUNTER="$tmp/report-second-scan-count" GITHUB_STEP_SUMMARY="$tmp/report-second-failure.md" PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh" 2>"$tmp/report-second-failure.err"; then
+          if GH_REPO="micronizationlab/glafira-ai-hub" SCAN_COUNTER="$tmp/report-second-scan-count" GITHUB_STEP_SUMMARY="$tmp/report-second-failure.md" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh" 2>"$tmp/report-second-failure.err"; then
             echo "production report accepted a failed second inventory fetch" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
@@ -836,7 +836,7 @@ jobs:
           GH_STALE
           chmod +x "$tmp/fake-bin/gh"
           printf '0\n' > "$tmp/report-stale-scan-count"
-          if ! GH_REPO="micronizationlab/glafira-ai-hub" SCAN_COUNTER="$tmp/report-stale-scan-count" GITHUB_STEP_SUMMARY="$tmp/report-stale-snapshot.md" PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh"; then
+          if ! GH_REPO="micronizationlab/glafira-ai-hub" SCAN_COUNTER="$tmp/report-stale-scan-count" GITHUB_STEP_SUMMARY="$tmp/report-stale-snapshot.md" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh"; then
             echo "production report failed on a changed final PR identity" >&2; exit 1
           fi
           grep -Fq "new-head-000" "$tmp/report-stale-snapshot.md"
