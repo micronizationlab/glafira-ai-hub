@@ -7,12 +7,30 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ProjectSelectorSmokeTest {
+    private lateinit var preferences: android.content.SharedPreferences
+    private var originalBiometric = false
+
+    @Before
+    fun captureBiometricPreference() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        preferences = context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
+        originalBiometric = preferences.getBoolean("biometric_enabled", false)
+    }
+
+    @After
+    fun restoreBiometricPreference() {
+        check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
+            "Could not restore biometric preference after UI smoke test"
+        }
+    }
     @Test
     fun homeProjectPickerShowsReadableNamesAndSwitchesBuiltInWorkspaces() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
