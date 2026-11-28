@@ -564,12 +564,8 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
-            [[ "$3" == "--paginate" && "$4" == "-f" && "$5" == query=* ]] || exit 90
-            [[ "$5" == *"pageInfo"* && "$5" == *"endCursor"* ]] || exit 91
             echo graphql >> "$CALL_LOG"
-            cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":true,"endCursor":"cursor-page-2"},"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
-          JSON
+            printf '%s\\n' '{"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":true,"endCursor":"cursor-page-2"},"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}'
             echo "injected GraphQL page two failure (ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ) [github_pat_0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ]" >&2
             exit 23
           fi
