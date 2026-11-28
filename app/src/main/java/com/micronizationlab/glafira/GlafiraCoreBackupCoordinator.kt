@@ -216,7 +216,21 @@ class GlafiraCoreBackupCoordinator internal constructor(
                 if (primaryFailure != null) {
                     primaryFailure.addSuppressed(cleanup)
                 } else {
-                    createdArchive?.delete()
+                    val archive = createdArchive
+                    if (archive != null) {
+                        val archiveRemovalFailure = runCatching {
+                            if (pathExistsNoFollow(archive.toPath())) {
+                                check(archive.delete()) { "Не удалось удалить временный архив ${archive.absolutePath}." }
+                            }
+                        }.exceptionOrNull()
+                        if (archiveRemovalFailure != null) {
+                            cleanup.addSuppressed(archiveRemovalFailure)
+                            throw IOException(
+                                "Очистка снимка Core не удалась; временный зашифрованный архив остался по пути ${archive.absolutePath}.",
+                                cleanup
+                            )
+                        }
+                    }
                     throw cleanup
                 }
             }
