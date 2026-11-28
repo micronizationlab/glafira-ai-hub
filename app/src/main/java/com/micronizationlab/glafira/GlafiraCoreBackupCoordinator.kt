@@ -20,6 +20,15 @@ internal class CommittedRestoreCleanupPendingException(
     cause
 )
 
+class CommittedRestoreArchiveCleanupException(
+    val verification: BackupVerification,
+    val archivePath: String,
+    cause: Throwable
+) : IOException(
+    "Восстановление завершено, но временная зашифрованная копия архива не удалена: $archivePath",
+    cause
+)
+
 internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
@@ -169,40 +178,50 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     primaryRestoreFailure = error
                     throw error
                 } finally {
-                    var cleanupFailure: Exception? = null
-                    fun recordCleanupFailure(failure: Exception) {
-                        val existing = cleanupFailure
-                        if (existing == null) cleanupFailure = failure else existing.addSuppressed(failure)
-                    }
+                    var selectedArchiveCleanupFailure: Exception? = null
+                    var portableSnapshotCleanupFailure: Exception? = null
                     try {
                         if (pathExistsNoFollow(selected.toPath())) {
                             check(selected.delete()) { "Не удалось удалить временную копию выбранного архива." }
                         }
                     } catch (cleanup: Exception) {
-                        recordCleanupFailure(cleanup)
+                        selectedArchiveCleanupFailure = cleanup
                     }
                     try {
                         cleanupPortableSnapshotPreservingUnexpected()
                     } catch (cleanup: Exception) {
-                        recordCleanupFailure(cleanup)
+                        portableSnapshotCleanupFailure = cleanup
                     }
-                    cleanupFailure?.let { cleanup ->
-                        val primary = primaryRestoreFailure
-                        if (primary != null) {
-                            primary.addSuppressed(cleanup)
-                            if (committedThisAttempt) {
-                                throw CommittedRestoreCleanupPendingException(
-                                    completedRestoreVerification ?: throw primary,
-                                    primary
-                                )
-                            }
-                        } else if (committedThisAttempt) {
+                    val primary = primaryRestoreFailure
+                    if (primary != null) {
+                        selectedArchiveCleanupFailure?.let(primary::addSuppressed)
+                        portableSnapshotCleanupFailure?.let(primary::addSuppressed)
+                    }
+                    if (committedThisAttempt) {
+                        val verification = completedRestoreVerification ?: throw (
+                            primary ?: portableSnapshotCleanupFailure ?: selectedArchiveCleanupFailure
+                                ?: IllegalStateException("Committed restore verification is unavailable.")
+                        )
+                        if (portableSnapshotCleanupFailure != null) {
                             throw CommittedRestoreCleanupPendingException(
-                                completedRestoreVerification ?: throw cleanup,
-                                cleanup
+                                verification,
+                                primary ?: portableSnapshotCleanupFailure
                             )
-                        } else {
-                            throw cleanup
+                        }
+                        if (selectedArchiveCleanupFailure != null) {
+                            throw CommittedRestoreArchiveCleanupException(
+                                verification,
+                                selected.absolutePath,
+                                primary ?: selectedArchiveCleanupFailure
+                            )
+                        }
+                    } else if (primary == null) {
+                        val first = selectedArchiveCleanupFailure ?: portableSnapshotCleanupFailure
+                        if (first != null) {
+                            val second = if (first === selectedArchiveCleanupFailure)
+                                portableSnapshotCleanupFailure else selectedArchiveCleanupFailure
+                            second?.let(first::addSuppressed)
+                            throw first
                         }
                     }
                 }
