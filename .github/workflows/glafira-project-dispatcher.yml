@@ -113,63 +113,72 @@ jobs:
           for attempt in 1 2; do
             graphql_error="$tmp/graphql-error-$attempt.log"
             validation_error="$tmp/validation-error-$attempt.log"
+            count_error="$tmp/count-error-$attempt.log"
             projection_error="$tmp/projection-error-$attempt.log"
             projection_file="$tmp/projection-$attempt.json"
             boundary_error="$tmp/boundary-error-$attempt.log"
 
             if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
               if jq -s -e '
-                (.[0].data.repository.pullRequests.totalCount) as $total
-                | length > 0
-                and ($total | type) == "number"
+                length > 0
                 and all(.[]; (.data.repository.pullRequests.nodes | type) == "array"
                   and .data.repository.pullRequests.pageInfo != null
-                  and .data.repository.pullRequests.totalCount == $total)
+                  and (.data.repository.pullRequests.totalCount | type) == "number")
                 and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
-                and ([.[].data.repository.pullRequests.nodes[]] | length) == $total
               ' >/dev/null 2>"$validation_error" <<< "$pages"; then
-                if jq -s '[
-                  .[].data.repository.pullRequests.nodes[] |
-                  {
-                    number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
-                    statusCheckRollup: [
-                      .statusCheckRollup.contexts.nodes[]? |
-                      {
-                        name: (.name // .context // "check"),
-                        status: (.status // .state // "unknown"),
-                        conclusion: (.conclusion // null),
-                        detailsUrl: (.detailsUrl // .targetUrl // "")
-                      }
-                    ]
-                  }
-                ]' <<< "$pages" > "$projection_file" 2>"$projection_error"; then
-                  expected_total="$(jq -r '.[0].data.repository.pullRequests.totalCount' <<< "$pages")"
-                  expected_boundary="$(jq -r '.[0].data.repository.pullRequests.nodes[0].number // empty' <<< "$pages")"
-                  if boundary="$(gh api graphql -f query="$boundary_query" 2>"$boundary_error")"; then
-                    if jq -e --argjson total "$expected_total" --arg boundary "$expected_boundary" '
-                      .data.repository.pullRequests.totalCount == $total
-                      and ((.data.repository.pullRequests.nodes[0].number // "") | tostring) == $boundary
-                    ' >/dev/null <<< "$boundary"; then
-                      cat "$projection_file"
-                      exit 0
+                if jq -s -e '
+                  (.[0].data.repository.pullRequests.totalCount) as $total
+                  | all(.[]; .data.repository.pullRequests.totalCount == $total)
+                  and ([.[].data.repository.pullRequests.nodes[]] | length) == $total
+                ' >/dev/null 2>"$count_error" <<< "$pages"; then
+                  if jq -s '[
+                    .[].data.repository.pullRequests.nodes[] |
+                    {
+                      number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
+                      statusCheckRollup: [
+                        .statusCheckRollup.contexts.nodes[]? |
+                        {
+                          name: (.name // .context // "check"),
+                          status: (.status // .state // "unknown"),
+                          conclusion: (.conclusion // null),
+                          detailsUrl: (.detailsUrl // .targetUrl // "")
+                        }
+                      ]
+                    }
+                  ]' <<< "$pages" > "$projection_file" 2>"$projection_error"; then
+                    expected_total="$(jq -r '.[0].data.repository.pullRequests.totalCount' <<< "$pages")"
+                    expected_boundary="$(jq -r '.[0].data.repository.pullRequests.nodes[0].number // empty' <<< "$pages")"
+                    if boundary="$(gh api graphql -f query="$boundary_query" 2>"$boundary_error")"; then
+                      if jq -e --argjson total "$expected_total" --arg boundary "$expected_boundary" '
+                        .data.repository.pullRequests.totalCount == $total
+                        and ((.data.repository.pullRequests.nodes[0].number // "") | tostring) == $boundary
+                      ' >/dev/null <<< "$boundary"; then
+                        cat "$projection_file"
+                        exit 0
+                      fi
+                      if [[ "$attempt" -eq 1 ]]; then continue; fi
+                      printf 'UNKNOWN: Open-PR inventory boundary changed during both cursor scans; no complete stable snapshot is available.\n' >&2
+                      exit 1
+                    else
+                      boundary_status=$?
+                      boundary_detail="$(tail -n 3 "$boundary_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                      printf 'UNKNOWN: GraphQL open-PR boundary verification failed (exit %s). %s\n' \
+                        "$boundary_status" "${boundary_detail:-No boundary-query stderr was captured.}" >&2
+                      exit 1
                     fi
-                    if [[ "$attempt" -eq 1 ]]; then
-                      continue
-                    fi
-                    printf 'UNKNOWN: Open-PR inventory boundary changed during both cursor scans; no complete stable snapshot is available.\n' >&2
-                    exit 1
                   else
-                    boundary_status=$?
-                    boundary_detail="$(tail -n 3 "$boundary_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
-                    printf 'UNKNOWN: GraphQL open-PR boundary verification failed (exit %s). %s\n' \
-                      "$boundary_status" "${boundary_detail:-No boundary-query stderr was captured.}" >&2
+                    projection_status=$?
+                    projection_detail="$(tail -n 3 "$projection_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                    printf 'UNKNOWN: GraphQL open-PR projection failed (jq exit %s). %s\n' \
+                      "$projection_status" "${projection_detail:-No jq projection stderr was captured.}" >&2
                     exit 1
                   fi
                 else
-                  projection_status=$?
-                  projection_detail="$(tail -n 3 "$projection_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
-                  printf 'UNKNOWN: GraphQL open-PR projection failed (jq exit %s). %s\n' \
-                    "$projection_status" "${projection_detail:-No jq projection stderr was captured.}" >&2
+                  count_status=$?
+                  if [[ "$count_status" -eq 1 && "$attempt" -eq 1 ]]; then continue; fi
+                  count_detail="$(tail -n 3 "$count_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                  printf 'UNKNOWN: Cursor-page totalCount did not reconcile across both scans (jq exit %s). %s\n' \
+                    "$count_status" "${count_detail:-Inventory counts changed or did not match the returned nodes.}" >&2
                   exit 1
                 fi
               else
@@ -188,8 +197,7 @@ jobs:
             fi
           done
           exit 1
-          FETCH
-          cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
+          FETCH          cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
           #!/usr/bin/env bash
           set -euo pipefail
           repo="$1"
