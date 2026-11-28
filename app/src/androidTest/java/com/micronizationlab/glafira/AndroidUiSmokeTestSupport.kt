@@ -92,8 +92,16 @@ internal fun awaitHomeScreen(
     val idleStatus = idleWait.exceptionOrNull()?.let { "error: ${it.javaClass.simpleName}: ${it.message}" } ?: "completed"
     val accessibilityStatus = accessibilityWait.exceptionOrNull()?.let { "error: ${it.javaClass.simpleName}: ${it.message}" } ?: "timed out"
     val waitStatus = "idle=$idleStatus, accessibility=$accessibilityStatus"
-    val hierarchyFile = File.createTempFile("android-ui-smoke-window-", ".xml", context.cacheDir)
-    val diagnostics = collectHomeScreenDiagnostics(device, context, hierarchyFile, waitStatus)
+    val diagnostics = runCatching {
+        val hierarchyFile = File.createTempFile("android-ui-smoke-window-", ".xml", context.cacheDir)
+        collectHomeScreenDiagnostics(device, context, hierarchyFile, waitStatus)
+    }.getOrElse { diagnosticFailure ->
+        val recovery = runCatching { recoveryPendingForDiagnostics(context).toString() }
+            .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
+        val biometric = runCatching { isBiometricEnabled(context).toString() }
+            .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
+        "recovery=$recovery, biometric=$biometric, wait=$waitStatus, hierarchy=unavailable: ${diagnosticFailure.javaClass.simpleName}: ${diagnosticFailure.message}"
+    }
     throw IllegalStateException("Home workspace did not become accessible. $diagnostics", accessibilityWait.exceptionOrNull())
 }
 
