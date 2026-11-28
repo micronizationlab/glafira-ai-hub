@@ -26,6 +26,7 @@ import org.junit.runner.RunWith
 class MainActivitySmokeTest {
     private lateinit var preferences: android.content.SharedPreferences
     private var originalBiometric = false
+    private var preferenceCaptured = false
 
     @Before
     fun captureBiometricPreference() {
@@ -34,6 +35,7 @@ class MainActivitySmokeTest {
         try {
             preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
             originalBiometric = preferences.getBoolean("biometric_enabled", false)
+            preferenceCaptured = true
         } catch (failure: Throwable) {
             UiSmokeTestPreferenceLock.release()
             throw failure
@@ -42,6 +44,7 @@ class MainActivitySmokeTest {
 
     @After
     fun restoreBiometricPreference() {
+        if (!preferenceCaptured) return
         try {
             restoreBiometricPreferenceAndRelock(
                 InstrumentationRegistry.getInstrumentation().targetContext,
@@ -49,6 +52,7 @@ class MainActivitySmokeTest {
                 originalBiometric
             )
         } finally {
+            preferenceCaptured = false
             UiSmokeTestPreferenceLock.release()
         }
     }
@@ -132,8 +136,14 @@ class MainActivitySmokeTest {
     }
 
     @Test
-    fun recoveryDiagnosticsAreReadOnlyAndSafeHierarchyOmitsUserText() {
+    fun recoveryDiagnosticsAreReadOnlyAndSafeHierarchyOmitsKnownWindowText() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val device = launch()
+        val knownText = "ГЛАФИРА"
+        val knownDescription = "Открыть очередь задач"
+        assertTrue("Known text fixture must be visible before hierarchy capture", device.hasObject(By.text(knownText)))
+        assertTrue("Known description fixture must be visible before hierarchy capture",
+            device.hasObject(By.descContains(knownDescription)))
         val stale = File(context.cacheDir, "glafira-rollback-recovery-ui-diagnostic-${System.nanoTime()}.tmp")
         try {
             stale.writeText("diagnostic fixture must remain unchanged")
@@ -141,8 +151,11 @@ class MainActivitySmokeTest {
             assertTrue(stale.isFile)
             assertTrue(stale.readText() == "diagnostic fixture must remain unchanged")
             val hierarchy = captureSafeWindowHierarchy()
-            assertFalse(hierarchy.contains("text="))
-            assertFalse(hierarchy.contains("content-desc="))
+            assertFalse("A real active window must be traversed, not replaced by the no-root fallback",
+                hierarchy.contains("<no active accessibility root>"))
+            assertTrue("Captured hierarchy must contain structural node data", hierarchy.contains("children="))
+            assertFalse("Known visible text must not enter diagnostics", hierarchy.contains(knownText))
+            assertFalse("Known accessibility description must not enter diagnostics", hierarchy.contains(knownDescription))
         } finally {
             check(!stale.exists() || stale.delete())
         }
