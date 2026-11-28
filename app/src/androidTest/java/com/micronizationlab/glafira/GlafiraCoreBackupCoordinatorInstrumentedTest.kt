@@ -52,6 +52,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var pauseCount = 0
         var failPauseForRestoreCount = 0
         var failPlaintextSnapshotDirectorySyncOnce = false
+        var armPlaintextSnapshotDirectorySyncOnLastPauseFailure = false
+        var plaintextSnapshotAbsentAtParentDirectorySyncFailure = false
         var plaintextSnapshotDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCompletedCalls = 0
         override suspend fun <T> withPaused(block: () -> T): T {
@@ -63,6 +65,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             pauseContexts += context
             if (failPauseForRestoreCount > 0) {
                 failPauseForRestoreCount--
+                if (failPauseForRestoreCount == 0 && armPlaintextSnapshotDirectorySyncOnLastPauseFailure) {
+                    armPlaintextSnapshotDirectorySyncOnLastPauseFailure = false
+                    failPlaintextSnapshotDirectorySyncOnce = true
+                }
                 throw IOException("injected pause failure after restore")
             }
         }
@@ -77,6 +83,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             if (directory.absoluteFile == context.filesDir.absoluteFile) {
                 plaintextSnapshotDirectorySyncCalls++
                 if (failPlaintextSnapshotDirectorySyncOnce) {
+                    plaintextSnapshotAbsentAtParentDirectorySyncFailure =
+                        !File(context.filesDir, ".glafira-core-snapshot").exists()
                     failPlaintextSnapshotDirectorySyncOnce = false
                     throw IOException("injected plaintext snapshot parent-directory fsync failure")
                 }
@@ -828,21 +836,54 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun sharedInterruptedRestoreGuardRejectsJournalSymlinkWithoutMarkers() {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val target = File(context.cacheDir, "markerless-journal-symlink-target").apply { check(mkdirs()) }
+        try {
+            Files.createSymbolicLink(journal.toPath(), target.toPath())
+            assertThrows(IllegalStateException::class.java) {
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
+            }
+        } finally {
+            Files.deleteIfExists(journal.toPath())
+            check(!target.exists() || target.deleteRecursively())
+        }
+    }
+
+    @Test
+    fun recoverRetainsPublicUnitReturnType() = runBlocking {
+        val passphrase = "recover-unit-contract".toCharArray()
+        try {
+            val result: Any? = isolatedCoordinator().recover(passphrase)
+            assertEquals(Unit, result)
+        } finally {
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun failedRestoreRemovesPlaintextExportWhenRollbackAlsoFails() = runBlocking {
-        store.enqueue(task("restore-failure-existing-task"))
         val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-failed-restore-plaintext".toCharArray()
         val archive = coordinator.create(passphrase)
+        // The selected archive intentionally lacks this task. A failed rollback must restore
+        // the pre-restore database rather than leave the selected archive's state in place.
+        store.enqueue(task("restore-failure-existing-task"))
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
         try {
             withOwnedRollbackKey {
                 fixtureRuntimeHooks.failPauseForRestoreCount = 2
+                fixtureRuntimeHooks.armPlaintextSnapshotDirectorySyncOnLastPauseFailure = true
                 val failure = assertThrows(IOException::class.java) {
                     runBlocking { coordinator.restore(archive, passphrase) }
                 }
                 assertTrue("The rollback failure remains attached to the original restore failure",
                     failure.suppressed.any { it is IllegalStateException })
+                assertTrue("Catch-path plaintext cleanup fsync failure remains attached to the original restore failure",
+                    failure.suppressed.any { it is IOException && it.message?.contains("parent-directory fsync") == true })
+                assertTrue("Catch-path cleanup removed the snapshot before attempting its parent fsync",
+                    fixtureRuntimeHooks.plaintextSnapshotAbsentAtParentDirectorySyncFailure)
                 assertFalse("Failed restore must not leave its plaintext snapshot directory", snapshotDirectory.exists())
                 assertTrue("Rollback journal remains available for owner recovery", File(journal, "restore.pending").isFile)
                 assertTrue("Original Core task remains present after failed restore",
@@ -855,6 +896,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         } finally {
             fixtureRuntimeHooks.failPauseForRestoreCount = 0
+            fixtureRuntimeHooks.armPlaintextSnapshotDirectorySyncOnLastPauseFailure = false
+            fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
             archive.delete()
             passphrase.fill(0.toChar())
         }
