@@ -886,7 +886,7 @@ jobs:
           JSON
             exit 0
           elif [[ "$1" == "api" && "$2" == "graphql" && "$3" == "-f" ]]; then
-            printf '%s\\n' '{"data":{"repository":{"pullRequests":{"totalCount":1,"nodes":[{"number":7001}]}}}}'
+            printf '%s\n' '{"data":{"repository":{"pullRequests":{"totalCount":1,"nodes":[{"number":7001}]}}}}'
             exit 0
           elif [[ "$1" == "api" && "$2" == repos/*/actions/runs* ]]; then
             echo "unexpected Actions history request for a PR with a usable rollup" >&2
