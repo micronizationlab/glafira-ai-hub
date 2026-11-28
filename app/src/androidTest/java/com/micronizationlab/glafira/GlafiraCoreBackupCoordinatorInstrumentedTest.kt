@@ -401,6 +401,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun rollbackJournalPathPresent(journal: File): Boolean =
         Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)
 
+    private fun hasNoSymbolicLinkComponents(path: Path): Boolean {
+        var component: Path? = path.toAbsolutePath().normalize()
+        while (component != null) {
+            if (Files.isSymbolicLink(component)) return false
+            component = component.parent
+        }
+        return true
+    }
+
     private fun deleteTreeWithoutFollowingLinks(root: Path) {
         check(!Files.isSymbolicLink(root)) { "Refusing to recursively delete a symbolic-link fixture root." }
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
@@ -425,6 +434,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val noBackupRoot = context.noBackupFilesDir.toPath().toAbsolutePath().normalize()
         val expectedNoBackupRoot = fixtureRoot.resolve("no-backup")
         val expectedJournal = expectedNoBackupRoot.resolve("glafira-restore-journal")
+        val dataRoot = appContext.dataDir.toPath().toAbsolutePath().normalize()
+        val cacheRoot = appContext.cacheDir.toPath().toAbsolutePath().normalize()
+        check(cacheRoot == dataRoot.resolve("cache") && fixtureRoot.parent == cacheRoot) {
+            "Refusing to clean a fixture whose parent chain is outside the expected app cache."
+        }
+        check(hasNoSymbolicLinkComponents(expectedJournal)) {
+            "Refusing to clean a rollback journal through a symbolic-link ancestor."
+        }
         check(noBackupRoot == expectedNoBackupRoot) {
             "Refusing to clean a journal outside this fixture's no-backup directory."
         }
@@ -650,6 +667,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val runId = testRunId
         val noBackup = context.noBackupFilesDir
         val outside = File(context.cacheDir, "journal-root-link-outside-$runId").apply { check(mkdir()) }
+        File(outside, "test-owner").writeText(runId)
         val canary = File(outside, "canary.txt").apply { writeText("must-survive") }
         val linkedJournal = File(noBackup, "glafira-restore-journal")
         var beforeDeleteRan = false
@@ -665,6 +683,23 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue("Linked journal path is preserved for inspection", Files.isSymbolicLink(linkedJournal.toPath()))
         } finally {
             if (Files.isSymbolicLink(linkedJournal.toPath())) Files.delete(linkedJournal.toPath())
+            if (outside.exists()) deleteTreeWithoutFollowingLinks(outside.toPath())
+        }
+    }
+
+    @Test
+    fun rollbackJournalPathValidationRejectsSymlinkedAncestorComponents() {
+        val runId = testRunId
+        val outside = File(appContext.cacheDir, "ancestor-link-target-$runId").apply { check(mkdir()) }
+        val canary = File(outside, "canary.txt").apply { writeText("must-survive") }
+        val linkedParent = File(appContext.cacheDir, "ancestor-link-parent-$runId")
+        try {
+            Files.createSymbolicLink(linkedParent.toPath(), outside.toPath())
+            val candidate = linkedParent.toPath().resolve("fixture/no-backup/glafira-restore-journal")
+            assertFalse("A symbolic-link ancestor must invalidate the journal path", hasNoSymbolicLinkComponents(candidate))
+            assertEquals("must-survive", canary.readText())
+        } finally {
+            if (Files.isSymbolicLink(linkedParent.toPath())) Files.delete(linkedParent.toPath())
             if (outside.exists()) deleteTreeWithoutFollowingLinks(outside.toPath())
         }
     }
