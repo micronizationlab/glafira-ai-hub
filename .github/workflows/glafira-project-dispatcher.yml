@@ -610,7 +610,7 @@ jobs:
             }
             echo graphql >> "$CALL_LOG"
             printf '%s\\n' '{"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":true,"endCursor":"cursor-page-2"},"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}'
-            echo "injected GraphQL page two failure (ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ) [github_pat_0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ]" >&2
+            echo "injected GraphQL page two failure (ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ) [github_pat_0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ] [Bearer     synthetic-bearer-secret]" >&2
             exit 23
           fi
           echo unexpected-rest >> "$CALL_LOG"
@@ -627,10 +627,11 @@ jobs:
           [[ "$(cat "$tmp/gh-calls.log")" == "graphql" ]]
           grep -Fq "UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit 23); REST offset fallback is disabled." "$tmp/graphql-outage.err"
           grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
-          [[ "$(grep -oF '[REDACTED]' "$tmp/graphql-outage.err" | wc -l | tr -d ' ')" -eq 2 ]]
+          [[ "$(grep -oF '[REDACTED]' "$tmp/graphql-outage.err" | wc -l | tr -d ' ')" -eq 3 ]]
           classic_token="ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
           fine_token="github_pat_0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-          for token in "$classic_token" "$fine_token"; do
+          bearer_token="synthetic-bearer-secret"
+          for token in "$classic_token" "$fine_token" "$bearer_token"; do
             for ((i = 0; i + 4 <= ${#token}; i++)); do
               fragment="${token:i:4}"
               if grep -Fq -- "$fragment" "$tmp/graphql-outage.err"; then
