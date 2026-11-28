@@ -1126,10 +1126,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 failure.message.orEmpty().contains("Восстановление зафиксировано")
             )
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-            assertTrue(
-                "If cleanup leaves the journal directory behind, a committed marker must remain to retry recovery",
-                !journal.exists() || File(journal, "restore.committed").isFile
-            )
+            val committedMarker = File(journal, "restore.committed")
+            assertTrue("The journal must remain available for retry after injected cleanup failure", journal.isDirectory)
+            assertTrue("The committed marker must remain durable for retry recovery", committedMarker.isFile)
+            assertEquals("GLAFIRA_RESTORE_COMMITTED_V1", committedMarker.readText(Charsets.UTF_8))
             assertEquals(
                 "The portable snapshot parent must be synced once; the catch path must not repeat deletion",
                 1,
