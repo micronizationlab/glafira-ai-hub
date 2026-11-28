@@ -141,9 +141,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     }
                     checkFixtureRootOwnership(testRunId, testRoot)
                     rollbackCipher.deleteKey()
+                    val secondaryAlias = rollbackCipher.keyAlias + "_second"
+                    val tertiaryAlias = rollbackCipher.keyAlias + "_third"
+                    GlafiraRollbackSnapshotCipher(secondaryAlias).deleteKey()
+                    GlafiraRollbackSnapshotCipher(tertiaryAlias).deleteKey()
                     deleteTreeWithoutFollowingLinks(testRoot.toPath())
                     syncMarkerDirectory(checkNotNull(testRoot.parentFile))
                     clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
+                    clearFixtureKeyAliasOwner(secondaryAlias, testRunId)
+                    clearFixtureKeyAliasOwner(tertiaryAlias, testRunId)
                 }
             } catch (cleanup: Throwable) {
                 if (failure != null) failure!!.addSuppressed(cleanup) else failure = cleanup
