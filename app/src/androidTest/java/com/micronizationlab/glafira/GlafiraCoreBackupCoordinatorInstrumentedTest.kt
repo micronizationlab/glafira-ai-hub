@@ -1887,7 +1887,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     )
                                 }
                                 if (journal.exists()) {
-                                    check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
+                                    check(rollbackOwnerMarker().isFile &&
+                                        rollbackOwnerMarker().readText(Charsets.UTF_8) == runId)
                                     if (rollbackKeyExists()) deleteFixtureRollbackKey()
                                     check(journal.deleteRecursively())
                                 } else check(!rollbackKeyExists()) {
