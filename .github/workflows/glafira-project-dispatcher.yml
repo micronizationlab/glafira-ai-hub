@@ -346,6 +346,33 @@ jobs:
           gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup[0].name == "Android CI" and .[1].number == 2' <<< "$gql_prs" >/dev/null
 
+          # A successful HTTP request with an incomplete cursor chain is a jq validation failure,
+          # not a GraphQL transport failure whose exit code happens to equal jq's exit code.
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            [[ "$3" == "--paginate" && "$4" == "-f" && "$5" == query=* ]] || exit 90
+            [[ "$5" == *"pageInfo"* && "$5" == *"endCursor"* ]] || exit 91
+            cat <<'JSON'
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-page-2"},"nodes":[{"number":1,"title":"incomplete","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          JSON
+            exit 0
+          fi
+          exit 99
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          if output="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-validation.err")"; then
+            echo "incomplete cursor chain was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ -z "$output" ]]
+          grep -Fq "GraphQL open-PR response failed schema/completeness validation (jq exit 1)" "$tmp/graphql-validation.err"
+          if grep -Fq "GraphQL cursor-based open-PR inventory unavailable" "$tmp/graphql-validation.err"; then
+            echo "jq validation failure was misreported as a GraphQL transport failure" >&2; exit 1
+          fi
+
           # A later-page GraphQL failure must discard partial stdout and never call REST.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
