@@ -247,24 +247,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun isolatedCoordinator() =
         GlafiraCoreBackupCoordinator(context, store, rollbackCipher, fixtureRuntimeHooks)
 
-    /**
-     * Production restore pauses the real Core scheduler. This fixture injects a recorder/no-op
-     * runtime hook and must not cancel app-owned work. Skip while any known unique Core queue
-     * work is unfinished so the isolated fixture cannot race the application's active work.
-     */
-    private fun assertNoActiveCoreWork() {
-        val workManager = androidx.work.WorkManager.getInstance(appContext)
-        listOf("glafira-core-queue-drain", "glafira-core-queue-retry", "glafira-core-queue-network")
-            .forEach { uniqueName ->
-                val active = workManager.getWorkInfosForUniqueWork(uniqueName).get()
-                    .filterNot { it.state.isFinished }
-                org.junit.Assume.assumeTrue(
-                    "Skip isolated backup test while app-owned Core work is active: $uniqueName",
-                    active.isEmpty()
-                )
-            }
-    }
-
     private class IsolatedBackupTestContext(base: Context, private val root: File) : ContextWrapper(base) {
         private val databases = File(root, "databases").apply { mkdirs() }
         private val files = File(root, "files").apply { mkdirs() }; private val noBackup = File(root, "no-backup").apply { mkdirs() }; private val cache = File(root, "cache").apply { mkdirs() }
@@ -986,7 +968,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     private suspend fun <T> withOwnedRollbackKey(block: suspend () -> T): T {
-        assertNoActiveCoreWork()
         val runId = testRunId
         var markerPublished = false
         var primaryFailure: Throwable? = null
