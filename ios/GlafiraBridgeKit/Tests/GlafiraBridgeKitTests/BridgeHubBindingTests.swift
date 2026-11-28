@@ -33,13 +33,6 @@ final class BridgeHubBindingTests: XCTestCase {
         XCTAssertEqual(value.transportOrigin, "https://192.168.1.20:8443")
     }
 
-    func testDeprecatedCodableCompatibilityRoundTripsValidatedBinding() throws {
-        let original = try binding()
-        let encoded = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(BridgeHubBinding.self, from: encoded)
-        XCTAssertEqual(decoded, original)
-    }
-
     func testCanonicalizesSchemeAndHostAndProvidesTransportOrigin() throws {
         let value = try binding(endpoint: "HTTPS://192.168.1.20:8443/bridge/v1")
         XCTAssertEqual(value.endpoint, endpoint)
@@ -132,13 +125,11 @@ final class BridgeHubBindingTests: XCTestCase {
         XCTAssertThrowsError(try binding(expiresAt: enrolledAt + 365 * 24 * 60 * 60 * 1_000 + 1))
     }
 
-    func testBoundedPersistenceAPIIsPreferredAndDeprecatedCodableRemainsCompatible() throws {
+    func testBoundedPersistenceAPIIsTheOnlySupportedBindingCodec() throws {
         let bindingType: Any.Type = BridgeHubBinding.self
-        XCTAssertTrue(bindingType is Encodable.Type)
-        XCTAssertTrue(bindingType is Decodable.Type)
+        XCTAssertFalse(bindingType is Encodable.Type)
+        XCTAssertFalse(bindingType is Decodable.Type)
         let original = try binding()
-        let legacyData = try JSONEncoder().encode(original)
-        XCTAssertEqual(try JSONDecoder().decode(BridgeHubBinding.self, from: legacyData), original)
         let persisted = try BridgeHubBindingPersistence.encode(original)
         XCTAssertEqual(try BridgeHubBindingPersistence.decode(persisted), original)
     }
