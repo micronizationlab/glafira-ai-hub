@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import android.content.Intent
+import android.content.SharedPreferences
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,6 +11,7 @@ import androidx.test.uiautomator.Until
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,6 +52,41 @@ class BackupSettingsSmokeTest {
             UiSmokeTestPreferenceLock.release()
         }
     }
+    @Test
+    fun interruptedPreferenceRecoversAndFailedRestoreStillAttemptsRelock() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
+        val state = context.getSharedPreferences("glafira_ui_smoke_recovery", android.content.Context.MODE_PRIVATE)
+        val original = preferences.getBoolean("biometric_enabled", false)
+        try {
+            persistOriginalBiometricPreference(context, true)
+            assertTrue(preferences.edit().putBoolean("biometric_enabled", false).commit())
+            recoverInterruptedBiometricPreference(context, preferences)
+            assertTrue(preferences.getBoolean("biometric_enabled", false))
+            assertTrue(!state.getBoolean("pending", true))
+
+            persistOriginalBiometricPreference(context, false)
+            val failingPreferences = object : SharedPreferences by preferences {
+                override fun edit(): SharedPreferences.Editor {
+                    val editor = preferences.edit()
+                    return object : SharedPreferences.Editor by editor {
+                        override fun commit(): Boolean = false
+                    }
+                }
+            }
+            var relaunchAttempted = false
+            assertThrows(IllegalStateException::class.java) {
+                restoreBiometricPreferenceAndRelock(context, failingPreferences, false) {
+                    relaunchAttempted = true
+                }
+            }
+            assertTrue("Relaunch must still be attempted after preference commit failure", relaunchAttempted)
+            assertTrue("Failed restoration must retain the recovery snapshot", state.getBoolean("pending", false))
+        } finally {
+            restoreBiometricPreferenceAndRelock(context, preferences, original)
+        }
+    }
+
     @Test
     fun manualBackupActionRemainsEnabledAndExplainsMissingFolder() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
