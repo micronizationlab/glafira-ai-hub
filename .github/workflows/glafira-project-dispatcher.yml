@@ -88,7 +88,7 @@ jobs:
               pullRequests(first: 100, after: $endCursor, states: OPEN) {
                 pageInfo { hasNextPage endCursor }
                 nodes {
-                  number title headRefName headRefOid baseRefOid isDraft url
+                  number state title headRefName headRefOid baseRefOid isDraft url
                   statusCheckRollup { contexts(first: 100) { nodes {
                     __typename
                     ... on CheckRun { name status conclusion detailsUrl }
@@ -101,9 +101,22 @@ jobs:
           graphql_error="$RUNNER_TEMP/glafira-open-prs-graphql-error.log"
           validation_error="$RUNNER_TEMP/glafira-open-prs-graphql-validation-error.log"
           aggregation_error="$RUNNER_TEMP/glafira-open-prs-graphql-aggregation-error.log"
-          pages_file="$(mktemp "$RUNNER_TEMP/glafira-open-prs-pages.XXXXXX")"
-          aggregated_file="$(mktemp "$RUNNER_TEMP/glafira-open-prs-aggregated.XXXXXX")"
-          trap 'rm -f "$pages_file" "$aggregated_file"' EXIT
+          pages_file=""
+          aggregated_file=""
+          cleanup_fetch_files() {
+            [[ -z "$pages_file" ]] || rm -f "$pages_file"
+            [[ -z "$aggregated_file" ]] || rm -f "$aggregated_file"
+            rm -f "$graphql_error" "$validation_error" "$aggregation_error"
+          }
+          pages_file="$(mktemp "$RUNNER_TEMP/glafira-open-prs-pages.XXXXXX")" || {
+            echo "UNKNOWN: cannot allocate GraphQL page snapshot." >&2
+            exit 1
+          }
+          trap cleanup_fetch_files EXIT
+          aggregated_file="$(mktemp "$RUNNER_TEMP/glafira-open-prs-aggregated.XXXXXX")" || {
+            echo "UNKNOWN: cannot allocate GraphQL aggregation snapshot." >&2
+            exit 1
+          }
 
           redacted_detail() {
             local error_file="$1"
@@ -111,11 +124,43 @@ jobs:
             if [[ -r "$error_file" ]]; then
               detail="$(tail -n 3 "$error_file" 2>/dev/null || true)"
             fi
-            printf '%s' "$detail" | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g; s/[[:space:]]+$//' || true
+            printf '%s' "$detail" | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer[[:space:]]+[A-Za-z0-9._~+\/-]+=*)/[REDACTED]/g; s/[[:space:]]+$//' || true
           }
 
           if gh api graphql --paginate -f query="$query" >"$pages_file" 2>"$graphql_error"; then
-            if jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' "$pages_file" >/dev/null 2>"$validation_error"; then
+            if jq -s -e '
+              length > 0
+              and all(.[];
+                (.errors // []) == []
+                and (.data.repository.pullRequests.nodes | type) == "array"
+                and (.data.repository.pullRequests.pageInfo | type) == "object"
+                and (.data.repository.pullRequests.pageInfo.hasNextPage | type) == "boolean"
+                and (
+                  if .data.repository.pullRequests.pageInfo.hasNextPage then
+                    (.data.repository.pullRequests.pageInfo.endCursor | type) == "string"
+                    and (.data.repository.pullRequests.pageInfo.endCursor | length) > 0
+                  else true end
+                )
+                and all(.data.repository.pullRequests.nodes[];
+                  type == "object"
+                  and .state == "OPEN"
+                  and (.number | type) == "number"
+                  and .number > 0
+                  and .number == (.number | floor)
+                  and (.headRefOid | type) == "string" and .headRefOid != ""
+                  and (.baseRefOid | type) == "string" and .baseRefOid != ""
+                )
+              )
+              and all(.[0:-1][];
+                .data.repository.pullRequests.pageInfo.hasNextPage == true
+                and (.data.repository.pullRequests.nodes | length) > 0
+              )
+              and .[-1].data.repository.pullRequests.pageInfo.hasNextPage == false
+              and (
+                ([.[].data.repository.pullRequests.nodes[].number] | length) ==
+                ([.[].data.repository.pullRequests.nodes[].number] | unique | length)
+              )
+            ' "$pages_file" >/dev/null 2>"$validation_error"; then
               if jq -s '[
                 .[].data.repository.pullRequests.nodes[] |
                 {
@@ -284,10 +329,20 @@ jobs:
             printf 'Probe %s (%s) returned exit %s\n' "$probe_name" "$probe_script" "$probe_status" >&2
             return "$probe_status"
           }
+
+          assert_probe_log_contains() {
+            local log_file="$1"
+            local expected="$2"
+            if ! grep -Fq "$expected" "$log_file"; then
+              cat "$log_file" >&2 || true
+              printf 'Probe diagnostic did not contain expected text: %s\n' "$expected" >&2
+              return 1
+            fi
+          }
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
-          tmp="$(mktemp -d)"
+          tmp="$(mktemp -d)" || { echo "Cannot allocate Dispatcher fixture workspace." >&2; exit 1; }
           trap 'rm -rf "$tmp"' EXIT
 
           force_probe_failure() {
@@ -302,8 +357,8 @@ jobs:
               echo "function probe returned unexpected exit $probe_status" >&2; exit 1
             fi
           fi
-          grep -Fq "Probe function with internal failure" "$tmp/dispatcher-function-probe.err"
-          grep -Fq "returned exit 1" "$tmp/dispatcher-function-probe.err"
+          assert_probe_log_contains "$tmp/dispatcher-function-probe.err" "Probe function with internal failure"
+          assert_probe_log_contains "$tmp/dispatcher-function-probe.err" "returned exit 1"
           if run_probe "pipeline failure with successful final stage" 'false | true; echo should-not-run' 2>"$tmp/dispatcher-pipeline-probe.err"; then
             echo "run_probe accepted a failed pipeline because its final command succeeded" >&2; exit 1
           else
@@ -312,8 +367,8 @@ jobs:
               echo "pipeline probe returned unexpected exit $probe_status" >&2; exit 1
             fi
           fi
-          grep -Fq "Probe pipeline failure with successful final stage" "$tmp/dispatcher-pipeline-probe.err"
-          grep -Fq "returned exit 1" "$tmp/dispatcher-pipeline-probe.err"
+          assert_probe_log_contains "$tmp/dispatcher-pipeline-probe.err" "Probe pipeline failure with successful final stage"
+          assert_probe_log_contains "$tmp/dispatcher-pipeline-probe.err" "returned exit 1"
           if run_probe "command substitution failure" 'value="$(false; printf hidden)"; printf "%s" "$value"' 2>"$tmp/dispatcher-command-substitution-probe.err"; then
             echo "run_probe accepted a failed command substitution followed by a successful command" >&2; exit 1
           else
@@ -322,8 +377,8 @@ jobs:
               echo "command substitution probe returned unexpected exit $probe_status" >&2; exit 1
             fi
           fi
-          grep -Fq "Probe command substitution failure" "$tmp/dispatcher-command-substitution-probe.err"
-          grep -Fq "returned exit 1" "$tmp/dispatcher-command-substitution-probe.err"
+          assert_probe_log_contains "$tmp/dispatcher-command-substitution-probe.err" "Probe command substitution failure"
+          assert_probe_log_contains "$tmp/dispatcher-command-substitution-probe.err" "returned exit 1"
           if [[ "${GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE:-0}" == "1" ]]; then
             forced_probe_command=force_probe_failure
           else
@@ -401,8 +456,8 @@ jobs:
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-one"},"nodes":[{"number":1,"state":"OPEN","title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":2,"state":"OPEN","title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
             exit 0
           fi
@@ -411,6 +466,35 @@ jobs:
           chmod +x "$tmp/fake-bin/gh"
           gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup[0].name == "Android CI" and .[1].number == 2' <<< "$gql_prs" >/dev/null
+
+          # Empty, partial, and GraphQL-error responses must never become a confirmed empty inventory.
+          cat > "$tmp/fake-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            cat "$GRAPHQL_FIXTURE"
+            exit 0
+          fi
+          exit 2
+          GH
+          chmod +x "$tmp/fake-bin/gh"
+          : > "$tmp/graphql-empty.jsonl"
+          cat > "$tmp/graphql-missing-page-info.jsonl" <<'JSON'
+          {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
+          JSON
+          cat > "$tmp/graphql-partial-error.jsonl" <<'JSON'
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}},"errors":[{"message":"injected partial GraphQL error"}]}
+          JSON
+          for invalid_graphql in empty missing-page-info partial-error; do
+            if output="$(GRAPHQL_FIXTURE="$tmp/graphql-$invalid_graphql.jsonl" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-$invalid_graphql.err")"; then
+              echo "invalid GraphQL response '$invalid_graphql' was incorrectly accepted" >&2; exit 1
+            else
+              [[ "$?" -eq 1 ]]
+            fi
+            [[ -z "$output" ]]
+            grep -Fq "GraphQL response validation failed" "$tmp/graphql-$invalid_graphql.err"
+          done
+          echo "GraphQL empty documents, missing pagination metadata and partial errors fail closed: PASS"
 
           # A later-page GraphQL failure must discard partial stdout and never call REST.
           cat > "$tmp/fake-bin/gh" <<'GH'
@@ -425,7 +509,7 @@ jobs:
           JSON
             classic_token="$(printf '%s' 'ghp_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')"
             fine_grained_token="$(printf '%s' 'github_pat_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-' '0123456789')"
-            printf 'injected GraphQL page two failure (%s %s)\n' "$classic_token" "$fine_grained_token" >&2
+            printf 'injected GraphQL page two failure (%s %s); bearer credential: Bearer   synthetic-bearer-token-0123456789),\n' "$classic_token" "$fine_grained_token" >&2
             exit 23
           fi
           echo unexpected-rest >> "$CALL_LOG"
@@ -442,6 +526,10 @@ jobs:
           grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
           grep -Fq "exit 23" "$tmp/graphql-outage.err"
           grep -Fq "[REDACTED]" "$tmp/graphql-outage.err"
+          grep -Fq "[REDACTED])," "$tmp/graphql-outage.err"
+          if grep -Fq "synthetic-bearer-token" "$tmp/graphql-outage.err"; then
+            echo "raw bearer credential reached the sanitized diagnostic" >&2; exit 1
+          fi
           if grep -Eq 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_-]{20,}' "$tmp/graphql-outage.err"; then
             echo "raw synthetic credential reached the sanitized diagnostic" >&2; exit 1
           fi
@@ -611,6 +699,19 @@ jobs:
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
+          if GLAFIRA_FIXTURE_FORCE_ERR_TRAP=1 bash "$RUNNER_TEMP/test-renderer.sh" >"$RUNNER_TEMP/dispatcher-forced-err.out" 2>"$RUNNER_TEMP/dispatcher-forced-err.log"; then
+            echo "forced ERR-trap fixture unexpectedly succeeded" >&2; exit 1
+          else
+            [[ "$?" -eq 37 ]]
+          fi
+          grep -Fq "Dispatcher fixture failed (exit 37)" "$RUNNER_TEMP/dispatcher-forced-err.log"
+          if GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE=1 bash "$RUNNER_TEMP/test-renderer.sh" >"$RUNNER_TEMP/dispatcher-forced-probe.out" 2>"$RUNNER_TEMP/dispatcher-forced-probe.log"; then
+            echo "forced probe-failure fixture unexpectedly succeeded" >&2; exit 1
+          else
+            [[ "$?" -eq 37 ]]
+          fi
+          grep -Fq "Probe injected top-level failure" "$RUNNER_TEMP/dispatcher-forced-probe.log"
+          echo "Dispatcher ERR trap and injected exit-37 probe failure are exercised by CI: PASS"
       - name: Build cross-workstream status report
         env:
           GH_TOKEN: ${{ github.token }}
@@ -645,7 +746,10 @@ jobs:
             bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Second PR inventory fetch or exact PR/head/base comparison failed."
             exit 1
           fi
-          latest_count="$(jq 'length' "$RUNNER_TEMP/glafira-open-prs.latest.json")"
+          if ! latest_count="$(jq -er 'if type == "array" then length else error("latest PR snapshot must be an array") end' "$RUNNER_TEMP/glafira-open-prs.latest.json" 2>"$RUNNER_TEMP/glafira-latest-count-error.log")"; then
+            bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Final PR inventory count failed; current identity is UNKNOWN."
+            exit 1
+          fi
           if [[ "$latest_count" -eq 0 ]]; then
             {
               echo "# GLAFIRA Project Dispatcher"
@@ -663,6 +767,11 @@ jobs:
           fi
           : > "$RUNNER_TEMP/glafira-workflow-runs.json" || { bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Cannot open local Actions snapshot."; exit 1; }
           printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
+          rendered_table="$RUNNER_TEMP/glafira-rendered-dispatcher-table.md"
+          if ! bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json" > "$rendered_table"; then
+            bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "PR status rendering failed; no partial inventory table is published."
+            exit 1
+          fi
           {
             echo "# GLAFIRA Project Dispatcher"
             echo ""
@@ -670,7 +779,7 @@ jobs:
             echo ""
             echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
             echo "|---:|---|---|---|:---:|"
-            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
+            cat "$rendered_table"
             echo ""
             echo "Policy: GraphQL cursor pagination is authoritative; REST offset fallback is disabled. Fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Skipped, cancelled, queued, partial or unknown states are not acceptance passes."
           } >> "$GITHUB_STEP_SUMMARY"
