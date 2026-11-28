@@ -1646,6 +1646,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val plaintextExport = File(plaintextSnapshot, "core-portable-v2.json").apply {
             writeText("fixture-only plaintext task/result data")
         }
+        val unexpectedSnapshotData = File(plaintextSnapshot, "unexpected-user-data.txt").apply {
+            writeText("must-survive")
+        }
         val passphrase = "committed-cleanup-reentry".toCharArray()
         try {
             fixtureRuntimeHooks.failCommittedCleanupOnce = true
@@ -1657,6 +1660,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue("Rollback database is retained while cleanup is interrupted", database.exists())
             assertTrue("Rollback archive is retained while cleanup is interrupted", archive.exists())
             assertTrue("Plaintext export remains until committed cleanup can run", plaintextExport.exists())
+
+            assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Unexpected staging data is preserved", unexpectedSnapshotData.isFile)
+            assertTrue("Known plaintext export is retained while cleanup is blocked", plaintextExport.isFile)
+            assertTrue("Rollback evidence remains while unexpected staging data exists", committed.isFile && database.isFile)
+            check(unexpectedSnapshotData.delete())
 
             isolatedCoordinator().recover(passphrase)
             assertFalse("Crash-left plaintext export is deleted during committed recovery", plaintextExport.exists())
