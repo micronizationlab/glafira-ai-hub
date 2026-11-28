@@ -392,7 +392,12 @@ fun BackupSettingsSection() {
                                     }
                                 }
                             }
-                            status = result.getOrElse { "Ошибка восстановления: ${it.message ?: "неизвестная ошибка"}" }
+                            status = when (val failure = result.exceptionOrNull()) {
+                                is CommittedRestoreCleanupPendingException ->
+                                    "Данные восстановлены: ${failure.verification.fileCount} файлов. Очистка журнала ожидает recovery; Core остаётся заблокирован до завершения."
+                                null -> result.getOrThrow()
+                                else -> "Ошибка восстановления: ${failure.message ?: "неизвестная ошибка"}"
+                            }
                             busy = false
                         }
                     }
