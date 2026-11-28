@@ -9,8 +9,6 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.LinkOption
 
 internal object UiSmokeTestPreferenceLock {
     private val lock = java.util.concurrent.locks.ReentrantLock(true)
@@ -92,12 +90,14 @@ internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacte
     require(maximumNodes > 0) { "Hierarchy node limit must be positive." }
     val truncationNoticePrefix = "<hierarchy summary bounded; nodes="
     val truncationNoticeSuffix = ">\n"
-    require(maximumCharacters > truncationNotice.length) {
+    val truncationNoticeReserve =
+        truncationNoticePrefix.length + maximumNodes.toString().length + truncationNoticeSuffix.length
+    require(maximumCharacters > truncationNoticeReserve) {
         "Hierarchy character limit must leave room for the truncation notice."
     }
     val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
         ?: return "<no active accessibility root>"
-    val bodyLimit = maximumCharacters - truncationNotice.length
+    val bodyLimit = maximumCharacters - truncationNoticeReserve
     val output = StringBuilder()
     var visited = 0
     var truncated = false
