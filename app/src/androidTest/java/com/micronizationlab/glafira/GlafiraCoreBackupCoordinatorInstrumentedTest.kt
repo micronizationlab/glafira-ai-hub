@@ -306,7 +306,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     private fun hasAppOwnedRollbackArtifactsReadOnly(): Boolean {
         val journal = File(appContext.noBackupFilesDir, "glafira-restore-journal")
-        if (journal.exists()) return true
+        if (rollbackJournalPathPresent(journal)) return true
         return appContext.cacheDir.listFiles { file ->
             file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
         }.orEmpty().any { it.exists() }
@@ -608,7 +608,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             Files.createSymbolicLink(linkedDirectory.toPath(), outsideDirectory.toPath())
             deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId)
             assertEquals("must-survive", outside.readText())
-            assertFalse("The owned journal is removed", journal.exists())
+            assertFalse("The owned journal is removed", rollbackJournalPathPresent(journal))
         } finally {
             if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
             else if (journal.exists()) deleteTreeWithoutFollowingLinks(journal.toPath())
@@ -1647,12 +1647,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     withFixtureLocks {
                         run {
                             if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
-                                if (primaryFailure != null && (journal.exists() || rollbackKeyExists())) {
+                                if (primaryFailure != null && (rollbackJournalPathPresent(journal) || rollbackKeyExists())) {
                                     throw IllegalStateException(
                                         "Preserving V3 fixture journal and key after a failed recovery assertion."
                                     )
                                 }
-                                if (journal.exists()) {
+                                if (rollbackJournalPathPresent(journal)) {
                                     deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) {
                                         if (rollbackKeyExists()) deleteFixtureRollbackKey()
                                     }
@@ -1744,7 +1744,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertFalse(committed.exists())
             assertFalse(database.exists())
             assertFalse(archive.exists())
-            assertFalse(journal.exists())
+            assertFalse(rollbackJournalPathPresent(journal))
             assertFalse(rollbackCipher.keyExists())
         } finally {
             passphrase.fill(0.toChar())
