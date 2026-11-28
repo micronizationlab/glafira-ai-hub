@@ -923,6 +923,45 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun recoveryPreservesUnregisteredRestoreTempInsteadOfDeletingUnknownData() = runBlocking {
+        val unknown = File(context.filesDir, "operator-owned.restore-tmp")
+        val passphrase = disposablePassphrase()
+        try {
+            unknown.writeText("unregistered data must survive")
+            assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            val failure = assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue(failure.message.orEmpty().contains("незарегистрированный"))
+            assertEquals("unregistered data must survive", unknown.readText(Charsets.UTF_8))
+            assertTrue(unknown.isFile)
+        } finally {
+            check(!unknown.exists() || unknown.delete())
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun recoverRemovesDanglingRollbackTempSymlinkWithoutFollowingTarget() = runBlocking {
+        val stale = File(context.cacheDir, "glafira-rollback-recovery-dangling-only.tmp")
+        val missingTarget = File(context.cacheDir, "rollback-recovery-missing-target-$testRunId")
+        val passphrase = disposablePassphrase()
+        try {
+            Files.createSymbolicLink(stale.toPath(), missingTarget.toPath())
+            assertTrue("The dangling link itself must keep recovery pending",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertTrue(Files.isSymbolicLink(stale.toPath()))
+            assertFalse(missingTarget.exists())
+            isolatedCoordinator().recover(passphrase)
+            assertFalse(Files.exists(stale.toPath(), LinkOption.NOFOLLOW_LINKS))
+            assertFalse("Recovery must not create or follow the missing target", missingTarget.exists())
+        } finally {
+            Files.deleteIfExists(stale.toPath())
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun recoveryRejectsDatabaseSymlinkWithoutConsumingItsTarget() = runBlocking {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
         File(journal, "restore.pending").writeText("GLAFIRA_RESTORE_ROLLBACK_V3")
