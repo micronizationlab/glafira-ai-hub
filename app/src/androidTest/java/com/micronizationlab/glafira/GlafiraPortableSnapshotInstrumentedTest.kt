@@ -29,7 +29,7 @@ class GlafiraPortableSnapshotInstrumentedTest {
     private lateinit var rollbackCipher: GlafiraRollbackSnapshotCipher
     private val journal get() = File(context.noBackupFilesDir, "glafira-restore-journal")
 
-    private class IsolatedSnapshotContext(base: Context, root: File) : ContextWrapper(base) {
+    private class IsolatedSnapshotContext(base: Context, private val root: File) : ContextWrapper(base) {
         private val databases = File(root, "databases").apply { mkdirs() }
         private val files = File(root, "files").apply { mkdirs() }
         private val noBackup = File(root, "no-backup").apply { mkdirs() }
