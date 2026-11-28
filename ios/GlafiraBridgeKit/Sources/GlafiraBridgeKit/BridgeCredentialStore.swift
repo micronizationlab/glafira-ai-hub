@@ -109,7 +109,7 @@ private enum BridgeHubBindingValidation {
               components.password == nil,
               components.query == nil,
               components.fragment == nil,
-              components.path == "/bridge/v1",
+              components.percentEncodedPath == "/bridge/v1",
               (1024...65_535).contains(effectivePort) else {
             return nil
         }
@@ -118,7 +118,7 @@ private enum BridgeHubBindingValidation {
         components.port = effectivePort
         guard let normalized = components.string,
               let normalizedURL = URL(string: normalized),
-              normalizedURL.path == "/bridge/v1",
+              normalizedURL.percentEncodedPath == "/bridge/v1",
               normalizedURL.scheme == "https",
               normalizedURL.port == effectivePort else {
             return nil
