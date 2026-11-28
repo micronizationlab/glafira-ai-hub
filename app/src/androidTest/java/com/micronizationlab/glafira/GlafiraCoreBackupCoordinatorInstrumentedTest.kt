@@ -1579,9 +1579,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             Files.createSymbolicLink(journal.toPath(), missingTarget.toPath())
             assertFalse("The symlink target is intentionally missing", journal.exists())
             assertTrue("The journal path itself is still a symlink", Files.isSymbolicLink(journal.toPath()))
-            assertThrows(IllegalStateException::class.java) {
+            val rejection = assertThrows(IllegalStateException::class.java) {
                 isolatedCoordinator().prepareRollback(passphrase)
             }
+            assertTrue("Failure must come from the explicit symlink guard", rejection.message.orEmpty().contains("символическую ссылку"))
+            assertFalse("The dangling symlink target must remain absent", missingTarget.exists())
             assertTrue("The dangling journal link is preserved for owner recovery", Files.isSymbolicLink(journal.toPath()))
             assertEquals("must-survive", canary.readText())
             assertFalse("No rollback key may be created for a rejected journal path", rollbackCipher.keyExists())
@@ -1603,6 +1605,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             assertFalse("Fixture starts with no plaintext snapshot", File(context.filesDir, ".glafira-core-snapshot").exists())
             fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls = 0
+            fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls = 0
             fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = true
             val injectedFailure = assertThrows(IOException::class.java) {
                 runBlocking { isolatedCoordinator().recover(passphrase) }
