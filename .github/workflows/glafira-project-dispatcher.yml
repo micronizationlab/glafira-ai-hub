@@ -331,7 +331,7 @@ jobs:
           JSON
             classic_token="$(printf '%s' 'ghp_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')"
             fine_grained_token="$(printf '%s' 'github_pat_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-' '0123456789')"
-            printf 'injected GraphQL page two failure (%s %s)\\n' "$classic_token" "$fine_grained_token" >&2
+            printf 'injected GraphQL page two failure (%s %s)\n' "$classic_token" "$fine_grained_token" >&2
             exit 23
           fi
           echo unexpected-rest >> "$CALL_LOG"
