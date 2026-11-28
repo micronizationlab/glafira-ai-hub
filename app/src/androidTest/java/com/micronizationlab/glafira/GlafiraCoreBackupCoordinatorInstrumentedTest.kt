@@ -51,6 +51,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
         var beforeCommittedCleanupAction: (() -> Unit)? = null
+        var beforeSelectedArchiveCleanupAction: ((File) -> Unit)? = null
         var failCommittedJournalDirectoryDeleteCount = 0
         var pauseCount = 0
         var failPauseForRestoreCount = 0
@@ -96,6 +97,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 failCommittedJournalDirectoryDeleteCount--
                 throw IOException("injected committed journal directory deletion failure")
             }
+        }
+        override fun beforeSelectedArchiveCleanup(selectedArchive: File) {
+            val action = beforeSelectedArchiveCleanupAction
+            beforeSelectedArchiveCleanupAction = null
+            action?.invoke(selectedArchive)
         }
         override fun beforeDirectorySync(directory: File) {
             val journalDirectory = File(context.noBackupFilesDir, "glafira-restore-journal").absoluteFile
@@ -1010,6 +1016,39 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             Files.deleteIfExists(archive.toPath())
             check(!journal.exists() || journal.deleteRecursively())
             check(target.delete())
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun selectedArchiveCleanupFailureDoesNotClaimCoreRecoveryIsPending() = runBlocking {
+        val coordinator = isolatedCoordinator()
+        val passphrase = disposablePassphrase()
+        val archive = coordinator.create(passphrase)
+        var leftover: File? = null
+        try {
+            store.enqueue(task("selected-archive-cleanup-result"))
+            fixtureRuntimeHooks.beforeSelectedArchiveCleanupAction = { selected ->
+                check(selected.delete())
+                check(selected.mkdir())
+                File(selected, "encrypted-copy-cleanup-canary").writeText("keep until owner cleanup")
+                leftover = selected
+            }
+            val failure = assertThrows(CommittedRestoreArchiveCleanupException::class.java) {
+                runBlocking { coordinator.restore(archive, passphrase) }
+            }
+            assertTrue(failure.verification.fileCount > 0)
+            assertEquals(leftover?.absolutePath, failure.archivePath)
+            assertTrue("The leftover is an encrypted cache copy, not a recovery journal",
+                leftover?.isDirectory == true)
+            assertFalse("Core must not be blocked when only the selected encrypted copy remains",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertFalse("Queued dispatch must not be blocked by an already committed restore",
+                isPendingDispatchBlocked(context))
+        } finally {
+            fixtureRuntimeHooks.beforeSelectedArchiveCleanupAction = null
+            leftover?.deleteRecursively()
+            archive.delete()
             passphrase.fill(0.toChar())
         }
     }
