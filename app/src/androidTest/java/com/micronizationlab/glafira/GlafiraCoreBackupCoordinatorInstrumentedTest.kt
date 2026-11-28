@@ -666,6 +666,47 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun orphanCleanupReclaimsSecondaryAliasesOnlyUnderPrimaryFixtureOwnership() {
+        val orphanRunId = UUID.randomUUID().toString()
+        val primary = "glafira_test_rollback_" + orphanRunId.replace("-", "")
+        val second = primary + "_second"
+        val third = primary + "_third"
+        val root = File(appContext.cacheDir, "glafira-backup-test-$orphanRunId")
+        val source = File(appContext.cacheDir, "orphan-alias-source-$orphanRunId").apply {
+            writeText("fixture key material")
+        }
+        val encrypted = File(appContext.cacheDir, "orphan-alias-encrypted-$orphanRunId")
+        val ciphers = listOf(
+            GlafiraRollbackSnapshotCipher(primary),
+            GlafiraRollbackSnapshotCipher(second),
+            GlafiraRollbackSnapshotCipher(third)
+        )
+        try {
+            check(root.mkdir())
+            writeFixtureRootOwnerMarker(orphanRunId, root, primary)
+            ciphers.forEachIndexed { index, cipher ->
+                registerFixtureKeyAlias(cipher.keyAlias, orphanRunId)
+                cipher.encrypt(source, File(encrypted.parentFile, encrypted.name + "-$index"))
+            }
+            assertTrue(ciphers.all { it.keyExists() })
+
+            cleanupOwnedLeftoverRollbackFixture()
+
+            assertTrue(ciphers.none { it.keyExists() })
+            assertFalse(root.exists())
+            assertTrue(ciphers.none { fixtureKeyOwnerMarker(it.keyAlias, orphanRunId).exists() })
+        } finally {
+            ciphers.forEach { it.deleteKey() }
+            ciphers.forEach { clearFixtureKeyAliasOwner(it.keyAlias, orphanRunId) }
+            check(!root.exists() || root.deleteRecursively())
+            source.delete()
+            File(encrypted.parentFile, encrypted.name + "-0").delete()
+            File(encrypted.parentFile, encrypted.name + "-1").delete()
+            File(encrypted.parentFile, encrypted.name + "-2").delete()
+        }
+    }
+
+    @Test
     fun nonFileKeyOwnerRecordsArePreservedWithoutBlockingCleanup() {
         val runId = UUID.randomUUID().toString()
         val directoryMarker = File(appContext.noBackupFilesDir, "glafira-test-key-owner-" + runId + "-primary")
