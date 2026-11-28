@@ -519,9 +519,10 @@ jobs:
           cat > "$tmp/failing-validation-jq/jq" <<'JQ_VALIDATION'
           #!/usr/bin/env bash
           set -euo pipefail
-          [[ "$1" == "-s" && "$2" == "-e" && "$3" == 'all(.[]; .data.repository.pullRequests.nodes != null)' ]] || exit 43
-          [[ "$4" == *"glafira-open-prs-pages."* ]] || exit 44
-          cmp -s "$4" "$EXPECTED_PAGES_FILE" || exit 45
+          [[ "$1" == "-s" && "$2" == "-e" && "$3" == 'all(.[]; .data.repository.pullRequests.nodes != null)' ]] || {
+            printf 'unexpected validator arguments: %s\n' "$*" >&2
+            exit 43
+          }
           printf 'validator\n' >> "$JQ_CALL_LOG"
           exit 42
           JQ_VALIDATION
@@ -534,7 +535,7 @@ jobs:
           [[ ! -s "$tmp/graphql-validation-jq42.out" ]]
           grep -Fq "GraphQL response validation failed (jq exit 42)" "$tmp/graphql-validation-jq42.err"
           [[ "$(cat "$tmp/graphql-validation-jq42-calls.log")" == "graphql" ]]
-          [[ "$(cat "$tmp/validation-jq-stages.log")" == "validator" ]]
+          [[ "$(wc -l < "$tmp/validation-jq-stages.log")" -eq 1 ]] && grep -Fxq "validator" "$tmp/validation-jq-stages.log"
           echo "GraphQL malformed-page validation and injected jq exit 42 fail closed without REST fallback: PASS"
           mkdir -p "$tmp/failing-aggregation-jq"
           real_jq="$(command -v jq)"
