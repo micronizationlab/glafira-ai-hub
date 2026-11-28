@@ -377,12 +377,31 @@ class GlafiraCoreBackupCoordinator internal constructor(
             "Не удалось удалить маркер восстановления; маркер завершения сохранён."
         }
         syncDirectory(journal)
-        check(committedMarker.delete()) { "Не удалось удалить маркер завершения восстановления." }
-        syncDirectory(journal)
-        // All rollback evidence and both markers are now durably gone; only empty-directory
-        // removal and its parent fsync remain. The restore caller already recorded its commit.
-        check(journal.deleteRecursively()) { "Не удалось удалить каталог журнала восстановления." }
-        syncDirectory(app.noBackupFilesDir)
+        val committedPath = committedMarker.toPath()
+        val hasUnexpectedJournalEntries = Files.newDirectoryStream(journal.toPath()).use { entries ->
+            entries.any { it != committedPath }
+        }
+        if (hasUnexpectedJournalEntries) {
+            throw IOException("В журнале восстановления остались неизвестные данные; маркер завершения сохранён.")
+        }
+        check(Files.deleteIfExists(committedPath)) { "Не удалось удалить маркер завершения восстановления." }
+        try {
+            syncDirectory(journal)
+            // Non-recursive deletion refuses to remove any unexpected entry. If either the
+            // directory removal or parent fsync fails, recreate the durable commit marker.
+            Files.delete(journal.toPath())
+            syncDirectory(app.noBackupFilesDir)
+        } catch (cleanupFailure: Exception) {
+            try {
+                if (!pathExistsNoFollow(journal.toPath())) {
+                    check(journal.mkdirs()) { "Не удалось восстановить каталог журнала завершения." }
+                }
+                publishCommittedMarker()
+            } catch (markerRestoreFailure: Exception) {
+                cleanupFailure.addSuppressed(markerRestoreFailure)
+            }
+            throw cleanupFailure
+        }
     }
 
     /**
