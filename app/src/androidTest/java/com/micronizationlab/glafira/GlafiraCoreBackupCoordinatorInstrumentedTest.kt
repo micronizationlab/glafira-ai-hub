@@ -49,6 +49,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private inner class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
+        var beforeCommittedCleanupAction: (() -> Unit)? = null
         var failCommittedJournalDirectoryDeleteCount = 0
         var pauseCount = 0
         var failPauseForRestoreCount = 0
@@ -76,6 +77,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
         override fun beforeCommittedJournalCleanup() {
+            val action = beforeCommittedCleanupAction
+            beforeCommittedCleanupAction = null
+            action?.invoke()
             if (failCommittedCleanupOnce || failCommittedCleanupCount > 0) {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
@@ -2000,6 +2004,50 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             passphrase.fill(0.toChar())
             // If recovery did not remove the committed marker, retain the complete fixture evidence.
             if (!committed.exists() && journal.exists()) check(journal.deleteRecursively())
+        }
+    }
+
+    @Test
+    fun restoreRemovesKnownPlaintextExportButPreservesUnexpectedStagingData() = runBlocking {
+        val coordinator = isolatedCoordinator()
+        val passphrase = disposablePassphrase()
+        val archive = coordinator.create(passphrase)
+        val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
+        val plaintextExport = File(snapshotDirectory, "core-portable-v2.json")
+        val unexpected = File(snapshotDirectory, "unexpected-canary.bin")
+        try {
+            store.enqueue(task("created-after-backup"))
+            fixtureRuntimeHooks.beforeCommittedCleanupAction = {
+                check(snapshotDirectory.isDirectory)
+                unexpected.writeText("preserve-this-unexpected-data")
+            }
+
+            val cleanupPending = assertThrows(IOException::class.java) {
+                runBlocking { coordinator.restore(archive, passphrase) }
+            }
+            assertTrue(cleanupPending.message.orEmpty().contains("Восстановление зафиксировано"))
+            assertFalse("Committed cleanup must remove the known plaintext export", plaintextExport.exists())
+            assertTrue("Restore-finally cleanup must preserve unexpected staging data", unexpected.isFile)
+            assertEquals("preserve-this-unexpected-data", unexpected.readText(Charsets.UTF_8))
+            assertTrue("The staging directory remains while unexpected data is present", snapshotDirectory.isDirectory)
+            assertTrue(
+                "Committed recovery evidence remains while staging cleanup is pending",
+                File(context.noBackupFilesDir, "glafira-restore-journal/restore.committed").isFile
+            )
+            assertNull("Restore must still apply the selected archive", store.getTask("created-after-backup"))
+
+            check(unexpected.delete())
+            coordinator.recover(passphrase)
+
+            assertFalse("Empty staging directory is removed after recovery", snapshotDirectory.exists())
+            assertFalse(
+                "Committed journal is removed after unexpected data is cleared",
+                File(context.noBackupFilesDir, "glafira-restore-journal").exists()
+            )
+        } finally {
+            fixtureRuntimeHooks.beforeCommittedCleanupAction = null
+            archive.delete()
+            passphrase.fill(0.toChar())
         }
     }
 
