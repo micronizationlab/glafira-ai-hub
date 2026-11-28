@@ -263,6 +263,109 @@ jobs:
           exit 1
           ERROR_SUMMARY
           chmod +x "$RUNNER_TEMP/write-dispatcher-error-summary.sh"
+          cat > "$RUNNER_TEMP/build-dispatcher-status-report.sh" <<'REPORT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          summary="${GITHUB_STEP_SUMMARY:?}"
+          repo="${GH_REPO:?}"
+          initial="$RUNNER_TEMP/glafira-open-prs.json"
+          reconciled="$RUNNER_TEMP/glafira-open-prs.latest.json"
+          final="$RUNNER_TEMP/glafira-open-prs.final.json"
+          runs="$RUNNER_TEMP/glafira-workflow-runs.json"
+          fail() {
+            bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$summary" "$1" || true
+            exit 1
+          }
+
+          : > "$initial" || fail "Cannot open initial PR snapshot '$initial'."
+          if ! bash "$RUNNER_TEMP/fetch-open-prs.sh" "$repo" > "$initial"; then
+            fail "Initial GraphQL cursor-based open-PR inventory is unavailable; no status is reported as passing."
+          fi
+          if ! jq -e 'type == "array"' "$initial" >/dev/null; then
+            fail "Initial open-PR snapshot is malformed or is not a JSON array."
+          fi
+
+          if ! reconciliation_result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$initial" "$reconciled" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh" "$repo")"; then
+            fail "Second PR inventory fetch or exact PR/head/base comparison failed."
+          fi
+          case "$reconciliation_result" in
+            UNCHANGED) reconciliation_note="Initial and second PR inventories match." ;;
+            CHANGED) reconciliation_note="PR inventory changed during initial reconciliation; using the second snapshot." ;;
+            *) fail "Unexpected PR inventory reconciliation result '$reconciliation_result'." ;;
+          esac
+
+          latest_count="$(jq 'length' "$reconciled")"
+          if [[ "$latest_count" -gt 0 ]]; then
+            if ! bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$repo" > "$runs"; then
+              fail "Actions run inventory fetch failed; no PR status is reported as passing."
+            fi
+          else
+            printf '[]\n' > "$runs"
+          fi
+
+          # Refresh after Actions history retrieval. Render only against this final
+          # identity snapshot so a changed head/base cannot inherit stale CI success.
+          : > "$final" || fail "Cannot open final PR snapshot '$final'."
+          if ! bash "$RUNNER_TEMP/fetch-open-prs.sh" "$repo" > "$final"; then
+            fail "Final PR inventory refresh after Actions history retrieval failed."
+          fi
+          if ! jq -e 'type == "array"' "$final" >/dev/null; then
+            fail "Final PR snapshot is malformed or is not a JSON array."
+          fi
+          set +e
+          bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$reconciled" "$final"
+          final_comparison_status=$?
+          set -e
+          case "$final_comparison_status" in
+            0) final_note="PR inventory remained stable during Actions history retrieval." ;;
+            1) final_note="PR inventory changed during Actions history retrieval; rendering the final snapshot." ;;
+            *) fail "Final PR inventory comparison failed (exit $final_comparison_status)." ;;
+          esac
+
+          final_count="$(jq 'length' "$final")"
+          if [[ "$final_count" -gt 0 && "$latest_count" -eq 0 ]]; then
+            if ! bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$repo" > "$runs"; then
+              fail "Actions run inventory fetch failed after new PRs appeared; no status is reported as passing."
+            fi
+            : > "$final" || fail "Cannot reopen final PR snapshot '$final'."
+            if ! bash "$RUNNER_TEMP/fetch-open-prs.sh" "$repo" > "$final"; then
+              fail "Final PR inventory refresh after late Actions history retrieval failed."
+            fi
+            if ! jq -e 'type == "array"' "$final" >/dev/null; then
+              fail "Final PR snapshot after late history retrieval is malformed."
+            fi
+          fi
+
+          final_count="$(jq 'length' "$final")"
+          if [[ "$final_count" -eq 0 ]]; then
+            {
+              echo "# GLAFIRA Project Dispatcher"
+              echo ""
+              echo "No open pull requests."
+              echo ""
+              echo "$reconciliation_note"
+              echo "$final_note"
+              echo "Policy: `NO MATCHING RUN FOR EXACT PR/HEAD/BASE` is UNKNOWN, not a pass. Fallback Actions history is bounded to the newest 1,000 runs."
+            } >> "$summary"
+            exit 0
+          fi
+
+          {
+            echo "# GLAFIRA Project Dispatcher"
+            echo ""
+            echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo ""
+            echo "$reconciliation_note"
+            echo "$final_note"
+            echo ""
+            echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
+            echo "|---:|---|---|---|:---:|"
+            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$final" "$runs"
+            echo ""
+            echo "Policy: GraphQL cursor pagination is authoritative; REST offset fallback is disabled. Fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. `NO MATCHING RUN FOR EXACT PR/HEAD/BASE` is UNKNOWN, not a pass; fallback history is bounded to the newest 1,000 runs. Skipped, cancelled, queued, partial or unknown states are not acceptance passes."
+          } >> "$summary"
+          REPORT
+          chmod +x "$RUNNER_TEMP/build-dispatcher-status-report.sh"
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -603,59 +706,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          : > "$RUNNER_TEMP/glafira-open-prs.json" || { bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Cannot open local PR snapshot '$RUNNER_TEMP/glafira-open-prs.json'."; exit 1; }
-          if ! bash "$RUNNER_TEMP/fetch-open-prs.sh" "$GH_REPO" > "$RUNNER_TEMP/glafira-open-prs.json"; then
-            bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "GraphQL cursor-based open-PR inventory is unavailable; no status is reported as passing."
-            exit 1
-          fi
-          if ! jq -e 'type == "array"' "$RUNNER_TEMP/glafira-open-prs.json" >/dev/null; then
-            bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Open-PR snapshot is malformed or is not a JSON array."
-            exit 1
-          fi
-          # Always reconcile before declaring the inventory empty; a new PR may have opened after the first snapshot.
-          if reconciliation_result="$(bash "$RUNNER_TEMP/reconcile-pr-inventory.sh" "$RUNNER_TEMP/glafira-open-prs.json" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/fetch-open-prs.sh" "$RUNNER_TEMP/compare-pr-inventory.sh" "$GH_REPO")"; then
-            case "$reconciliation_result" in
-              UNCHANGED)
-                echo "PR inventory unchanged during reconciliation; exact PR/head/base identity re-confirmed." >> "$GITHUB_STEP_SUMMARY"
-                ;;
-              CHANGED)
-                echo "PR inventory changed during reconciliation; rendering the latest snapshot. Exact run matching remains mandatory." >> "$GITHUB_STEP_SUMMARY"
-                ;;
-              *)
-                echo "ERROR: unexpected reconciliation result '$reconciliation_result'." >> "$GITHUB_STEP_SUMMARY"
-                exit 1
-                ;;
-            esac
-          else
-            bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Second PR inventory fetch or exact PR/head/base comparison failed."
-            exit 1
-          fi
-          latest_count="$(jq 'length' "$RUNNER_TEMP/glafira-open-prs.latest.json")"
-          if [[ "$latest_count" -eq 0 ]]; then
-            {
-              echo "# GLAFIRA Project Dispatcher"
-              echo ""
-              echo "No open pull requests."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          runs='[]'
-          if jq -e 'any(.[]; ([.statusCheckRollup[]? | select(((.name // .context // "") | contains("PR metadata edit")) | not)] | length) == 0)' "$RUNNER_TEMP/glafira-open-prs.latest.json" >/dev/null; then
-            if ! runs="$(bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$GH_REPO")"; then
-              bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Actions run inventory fetch failed; no PR status is reported as passing."
-              exit 1
-            fi
-          fi
-          : > "$RUNNER_TEMP/glafira-workflow-runs.json" || { bash "$RUNNER_TEMP/write-dispatcher-error-summary.sh" "$GITHUB_STEP_SUMMARY" "Cannot open local Actions snapshot."; exit 1; }
-          printf '%s\n' "$runs" > "$RUNNER_TEMP/glafira-workflow-runs.json"
-          {
-            echo "# GLAFIRA Project Dispatcher"
-            echo ""
-            echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            echo ""
-            echo "| PR | Branch | Head SHA | Latest matching CI | Draft |"
-            echo "|---:|---|---|---|:---:|"
-            bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$RUNNER_TEMP/glafira-open-prs.latest.json" "$RUNNER_TEMP/glafira-workflow-runs.json"
-            echo ""
-            echo "Policy: GraphQL cursor pagination is authoritative; REST offset fallback is disabled. Fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Skipped, cancelled, queued, partial or unknown states are not acceptance passes."
-          } >> "$GITHUB_STEP_SUMMARY"
+          bash "$RUNNER_TEMP/build-dispatcher-status-report.sh"
