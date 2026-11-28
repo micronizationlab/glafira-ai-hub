@@ -4,12 +4,8 @@ import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 
 /** Runtime boundary used by backup maintenance. The production implementation pauses pending delivery and the Core runtime. Only tests that explicitly inject fixture-local hooks bypass those production side effects; tests using the public two-argument constructor still exercise the real pause behavior. */
@@ -68,6 +64,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 recoverInterruptedRestore(passphrase)
+                deletePortableSnapshotDirectory()
             } }
         }
     }
@@ -76,6 +73,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 recoverInterruptedRestore(passphrase)
+                deletePortableSnapshotDirectory()
                 // Commit state is local to this restore attempt; a prior cleanup failure must
                 // never make a later rollback look like a successful restore.
                 var committedThisAttempt = false
@@ -125,7 +123,6 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     }
                 } finally {
                     selected.delete()
-                    File(app.filesDir, ".glafira-core-snapshot").deleteRecursively()
                 }
             } }
         }
@@ -133,12 +130,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     private fun createArchive(passphrase: CharArray): File {
         val directory = File(app.filesDir, ".glafira-core-snapshot")
-        if (directory.exists()) check(directory.deleteRecursively())
+        deletePortableSnapshotDirectory()
         check(directory.mkdirs())
         return try {
             portable.exportTo(File(app.filesDir, GlafiraPortableCoreSnapshot.PATH))
             BackupArchive.create(app, passphrase)
-        } finally { directory.deleteRecursively() }
+        } finally { deletePortableSnapshotDirectory() }
     }
 
     internal fun prepareRollback(passphrase: CharArray) {
@@ -284,32 +281,49 @@ class GlafiraCoreBackupCoordinator internal constructor(
         syncDirectory(app.noBackupFilesDir)
     }
 
-    /** Delete the crash-left plaintext portable export without following symlinks. */
-    private fun deleteCommittedPortableSnapshot() {
-        val snapshot = File(app.filesDir, ".glafira-core-snapshot").toPath()
-        val exists = Files.exists(snapshot, LinkOption.NOFOLLOW_LINKS)
-        val absent = Files.notExists(snapshot, LinkOption.NOFOLLOW_LINKS)
+    /**
+     * Remove only the known portable export. Unexpected files or linked paths are preserved
+     * and block rollback-journal cleanup rather than being recursively erased.
+     */
+    private fun deletePortableSnapshotDirectory() {
+        val directory = File(app.filesDir, ".glafira-core-snapshot").toPath().toAbsolutePath().normalize()
+        val export = File(app.filesDir, GlafiraPortableCoreSnapshot.PATH).toPath().toAbsolutePath().normalize()
+        if (export.parent != directory) throw IOException("Некорректный путь переносимого снимка Core.")
+        val exists = Files.exists(directory, LinkOption.NOFOLLOW_LINKS)
+        val absent = Files.notExists(directory, LinkOption.NOFOLLOW_LINKS)
         if (!exists && !absent) {
             throw IOException("Не удалось определить состояние незашифрованного снимка Core.")
         }
         if (exists) {
-            Files.walkFileTree(snapshot, object : SimpleFileVisitor<Path>() {
-                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    Files.delete(file)
-                    return FileVisitResult.CONTINUE
+            if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(directory)) {
+                throw IOException("Каталог переносимого снимка Core заменён ссылкой или файлом.")
+            }
+            val exportExists = Files.exists(export, LinkOption.NOFOLLOW_LINKS)
+            val exportAbsent = Files.notExists(export, LinkOption.NOFOLLOW_LINKS)
+            if (!exportExists && !exportAbsent) {
+                throw IOException("Не удалось определить состояние файла переносимого снимка Core.")
+            }
+            if (exportExists &&
+                (!Files.isRegularFile(export, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(export))
+            ) {
+                throw IOException("Файл переносимого снимка Core заменён ссылкой или каталогом.")
+            }
+            Files.newDirectoryStream(directory).use { entries ->
+                for (entry in entries) {
+                    if (entry.toAbsolutePath().normalize() != export) {
+                        throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные.")
+                    }
                 }
-
-                override fun postVisitDirectory(dir: Path, error: IOException?): FileVisitResult {
-                    if (error != null) throw error
-                    Files.delete(dir)
-                    return FileVisitResult.CONTINUE
-                }
-            })
+            }
+            if (exportExists) Files.delete(export)
+            Files.delete(directory)
         }
-        // This fsync is required even when the path was already absent: a previous
-        // deletion may have been interrupted before its parent directory was durable.
+        // Sync even when the path is already absent: a previous deletion may have been
+        // interrupted before the parent directory entry became durable.
         syncDirectory(app.filesDir)
     }
+
+    private fun deleteCommittedPortableSnapshot() = deletePortableSnapshotDirectory()
 
     /** Make restored payload and directory entries durable before publishing COMMITTED_MARKER. */
     private fun syncRestoredFiles() {
