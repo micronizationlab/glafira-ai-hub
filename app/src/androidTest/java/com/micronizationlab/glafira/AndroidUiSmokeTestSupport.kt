@@ -1,12 +1,14 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.content.Intent
+import android.graphics.Rect
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
-import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
@@ -15,6 +17,7 @@ internal object UiSmokeTestPreferenceLock {
     fun acquire() = lock.lock()
     fun release() = lock.unlock()
 }
+
 internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
     if (journal.exists() && !journal.deleteRecursively()) {
@@ -25,38 +28,24 @@ internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     }
 }
 
-internal fun collectHomeScreenDiagnostics(
-    device: UiDevice,
+/** Restore the preference, then recreate the task so MainActivity applies the restored lock state. */
+internal fun restoreBiometricPreferenceAndRelock(
     context: Context,
-    hierarchyFile: File,
-    waitStatus: String = "not recorded"
-): String {
-    val captureFailure = runCatching { device.dumpWindowHierarchy(hierarchyFile) }.exceptionOrNull()
-    var cleanupFailure: Throwable? = null
-    val hierarchy = try {
-        if (captureFailure != null) {
-            "<dump failed: ${captureFailure.javaClass.simpleName}: ${captureFailure.message}>"
-        } else {
-            runCatching { readRedactedHierarchySummary(hierarchyFile) }.getOrElse {
-                "<read failed: ${it.javaClass.simpleName}: ${it.message}>"
-            }
-        }
-    } finally {
-        cleanupFailure = runCatching {
-            check(!hierarchyFile.exists() || hierarchyFile.delete()) {
-                "Could not remove temporary UI hierarchy diagnostic."
-            }
-        }.exceptionOrNull()
+    preferences: android.content.SharedPreferences,
+    originalBiometric: Boolean
+) {
+    check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
+        "Could not restore biometric preference after UI smoke test"
     }
-    val recoveryState = runCatching { recoveryPendingForDiagnostics(context).toString() }
-        .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
-    val biometricState = runCatching { isBiometricEnabled(context).toString() }
-        .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
-    val hierarchyPath = "hierarchyPath=${hierarchyFile.absolutePath}"
-    val cleanupStatus = cleanupFailure?.let { "hierarchyCleanup=error: ${it.javaClass.simpleName}: ${it.message}, " } ?: ""
-    return "recovery=$recoveryState, biometric=$biometricState, wait=$waitStatus, ${cleanupStatus}$hierarchyPath. Window hierarchy: $hierarchy"
+    context.startActivity(
+        Intent(context, MainActivity::class.java).addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        )
+    )
+    InstrumentationRegistry.getInstrumentation().waitForIdleSync()
 }
 
+/** Read recovery indicators without deleting a temp file that an active recovery may own. */
 internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
     val app = context.applicationContext
     val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
@@ -65,6 +54,53 @@ internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
         file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
     } ?: throw IllegalStateException("Could not inspect recovery temp directory.")
     return stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+}
+
+/** Capture only structural accessibility metadata; never read text or content descriptions. */
+internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacters: Int = 12_000): String {
+    val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+        ?: return "<no active accessibility root>"
+    val output = StringBuilder()
+    var visited = 0
+    fun visit(node: AccessibilityNodeInfo, depth: Int) {
+        if (visited >= maximumNodes || output.length >= maximumCharacters) return
+        visited++
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        output.append("  ".repeat(depth.coerceAtMost(16)))
+            .append(node.className ?: "unknown")
+            .append(" id=").append(node.viewIdResourceName ?: "-")
+            .append(" bounds=").append(bounds.flattenToString())
+            .append(" clickable=").append(node.isClickable)
+            .append(" enabled=").append(node.isEnabled)
+            .append(" children=").append(node.childCount)
+            .append('\n')
+        for (index in 0 until node.childCount) {
+            if (visited >= maximumNodes || output.length >= maximumCharacters) break
+            node.getChild(index)?.let { child -> visit(child, depth + 1) }
+        }
+    }
+    visit(root, 0)
+    if (visited >= maximumNodes || output.length >= maximumCharacters) {
+        output.append("<hierarchy summary bounded; nodes=").append(visited).append(">\n")
+    }
+    return output.toString().take(maximumCharacters)
+}
+
+internal fun collectHomeScreenDiagnostics(
+    device: UiDevice,
+    context: Context,
+    waitStatus: String = "not recorded",
+    captureHierarchy: () -> String = ::captureSafeWindowHierarchy
+): String {
+    val hierarchy = runCatching(captureHierarchy).getOrElse {
+        "<hierarchy unavailable: ${it.javaClass.simpleName}: ${it.message}>"
+    }
+    val recoveryState = runCatching { recoveryPendingForDiagnostics(context).toString() }
+        .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
+    val biometricState = runCatching { isBiometricEnabled(context).toString() }
+        .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
+    return "recovery=$recoveryState, biometric=$biometricState, wait=$waitStatus. Safe window structure: $hierarchy"
 }
 
 internal fun awaitHomeScreen(
@@ -86,49 +122,9 @@ internal fun awaitHomeScreen(
     val accessibilityStatus = accessibilityWait.exceptionOrNull()?.let { "error: ${it.javaClass.simpleName}: ${it.message}" } ?: "timed out"
     val waitStatus = "idle=$idleStatus, accessibility=$accessibilityStatus"
     val diagnostics = runCatching {
-        val hierarchyFile = File.createTempFile("android-ui-smoke-window-", ".xml", context.cacheDir)
-        collectHomeScreenDiagnostics(device, context, hierarchyFile, waitStatus)
-    }.getOrElse { diagnosticFailure ->
-        val recovery = runCatching { recoveryPendingForDiagnostics(context).toString() }
-            .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
-        val biometric = runCatching { isBiometricEnabled(context).toString() }
-            .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
-        "recovery=$recovery, biometric=$biometric, wait=$waitStatus, hierarchy=unavailable: ${diagnosticFailure.javaClass.simpleName}: ${diagnosticFailure.message}"
+        collectHomeScreenDiagnostics(device, context, waitStatus)
+    }.getOrElse {
+        "recovery=unavailable, biometric=unavailable, wait=$waitStatus, hierarchy unavailable: ${it.javaClass.simpleName}: ${it.message}"
     }
     throw IllegalStateException("Home workspace did not become accessible. $diagnostics", accessibilityWait.exceptionOrNull())
-}
-
-internal fun readRedactedHierarchySummary(file: File, maximumCharacters: Int = 12_000): String {
-    require(maximumCharacters > 0) { "Hierarchy summary limit must be positive." }
-    val maximumBytes = maximumCharacters.toLong() * 4L
-    val length = file.length()
-    val raw = if (length <= maximumBytes) {
-        file.readText(Charsets.UTF_8)
-    } else {
-        val marker = "\n<... hierarchy middle omitted ...>\n"
-        val available = (maximumBytes - marker.toByteArray(Charsets.UTF_8).size).toInt()
-        require(available > 0) { "Hierarchy summary limit is too small." }
-        val headBytes = available / 2
-        val tailBytes = available - headBytes
-        RandomAccessFile(file, "r").use { source ->
-            val head = ByteArray(headBytes).also { source.readFully(it) }
-            source.seek((length - tailBytes).coerceAtLeast(0L))
-            val tail = ByteArray(tailBytes).also { source.readFully(it) }
-            String(head, Charsets.UTF_8) + marker + String(tail, Charsets.UTF_8)
-        }
-    }
-    val redacted = Regex("""((?:text|content-desc)=")[^"]*(")""")
-        .replace(raw) { match -> "${match.groupValues[1]}[REDACTED]${match.groupValues[2]}" }
-    return summarizeWindowHierarchy(redacted, maximumCharacters)
-}
-
-internal fun summarizeWindowHierarchy(hierarchy: String, maximumCharacters: Int = 12_000): String {
-    require(maximumCharacters > 0) { "Hierarchy summary limit must be positive." }
-    if (hierarchy.length <= maximumCharacters) return hierarchy
-    val marker = "\n<... hierarchy truncated; showing first and last portions ...>\n"
-    require(maximumCharacters > marker.length) { "Hierarchy summary limit is too small." }
-    val contentCharacters = maximumCharacters - marker.length
-    val headCharacters = contentCharacters / 2
-    val tailCharacters = contentCharacters - headCharacters
-    return hierarchy.take(headCharacters) + marker + hierarchy.takeLast(tailCharacters)
 }
