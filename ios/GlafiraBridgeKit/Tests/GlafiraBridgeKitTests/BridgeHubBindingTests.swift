@@ -191,8 +191,8 @@ final class BridgeHubBindingTests: XCTestCase {
     func testPersistenceRejectsInt64MaxTimestampAsInvalidBindingWithoutDoubleRounding() throws {
         let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
         let maximumInt64 = validJSON.replacingOccurrences(
-            of: "\\"enrolledAtEpochMs\\":\\(enrolledAt)",
-            with: "\\"enrolledAtEpochMs\\":9223372036854775807"
+            of: #""enrolledAtEpochMs":\#(enrolledAt)"#,
+            with: #""enrolledAtEpochMs":9223372036854775807"#
         )
         XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(maximumInt64.utf8))) { error in
             XCTAssertEqual(error as? BridgeHubBindingError, .invalidBinding)
