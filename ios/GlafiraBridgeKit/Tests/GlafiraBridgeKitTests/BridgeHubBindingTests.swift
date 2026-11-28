@@ -156,27 +156,6 @@ final class BridgeHubBindingTests: XCTestCase {
         }
     }
 
-    func testPersistenceRejectsOversizedAndTooDeepPayloads() throws {
-        let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
-        let oversized = Data(String(repeating: " ", count: 4_097).utf8)
-        XCTAssertEqual(oversized.count, 4_097)
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(oversized)) { error in
-            XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .payloadTooLarge)
-        }
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.validatePayloadSize(oversized)) { error in
-            XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .payloadTooLarge)
-        }
-
-        let nestedValue = String(repeating: "[", count: 17) + "0" + String(repeating: "]", count: 17)
-        let deeplyNested = validJSON.replacingOccurrences(
-            of: #""desktopHubId":"desktop-hub-0001""#,
-            with: #""desktopHubId":"desktop-hub-0001","extension":\#(nestedValue)"#
-        )
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(deeplyNested.utf8))) { error in
-            XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .payloadTooDeep)
-        }
-    }
-
     func testPersistenceRejectsDuplicateDecodedJSONMemberNames() throws {
         let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
         let duplicateEnvelope = validJSON.replacingOccurrences(
@@ -198,6 +177,10 @@ final class BridgeHubBindingTests: XCTestCase {
 
     func testPersistenceMapsMalformedJSONAndUnsupportedVersionToSpecificErrors() throws {
         XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data("{".utf8))) { error in
+            XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .invalidPayload)
+        }
+        XCTAssertNoThrow(try BridgeHubBindingPersistence.validatePayloadSize(Data()))
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data())) { error in
             XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .invalidPayload)
         }
         var envelope = try XCTUnwrap(JSONSerialization.jsonObject(
@@ -241,27 +224,13 @@ final class BridgeHubBindingTests: XCTestCase {
 
     func testPersistenceAcceptsWhitespaceBeforeIntegerPrimitives() throws {
         let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
-        let spacedVersion = validJSON.replacingOccurrences(
-            of: #""schemaVersion":1"#,
-            with: #""schemaVersion":   1"#
-        )
-        let spacedEnrolledAt = validJSON.replacingOccurrences(
-            of: "\"enrolledAtEpochMs\":\(enrolledAt)",
-            with: "\"enrolledAtEpochMs\":   \(enrolledAt)"
-        )
-        let spacedExpiresAt = validJSON.replacingOccurrences(
-            of: "\"expiresAtEpochMs\":\(enrolledAt + oneHour)",
-            with: "\"expiresAtEpochMs\":   \(enrolledAt + oneHour)"
-        )
-        XCTAssertEqual(try BridgeHubBindingPersistence.decode(Data(spacedVersion.utf8)), try binding())
-        XCTAssertEqual(try BridgeHubBindingPersistence.decode(Data(spacedEnrolledAt.utf8)), try binding())
-        XCTAssertEqual(try BridgeHubBindingPersistence.decode(Data(spacedExpiresAt.utf8)), try binding())
-    }
-
-    func testPersistenceAllowsEmptyInputThroughSizeGateAndRejectsItAsInvalidJSON() throws {
-        XCTAssertNoThrow(try BridgeHubBindingPersistence.validatePayloadSize(Data()))
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data())) { error in
-            XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .invalidPayload)
+        let variants = [
+            validJSON.replacingOccurrences(of: #""schemaVersion":1"#, with: #""schemaVersion":   1"#),
+            validJSON.replacingOccurrences(of: "\"enrolledAtEpochMs\":\(enrolledAt)", with: "\"enrolledAtEpochMs\":   \(enrolledAt)"),
+            validJSON.replacingOccurrences(of: "\"expiresAtEpochMs\":\(enrolledAt + oneHour)", with: "\"expiresAtEpochMs\":   \(enrolledAt + oneHour)")
+        ]
+        for variant in variants {
+            XCTAssertEqual(try BridgeHubBindingPersistence.decode(Data(variant.utf8)), try binding())
         }
     }
 
@@ -276,6 +245,9 @@ final class BridgeHubBindingTests: XCTestCase {
         let oneByteOver = Data(exactSize + Data([0x20]))
         XCTAssertEqual(oneByteOver.count, 4_097)
         XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(oneByteOver)) { error in
+            XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .payloadTooLarge)
+        }
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.validatePayloadSize(oneByteOver)) { error in
             XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .payloadTooLarge)
         }
 
