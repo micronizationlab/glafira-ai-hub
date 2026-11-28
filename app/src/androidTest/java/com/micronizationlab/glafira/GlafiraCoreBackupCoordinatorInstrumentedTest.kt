@@ -1,15 +1,27 @@
 package com.micronizationlab.glafira
-
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.SharedPreferences
+import android.system.Os
+import android.system.OsConstants
 import android.database.sqlite.SQLiteException
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.io.RandomAccessFile
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.FileVisitResult
+import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.Path
 import java.security.KeyStore
 import java.util.UUID
+import javax.crypto.AEADBadTagException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,22 +32,685 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-
 @RunWith(AndroidJUnit4::class)
 class GlafiraCoreBackupCoordinatorInstrumentedTest {
-    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val appContext: Context = ApplicationProvider.getApplicationContext()
+    private lateinit var context: Context
+    private lateinit var testRoot: File
     private lateinit var store: GlafiraTaskStore
+    private lateinit var rollbackCipher: GlafiraRollbackSnapshotCipher
+    private var ownsFixture = false
+    private var createdFixtureRoot = false
+    private var createdFixtureStagingRoot = false
+    private lateinit var fixtureStagingRoot: File
+    private lateinit var testRunId: String
+    private var fixtureLifetimeFile: RandomAccessFile? = null
+    private var fixtureLifetimeFileLock: java.nio.channels.FileLock? = null
+    private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
+        var failCommittedCleanupOnce = false
+        var failCommittedCleanupCount = 0
+        var pauseCount = 0
+        override suspend fun <T> withPaused(block: () -> T): T {
+            pauseCount++
+            return block()
+        }
+        val pauseContexts = mutableListOf<Context>()
+        override fun pauseForRestore(context: Context) { pauseContexts += context }
+        override fun beforeCommittedJournalCleanup() {
+            if (failCommittedCleanupOnce || failCommittedCleanupCount > 0) {
+                failCommittedCleanupOnce = false
+                if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
+                throw IOException("injected interruption before committed journal cleanup")
+            }
+        }
+    }
+    private val fixtureRuntimeHooks = FixtureBackupRuntimeHooks()
 
     @Before
-    fun setUp() {
-        context.deleteDatabase(DATABASE_NAME)
-        store = GlafiraTaskStore(context)
+    fun setUp() = runBlocking {
+        acquireFixtureLifetimeLock()
+        try {
+            // Keep the lifetime lock from before orphan reclamation through teardown so
+            // another test setup cannot reclaim a fixture that is still in use.
+            cleanupOwnedLeftoverRollbackFixture()
+            testRunId = UUID.randomUUID().toString()
+            fixtureRuntimeHooks.pauseContexts.clear()
+            fixtureRuntimeHooks.pauseCount = 0
+            val aliasSuffix = testRunId.replace("-", "")
+            rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
+            check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
+            fixtureStagingRoot = File(appContext.cacheDir, ".glafira-backup-test-staging-$testRunId")
+            check(fixtureStagingRoot.mkdir()) { "Could not exclusively create backup fixture staging root." }
+            createdFixtureStagingRoot = true
+            writeFixtureRootOwnerMarker(testRunId, fixtureStagingRoot, rollbackCipher.keyAlias)
+            testRoot = File(appContext.cacheDir, "glafira-backup-test-$testRunId")
+            check(!testRoot.exists() && !Files.isSymbolicLink(testRoot.toPath())) {
+                "Refusing to replace an existing backup fixture root."
+            }
+            check(fixtureStagingRoot.renameTo(testRoot)) { "Could not atomically publish the owned backup fixture directory." }
+            createdFixtureStagingRoot = false
+            createdFixtureRoot = true
+            syncMarkerDirectory(appContext.cacheDir)
+            ownsFixture = true
+            context = IsolatedBackupTestContext(appContext, testRoot)
+            registerFixtureKeyAlias(rollbackCipher.keyAlias, testRunId)
+            store = GlafiraTaskStore(context)
+            assertEquals(File(testRoot, "databases/glafira_core_tasks.db").absolutePath, store.writableDatabase.path)
+        } catch (error: Throwable) {
+            // Once a fixture is claimed, @After owns lock release and cleanup even if
+            // store construction fails. Before ownership publication, only remove the
+            // directory this setup just created exclusively; never infer ownership later.
+            if (!ownsFixture) {
+                try {
+                    if (createdFixtureStagingRoot && ::fixtureStagingRoot.isInitialized) {
+                        cleanupUnclaimedFixtureRoot(fixtureStagingRoot, true, if (::testRunId.isInitialized) testRunId else null)
+                    }
+                    cleanupUnclaimedFixtureRoot(
+                        root = if (::testRoot.isInitialized) testRoot else null,
+                        createdByThisSetup = createdFixtureRoot,
+                        runId = if (::testRunId.isInitialized) testRunId else null
+                    )
+                } catch (cleanup: Throwable) {
+                    error.addSuppressed(cleanup)
+                } finally {
+                    releaseFixtureLifetimeLock()
+                }
+            }
+            throw error
+        }
+    }
+    @After
+    fun tearDown(): Unit = runBlocking<Unit> {
+        try {
+            if (!ownsFixture) return@runBlocking
+            var failure: Throwable? = null
+            try {
+                if (::store.isInitialized) store.close()
+            } catch (error: Throwable) {
+                failure = error
+            }
+            try {
+                if (::testRoot.isInitialized && (testRoot.exists() || Files.isSymbolicLink(testRoot.toPath()))) {
+                    check(!Files.isSymbolicLink(testRoot.toPath())) {
+                        "Preserving fixture root because it was replaced by a symbolic link."
+                    }
+                    val installationMarker = rollbackOwnerMarker()
+                    val fixtureJournal = File(testRoot, "no-backup/glafira-restore-journal")
+                    check(!installationMarker.exists() && !fixtureJournal.exists()) {
+                        "Preserving fixture root because rollback ownership/recovery evidence remains."
+                    }
+                    checkFixtureRootOwnership(testRunId, testRoot)
+                    rollbackCipher.deleteKey()
+                    deleteTreeWithoutFollowingLinks(testRoot.toPath())
+                    syncMarkerDirectory(checkNotNull(testRoot.parentFile))
+                    clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, testRunId)
+                }
+            } catch (cleanup: Throwable) {
+                if (failure != null) failure!!.addSuppressed(cleanup) else failure = cleanup
+            }
+            if (failure != null) throw failure!!
+        } finally {
+            releaseFixtureLifetimeLock()
+        }
+    }
+    private fun acquireFixtureLifetimeLock() {
+        FIXTURE_LIFETIME_PROCESS_LOCK.lock()
+        try {
+            val lockFile = File(appContext.noBackupFilesDir, "glafira-backup-fixture-lifetime.lock")
+            fixtureLifetimeFile = RandomAccessFile(lockFile, "rw")
+            fixtureLifetimeFileLock = fixtureLifetimeFile!!.channel.lock()
+            check(fixtureLifetimeFileLock!!.isValid) { "Could not hold backup fixture lifetime lock." }
+        } catch (error: Throwable) {
+            try {
+                fixtureLifetimeFile?.close()
+            } finally {
+                fixtureLifetimeFile = null
+                FIXTURE_LIFETIME_PROCESS_LOCK.unlock()
+            }
+            throw error
+        }
     }
 
-    @After
-    fun tearDown() {
-        store.close()
-        context.deleteDatabase(DATABASE_NAME)
+    private fun releaseFixtureLifetimeLock() {
+        try {
+            fixtureLifetimeFileLock?.release()
+        } finally {
+            fixtureLifetimeFileLock = null
+            try {
+                fixtureLifetimeFile?.close()
+            } finally {
+                fixtureLifetimeFile = null
+                if (FIXTURE_LIFETIME_PROCESS_LOCK.isHeldByCurrentThread) {
+                    FIXTURE_LIFETIME_PROCESS_LOCK.unlock()
+                }
+            }
+        }
+    }
+
+    private fun isolatedCoordinator() =
+        GlafiraCoreBackupCoordinator(context, store, rollbackCipher, fixtureRuntimeHooks)
+
+    /**
+     * Production restore pauses the real Core scheduler. This fixture injects a recorder/no-op
+     * runtime hook and must not cancel app-owned work. Skip while any known unique Core queue
+     * work is unfinished so the isolated fixture cannot race the application's active work.
+     */
+    private fun assertNoActiveCoreWork() {
+        val workManager = androidx.work.WorkManager.getInstance(appContext)
+        listOf("glafira-core-queue-drain", "glafira-core-queue-retry", "glafira-core-queue-network")
+            .forEach { uniqueName ->
+                val active = workManager.getWorkInfosForUniqueWork(uniqueName).get()
+                    .filterNot { it.state.isFinished }
+                org.junit.Assume.assumeTrue(
+                    "Skip isolated backup test while app-owned Core work is active: $uniqueName",
+                    active.isEmpty()
+                )
+            }
+    }
+
+    private class IsolatedBackupTestContext(base: Context, private val root: File) : ContextWrapper(base) {
+        private val databases = File(root, "databases").apply { mkdirs() }
+        private val files = File(root, "files").apply { mkdirs() }; private val noBackup = File(root, "no-backup").apply { mkdirs() }; private val cache = File(root, "cache").apply { mkdirs() }
+        override fun getApplicationContext(): Context = this
+        override fun getDatabasePath(name: String): File = File(databases, name)
+        override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?, errorHandler: android.database.DatabaseErrorHandler?) =
+            android.database.sqlite.SQLiteDatabase.openDatabase(
+                getDatabasePath(name).absolutePath, factory, android.database.sqlite.SQLiteDatabase.CREATE_IF_NECESSARY, errorHandler
+            )
+        override fun deleteDatabase(name: String): Boolean = getDatabasePath(name).delete()
+        override fun databaseList(): Array<String> = databases.list() ?: emptyArray()
+        override fun getFilesDir(): File = files; override fun getNoBackupFilesDir(): File = noBackup; override fun getCacheDir(): File = cache
+        private val preferences = java.util.concurrent.ConcurrentHashMap<String, SharedPreferences>()
+        override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
+            preferences.computeIfAbsent(name) { InMemoryBackupPreferences() }
+    }
+
+    private class InMemoryBackupPreferences : SharedPreferences {
+        private val values = linkedMapOf<String, Any>()
+        override fun getAll(): MutableMap<String, *> = synchronized(values) { values.toMutableMap() }
+        override fun getString(key: String, defValue: String?): String? = synchronized(values) { values[key] as? String ?: defValue }
+        override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? =
+            synchronized(values) { (values[key] as? Set<*>)?.filterIsInstance<String>()?.toSet() ?: defValues?.toSet() }
+        override fun getInt(key: String, defValue: Int): Int = synchronized(values) { values[key] as? Int ?: defValue }
+        override fun getLong(key: String, defValue: Long): Long = synchronized(values) { values[key] as? Long ?: defValue }
+        override fun getFloat(key: String, defValue: Float): Float = synchronized(values) { values[key] as? Float ?: defValue }
+        override fun getBoolean(key: String, defValue: Boolean): Boolean = synchronized(values) { values[key] as? Boolean ?: defValue }
+        override fun contains(key: String): Boolean = synchronized(values) { values.containsKey(key) }
+        override fun edit(): SharedPreferences.Editor = MemoryEditor()
+        override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) = Unit
+        override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) = Unit
+        private inner class MemoryEditor : SharedPreferences.Editor {
+            private val updates = linkedMapOf<String, Any?>()
+            private var clearAll = false
+            override fun putString(key: String, value: String?): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun putStringSet(key: String, values: Set<String>?): SharedPreferences.Editor = apply { updates[key] = values?.toSet() }
+            override fun putInt(key: String, value: Int): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun putLong(key: String, value: Long): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun putFloat(key: String, value: Float): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor = apply { updates[key] = value }
+            override fun remove(key: String): SharedPreferences.Editor = apply { updates[key] = null }
+            override fun clear(): SharedPreferences.Editor = apply { clearAll = true }
+            override fun commit(): Boolean {
+                synchronized(values) {
+                    if (clearAll) values.clear()
+                    updates.forEach { (key, value) -> if (value == null) values.remove(key) else values[key] = value }
+                }
+                return true
+            }
+            override fun apply() { commit() }
+        }
+    }
+    private suspend fun <T> withFixtureLocks(block: () -> T): T = withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
+        GlafiraCoreMaintenanceGate.withExclusive {
+            block()
+        }
+    }
+    /**
+     * Read persisted enablement without constructing GlafiraCoreRuntimeOwner: its constructor
+     * migrates preferences and creates/updates installation databases, which this fixture does not own.
+     */
+    private fun appCoreRuntimeEnabledWithoutInitialization(): Boolean {
+        val database = appContext.getDatabasePath("glafira_core_runtime_config.db")
+        if (database.isFile) {
+            try {
+                val enabled = android.database.sqlite.SQLiteDatabase.openDatabase(
+                    database.absolutePath,
+                    null,
+                    android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+                ).use { db ->
+                    db.rawQuery(
+                        "SELECT config_version, enabled FROM runtime_config WHERE singleton_id = 1",
+                        null
+                    ).use { cursor ->
+                        if (!cursor.moveToFirst()) null
+                        else if (cursor.getInt(0) != 1) true
+                        else cursor.getInt(1) == 1
+                    }
+                }
+                if (enabled != null) return enabled
+            } catch (_: Exception) {
+                return true // Unknown persistent state is treated as enabled; setup must skip.
+            }
+        }
+        val legacyPreferencesFile = File(
+            appContext.applicationInfo.dataDir,
+            "shared_prefs/glafira_core_runtime.xml"
+        )
+        if (!legacyPreferencesFile.isFile) return false
+        return appContext.getSharedPreferences("glafira_core_runtime", Context.MODE_PRIVATE)
+            .getBoolean("runtime_enabled", false)
+    }
+
+    private fun rollbackOwnerMarker(): File =
+        File(context.noBackupFilesDir, "glafira-backup-instrumentation-owner")
+
+    private fun hasAppOwnedRollbackArtifactsReadOnly(): Boolean {
+        val journal = File(appContext.noBackupFilesDir, "glafira-restore-journal")
+        if (journal.exists()) return true
+        return appContext.cacheDir.listFiles { file ->
+            file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+        }.orEmpty().any { it.exists() }
+    }
+
+
+    private fun syncMarkerDirectory(directory: File) {
+        val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
+        try {
+            Os.fsync(descriptor)
+        } finally {
+            Os.close(descriptor)
+        }
+    }
+
+    private fun writeRollbackOwnerMarker(runId: String, beforePublish: () -> Unit = {}) {
+        val marker = rollbackOwnerMarker()
+        val parent = checkNotNull(marker.parentFile)
+        // createNewFile is exclusive; from this point the fixture owns this marker.
+        check(marker.createNewFile()) { "A previous test-owned rollback operation must be recovered first." }
+        try {
+            beforePublish()
+            FileOutputStream(marker, false).use { output ->
+                output.write(runId.toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            syncMarkerDirectory(parent)
+        } catch (error: Throwable) {
+            try {
+                check(!marker.exists() || marker.delete()) { "Could not remove failed owner marker." }
+                syncMarkerDirectory(parent)
+            } catch (cleanup: Throwable) {
+                error.addSuppressed(cleanup)
+            }
+            throw error
+        }
+    }
+
+    private fun clearRollbackOwnerMarker(runId: String) {
+        val marker = rollbackOwnerMarker()
+        if (marker.exists()) {
+            check(marker.readText(Charsets.UTF_8) == runId) { "Refusing to clear another rollback generation." }
+            check(marker.delete()) { "Could not clear test rollback owner marker." }
+            syncMarkerDirectory(checkNotNull(marker.parentFile))
+        }
+    }
+
+    private fun cleanupUnclaimedFixtureRoot(root: File?, createdByThisSetup: Boolean, runId: String?) {
+        // The caller must prove it won the exclusive mkdir or staging-directory creation.
+        // A fixture-looking path or absent marker is never ownership evidence.
+        if (!createdByThisSetup || root == null || runId == null) return
+        check(root.isDirectory && !Files.isSymbolicLink(root.toPath()))
+        deleteTreeWithoutFollowingLinks(root.toPath())
+        if (::rollbackCipher.isInitialized && rollbackCipher.keyExists()) rollbackCipher.deleteKey()
+        if (::rollbackCipher.isInitialized) clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, runId)
+        syncMarkerDirectory(appContext.cacheDir)
+    }
+
+    private fun fixtureRootOwnerMarker(root: File): File = File(root, "fixture.owner")
+
+    private fun writeFixtureRootOwnerMarker(runId: String, root: File, alias: String) {
+        val marker = fixtureRootOwnerMarker(root)
+        check(marker.createNewFile()) { "Fixture root ownership marker already exists." }
+        try {
+            FileOutputStream(marker, false).use { output ->
+                output.write("$runId\n$alias".toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            syncMarkerDirectory(root)
+        } catch (error: Throwable) {
+            if (marker.exists()) marker.delete()
+            throw error
+        }
+    }
+
+    private fun checkFixtureRootOwnership(runId: String, root: File) {
+        val marker = fixtureRootOwnerMarker(root)
+        val expectedAlias = "glafira_test_rollback_" + runId.replace("-", "")
+        check(marker.isFile && !Files.isSymbolicLink(marker.toPath()) &&
+            marker.readText(Charsets.UTF_8) == "$runId\n$expectedAlias"
+        ) {
+            "Refusing to reclaim a fixture root without its pre-published ownership record."
+        }
+        check(root.parentFile?.canonicalFile == appContext.cacheDir.canonicalFile) {
+            "Fixture root escaped the application cache directory."
+        }
+        check(root.name == "glafira-backup-test-$runId") {
+            "Fixture root name does not match its canonical run UUID."
+        }
+    }
+
+    private fun deleteTreeWithoutFollowingLinks(root: Path) {
+        check(!Files.isSymbolicLink(root)) { "Refusing to recursively delete a symbolic-link fixture root." }
+        Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
+            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                Files.delete(file)
+                return FileVisitResult.CONTINUE
+            }
+            override fun postVisitDirectory(dir: Path, error: java.io.IOException?): FileVisitResult {
+                if (error != null) throw error
+                Files.delete(dir)
+                return FileVisitResult.CONTINUE
+            }
+        })
+    }
+
+    private fun fixtureKeyOwnerMarker(alias: String, runId: String): File {
+        val expected = "glafira_test_rollback_" + runId.replace("-", "")
+        val kind = when (alias) {
+            expected -> "primary"
+            expected + "_second" -> "second"
+            expected + "_third" -> "third"
+            else -> error("Alias is not owned by this fixture run.")
+        }
+        return File(appContext.noBackupFilesDir, "glafira-test-key-owner-$runId-$kind")
+    }
+
+    private fun registerFixtureKeyAlias(alias: String, runId: String) {
+        val expected = "glafira_test_rollback_" + runId.replace("-", "")
+        require(alias == expected || alias == expected + "_second" || alias == expected + "_third") {
+            "Only this run's uniquely scoped fixture aliases may be registered."
+        }
+        val marker = fixtureKeyOwnerMarker(alias, runId)
+        check(!marker.exists()) { "Fixture key ownership marker already exists." }
+        val temporary = File(
+            checkNotNull(marker.parentFile),
+            ".${marker.name}.${UUID.randomUUID()}.tmp"
+        )
+        try {
+            FileOutputStream(temporary, false).use {
+                it.write(alias.toByteArray(Charsets.UTF_8))
+                it.fd.sync()
+            }
+            check(temporary.renameTo(marker)) { "Could not atomically publish fixture key ownership." }
+            // If this fsync fails, retain the complete published marker: the alias is unique
+            // to this run and a later setup can safely reclaim it, even after process death.
+            syncMarkerDirectory(checkNotNull(marker.parentFile))
+        } catch (error: Throwable) {
+            if (temporary.exists()) temporary.delete()
+            throw error
+        }
+    }
+
+    private fun clearFixtureKeyAliasOwner(alias: String, runId: String) {
+        val marker = fixtureKeyOwnerMarker(alias, runId)
+        if (marker.exists()) {
+            check(marker.readText(Charsets.UTF_8) == alias) {
+                "Refusing to clear a fixture-key owner marker for another alias."
+            }
+            check(marker.delete()) { "Could not remove fixture-key owner marker." }
+            syncMarkerDirectory(checkNotNull(marker.parentFile))
+        }
+    }
+
+    // Reclaim only aliases whose durable owner marker proves this test created them.
+    // If a matching fixture journal remains, preserve its key and recovery evidence.
+    private fun cleanupOwnedLeftoverRollbackFixture() {
+        check(fixtureLifetimeFileLock?.isValid == true) {
+            "Orphan fixture reclamation requires the lifetime lock held from setup through teardown."
+        }
+        val ownerDirectory = appContext.noBackupFilesDir
+        val temporaryMarkerPattern = Regex(
+            """\.glafira-test-key-owner-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(primary|second|third)\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.tmp"""
+        )
+        val abandonedTemporaryMarkers = ownerDirectory.listFiles { file ->
+            temporaryMarkerPattern.matches(file.name) &&
+                Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
+        }.orEmpty()
+        abandonedTemporaryMarkers.forEach { temporary ->
+            check(!temporary.exists() || temporary.delete()) {
+                "Could not reclaim interrupted fixture alias registration."
+            }
+        }
+        if (abandonedTemporaryMarkers.isNotEmpty()) syncMarkerDirectory(ownerDirectory)
+        ownerDirectory.listFiles { file ->
+            file.name.startsWith("glafira-test-key-owner-")
+        }.orEmpty().forEach { marker ->
+            if (!Files.isRegularFile(marker.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
+            val markerName = marker.name.removePrefix("glafira-test-key-owner-")
+            val kind = when {
+                markerName.endsWith("-second") -> "second"
+                markerName.endsWith("-third") -> "third"
+                markerName.endsWith("-primary") -> "primary"
+                else -> return@forEach
+            }
+            val runId = markerName.removeSuffix("-" + kind)
+            val parsed = try { UUID.fromString(runId) } catch (_: IllegalArgumentException) { null }
+            if (parsed == null || parsed.toString() != runId) return@forEach
+            val expected = "glafira_test_rollback_" + runId.replace("-", "")
+            val alias = marker.readText(Charsets.UTF_8)
+            val expectedAlias = when (kind) {
+                "second" -> expected + "_second"
+                "third" -> expected + "_third"
+                else -> expected
+            }
+            if (alias != expectedAlias) return@forEach
+            // The lifetime lock protects the scan from other test processes, but this
+            // process's current fixture is still live and must never be reclaimed.
+            if (::testRunId.isInitialized && runId == testRunId) return@forEach
+            val root = File(appContext.cacheDir, "glafira-backup-test-$runId")
+            if (Files.isSymbolicLink(root.toPath())) return@forEach
+            if (root.exists()) {
+                if (!Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
+                val rootOwner = fixtureRootOwnerMarker(root)
+                if (!rootOwner.isFile || Files.isSymbolicLink(rootOwner.toPath()) ||
+                    rootOwner.readText(Charsets.UTF_8) != "$runId\n$expectedAlias"
+                ) return@forEach
+            }
+            val journal = File(root, "no-backup/glafira-restore-journal")
+            if (journal.exists()) return@forEach
+            GlafiraRollbackSnapshotCipher(alias).deleteKey()
+            if (root.exists()) {
+                deleteTreeWithoutFollowingLinks(root.toPath())
+                syncMarkerDirectory(appContext.cacheDir)
+            }
+            check(marker.delete()) { "Could not remove stale fixture-key owner marker." }
+            syncMarkerDirectory(ownerDirectory)
+        }
+        // Reclaim staging/final fixture roots whose process died before publishing the
+        // separate Keystore-alias marker. Their owner record was fsynced before atomic rename.
+        val orphanRoots = appContext.cacheDir.listFiles { file ->
+            file.name.startsWith(".glafira-backup-test-staging-") ||
+                file.name.startsWith("glafira-backup-test-")
+        }.orEmpty()
+        orphanRoots.forEach { root ->
+            if (Files.isSymbolicLink(root.toPath()) ||
+                !Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)
+            ) return@forEach
+            val prefix = if (root.name.startsWith(".glafira-backup-test-staging-"))
+                ".glafira-backup-test-staging-" else "glafira-backup-test-"
+            val runId = root.name.removePrefix(prefix)
+            val parsed = try { UUID.fromString(runId) } catch (_: IllegalArgumentException) { null }
+            if (parsed == null || parsed.toString() != runId) return@forEach
+            if (::testRunId.isInitialized && runId == testRunId) return@forEach
+            val owner = fixtureRootOwnerMarker(root)
+            val alias = "glafira_test_rollback_" + runId.replace("-", "")
+            if (!owner.isFile || Files.isSymbolicLink(owner.toPath()) ||
+                owner.readText(Charsets.UTF_8) != "$runId\n$alias"
+            ) return@forEach
+            if (File(root, "no-backup/glafira-restore-journal").exists()) return@forEach
+            GlafiraRollbackSnapshotCipher(alias).deleteKey()
+            deleteTreeWithoutFollowingLinks(root.toPath())
+            syncMarkerDirectory(appContext.cacheDir)
+        }
+    }
+
+    @Test
+    fun failedExclusiveMkdirNeverDeletesPreexistingFixtureLookingDirectory() {
+        val runId = UUID.randomUUID().toString()
+        val existing = File(appContext.cacheDir, "glafira-backup-test-" + runId)
+        assertTrue(existing.mkdir())
+        val canary = File(existing, "unowned.txt").apply { writeText("must-survive") }
+        try {
+            // This is the exact failure path when mkdir() returns false: the setup did not
+            // create the directory, so its cleanup helper must be a no-op.
+            cleanupUnclaimedFixtureRoot(existing, createdByThisSetup = false, runId = runId)
+            assertTrue("Pre-existing fixture-looking directory is preserved", canary.isFile)
+        } finally {
+            existing.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun nonFileKeyOwnerRecordsArePreservedWithoutBlockingCleanup() {
+        val runId = UUID.randomUUID().toString()
+        val directoryMarker = File(appContext.noBackupFilesDir, "glafira-test-key-owner-" + runId + "-primary")
+        assertTrue(directoryMarker.mkdir())
+        val temporaryDirectory = File(appContext.noBackupFilesDir, ".glafira-test-key-owner-" + runId + "-primary." + UUID.randomUUID() + ".tmp")
+        assertTrue(temporaryDirectory.mkdir())
+        try {
+            cleanupOwnedLeftoverRollbackFixture()
+            assertTrue("Directory masquerading as a key-owner marker is preserved", directoryMarker.isDirectory)
+            assertTrue("Directory masquerading as a temporary marker is preserved", temporaryDirectory.isDirectory)
+        } finally {
+            directoryMarker.delete()
+            temporaryDirectory.delete()
+        }
+    }
+
+    @Test
+    fun orphanCleanupPreservesSymlinkRootsAndTheirTargets() {
+        val runId = UUID.randomUUID().toString()
+        val alias = "glafira_test_rollback_" + runId.replace("-", "")
+        val marker = File(appContext.noBackupFilesDir, "glafira-test-key-owner-" + runId + "-primary")
+        FileOutputStream(marker).use { output ->
+            output.write(alias.toByteArray(Charsets.UTF_8))
+            output.fd.sync()
+        }
+        val target = File(appContext.cacheDir, "unrelated-target-" + runId).apply {
+            mkdir()
+            File(this, "keep.txt").writeText("must-survive")
+        }
+        val root = File(appContext.cacheDir, "glafira-backup-test-" + runId)
+        try {
+            Os.symlink(target.absolutePath, root.absolutePath)
+            cleanupOwnedLeftoverRollbackFixture()
+            assertTrue("Symlink target remains untouched", File(target, "keep.txt").isFile)
+            assertTrue("Symlink root is preserved", Files.isSymbolicLink(root.toPath()))
+            assertTrue("Alias owner marker is preserved for manual recovery", marker.exists())
+        } finally {
+            if (Files.isSymbolicLink(root.toPath())) Os.remove(root.absolutePath)
+            target.deleteRecursively()
+            marker.delete()
+        }
+    }
+
+    @Test
+    fun orphanedTemporaryAliasRegistrationIsReclaimedOnlyForCanonicalOwnedNames() {
+        val validRun = UUID.randomUUID().toString()
+        val validTemp = File(appContext.noBackupFilesDir, ".glafira-test-key-owner-" + validRun + "-primary." + UUID.randomUUID() + ".tmp").apply { writeText("partial-registration") }
+        val malformed = listOf(
+            File(appContext.noBackupFilesDir, ".glafira-test-key-owner-abandoned-" + UUID.randomUUID() + ".tmp"),
+            File(appContext.noBackupFilesDir, ".glafira-test-key-owner-" + validRun + "-unknown." + UUID.randomUUID() + ".tmp"),
+            File(appContext.noBackupFilesDir, ".glafira-test-key-owner-" + validRun.uppercase() + "-primary." + UUID.randomUUID() + ".tmp")
+        ).onEach { it.writeText("unowned") }
+        try {
+            val activeDatabase = File(store.writableDatabase.path)
+            val activeAliasMarker = fixtureKeyOwnerMarker(rollbackCipher.keyAlias, testRunId)
+            cleanupOwnedLeftoverRollbackFixture()
+            assertTrue("Current test database survives orphan reclamation", activeDatabase.exists())
+            assertTrue("Current fixture owner marker survives orphan reclamation", activeAliasMarker.exists())
+            assertTrue("Current fixture root ownership record survives orphan reclamation", fixtureRootOwnerMarker(testRoot).exists())
+            assertFalse("Canonical interrupted registration is reclaimed", validTemp.exists())
+            malformed.forEach { assertTrue("Malformed unrelated marker is preserved", it.exists()) }
+        } finally {
+            validTemp.delete()
+            malformed.forEach { it.delete() }
+        }
+    }
+
+    private suspend fun <T> withOwnedRollbackKey(block: suspend () -> T): T {
+        assertNoActiveCoreWork()
+        val runId = testRunId
+        var markerPublished = false
+        var primaryFailure: Throwable? = null
+        try {
+            // Set the flag inside the protected block: withTimeout can throw after the
+            // block publishes the marker but before withFixtureLocks returns to its caller.
+            withFixtureLocks {
+                writeRollbackOwnerMarker(runId)
+                markerPublished = true
+            }
+            return block()
+        } catch (error: Throwable) {
+            primaryFailure = error
+            throw error
+        } finally {
+            if (markerPublished) {
+                try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        withFixtureLocks {
+                            val marker = rollbackOwnerMarker()
+                            if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
+                                val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+                                val journalOwner = File(journal, "test-owner")
+                                if (primaryFailure != null && (journal.exists() || rollbackKeyExists())) {
+                                    throw IllegalStateException(
+                                        "Preserving fixture root, journal and fixture key after a failed test."
+                                    )
+                                }
+                                if (journal.exists()) {
+                                    check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
+                                        "Refusing to claim or delete a rollback journal without matching fixture ownership."
+                                    }
+                                    // Keep the ownership journal until Keystore deletion succeeds.
+                                    if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                    check(journal.deleteRecursively()) { "Could not remove test-owned rollback journal." }
+                                } else {
+                                    check(!rollbackKeyExists()) {
+                                        "A fixture owner marker without its journal cannot authorize deletion of its fixture key."
+                                    }
+                                }
+                                clearRollbackOwnerMarker(runId)
+                            }
+                        }
+                    }
+                } catch (cleanup: Throwable) {
+                    if (primaryFailure != null) primaryFailure!!.addSuppressed(cleanup) else throw cleanup
+                }
+            }
+        }
+    }
+
+    private suspend fun restoreOwned(
+        coordinator: GlafiraCoreBackupCoordinator,
+        archive: File,
+        passphrase: CharArray
+    ): BackupVerification = withOwnedRollbackKey { coordinator.restore(archive, passphrase) }
+    private suspend fun <T> withOwnedRestoreJournal(block: suspend () -> T): T = withOwnedRollbackKey(block)
+    private fun deleteFixtureRollbackKey() {
+        rollbackCipher.deleteKey()
+    }
+
+    private fun rollbackKeyExists(): Boolean = rollbackCipher.keyExists()
+    private fun assertCauseContains(error: Throwable, expected: String) {
+        val messages = generateSequence(error as Throwable?) { it.cause }.mapNotNull { it.message }.toList()
+        assertTrue("Expected failure cause to contain '$expected', got: $messages", messages.any { expected in it })
+    }
+    private fun assertCauseType(error: Throwable, expected: Class<out Throwable>) {
+        val causes = generateSequence(error as Throwable?) { it.cause }.toList()
+        assertTrue(
+            "Expected cause " + expected.name + ", got: " + causes.map { it.javaClass.name },
+            causes.any { expected.isInstance(it) }
+        )
     }
 
     private fun task(id: String) = GlafiraTask(
@@ -48,40 +723,49 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         updatedAtMillis = 1_000L,
         idempotencyKey = "backup-project:$id"
     )
+    @Test
+    fun markerPublishFailureLeavesNoActiveMarkerOrTemporaryFile() {
+        val marker = rollbackOwnerMarker()
+        assertFalse(marker.exists())
+        assertThrows(IOException::class.java) {
+            writeRollbackOwnerMarker(testRunId) { throw IOException("injected before atomic publish") }
+        }
+        assertFalse(marker.exists())
+        assertTrue(marker.parentFile?.listFiles { file -> file.name.startsWith(".${marker.name}.") }?.isEmpty() != false)
+    }
 
     @Test
     fun coordinatorArchiveContainsCoreDatabaseSnapshot() = runBlocking {
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             val verification = coordinator.verify(archive, passphrase)
+            assertEquals("Archive creation must enter the pending-delivery pause exactly once", 1, fixtureRuntimeHooks.pauseCount)
             assertTrue(verification.fileCount > 0)
             assertTrue(verification.totalBytes > 0)
         } finally {
             archive.delete()
-            passphrase.fill('\u0000')
+            passphrase.fill(0.toChar())
         }
     }
-
     @Test
     fun legacyArchiveWithoutCoreDatabaseIsRejectedBeforeRestore() = runBlocking {
         store.enqueue(task("existing-task"))
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val legacyArchive = BackupArchive.create(context, passphrase)
         try {
-            assertThrows(IllegalArgumentException::class.java) {
-                runBlocking {
-                    GlafiraCoreBackupCoordinator(context, store).restore(legacyArchive, passphrase)
+            withOwnedRollbackKey {
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking { isolatedCoordinator().restore(legacyArchive, passphrase) }
                 }
+                assertEquals("existing-task", store.getTask("existing-task")?.taskId)
             }
-            assertEquals("existing-task", store.getTask("existing-task")?.taskId)
         } finally {
             legacyArchive.delete()
             passphrase.fill('\u0000')
         }
     }
-
     @Test
     fun restoreReturnsCoreTaskStateAndEncryptedResultFromSnapshot() = runBlocking {
         store.enqueue(task("backup-result-task"))
@@ -93,7 +777,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             3_000L
         ))
 
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
@@ -104,7 +788,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             store.enqueue(task("second-task"))
             assertEquals("second-task", store.getTask("second-task")?.taskId)
 
-            coordinator.restore(archive, passphrase)
+            restoreOwned(coordinator, archive, passphrase)
 
             assertEquals(
                 "result-preserved-by-backup",
@@ -143,12 +827,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         )
 
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             store.enqueue(task("temporary-task"))
-            coordinator.restore(archive, passphrase)
+            // The first post-commit cleanup is interrupted; restore() must retry cleanup
+            // and still report success because this exact restore attempt was committed.
+            fixtureRuntimeHooks.failCommittedCleanupOnce = true
+            restoreOwned(coordinator, archive, passphrase)
 
             val restored = store.getTask("running-task")
             assertEquals(GlafiraTaskState.WAITING_FOR_OWNER, restored?.state)
@@ -174,7 +861,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         try {
             assertThrows(IllegalArgumentException::class.java) {
-                runBlocking { GlafiraCoreBackupCoordinator(context, store).create(passphrase) }
+                runBlocking { isolatedCoordinator().create(passphrase) }
             }
         } finally {
             store.writableDatabase.execSQL("DROP TABLE core_future_sensitive")
@@ -206,7 +893,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             actionCode = "core.result.committed"
         ))
 
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
@@ -224,40 +911,32 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 END
             """.trimIndent())
 
-            assertThrows(Exception::class.java) {
-                runBlocking { coordinator.restore(archive, passphrase) }
-            }
-
-            assertEquals(
-                "known-good-result",
-                store.coreTaskResult("backup-result-task", "backup-project")?.result
-            )
-            assertEquals("created-after-backup", store.getTask("created-after-backup")?.taskId)
-            assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-            assertEquals(
-                expectedTraceEventIds,
-                trace.query(
+            withOwnedRestoreJournal {
+                val restoreFailure = assertThrows(android.database.sqlite.SQLiteException::class.java) {
+                    runBlocking { coordinator.restore(archive, passphrase) }
+                }
+                assertCauseContains(restoreFailure, "injected-portable-restore-result-failure")
+                assertEquals(
+                    "known-good-result",
+                    store.coreTaskResult("backup-result-task", "backup-project")?.result
+                )
+                assertEquals("created-after-backup", store.getTask("created-after-backup")?.taskId)
+                assertFalse(File(context.noBackupFilesDir, "glafira-restore-journal/restore.pending").exists())
+                assertEquals(expectedTraceEventIds, trace.query(
                     GlafiraCoreTraceQuery("backup-project"),
                     GlafiraCoreTraceAccessContext("backup-project", allowProjectEvents = true)
-                ).events.map { it.eventId }
-            )
-            assertThrows(android.database.sqlite.SQLiteException::class.java) {
-                store.writableDatabase.delete(
-                    GlafiraCoreTraceStore.TABLE,
-                    "event_id = ?",
-                    arrayOf("restore-failure-trace")
-                )
+                ).events.map { it.eventId })
+                assertThrows(android.database.sqlite.SQLiteException::class.java) {
+                    store.writableDatabase.delete(GlafiraCoreTraceStore.TABLE, "event_id = ?", arrayOf("restore-failure-trace"))
+                }
+                assertEquals(2, store.readableDatabase.rawQuery(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name IN ('core_trace_task_created', 'core_trace_task_state_changed')",
+                    null
+                ).use { it.moveToFirst(); it.getInt(0) })
+                store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
             }
-            assertTrue(store.readableDatabase.rawQuery(
-                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_created'",
-                null
-            ).use { it.moveToFirst() })
-            assertTrue(store.readableDatabase.rawQuery(
-                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'core_trace_task_state_changed'",
-                null
-            ).use { it.moveToFirst() })
-            store.writableDatabase.execSQL("DROP TRIGGER inject_portable_restore_result_failure")
         } finally {
+            store.writableDatabase.execSQL("DROP TRIGGER IF EXISTS inject_portable_restore_result_failure")
             archive.delete()
             passphrase.fill('\u0000')
         }
@@ -280,7 +959,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         )
         trace.append(original)
 
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-trace-backup-passphrase".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
@@ -292,7 +971,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 actionCode = "BACKUP_VERIFIED"
             ))
 
-            coordinator.restore(archive, passphrase)
+            restoreOwned(coordinator, archive, passphrase)
 
             val restored = trace.query(
                 GlafiraCoreTraceQuery("backup-trace-project"),
@@ -324,15 +1003,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun wrongPassphraseLeavesCurrentCoreQueueUntouched() = runBlocking {
         store.enqueue(task("must-remain"))
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
+        val coordinator = isolatedCoordinator()
         val correctPassphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val wrongPassphrase = "GLAFIRA-wrong-passphrase-2026".toCharArray()
         val archive = coordinator.create(correctPassphrase)
         try {
-            assertThrows(Exception::class.java) {
-                runBlocking { coordinator.restore(archive, wrongPassphrase) }
+            withOwnedRollbackKey {
+                val failure = assertThrows(Exception::class.java) {
+                    runBlocking { coordinator.restore(archive, wrongPassphrase) }
+                }
+                assertCauseType(failure, AEADBadTagException::class.java)
+                assertEquals("must-remain", store.getTask("must-remain")?.taskId)
             }
-            assertEquals("must-remain", store.getTask("must-remain")?.taskId)
         } finally {
             archive.delete()
             correctPassphrase.fill('\u0000')
@@ -404,14 +1086,30 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
 
         try {
-            assertThrows(Exception::class.java) {
-                runBlocking {
-                    GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
+            val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+            check(journal.mkdirs())
+            val sentinel = File(journal, "must-survive-pre-rollback-validation")
+            sentinel.writeText("pre-rollback-sentinel", Charsets.UTF_8)
+            withOwnedRestoreJournal {
+                try {
+                    val failure = assertThrows(IllegalArgumentException::class.java) {
+                        runBlocking { isolatedCoordinator().restore(archive, passphrase) }
+                    }
+                    assertEquals("Неполный набор таблиц Core.", failure.message)
+                    assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
+                    assertFalse(File(journal, "restore.pending").exists())
+                    assertTrue("Validation must reject before prepareRollback can clear the journal directory.", sentinel.isFile)
+                    assertEquals("pre-rollback-sentinel", sentinel.readText(Charsets.UTF_8))
+                } finally {
+                    // This sentinel journal is deliberately test-created and has no rollback
+                    // ownership record. Remove only our sentinel and then its empty directory
+                    // before withOwnedRestoreJournal performs installation-key cleanup.
+                    if (sentinel.exists()) check(sentinel.delete())
+                    if (journal.exists() && journal.list().orEmpty().isEmpty()) {
+                        check(journal.delete()) { "Could not remove the empty test sentinel journal." }
+                    }
                 }
             }
-            assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
-            assertEquals(false, GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-            assertEquals(0, File(context.noBackupFilesDir, "glafira-restore-journal").listFiles()?.size ?: 0)
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
@@ -523,7 +1221,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val identityStore = AndroidCoreInstallationIdentityStore(context, identityFile, keyAliasPrefix)
         val sourceIdentity = identityStore.loadOrCreate()
         val passphrase = "GLAFIRA-clean-install-restore-test-2026".toCharArray()
-        val archive = GlafiraCoreBackupCoordinator(context, store).create(passphrase)
+        val archive = isolatedCoordinator().create(passphrase)
         try {
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             val sourceAlias = "$keyAliasPrefix${sourceIdentity.keyEpoch}"
@@ -532,7 +1230,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue(identityFile.delete())
             keyStore.deleteEntry(sourceAlias)
 
-            GlafiraCoreBackupCoordinator(context, store).restore(archive, passphrase)
+            restoreOwned(isolatedCoordinator(), archive, passphrase)
 
             val restored = identityStore.loadOrCreate()
             assertNotEquals(sourceIdentity.coreId, restored.coreId)
@@ -550,80 +1248,341 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-
     @Test
-    fun rollbackJournalAndCacheNeverExposePlaintextMetadataCanary() {
+    fun rollbackJournalAndCacheNeverExposePlaintextMetadataCanary() = runBlocking<Unit> {
         val taskId = "rollback-journal-canary"
         val canary = "GLAFIRA_ROLLBACK_METADATA_CANARY_91C7"
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-        journal.deleteRecursively()
-        GlafiraRollbackSnapshotCipher.deleteKey()
-        store.enqueue(task(taskId))
-        store.writableDatabase.execSQL(
-            "UPDATE core_tasks SET last_error = ? WHERE task_id = ?",
-            arrayOf(canary, taskId)
-        )
-        store.writableDatabase.execSQL(
-            "UPDATE core_task_history SET reason = ? WHERE task_id = ?",
-            arrayOf(canary, taskId)
-        )
-        assertEquals(
-            canary,
-            store.readableDatabase.rawQuery(
-                "SELECT last_error FROM core_tasks WHERE task_id = ?",
-                arrayOf(taskId)
-            ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
-        )
-        assertEquals(
-            canary,
-            store.readableDatabase.rawQuery(
-                "SELECT reason FROM core_task_history WHERE task_id = ?",
-                arrayOf(taskId)
-            ).use { cursor -> assertTrue(cursor.moveToFirst()); cursor.getString(0) }
-        )
+        val journalOwner = File(journal, "test-owner")
+        val owner = File(context.noBackupFilesDir, "glafira-rollback-canary-owner")
+        val runId = testRunId
         val passphrase = "GLAFIRA-rollback-canary-test-2026".toCharArray()
+        var ownsFixture = false
+        var primaryFailure: Throwable? = null
         try {
-            GlafiraCoreBackupCoordinator(context, store).prepareRollback(passphrase)
-            val journalFiles = journal.walkTopDown().filter { it.isFile }.toList()
-            assertTrue("Rollback journal must contain its encrypted snapshot and marker", journalFiles.isNotEmpty())
-            val cacheFiles = context.cacheDir.walkTopDown().filter { it.isFile }.toList()
-            (journalFiles + cacheFiles).forEach { file ->
-                val contents = file.readBytes().toString(Charsets.ISO_8859_1)
-                assertFalse("Plaintext rollback metadata leaked into ${file.name}", contents.contains(canary))
+            withFixtureLocks {
+                run {
+                    assertFalse("Refuse to overwrite an unowned rollback journal", journal.exists())
+                    assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
+                    assertFalse("Refuse to overwrite an existing canary owner marker", owner.exists())
+                    // The journal and key were absent under the exclusive maintenance gate.
+                    store.enqueue(task(taskId))
+                    store.writableDatabase.execSQL(
+                        "UPDATE core_tasks SET last_error = ? WHERE task_id = ?",
+                        arrayOf(canary, taskId)
+                    )
+                    store.writableDatabase.execSQL(
+                        "UPDATE core_task_history SET reason = ? WHERE task_id = ?",
+                        arrayOf(canary, taskId)
+                    )
+                    assertEquals(listOf(canary, canary), store.readableDatabase.rawQuery(
+                        "SELECT last_error FROM core_tasks WHERE task_id = ? UNION ALL SELECT reason FROM core_task_history WHERE task_id = ?",
+                        arrayOf(taskId, taskId)
+                    ).use { cursor ->
+                        buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+                    })
+                    try {
+                    writeRollbackOwnerMarker(runId)
+                    owner.writeText(runId, Charsets.UTF_8)
+                    ownsFixture = true
+                        isolatedCoordinator().prepareRollback(passphrase)
+                        journalOwner.writeText(runId, Charsets.UTF_8)
+                    } catch (error: Exception) {
+                        // Never manufacture an ownership record after a partial failure.
+                        // Recovery must preserve the journal/key if ownership is ambiguous.
+                        throw error
+                    }
+                    val journalFiles = journal.walkTopDown().filter { it.isFile && it != journalOwner }.toList()
+                    assertTrue(
+                        "Rollback journal must contain both encrypted snapshot artifacts, excluding its ownership marker",
+                        journalFiles.map { it.name }.toSet().containsAll(setOf("database.db", "files.glb"))
+                    )
+                    val cacheFiles = context.cacheDir.walkTopDown().filter { it.isFile }.toList()
+                    (journalFiles + cacheFiles).forEach { file ->
+                        val contents = file.readBytes().toString(Charsets.ISO_8859_1)
+                        assertFalse(
+                            "Plaintext rollback metadata leaked into ${file.name}",
+                            contents.contains(canary)
+                        )
+                    }
+                    assertTrue(
+                        "No decrypted rollback recovery temp may remain after prepareRollback",
+                        context.cacheDir.listFiles { file ->
+                            file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                        }.orEmpty().isEmpty()
+                    )
+                }
             }
-            assertTrue(
-                "No decrypted rollback recovery temp may remain after prepareRollback",
-                context.cacheDir.listFiles { file ->
-                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                }.orEmpty().isEmpty()
-            )
+        } catch (error: Throwable) {
+            primaryFailure = error
+            throw error
         } finally {
-            journal.deleteRecursively()
             passphrase.fill('\u0000')
-            GlafiraRollbackSnapshotCipher.deleteKey()
+            if (ownsFixture) try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    withFixtureLocks {
+                        if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
+                            if (journal.exists()) {
+                                check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
+                                    "Refusing to delete a journal not proven to belong to this canary generation."
+                                }
+                                if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                check(journal.deleteRecursively())
+                            } else check(!rollbackKeyExists()) {
+                                "Refusing to delete an installation rollback key without its owned journal."
+                            }
+                            clearRollbackOwnerMarker(runId)
+                            check(owner.delete())
+                        }
+                    }
+                }
+            } catch (cleanup: Throwable) {
+                if (primaryFailure != null) primaryFailure!!.addSuppressed(cleanup) else throw cleanup
+            }
+        }
+    }
+    @Test
+    fun successfulRestoreDeletesInstallationLocalRollbackKey() = runBlocking {
+        assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
+        store.enqueue(task("rollback-key-lifecycle"))
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-rollback-key-lifecycle".toCharArray()
+        val archive = coordinator.create(passphrase)
+        try {
+            withOwnedRollbackKey {
+                coordinator.restore(archive, passphrase)
+                assertFalse("Rollback key must be deleted after the pending journal is cleared", rollbackKeyExists())
+            }
+        } finally {
+            archive.delete()
+            passphrase.fill('\u0000')
+        }
+    }
+    @Test
+    fun committedRestoreReportsSuccessWhenJournalCleanupMustBeRetried() = runBlocking {
+        store.enqueue(task("restore-cleanup-pending"))
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-committed-cleanup-pending".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        try {
+            withOwnedRollbackKey {
+                // Fail both the initial cleanup and its immediate recovery retry. The
+                // durable commit is already published, so restore must report success
+                // while preserving the journal for a later cleanup pass.
+                fixtureRuntimeHooks.failCommittedCleanupCount = 2
+                coordinator.restore(archive, passphrase)
+                assertTrue("Committed journal remains available for later cleanup", File(journal, "restore.committed").isFile)
+                assertTrue("Rollback evidence remains while cleanup is pending", File(journal, "database.db").isFile)
+                fixtureRuntimeHooks.failCommittedCleanupCount = 0
+                isolatedCoordinator().recover(passphrase)
+                assertFalse("A later recovery pass removes the committed journal", journal.exists())
+                assertTrue("The selected archive's task remains restored", store.getTask("restore-cleanup-pending") != null)
+            }
+        } finally {
+            fixtureRuntimeHooks.failCommittedCleanupCount = 0
+            archive.delete()
+            passphrase.fill(0.toChar())
         }
     }
 
     @Test
-    fun successfulRestoreDeletesInstallationLocalRollbackKey() = runBlocking {
-        val keyAlias = "glafira_core_rollback_v1"
-        GlafiraRollbackSnapshotCipher.deleteKey()
-        store.enqueue(task("rollback-key-lifecycle"))
-        val coordinator = GlafiraCoreBackupCoordinator(context, store)
-        val passphrase = "GLAFIRA-rollback-key-lifecycle".toCharArray()
-        val archive = coordinator.create(passphrase)
+    fun v3RecoveryReentersAfterFreshCoordinatorConstruction() = run {
+        runBlocking {
+            val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+            val marker = File(journal, "restore.pending")
+            val journalOwner = File(journal, "test-owner")
+            val rollbackDatabase = File(journal, "database.db")
+            val rollbackArchive = File(journal, "files.glb")
+            val owner = File(context.noBackupFilesDir, "glafira-v3-reentry-test-owner")
+            val knownGood = File(context.filesDir, "v3-reentry-known-good.txt")
+            val createdAfterMarker = File(context.filesDir, "v3-reentry-created-after-marker.txt")
+            val runId = testRunId
+                val passphrase = "GLAFIRA-${UUID.randomUUID()}-${UUID.randomUUID()}".toCharArray()
+            var expectedTask: GlafiraTask? = null
+            var ownsFixture = false
+            var primaryFailure: Throwable? = null
+
+            try {
+                withFixtureLocks {
+                    run {
+                        if (owner.exists()) {
+                            val previous = owner.readText(Charsets.UTF_8)
+                            if (journal.exists()) {
+                                check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
+                                check(journal.deleteRecursively())
+                                if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                            } else check(!rollbackKeyExists()) {
+                                "Refusing to delete a rollback key without its owned journal."
+                            }
+                            check(!knownGood.exists() || knownGood.delete())
+                            check(!createdAfterMarker.exists() || createdAfterMarker.delete())
+                            check(owner.delete())
+                        }
+                        assertFalse("Refuse to overwrite an unowned journal", journal.exists())
+                        assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
+                        assertFalse("Known-good fixture must start absent", knownGood.exists())
+                        assertFalse("Mutation fixture must start absent", createdAfterMarker.exists())
+                        knownGood.writeText("known-good-before-marker", Charsets.UTF_8)
+                        val task = task("known-good-before-marker")
+                        store.enqueue(task)
+                        expectedTask = checkNotNull(store.getTask(task.taskId))
+                        writeRollbackOwnerMarker(runId)
+                        owner.writeText(runId, Charsets.UTF_8)
+                        ownsFixture = true
+                        try {
+                            isolatedCoordinator().prepareRollback(passphrase)
+                            journalOwner.writeText(runId, Charsets.UTF_8)
+                        } catch (error: Exception) {
+                            // A partial prepareRollback is not proof that this fixture owns
+                            // the installation-wide key. Leave ambiguous recovery state intact.
+                            throw error
+                        }
+                        assertTrue("V3 marker must be durable before live-state mutation", marker.isFile)
+                        assertEquals("GLAFIRA_RESTORE_ROLLBACK_V3", marker.readText(Charsets.UTF_8))
+                        assertTrue(rollbackDatabase.isFile && rollbackDatabase.length() > 0L)
+                        assertTrue(rollbackArchive.isFile && rollbackArchive.length() > 0L)
+                    }
+                }
+                withFixtureLocks {
+                    run {
+                        store.enqueue(task("mutated-after-marker"))
+                        assertTrue(store.transition(
+                            "known-good-before-marker", setOf(GlafiraTaskState.QUEUED),
+                            GlafiraTaskState.WAITING_FOR_OWNER, System.currentTimeMillis(), null,
+                            "mutated-after-marker"
+                        ))
+                        knownGood.writeText("mutated-after-marker", Charsets.UTF_8)
+                        createdAfterMarker.writeText("created-after-marker", Charsets.UTF_8)
+                    }
+                }
+                // The injected fixture runtime has no authority over the application scheduler.
+                withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
+                    isolatedCoordinator().recover(passphrase)
+                }
+                assertEquals(expectedTask, store.getTask("known-good-before-marker"))
+                assertNull(store.getTask("mutated-after-marker"))
+                assertEquals("known-good-before-marker", knownGood.readText(Charsets.UTF_8))
+                assertFalse("Files created after the marker must be removed", createdAfterMarker.exists())
+                assertFalse("Successful recovery must clear the pending marker", marker.exists())
+                assertFalse("Successful recovery must remove the rollback journal", journal.exists())
+                assertFalse("Successful recovery must delete only this fixture's key", rollbackKeyExists())
+                val remainingTemps = checkNotNull(context.cacheDir.listFiles { file ->
+                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                })
+                assertTrue("No decrypted rollback recovery temp may remain", remainingTemps.isEmpty())
+                assertEquals("Rollback recovery must invoke the pause hook exactly once", 1, fixtureRuntimeHooks.pauseContexts.size)
+                assertTrue("Rollback recovery must pass the fixture context by identity", fixtureRuntimeHooks.pauseContexts.single() === context)
+                assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            } catch (error: Throwable) {
+                primaryFailure = error
+                throw error
+            } finally {
+                passphrase.fill('\u0000')
+                if (ownsFixture) try {
+                    withFixtureLocks {
+                        run {
+                            if (owner.isFile && owner.readText(Charsets.UTF_8) == runId) {
+                                if (primaryFailure != null && (journal.exists() || rollbackKeyExists())) {
+                                    throw IllegalStateException(
+                                        "Preserving V3 fixture journal and key after a failed recovery assertion."
+                                    )
+                                }
+                                if (journal.exists()) {
+                                    check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
+                                    if (rollbackKeyExists()) deleteFixtureRollbackKey()
+                                    check(journal.deleteRecursively())
+                                } else check(!rollbackKeyExists()) {
+                                    "Refusing to delete an installation rollback key without its owned journal."
+                                }
+                                clearRollbackOwnerMarker(runId)
+                                check(!knownGood.exists() || knownGood.delete())
+                                check(!createdAfterMarker.exists() || createdAfterMarker.delete())
+                                check(owner.delete())
+                            }
+                        }
+                    }
+                } catch (cleanup: Throwable) {
+                    if (primaryFailure != null) primaryFailure!!.addSuppressed(cleanup) else throw cleanup
+                }
+            }
+        }
+    }
+
+    @Test
+    fun fixtureCipherUsesIndependentAliasesAndCannotDeleteOtherFixtureKeys() = runBlocking {
+        withFixtureLocks {
+            val suffix = testRunId.replace("-", "")
+            val secondFixture = GlafiraRollbackSnapshotCipher("glafira_test_rollback_" + suffix + "_second")
+            val thirdFixture = GlafiraRollbackSnapshotCipher("glafira_test_rollback_" + suffix + "_third")
+            registerFixtureKeyAlias(secondFixture.keyAlias, testRunId)
+            registerFixtureKeyAlias(thirdFixture.keyAlias, testRunId)
+            val source = File(context.cacheDir, "alias-isolation-source.db")
+            val firstEncrypted = File(context.cacheDir, "alias-isolation-first.enc")
+            val secondEncrypted = File(context.cacheDir, "alias-isolation-second.enc")
+            val thirdEncrypted = File(context.cacheDir, "alias-isolation-third.enc")
+            try {
+                source.writeText("fixture-alias-isolation")
+                rollbackCipher.encrypt(source, firstEncrypted)
+                secondFixture.encrypt(source, secondEncrypted)
+                thirdFixture.encrypt(source, thirdEncrypted)
+                assertTrue(rollbackCipher.keyExists())
+                assertTrue(secondFixture.keyExists())
+                assertTrue(thirdFixture.keyExists())
+                assertNotEquals(rollbackCipher.keyAlias, secondFixture.keyAlias)
+                assertNotEquals(rollbackCipher.keyAlias, thirdFixture.keyAlias)
+                rollbackCipher.deleteKey()
+                assertFalse(rollbackCipher.keyExists())
+                assertTrue("Deleting the primary fixture key must preserve the second fixture key", secondFixture.keyExists())
+                assertTrue("Deleting the primary fixture key must preserve the third fixture canary", thirdFixture.keyExists())
+            } finally {
+                source.delete()
+                firstEncrypted.delete()
+                secondEncrypted.delete()
+                thirdEncrypted.delete()
+                rollbackCipher.deleteKey()
+                secondFixture.deleteKey()
+                clearFixtureKeyAliasOwner(secondFixture.keyAlias, testRunId)
+                thirdFixture.deleteKey()
+                clearFixtureKeyAliasOwner(thirdFixture.keyAlias, testRunId)
+            }
+        }
+    }
+
+    @Test
+    fun committedJournalCleanupCanBeReenteredWithoutRollbackKey() = runBlocking {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
+        val pending = File(journal, "restore.pending").apply { writeText("GLAFIRA_RESTORE_ROLLBACK_V3") }
+        val committed = File(journal, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
+        val database = File(journal, "database.db").apply { writeText("encrypted-fixture-placeholder") }
+        val archive = File(journal, "files.glb").apply { writeText("encrypted-fixture-placeholder") }
+        val passphrase = "committed-cleanup-reentry".toCharArray()
         try {
-            coordinator.restore(archive, passphrase)
-            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            assertFalse("Rollback key must be deleted after the pending journal is cleared", keyStore.containsAlias(keyAlias))
+            fixtureRuntimeHooks.failCommittedCleanupOnce = true
+            assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Committed marker is preserved after interrupted cleanup", committed.exists())
+            assertTrue("Pending marker is retained until cleanup completes", pending.exists())
+            assertTrue("Rollback database is retained while cleanup is interrupted", database.exists())
+            assertTrue("Rollback archive is retained while cleanup is interrupted", archive.exists())
+
+            isolatedCoordinator().recover(passphrase)
+            assertFalse(pending.exists())
+            assertFalse(committed.exists())
+            assertFalse(database.exists())
+            assertFalse(archive.exists())
+            assertFalse(journal.exists())
+            assertFalse(rollbackCipher.keyExists())
         } finally {
-            archive.delete()
-            passphrase.fill('\u0000')
-            GlafiraRollbackSnapshotCipher.deleteKey()
+            passphrase.fill(0.toChar())
+            // If recovery did not remove the committed marker, retain the complete fixture evidence.
+            if (!committed.exists() && journal.exists()) check(journal.deleteRecursively())
         }
     }
 
     companion object {
-        private const val DATABASE_NAME = "glafira_core_tasks.db"
+        private const val MAINTENANCE_TIMEOUT_MILLIS = 10_000L
+        private val FIXTURE_LIFETIME_PROCESS_LOCK = java.util.concurrent.locks.ReentrantLock(true)
     }
 }

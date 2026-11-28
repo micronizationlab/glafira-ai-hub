@@ -2,8 +2,8 @@ package com.micronizationlab.glafira
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import java.io.File
 import java.io.DataInputStream
+import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.KeyStore
@@ -13,16 +13,16 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Authenticated, installation-local encryption for the short-lived Core rollback snapshot. */
-internal object GlafiraRollbackSnapshotCipher {
-    private const val KEY_ALIAS = "glafira_core_rollback_v1"
-    private const val ANDROID_KEY_STORE = "AndroidKeyStore"
-    private const val MAGIC_BYTES = 8
-    private val MAGIC = "GLRBK001".toByteArray(Charsets.US_ASCII)
-    private const val IV_BYTES = 12
-    private const val MAX_SNAPSHOT_BYTES = 512L * 1024L * 1024L
-    private const val GCM_TAG_BYTES = 16
-    private const val MAX_ENCRYPTED_BYTES = MAX_SNAPSHOT_BYTES + MAGIC_BYTES + IV_BYTES + GCM_TAG_BYTES
+/**
+ * Authenticated rollback snapshot cipher. Each instance owns exactly one Keystore alias.
+ * Production uses the stable installation alias; tests must pass a fixture-unique alias.
+ */
+class GlafiraRollbackSnapshotCipher internal constructor(
+    internal val keyAlias: String = PRODUCTION_KEY_ALIAS
+) {
+    init {
+        require(keyAlias.matches(Regex("[A-Za-z0-9_.-]{1,180}"))) { "Invalid rollback Keystore alias." }
+    }
 
     fun encrypt(source: File, destination: File) {
         require(source.isFile && source.length() in 1L..MAX_SNAPSHOT_BYTES) {
@@ -68,7 +68,6 @@ internal object GlafiraRollbackSnapshotCipher {
                             output.write(clear)
                         }
                     }
-                    // GCM authenticates the complete ciphertext here. Never accept a partial file.
                     val finalClear = cipher.doFinal()
                     totalClearBytes += finalClear.size
                     require(totalClearBytes in 1..MAX_SNAPSHOT_BYTES) {
@@ -85,25 +84,28 @@ internal object GlafiraRollbackSnapshotCipher {
     }
 
     fun deleteKey() {
-        KeyStore.getInstance(ANDROID_KEY_STORE).apply {
-            load(null)
-            if (containsAlias(KEY_ALIAS)) deleteEntry(KEY_ALIAS)
-        }
+        val store = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
+        if (store.containsAlias(keyAlias)) store.deleteEntry(keyAlias)
+    }
+
+    fun keyExists(): Boolean {
+        val store = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
+        return store.containsAlias(keyAlias)
     }
 
     private fun existingKeyOrThrow(): SecretKey {
         val store = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
-        return store.getKey(KEY_ALIAS, null) as? SecretKey
+        return store.getKey(keyAlias, null) as? SecretKey
             ?: throw IllegalStateException("ROLLBACK_KEY_MISSING")
     }
 
     private fun getOrCreateEncryptionKey(): SecretKey {
         val store = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
-        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        (store.getKey(keyAlias, null) as? SecretKey)?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEY_STORE)
         generator.init(
             KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
+                keyAlias,
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
@@ -113,5 +115,23 @@ internal object GlafiraRollbackSnapshotCipher {
                 .build()
         )
         return generator.generateKey()
+    }
+
+    companion object {
+        const val PRODUCTION_KEY_ALIAS = "glafira_core_rollback_v1"
+        private const val ANDROID_KEY_STORE = "AndroidKeyStore"
+        private const val MAGIC_BYTES = 8
+        private val MAGIC = "GLRBK001".toByteArray(Charsets.US_ASCII)
+        private const val IV_BYTES = 12
+        private const val MAX_SNAPSHOT_BYTES = 512L * 1024L * 1024L
+        private const val GCM_TAG_BYTES = 16
+        private const val MAX_ENCRYPTED_BYTES = MAX_SNAPSHOT_BYTES + MAGIC_BYTES + IV_BYTES + GCM_TAG_BYTES
+
+        // Source-compatible production facade for existing cipher-only instrumentation tests.
+        fun encrypt(source: File, destination: File) =
+            GlafiraRollbackSnapshotCipher().encrypt(source, destination)
+        fun decrypt(source: File, destination: File) =
+            GlafiraRollbackSnapshotCipher().decrypt(source, destination)
+        fun deleteKey() = GlafiraRollbackSnapshotCipher().deleteKey()
     }
 }
