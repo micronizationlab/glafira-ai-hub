@@ -891,6 +891,12 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 
 This is a W08-only registration. PR #801 registers Bridge pairing UX only; it does not register Windows Agent UX (which is handled separately by PR #837). Owner authorization: the explicit 2026-11-28 directive to create the shared defect register and act across all 11 workstreams authorizes these W08/W09/W10 registration records, but does not authorize editing the future design artifacts or changing runtime behavior. The controlled shared-ledger exception applies only to the W08 registry row and detailed W08 record; all other rows and prior events remain unchanged.
 
+### W08 registry extension (legacy registry rows and W06 history remain unchanged)
+
+| Work Item ID | Registered parent | Step / executable leaf | Owner | Scope | Status | Evidence / next action |
+|---|---|---|---|---|---|---|
+| GLAFIRA-S000-W08 | `1.3.1.1.1.1` | `1.3.1.1.1.1.1` | GLAFIRA (assignment pending priority scan) | Android↔Windows Hub pairing UX design; issue #677; future deliverable `docs/design/BRIDGE_PAIRING_UX.md` | PROPOSED | Reservation PR #801; exact Main base `7f99def18acc0b02665158df2ad1693a89428ede`; registration only. Fresh Action Pool A and Workstream 11 scan plus owner acceptance are required before PROPOSED → READY; merge evidence then records READY → RESERVED. Future design artifact remains blocked pending exact post-merge Main/path pin. |
+
 ### GLAFIRA-S000-W08 — Bridge pairing UX
 - **Hierarchy:** task `1.3.1.1.1`; subtask `1.3.1.1.1.1`; seven-component executable leaf `1.3.1.1.1.1.1`.
 - **Tracker / future scope:** issue #677; exclusive future deliverable `docs/design/BRIDGE_PAIRING_UX.md` only.
