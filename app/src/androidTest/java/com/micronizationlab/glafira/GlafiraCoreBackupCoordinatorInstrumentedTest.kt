@@ -1630,6 +1630,32 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun recoveryRejectsCommittedJournalSymlinkWithoutTouchingTargetArtifacts() = runBlocking {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val target = File(context.cacheDir, "committed-journal-target-$runId").apply { check(mkdir()) }
+        val committed = File(target, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
+        val database = File(target, "database.db").apply { writeText("must-survive") }
+        val archive = File(target, "files.glb").apply { writeText("must-survive-too") }
+        val passphrase = "GLAFIRA-committed-journal-link".toCharArray()
+        try {
+            Files.createSymbolicLink(journal.toPath(), target.toPath())
+            val failure = assertThrows(IllegalStateException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Recovery must stop at the explicit journal symlink guard",
+                failure.message.orEmpty().contains("символическую ссылку"))
+            assertTrue("Committed marker in the symlink target is preserved", committed.isFile)
+            assertEquals("must-survive", database.readText())
+            assertEquals("must-survive-too", archive.readText())
+        } finally {
+            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
+            check(target.deleteRecursively())
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun committedCleanupFsyncsFilesDirectoryEvenWhenPlaintextSnapshotIsAlreadyAbsent() = runBlocking {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
         val pending = File(journal, "restore.pending").apply { writeText("GLAFIRA_RESTORE_ROLLBACK_V3") }
