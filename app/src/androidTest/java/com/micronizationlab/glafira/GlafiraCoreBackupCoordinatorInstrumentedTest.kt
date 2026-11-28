@@ -791,7 +791,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     "Refusing to inspect or clean a rollback journal through a symbolic-link path."
                                 }
                                 val journalExists = Files.exists(journalPath, LinkOption.NOFOLLOW_LINKS)
-                                val journalOwner = File(journal, "test-owner")
+                                val journalOwner = File(context.noBackupFilesDir, "glafira-v3-reentry-journal-owner")
                                 if (primaryFailure != null && (journalExists || rollbackKeyExists())) {
                                     throw IllegalStateException(
                                         "Preserving fixture root, journal and fixture key after a failed test."
@@ -1664,7 +1664,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         ownsFixture = true
                         try {
                             isolatedCoordinator().prepareRollback(passphrase)
-                            journalOwner.writeText(runId, Charsets.UTF_8)
                         } catch (error: Exception) {
                             // A partial prepareRollback is not proof that this fixture owns
                             // the installation-wide key. Leave ambiguous recovery state intact.
@@ -1674,6 +1673,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         assertEquals("GLAFIRA_RESTORE_ROLLBACK_V3", marker.readText(Charsets.UTF_8))
                         assertTrue(rollbackDatabase.isFile && rollbackDatabase.length() > 0L)
                         assertTrue(rollbackArchive.isFile && rollbackArchive.length() > 0L)
+                journalOwner.writeText(runId, Charsets.UTF_8)
                     }
                 }
                 withFixtureLocks {
@@ -1729,6 +1729,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 }
                                 check(!knownGood.exists() || knownGood.delete())
                                 check(!createdAfterMarker.exists() || createdAfterMarker.delete())
+                                check(!journalOwner.exists() || journalOwner.delete())
                                 check(owner.delete())
                             }
                             // Recovery may remove the test-owned V3 marker file before this
