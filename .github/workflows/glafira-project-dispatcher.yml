@@ -166,6 +166,7 @@ jobs:
           [[ "$previous_file" != "-" && -f "$previous_file" && -r "$previous_file" ]] || { echo "ERROR: previous PR snapshot must be a readable regular file." >&2; exit 2; }
           [[ "$latest_file" != "-" && -f "$latest_file" && -r "$latest_file" ]] || { echo "ERROR: latest PR snapshot must be a readable regular file." >&2; exit 2; }
           # Keep inventories in files: a full JSON snapshot must never be passed in argv.
+
           if GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE=1 bash "$RUNNER_TEMP/test-renderer.sh" > "$RUNNER_TEMP/dispatcher-forced-failure.out" 2> "$RUNNER_TEMP/dispatcher-forced-failure.err"; then
             echo "forced renderer failure unexpectedly passed" >&2; exit 1
           else
