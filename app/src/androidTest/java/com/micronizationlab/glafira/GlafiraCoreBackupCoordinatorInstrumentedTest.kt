@@ -54,6 +54,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failPlaintextSnapshotDirectorySyncOnce = false
         var plaintextSnapshotDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCompletedCalls = 0
+        var plaintextExportExistsAtParentSync: Boolean? = null
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
             return block()
@@ -77,6 +78,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         override fun beforeDirectorySync(directory: File) {
             if (directory.absoluteFile == context.filesDir.absoluteFile) {
                 plaintextSnapshotDirectorySyncCalls++
+                plaintextExportExistsAtParentSync = File(context.filesDir, GlafiraPortableCoreSnapshot.PATH).exists()
                 if (failPlaintextSnapshotDirectorySyncOnce) {
                     failPlaintextSnapshotDirectorySyncOnce = false
                     throw IOException("injected plaintext snapshot parent-directory fsync failure")
@@ -103,6 +105,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fixtureRuntimeHooks.pauseCount = 0
             fixtureRuntimeHooks.failPauseForRestoreCount = 0
             fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
+            fixtureRuntimeHooks.plaintextExportExistsAtParentSync = null
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -864,6 +867,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     failure.suppressed.any { it is IllegalStateException })
                 assertTrue("The catch-path snapshot fsync failure remains attached to the original restore failure",
                     failure.suppressed.any { it is IOException && it.message.orEmpty().contains("plaintext snapshot parent-directory fsync failure") })
+                assertEquals("Catch-path cleanup removes plaintext before its parent fsync and before finally runs",
+                    false, fixtureRuntimeHooks.plaintextExportExistsAtParentSync)
                 assertFalse("Failed restore must not leave its plaintext snapshot directory", snapshotDirectory.exists())
                 assertTrue("Rollback journal remains available for owner recovery", File(journal, "restore.pending").isFile)
                 assertTrue("Pre-restore task state is restored after failure",
@@ -1651,11 +1656,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "GLAFIRA-committed-journal-link".toCharArray()
         try {
             Files.createSymbolicLink(journal.toPath(), target.toPath())
-            val sharedGuardFailure = assertThrows(IllegalStateException::class.java) {
-                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
-            }
-            assertTrue("Shared Core preflight rejects the journal symlink before following markers",
-                sharedGuardFailure.message.orEmpty().contains("символическая ссылка"))
+            assertTrue("Shared Core preflight reports recovery required without crashing startup",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
             val failure = assertThrows(IllegalStateException::class.java) {
                 runBlocking { isolatedCoordinator().recover(passphrase) }
             }
