@@ -46,10 +46,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var testRunId: String
     private var fixtureLifetimeFile: RandomAccessFile? = null
     private var fixtureLifetimeFileLock: java.nio.channels.FileLock? = null
-    private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
+    private inner class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
         var pauseCount = 0
+        var stagingDirectorySyncCalls = 0
+        var stagingDirectorySyncCompletedCalls = 0
+        var injectUnexpectedStagingFileOnCleanup = false
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
             return block()
@@ -57,10 +60,25 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val pauseContexts = mutableListOf<Context>()
         override fun pauseForRestore(context: Context) { pauseContexts += context }
         override fun beforeCommittedJournalCleanup() {
+            if (injectUnexpectedStagingFileOnCleanup) {
+                injectUnexpectedStagingFileOnCleanup = false
+                File(context.filesDir, ".glafira-core-snapshot/unexpected-owner-data.tmp")
+                    .writeText("preserve-owner-data")
+            }
             if (failCommittedCleanupOnce || failCommittedCleanupCount > 0) {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
                 throw IOException("injected interruption before committed journal cleanup")
+            }
+        }
+        override fun beforeDirectorySync(directory: File) {
+            if (directory.absoluteFile == File(context.filesDir, ".glafira-core-snapshot").absoluteFile) {
+                stagingDirectorySyncCalls++
+            }
+        }
+        override fun afterDirectorySync(directory: File) {
+            if (directory.absoluteFile == File(context.filesDir, ".glafira-core-snapshot").absoluteFile) {
+                stagingDirectorySyncCompletedCalls++
             }
         }
     }
@@ -76,6 +94,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             testRunId = UUID.randomUUID().toString()
             fixtureRuntimeHooks.pauseContexts.clear()
             fixtureRuntimeHooks.pauseCount = 0
+            fixtureRuntimeHooks.stagingDirectorySyncCalls = 0
+            fixtureRuntimeHooks.stagingDirectorySyncCompletedCalls = 0
+            fixtureRuntimeHooks.injectUnexpectedStagingFileOnCleanup = false
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -1550,8 +1571,83 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun backupCreationPreservesUnexpectedSnapshotStagingData() = runBlocking {
+        val directory = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
+        val unexpected = File(directory, "unexpected-owner-data.tmp").apply { writeText("preserve-owner-data") }
+        val passphrase = "GLAFIRA-backup-preserve-staging".toCharArray()
+        try {
+            val failure = assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().create(passphrase) }
+            }
+            assertTrue("Backup must stop on unrelated staging data", failure.message.orEmpty().contains("посторонние данные"))
+            assertTrue("Backup creation must preserve unrelated staging data", unexpected.isFile)
+            assertEquals("preserve-owner-data", unexpected.readText())
+        } finally {
+            unexpected.delete()
+            directory.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun rejectedRestoreRemovesKnownPlaintextButPreservesUnexpectedStagingData() = runBlocking {
+        val directory = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
+        val export = File(directory, "core-portable-v2.json").apply { writeText("stale plaintext task/result data") }
+        val unexpected = File(directory, "unexpected-owner-data.tmp").apply { writeText("preserve-owner-data") }
+        val invalidArchive = File(context.cacheDir, "invalid-restore-" + UUID.randomUUID() + ".glb").apply {
+            writeText("not a GLAFIRA backup")
+        }
+        val passphrase = "GLAFIRA-rejected-restore-cleanup".toCharArray()
+        try {
+            val failure = assertThrows(Exception::class.java) {
+                runBlocking { isolatedCoordinator().restore(invalidArchive, passphrase) }
+            }
+            assertFalse("Rejected restore removes the known stale plaintext export", export.exists())
+            assertTrue("Rejected restore preserves unrelated staging data", unexpected.isFile)
+            assertTrue("Guarded cleanup failure is attached to the original restore failure",
+                failure.suppressed.any { it is IOException && it.message.orEmpty().contains("посторонние данные") })
+        } finally {
+            invalidArchive.delete()
+            unexpected.delete()
+            directory.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun restoreReportsPendingCleanupAndPreservesUnexpectedStagingData() = runBlocking {
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-pending-cleanup-state".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val unexpected = File(context.filesDir, ".glafira-core-snapshot/unexpected-owner-data.tmp")
+        try {
+            fixtureRuntimeHooks.injectUnexpectedStagingFileOnCleanup = true
+            val verification = coordinator.restore(archive, passphrase)
+            assertTrue("A committed restore with pending cleanup is explicitly reported", verification.recoveryRequired)
+            assertTrue("Unexpected staging data is preserved for owner inspection", unexpected.isFile)
+            assertEquals("preserve-owner-data", unexpected.readText())
+            assertTrue("Committed journal remains until the owner resolves staging data",
+                File(journal, "restore.committed").isFile)
+            assertFalse("Known plaintext export is removed before pending cleanup is reported",
+                File(context.filesDir, GlafiraPortableCoreSnapshot.PATH).exists())
+            check(unexpected.delete())
+            coordinator.recover(passphrase)
+            assertFalse("Owner recovery removes the committed journal after staging cleanup", journal.exists())
+        } finally {
+            fixtureRuntimeHooks.injectUnexpectedStagingFileOnCleanup = false
+            archive.delete()
+            passphrase.fill(0.toChar())
+            if (journal.exists() && !File(journal, "restore.committed").exists()) check(journal.deleteRecursively())
+            if (unexpected.exists()) unexpected.delete()
+        }
+    }
+
+    @Test
     fun committedJournalCleanupCanBeReenteredWithoutRollbackKey() = runBlocking {
+        withOwnedRollbackKey {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
+        File(journal, "test-owner").writeText(testRunId)
         val pending = File(journal, "restore.pending").apply { writeText("GLAFIRA_RESTORE_ROLLBACK_V3") }
         val committed = File(journal, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
         val database = File(journal, "database.db").apply { writeText("encrypted-fixture-placeholder") }
@@ -1559,6 +1655,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val plaintextSnapshot = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
         val plaintextExport = File(plaintextSnapshot, "core-portable-v2.json").apply {
             writeText("fixture-only plaintext task/result data")
+        }
+        val unexpectedStagingData = File(plaintextSnapshot, "unexpected.tmp").apply {
+            writeText("must-survive")
         }
         val passphrase = "committed-cleanup-reentry".toCharArray()
         try {
@@ -1572,9 +1671,20 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue("Rollback archive is retained while cleanup is interrupted", archive.exists())
             assertTrue("Plaintext export remains until committed cleanup can run", plaintextExport.exists())
 
+            val blockedCleanup = assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Unexpected staging data remains available for owner inspection", unexpectedStagingData.isFile)
+            assertEquals("must-survive", unexpectedStagingData.readText())
+            assertFalse("Known plaintext export is deleted even when unrelated staging data exists", plaintextExport.exists())
+            assertEquals("The staging directory is fsynced immediately after plaintext unlink", 1,
+                fixtureRuntimeHooks.stagingDirectorySyncCompletedCalls)
+            assertTrue("Journal remains committed until unexpected staging data is handled", committed.isFile)
+            assertTrue("The cleanup error identifies the unexpected staging data",
+                blockedCleanup.message.orEmpty().contains("посторонние данные"))
+            check(unexpectedStagingData.delete())
             isolatedCoordinator().recover(passphrase)
-            assertFalse("Crash-left plaintext export is removed during committed recovery", plaintextExport.exists())
-            assertFalse("Plaintext export directory is removed", plaintextSnapshot.exists())
+            assertFalse("Empty snapshot directory is removed after owner cleanup", plaintextSnapshot.exists())
             assertFalse(pending.exists())
             assertFalse(committed.exists())
             assertFalse(database.exists())
@@ -1585,6 +1695,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             passphrase.fill(0.toChar())
             // If recovery did not remove the committed marker, retain the complete fixture evidence.
             if (!committed.exists() && journal.exists()) check(journal.deleteRecursively())
+        }
         }
     }
 

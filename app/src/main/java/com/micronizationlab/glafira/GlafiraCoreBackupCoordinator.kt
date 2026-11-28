@@ -13,6 +13,8 @@ internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
+    fun beforeDirectorySync(directory: File) = Unit
+    fun afterDirectorySync(directory: File) = Unit
 }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
@@ -99,7 +101,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // recovery below re-syncs this journal before treating it as committed.
                         val commitMarkerNeedsReconfirmation = committedMarker.isFile
                         val cleanupSucceeded = try {
-                            recoverInterruptedRestore(passphrase)
+                            recoverInterruptedRestore(passphrase) { committedThisAttempt = true }
                             !marker.exists() && !committedMarker.exists()
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
@@ -114,12 +116,22 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // A marker whose first directory fsync failed is different: it must be
                         // re-confirmed by recovery before success can be reported.
                         if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
-                            completedVerification ?: throw error
+                            val verified = completedVerification ?: throw error
+                            if (marker.isFile || committedMarker.isFile) verified.copy(recoveryRequired = true) else verified
                         } else throw error
                     }
+                } catch (error: Exception) {
+                    // Early archive rejection and verification failures can happen before the
+                    // inner restore/rollback transaction starts. Still remove the known plaintext
+                    // export without deleting unrelated staging entries or masking the error.
+                    try {
+                        deleteCommittedPortableSnapshot()
+                    } catch (cleanup: Exception) {
+                        error.addSuppressed(cleanup)
+                    }
+                    throw error
                 } finally {
                     selected.delete()
-                    File(app.filesDir, ".glafira-core-snapshot").deleteRecursively()
                 }
             } }
         }
@@ -127,12 +139,27 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     private fun createArchive(passphrase: CharArray): File {
         val directory = File(app.filesDir, ".glafira-core-snapshot")
-        if (directory.exists()) check(directory.deleteRecursively())
+        deleteCommittedPortableSnapshot()
         check(directory.mkdirs())
-        return try {
+        var creationFailure: Throwable? = null
+        var createdArchive: File? = null
+        try {
             portable.exportTo(File(app.filesDir, GlafiraPortableCoreSnapshot.PATH))
-            BackupArchive.create(app, passphrase)
-        } finally { directory.deleteRecursively() }
+            return BackupArchive.create(app, passphrase).also { createdArchive = it }
+        } catch (error: Throwable) {
+            creationFailure = error
+            throw error
+        } finally {
+            try {
+                deleteCommittedPortableSnapshot()
+            } catch (cleanup: Throwable) {
+                if (creationFailure != null) creationFailure.addSuppressed(cleanup)
+                else {
+                    createdArchive?.delete()
+                    throw cleanup
+                }
+            }
+        }
     }
 
     internal fun prepareRollback(passphrase: CharArray) {
@@ -173,12 +200,13 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
     }
 
-    private fun recoverInterruptedRestore(passphrase: CharArray) {
+    private fun recoverInterruptedRestore(passphrase: CharArray, onCommitted: () -> Unit = {}) {
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
+            onCommitted()
             cleanupCommittedJournal()
             return
         }
@@ -291,17 +319,26 @@ class GlafiraCoreBackupCoordinator internal constructor(
             if (exportExists && (!Files.isRegularFile(export, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(export))) {
                 throw IOException("Файл переносимого снимка Core заменён ссылкой или каталогом.")
             }
+            // Remove the known plaintext file before inspecting unrelated entries. An
+            // unexpected file must never keep decrypted task/result data on disk.
+            if (exportExists) {
+                Files.delete(export)
+                syncDirectory(directory.toFile())
+            }
+            var unexpectedEntry = false
             Files.newDirectoryStream(directory).use { entries ->
                 for (entry in entries) {
-                    if (entry.toAbsolutePath().normalize() != export) {
-                        throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные.")
-                    }
+                    if (entry.toAbsolutePath().normalize() != export) unexpectedEntry = true
                 }
             }
-            if (exportExists) Files.delete(export)
+            if (unexpectedEntry) {
+                throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные.")
+            }
             Files.delete(directory)
+            syncDirectory(app.filesDir)
+        } else {
+            syncDirectory(app.filesDir)
         }
-        syncDirectory(app.filesDir)
     }
 
     /** Make restored payload and directory entries durable before publishing COMMITTED_MARKER. */
@@ -329,8 +366,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     private fun sync(file: File) { FileOutputStream(file, true).use { it.fd.sync() } }
     private fun syncDirectory(directory: File) {
+        runtimeHooks.beforeDirectorySync(directory)
         val fd = android.system.Os.open(directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
         try { android.system.Os.fsync(fd) } finally { android.system.Os.close(fd) }
+        runtimeHooks.afterDirectorySync(directory)
     }
 
     companion object {

@@ -28,7 +28,8 @@ import javax.crypto.spec.SecretKeySpec
 data class BackupVerification(
     val createdAt: String,
     val fileCount: Int,
-    val totalBytes: Long
+    val totalBytes: Long,
+    val recoveryRequired: Boolean = false
 )
 
 object BackupArchive {
