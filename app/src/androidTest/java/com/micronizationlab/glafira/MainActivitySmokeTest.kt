@@ -141,40 +141,95 @@ class MainActivitySmokeTest {
     }
 
     @Test
+    fun hierarchyFileReadIsBoundedAndRetainsHeadAndTail() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "android-ui-smoke-large-hierarchy-fixture.xml")
+        val head = "<node text=\\"startup-gate\\"/>"
+        val tail = "<node text=\\"active-screen-tail\\"/>"
+        try {
+            file.writeText(head + "x".repeat(1_000_000) + tail, Charsets.UTF_8)
+            val summary = readBoundedWindowHierarchy(file)
+            assertTrue(summary.contains(head))
+            assertTrue(summary.contains(tail))
+            assertTrue(summary.contains("hierarchy middle omitted") || summary.contains("hierarchy truncated"))
+            assertTrue(summary.length <= 12_000)
+        } finally {
+            check(!file.exists() || file.delete())
+        }
+    }
+
+    @Test
+    fun revealedVaultPasswordIsRedactedBeforeHierarchyDiagnostics() {
+        val secret = "vault-visible-secret-should-not-enter-junit"
+        val hierarchy = """<node text="Пароль: $secret" content-desc="ПОКАЗАТЬ"/>"""
+
+        val sanitized = redactSensitiveHierarchyText(hierarchy)
+
+        assertFalse(sanitized.contains(secret))
+        assertTrue(sanitized.contains("Пароль: [REDACTED]"))
+    }
+
+    @Test
+    fun diagnosticRecoveryStateDoesNotDeleteAnInUseRollbackTemp() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val stale = File(context.cacheDir, "glafira-rollback-recovery-diagnostic-fixture.tmp")
+        try {
+            stale.writeText("fixture represents an active recovery temp", Charsets.UTF_8)
+            assertTrue(recoveryPendingForDiagnostics(context))
+            assertTrue("Diagnostics must not delete a recovery temp that may be in use", stale.isFile)
+        } finally {
+            check(!stale.exists() || stale.delete())
+        }
+    }
+
+    @Test
     fun startupDiagnosticsRetainGatesWhenWindowHierarchyCannotBeWritten() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-        val previousBiometric = preferences.getBoolean("biometric_enabled", false)
+        val originalBiometric = preferences.getBoolean("biometric_enabled", false)
+        var previousBiometric = originalBiometric
         val parentFile = File(context.cacheDir, "ui-smoke-hierarchy-parent-file")
         var primaryFailure: Throwable? = null
         try {
-            prepareUnlockedHome(context)
+            // Force the captured pre-test value to true so a read performed after
+            // prepareUnlockedHome() would incorrectly capture false and fail this test.
             assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
-            parentFile.writeText("not a directory", Charsets.UTF_8)
-            val device = UiDevice.getInstance(instrumentation)
-            val impossibleHierarchy = File(parentFile, "window.xml")
-            val diagnostics = collectHomeScreenDiagnostics(device, context, impossibleHierarchy)
-            assertTrue("Recovery gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("recovery=false"))
-            assertTrue("Biometric gate must reflect the enabled fixture: $diagnostics", diagnostics.contains("biometric=true"))
-            assertTrue(diagnostics.contains("wait=not recorded"))
-            assertTrue(diagnostics.contains("hierarchyPath="))
-            assertTrue(diagnostics.contains("dump failed:") || diagnostics.contains("read failed:"))
-        } catch (failure: Throwable) {
-            primaryFailure = failure
-            throw failure
-        } finally {
-            cleanupAndRestorePreservingFailure(
-                primaryFailure = primaryFailure,
-                cleanup = {
-                    if (parentFile.exists() && !parentFile.delete()) {
-                        error("Could not remove startup diagnostics fixture")
+            previousBiometric = preferences.getBoolean("biometric_enabled", false)
+            try {
+                prepareUnlockedHome(context)
+                assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
+                parentFile.writeText("not a directory", Charsets.UTF_8)
+                val device = UiDevice.getInstance(instrumentation)
+                val impossibleHierarchy = File(parentFile, "window.xml")
+                val diagnostics = collectHomeScreenDiagnostics(device, context, impossibleHierarchy)
+                assertTrue("Recovery gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("recovery=false"))
+                assertTrue("Biometric gate must reflect the enabled fixture: $diagnostics", diagnostics.contains("biometric=true"))
+                assertTrue(diagnostics.contains("wait=not recorded"))
+                assertTrue(diagnostics.contains("hierarchyPath="))
+                assertTrue(diagnostics.contains("dump failed:") || diagnostics.contains("read failed:"))
+            } catch (failure: Throwable) {
+                primaryFailure = failure
+                throw failure
+            } finally {
+                cleanupAndRestorePreservingFailure(
+                    primaryFailure = primaryFailure,
+                    cleanup = {
+                        if (parentFile.exists() && !parentFile.delete()) {
+                            error("Could not remove startup diagnostics fixture")
+                        }
+                    },
+                    restore = {
+                        preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
                     }
-                },
-                restore = {
-                    preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
-                }
+                )
+            }
+            assertTrue(
+                "The original biometric preference is restored before the outer fixture cleanup",
+                preferences.getBoolean("biometric_enabled", false) == previousBiometric
             )
+        } finally {
+            check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit())
         }
     }
 
