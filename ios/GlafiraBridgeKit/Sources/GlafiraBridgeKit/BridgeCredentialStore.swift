@@ -5,7 +5,7 @@ import LocalAuthentication
 import Darwin
 
 /// Non-secret lifecycle identity of the authoritative Windows Hub enrollment.
-public struct BridgeHubBinding: Equatable, Sendable {
+public struct BridgeHubBinding: Codable, Equatable, Sendable {
     public let desktopHubId: String
     /// Canonical HTTPS endpoint including the Windows Hub API base path.
     public let endpoint: String
@@ -51,6 +51,32 @@ public struct BridgeHubBinding: Equatable, Sendable {
         self.scopes = scopes.sorted()
         self.enrolledAtEpochMs = enrolledAtEpochMs
         self.expiresAtEpochMs = expiresAtEpochMs
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case desktopHubId
+        case endpoint
+        case certificateSHA256
+        case scopes
+        case enrolledAtEpochMs
+        case expiresAtEpochMs
+    }
+
+    public init(from decoder: Decoder) throws {
+        // A bare Codable payload bypasses the bounded persistence envelope.
+        // Persisted bindings must enter through BridgeHubBindingPersistence.decode.
+        throw BridgeHubBindingError.invalidBinding
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        try validate()
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(desktopHubId, forKey: .desktopHubId)
+        try container.encode(endpoint, forKey: .endpoint)
+        try container.encode(certificateSHA256, forKey: .certificateSHA256)
+        try container.encode(scopes, forKey: .scopes)
+        try container.encode(enrolledAtEpochMs, forKey: .enrolledAtEpochMs)
+        try container.encode(expiresAtEpochMs, forKey: .expiresAtEpochMs)
     }
 
     public func validate() throws {
