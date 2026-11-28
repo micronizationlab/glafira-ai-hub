@@ -914,7 +914,6 @@ jobs:
             echo ""
             echo "Policy: GraphQL cursor pagination is authoritative; REST offset fallback is disabled. Fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. Skipped, cancelled, queued, partial or unknown states are not acceptance passes."
           } >> "$GITHUB_STEP_SUMMARY"
-validator\naggregator' ]]
           echo "GraphQL aggregation failure is distinct from validation failure, emits no partial output and fails closed: PASS"
 
           mkdir -p "$tmp/failing-tail"
