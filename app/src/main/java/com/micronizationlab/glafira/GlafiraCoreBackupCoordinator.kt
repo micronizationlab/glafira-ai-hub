@@ -388,22 +388,18 @@ class GlafiraCoreBackupCoordinator internal constructor(
             val app = context.applicationContext
             return runCatching {
                 val journal = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
-                if (Files.isSymbolicLink(journal.toPath())) {
+                if (pathExistsNoFollow(journal.toPath()) && Files.isSymbolicLink(journal.toPath())) {
                     return@runCatching true
                 }
                 val marker = File(journal, JOURNAL_MARKER)
                 val committed = File(journal, COMMITTED_MARKER)
-                if (Files.isSymbolicLink(marker.toPath()) ||
-                    Files.isSymbolicLink(committed.toPath()) ||
-                    Files.exists(marker.toPath(), LinkOption.NOFOLLOW_LINKS) ||
-                    Files.exists(committed.toPath(), LinkOption.NOFOLLOW_LINKS)
-                ) {
+                if (pathExistsNoFollow(marker.toPath()) || pathExistsNoFollow(committed.toPath())) {
                     return@runCatching true
                 }
                 val stale = app.cacheDir.listFiles { file ->
                     file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
                 }.orEmpty()
-                stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+                stale.any { pathExistsNoFollow(it.toPath()) }
             }.getOrDefault(true)
         }
     }
