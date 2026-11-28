@@ -295,6 +295,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     /** Idempotent after the durable commit marker; never discards that marker on partial cleanup. */
     private fun cleanupCommittedJournal() {
+        val committedRollbackCipher = rollbackCipherForJournal()
         require(committedMarker.isFile && committedMarker.readText(Charsets.UTF_8) == COMMITTED_VALUE) {
             "Некорректная отметка завершения восстановления; журнал сохранён."
         }
@@ -308,7 +309,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         syncDirectory(journal)
         // The rollback key is no longer needed because the restored DB was checkpointed before
         // the durable commit marker was published. A key-delete failure leaves COMMITTED_MARKER.
-        rollbackCipherForJournal().deleteKey()
+        committedRollbackCipher.deleteKey()
         check(!marker.exists() || marker.delete()) {
             "Не удалось удалить маркер восстановления; маркер завершения сохранён."
         }
