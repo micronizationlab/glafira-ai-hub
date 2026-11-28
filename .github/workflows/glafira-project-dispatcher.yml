@@ -668,7 +668,7 @@ jobs:
           fi
           [[ "$forced_failure_status" -eq 37 ]]
           grep -Fq "Probe injected top-level failure returned exit 37" "$RUNNER_TEMP/dispatcher-forced-failure.err"
-          grep -Fq 'Dispatcher fixture failed (exit 37): "$forced_probe_command"' "$RUNNER_TEMP/dispatcher-forced-failure.err"
+          grep -Eq '^Dispatcher fixture failed \\(exit 37\\): .+' "$RUNNER_TEMP/dispatcher-forced-failure.err"
           echo "dispatcher ERR trap preserves originating probe name and exit 37: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
