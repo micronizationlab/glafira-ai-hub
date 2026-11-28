@@ -188,6 +188,17 @@ final class BridgeHubBindingTests: XCTestCase {
         }
     }
 
+    func testPersistenceRejectsInt64MaxTimestampAsInvalidBindingWithoutDoubleRounding() throws {
+        let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
+        let maximumInt64 = validJSON.replacingOccurrences(
+            of: "\\"enrolledAtEpochMs\\":\\(enrolledAt)",
+            with: "\\"enrolledAtEpochMs\\":9223372036854775807"
+        )
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(maximumInt64.utf8))) { error in
+            XCTAssertEqual(error as? BridgeHubBindingError, .invalidBinding)
+        }
+    }
+
     func testPersistenceRejectsNonIntegerNumericTokens() throws {
         let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
         let expiresAt = enrolledAt + oneHour
@@ -242,11 +253,20 @@ final class BridgeHubBindingTests: XCTestCase {
             XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .payloadTooDeep)
         }
 
-        let nestedInteger = validJSON.replacingOccurrences(
+        let fifteenNestedArrays = String(repeating: "[", count: 15) + "0" + String(repeating: "]", count: 15)
+        let sixteenNestedArrays = String(repeating: "[", count: 16) + "0" + String(repeating: "]", count: 16)
+        let decoderAtLimit = validJSON.replacingOccurrences(
             of: #""schemaVersion":1"#,
-            with: #""schemaVersion":\#(overLimit)"#
+            with: #""schemaVersion":\#(fifteenNestedArrays)"#
         )
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(nestedInteger.utf8))) { error in
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(decoderAtLimit.utf8))) { error in
+            XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .invalidPayload)
+        }
+        let decoderOverLimit = validJSON.replacingOccurrences(
+            of: #""schemaVersion":1"#,
+            with: #""schemaVersion":\#(sixteenNestedArrays)"#
+        )
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(decoderOverLimit.utf8))) { error in
             XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .payloadTooDeep)
         }
     }
@@ -275,6 +295,16 @@ final class BridgeHubBindingTests: XCTestCase {
         )
         XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(invalidPrimitiveDuplicate.utf8))) { error in
             XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .invalidPayload)
+        }
+
+        for numeric in ["1.5", "1e2"] {
+            let numericDuplicate = validJSON.replacingOccurrences(
+                of: #""desktopHubId":"desktop-hub-0001""#,
+                with: #""desktopHubId":"desktop-hub-0001","desktopHubId":\#(numeric)"#
+            )
+            XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(numericDuplicate.utf8))) { error in
+                XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .duplicateJSONKey)
+            }
         }
     }
 
