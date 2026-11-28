@@ -617,6 +617,35 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun ownedJournalCleanupRecognizesDanglingJournalSymlinkAndPreservesProof() {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val missingTarget = File(context.cacheDir, "missing-journal-target-$runId")
+        val canary = File(context.cacheDir, "dangling-journal-canary-$runId").apply {
+            writeText("must-survive")
+        }
+        var beforeDeleteRan = false
+        try {
+            Files.createSymbolicLink(journal.toPath(), missingTarget.toPath())
+            assertFalse("File.exists must not see the dangling target", journal.exists())
+            assertTrue("NOFOLLOW path detection must see the link itself", rollbackJournalPathPresent(journal))
+            assertThrows(IllegalStateException::class.java) {
+                if (rollbackJournalPathPresent(journal)) {
+                    deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) {
+                        beforeDeleteRan = true
+                    }
+                }
+            }
+            assertFalse("Dangling link must be rejected before key deletion", beforeDeleteRan)
+            assertTrue("Dangling journal link remains as evidence", Files.isSymbolicLink(journal.toPath()))
+            assertEquals("must-survive", canary.readText())
+        } finally {
+            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
+            canary.delete()
+        }
+    }
+
+    @Test
     fun ownedJournalCleanupRejectsLinkedJournalBeforeKeyDeletion() {
         val runId = testRunId
         val noBackup = context.noBackupFilesDir
