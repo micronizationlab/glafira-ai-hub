@@ -790,6 +790,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         } finally {
             if (Files.isSymbolicLink(noBackupRoot.toPath())) Files.delete(noBackupRoot.toPath())
             if (originalNoBackup.exists() && !noBackupRoot.exists()) check(originalNoBackup.renameTo(noBackupRoot))
+            val restoredJournal = File(noBackupRoot, "glafira-restore-journal")
+            if (rollbackJournalPathPresent(restoredJournal)) deleteTreeWithoutFollowingLinks(restoredJournal.toPath())
             rollbackCipher.deleteKey()
             source.delete()
             encrypted.delete()
