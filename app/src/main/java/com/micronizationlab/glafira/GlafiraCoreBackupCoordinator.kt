@@ -314,7 +314,6 @@ class GlafiraCoreBackupCoordinator internal constructor(
             throw IOException("Обнаружена символическая ссылка вместо маркера восстановления; откатные данные сохранены.")
         }
         cleanupStaleDecryptedRollbackSnapshots()
-        cleanupPortableSnapshotPreservingUnexpected()
         if (pathExistsNoFollow(committedMarker.toPath())) {
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
@@ -322,7 +321,18 @@ class GlafiraCoreBackupCoordinator internal constructor(
             cleanupCommittedJournal(onSnapshotCleaned)
             return true
         }
-        if (!pathExistsNoFollow(marker.toPath())) return false
+        if (!pathExistsNoFollow(marker.toPath())) {
+            if (pathExistsNoFollow(journalPath)) {
+                val hasUnexpectedEntries = Files.newDirectoryStream(journalPath).use { entries ->
+                    entries.iterator().hasNext()
+                }
+                if (hasUnexpectedEntries) {
+                    throw IOException("В журнале восстановления остались неизвестные данные; они сохранены для проверки.")
+                }
+            }
+            cleanupPortableSnapshotPreservingUnexpected()
+            return false
+        }
         if (!Files.isRegularFile(safetyArchive.toPath(), LinkOption.NOFOLLOW_LINKS) ||
             !Files.isRegularFile(safetyDatabase.toPath(), LinkOption.NOFOLLOW_LINKS)
         ) {
@@ -461,10 +471,11 @@ class GlafiraCoreBackupCoordinator internal constructor(
             syncDirectory(directory.toFile())
         }
         val empty = Files.newDirectoryStream(directory).use { entries -> !entries.iterator().hasNext() }
-        if (empty) {
-            Files.delete(directory)
-            syncDirectory(app.filesDir)
+        if (!empty) {
+            throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные; они сохранены.")
         }
+        Files.delete(directory)
+        syncDirectory(app.filesDir)
     }
 
     /** Remove the known plaintext export first, then reject unexpected siblings without deleting them. */
