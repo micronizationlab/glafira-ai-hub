@@ -251,7 +251,10 @@ object BackupArchive {
     }
 
     /** Remove only exact replacement paths registered by this restore; preserve all unknown siblings. */
-    internal fun cleanupRestoreReplacementTemps(context: Context) {
+    internal fun cleanupRestoreReplacementTemps(
+        context: Context,
+        syncDirectory: (File) -> Unit = ::syncRestoreDirectory
+    ) {
         val registry = restoreTempRegistry(context)
         val paths = readRestoreTempRegistry(context)
         val root = context.filesDir.canonicalFile.toPath()
@@ -279,7 +282,7 @@ object BackupArchive {
             if (parent != null && Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS) &&
                 !Files.isSymbolicLink(parent)
             ) {
-                syncRestoreDirectory(parent.toFile())
+                syncDirectory(parent.toFile())
             }
         }
         if (Files.exists(registry.toPath(), LinkOption.NOFOLLOW_LINKS)) {
@@ -289,7 +292,7 @@ object BackupArchive {
             ) {
                 throw IOException("Не удалось безопасно удалить реестр временных файлов восстановления.")
             }
-            syncRestoreDirectory(context.noBackupFilesDir)
+            syncDirectory(context.noBackupFilesDir)
         }
         if (hasRestoreReplacementTemps(context)) {
             throw IOException("Обнаружен незарегистрированный временный файл восстановления; он сохранён для проверки.")
