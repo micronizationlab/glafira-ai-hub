@@ -329,7 +329,9 @@ jobs:
             cat <<'JSON'
           {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-one"},"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
-            echo "injected GraphQL page two failure (ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ github_pat_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789)" >&2
+            classic_token="$(printf '%s' 'ghp_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')"
+            fine_grained_token="$(printf '%s' 'github_pat_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-' '0123456789')"
+            printf 'injected GraphQL page two failure (%s %s)\\n' "$classic_token" "$fine_grained_token" >&2
             exit 23
           fi
           echo unexpected-rest >> "$CALL_LOG"
@@ -346,7 +348,7 @@ jobs:
           grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
           grep -Fq "exit 23" "$tmp/graphql-outage.err"
           grep -Fq "[REDACTED]" "$tmp/graphql-outage.err"
-          if grep -Eq 'ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ|github_pat_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789' "$tmp/graphql-outage.err"; then
+          if grep -Eq 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_-]{20,}' "$tmp/graphql-outage.err"; then
             echo "raw synthetic credential reached the sanitized diagnostic" >&2; exit 1
           fi
           echo "validated sanitized GraphQL outage diagnostic: $(cat "$tmp/graphql-outage.err")"
