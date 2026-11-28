@@ -304,6 +304,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
             throw IOException("Обнаружена символическая ссылка вместо маркера восстановления; откатные данные сохранены.")
         }
         cleanupStaleDecryptedRollbackSnapshots()
+        BackupArchive.cleanupRestoreReplacementTemps(app)
         if (pathExistsNoFollow(committedMarker.toPath())) {
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
@@ -560,7 +561,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
                 val stale = app.cacheDir.listFiles { file ->
                     file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
                 } ?: throw IOException("Не удалось проверить каталог временных снимков восстановления.")
-                stale.any { pathExistsNoFollow(it.toPath()) }
+                stale.any { pathExistsNoFollow(it.toPath()) } ||
+                    BackupArchive.hasRestoreReplacementTemps(app)
             }.getOrDefault(true)
         }
     }
