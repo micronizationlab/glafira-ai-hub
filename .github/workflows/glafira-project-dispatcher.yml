@@ -523,41 +523,40 @@ jobs:
 
           # A new PR inserted ahead of the cursor during the first scan changes the
           # stable boundary; the complete inventory must be retried and include it.
-          gh() {
-            if [[ "$1" == "api" && "$2" == "graphql" && "$3" == "--paginate" ]]; then
-              [[ "$4" == "-f" && "$5" == query=* && "$5" == *"pageInfo"* ]] || return 90
-              count="$(cat "$GLAFIRA_FIXTURE_TMP/scan-count" 2>/dev/null || printf '0')"
-              count=$((count + 1))
-              printf '%s\n' "$count" > "$GLAFIRA_FIXTURE_TMP/scan-count"
-              if [[ "$count" -eq 1 ]]; then
-                cat <<'JSON'
+          stable_boundary_prs="$(
+            gh() {
+              if [[ "$1" == "api" && "$2" == "graphql" && "$3" == "--paginate" ]]; then
+                [[ "$4" == "-f" && "$5" == query=* && "$5" == *"pageInfo"* ]] || return 90
+                count="$(cat "$GLAFIRA_FIXTURE_TMP/scan-count" 2>/dev/null || printf '0')"
+                count=$((count + 1))
+                printf '%s\n' "$count" > "$GLAFIRA_FIXTURE_TMP/scan-count"
+                if [[ "$count" -eq 1 ]]; then
+                  cat <<'JSON'
           {"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}},{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":false,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
-              else
-                cat <<'JSON'
+                else
+                  cat <<'JSON'
           {"data":{"repository":{"pullRequests":{"totalCount":3,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":3,"title":"new","headRefName":"c","headRefOid":"h3","baseRefOid":"b3","isDraft":false,"url":"https://example.test/3","statusCheckRollup":{"contexts":{"nodes":[]}}},{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}},{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":false,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
+                fi
+                return 0
+              elif [[ "$1" == "api" && "$2" == "graphql" && "$3" == "-f" ]]; then
+                count="$(cat "$GLAFIRA_FIXTURE_TMP/boundary-count" 2>/dev/null || printf '0')"
+                count=$((count + 1))
+                printf '%s\n' "$count" > "$GLAFIRA_FIXTURE_TMP/boundary-count"
+                printf '%s\n' '{"data":{"repository":{"pullRequests":{"totalCount":3,"nodes":[{"number":3}]}}}}'
+                return 0
               fi
-              return 0
-            elif [[ "$1" == "api" && "$2" == "graphql" && "$3" == "-f" ]]; then
-              count="$(cat "$GLAFIRA_FIXTURE_TMP/boundary-count" 2>/dev/null || printf '0')"
-              count=$((count + 1))
-              printf '%s\n' "$count" > "$GLAFIRA_FIXTURE_TMP/boundary-count"
-              printf '%s\n' '{"data":{"repository":{"pullRequests":{"totalCount":3,"nodes":[{"number":3}]}}}}'
-              return 0
-            fi
-            return 99
-          }
-          export GLAFIRA_FIXTURE_TMP="$tmp"
-          export -f gh
-          : > "$tmp/scan-count"
-          : > "$tmp/boundary-count"
-          stable_boundary_prs="$(bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
+              return 99
+            }
+            export GLAFIRA_FIXTURE_TMP="$tmp"
+            export -f gh
+            bash "$fetch_prs" micronizationlab/glafira-ai-hub"
+          )"
           printf 'stable-boundary fixture returned PR numbers: %s; scans=%s; boundary checks=%s\n' "$(jq -c '[.[].number]' <<< "$stable_boundary_prs")" "$(cat "$tmp/scan-count")" "$(cat "$tmp/boundary-count")"
           jq -e 'length == 3 and .[0].number == 3 and .[1].number == 1 and .[2].number == 2' <<< "$stable_boundary_prs" >/dev/null
           [[ "$(cat "$tmp/scan-count")" == "2" ]]
           [[ "$(cat "$tmp/boundary-count")" == "2" ]]
-          unset -f gh
           # A later-page GraphQL failure must discard partial stdout and never call REST.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
