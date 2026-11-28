@@ -45,6 +45,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private val committedMarker get() = File(journal, COMMITTED_MARKER)
     private val safetyDatabase get() = File(journal, "database.db")
     private val safetyArchive get() = File(journal, "files.glb")
+    private val rollbackKeyAliasMarker get() = File(journal, "rollback-key-alias")
 
     suspend fun create(passphrase: CharArray): File = GlafiraCoreMaintenanceGate.withExclusive {
         runtimeHooks.withPaused {
@@ -154,6 +155,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         if (journal.exists()) check(journal.deleteRecursively())
         check(journal.mkdirs())
         try {
+            writeRollbackKeyAlias()
             synchronized(taskStore) {
                 val consistentDatabase = taskStore.prepareConsistentSnapshotSource()
                 sync(consistentDatabase)
@@ -174,6 +176,37 @@ class GlafiraCoreBackupCoordinator internal constructor(
             if (!marker.exists()) journal.deleteRecursively()
             throw error
         }
+    }
+
+    private fun writeRollbackKeyAlias() {
+        val temporary = File(journal, "rollback-key-alias.tmp")
+        FileOutputStream(temporary).use { output ->
+            output.write(rollbackCipher.keyAlias.toByteArray(Charsets.UTF_8))
+            output.fd.sync()
+        }
+        check(temporary.renameTo(rollbackKeyAliasMarker)) {
+            "Не удалось сохранить идентификатор ключа отката."
+        }
+        syncDirectory(journal)
+    }
+
+    private fun rollbackCipherForJournal(): GlafiraRollbackSnapshotCipher {
+        if (!Files.exists(rollbackKeyAliasMarker.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            // Backward compatibility for journals created before the writer alias was recorded.
+            return rollbackCipher
+        }
+        if (Files.isSymbolicLink(rollbackKeyAliasMarker.toPath()) ||
+            !Files.isRegularFile(rollbackKeyAliasMarker.toPath(), LinkOption.NOFOLLOW_LINKS)
+        ) {
+            throw IOException("Идентификатор ключа отката небезопасен; журнал сохранён.")
+        }
+        val alias = rollbackKeyAliasMarker.readText(Charsets.UTF_8)
+        if (alias.isBlank() || alias.length > 180 ||
+            !alias.matches(Regex("[A-Za-z0-9_.-]{1,180}"))
+        ) {
+            throw IOException("Идентификатор ключа отката повреждён; журнал сохранён.")
+        }
+        return if (alias == rollbackCipher.keyAlias) rollbackCipher else GlafiraRollbackSnapshotCipher(alias)
     }
 
     private fun cleanupStaleDecryptedRollbackSnapshots() {
@@ -214,7 +247,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         try {
             // Decrypt and validate the database before applying the safety archive to live files.
             // A missing Keystore key must fail closed without regenerating a key or partially restoring files.
-            if (encryptedRollback) rollbackCipher.decrypt(safetyDatabase, rollbackDatabase)
+            if (encryptedRollback) rollbackCipherForJournal().decrypt(safetyDatabase, rollbackDatabase)
             taskStore.verifyConsistentSnapshot(rollbackDatabase)
             BackupArchive.verify(app, safetyArchive, passphrase)
             BackupArchive.restore(app, safetyArchive, passphrase)
@@ -275,7 +308,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         syncDirectory(journal)
         // The rollback key is no longer needed because the restored DB was checkpointed before
         // the durable commit marker was published. A key-delete failure leaves COMMITTED_MARKER.
-        rollbackCipher.deleteKey()
+        rollbackCipherForJournal().deleteKey()
         check(!marker.exists() || marker.delete()) {
             "Не удалось удалить маркер восстановления; маркер завершения сохранён."
         }
