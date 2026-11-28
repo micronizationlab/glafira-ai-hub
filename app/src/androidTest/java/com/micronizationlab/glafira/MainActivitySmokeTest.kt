@@ -12,6 +12,8 @@ import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
+import java.io.RandomAccessFile
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
@@ -46,6 +48,23 @@ class MainActivitySmokeTest {
         )
     }
 
+    private fun <T> withUnlockedHome(context: Context, block: () -> T): T {
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val previousBiometric = preferences.getBoolean("biometric_enabled", false)
+        var primaryFailure: Throwable? = null
+        try {
+            prepareUnlockedHome(context)
+            return block()
+        } catch (failure: Throwable) {
+            primaryFailure = failure
+            throw failure
+        } finally {
+            restorePreferencePreservingFailure(primaryFailure) {
+                preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
+            }
+        }
+    }
+
     private fun launch(): UiDevice {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -61,43 +80,43 @@ class MainActivitySmokeTest {
 
     @Test
     fun homeScreenWaitFailureStillCollectsStartupDiagnostics() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val context = instrumentation.targetContext
-        prepareUnlockedHome(context)
-        val device = UiDevice.getInstance(instrumentation)
-        val injectedFailure = IllegalStateException("injected accessibility wait failure")
-        val failure = assertThrows(IllegalStateException::class.java) {
-            awaitHomeScreen(device, context, waitForWorkspace = {
-                throw injectedFailure
-            })
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        withUnlockedHome(context) {
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            val injectedFailure = IllegalStateException("injected accessibility wait failure")
+            val failure = assertThrows(IllegalStateException::class.java) {
+                awaitHomeScreen(device, context, waitForWorkspace = {
+                    throw injectedFailure
+                })
+            }
+            assertSame(injectedFailure, failure.cause)
+            assertTrue(failure.message.orEmpty().contains("recovery=false"))
+            assertTrue(failure.message.orEmpty().contains("biometric=false"))
+            assertTrue(failure.message.orEmpty().contains("injected accessibility wait failure"))
         }
-        assertSame(injectedFailure, failure.cause)
-        assertTrue(failure.message.orEmpty().contains("recovery=false"))
-        assertTrue(failure.message.orEmpty().contains("biometric=false"))
-        assertTrue(failure.message.orEmpty().contains("injected accessibility wait failure"))
     }
 
     @Test
     fun idleWaitFailureIsReportedAndAccessibilityFailureRemainsCause() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val context = instrumentation.targetContext
-        prepareUnlockedHome(context)
-        val device = UiDevice.getInstance(instrumentation)
-        val idleFailure = IllegalStateException("injected idle timeout")
-        val accessibilityFailure = IllegalArgumentException("injected accessibility failure")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        withUnlockedHome(context) {
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            val idleFailure = IllegalStateException("injected idle timeout")
+            val accessibilityFailure = IllegalArgumentException("injected accessibility failure")
 
-        val failure = assertThrows(IllegalStateException::class.java) {
-            awaitHomeScreen(
-                device = device,
-                context = context,
-                waitForIdle = { throw idleFailure },
-                waitForWorkspace = { throw accessibilityFailure }
-            )
+            val failure = assertThrows(IllegalStateException::class.java) {
+                awaitHomeScreen(
+                    device = device,
+                    context = context,
+                    waitForIdle = { throw idleFailure },
+                    waitForWorkspace = { throw accessibilityFailure }
+                )
+            }
+
+            assertSame(accessibilityFailure, failure.cause)
+            assertTrue(failure.message.orEmpty().contains("idle=error: IllegalStateException: injected idle timeout"))
+            assertTrue(failure.message.orEmpty().contains("accessibility=error: IllegalArgumentException"))
         }
-
-        assertSame(accessibilityFailure, failure.cause)
-        assertTrue(failure.message.orEmpty().contains("idle=error: IllegalStateException: injected idle timeout"))
-        assertTrue(failure.message.orEmpty().contains("accessibility=error: IllegalArgumentException"))
     }
 
     @Test
@@ -148,11 +167,20 @@ class MainActivitySmokeTest {
         val tail = "<node text=\\"active-screen-tail\\"/>"
         try {
             file.writeText(head + "x".repeat(1_000_000) + tail, Charsets.UTF_8)
-            val summary = readBoundedWindowHierarchy(file)
+            val requestedByteCounts = mutableListOf<Int>()
+            val summary = readBoundedWindowHierarchy(file, readRange = { sourceFile, offset, byteCount ->
+                requestedByteCounts += byteCount
+                RandomAccessFile(sourceFile, "r").use { source ->
+                    source.seek(offset)
+                    ByteArray(byteCount).also(source::readFully).toString(Charsets.UTF_8)
+                }
+            })
             assertTrue(summary.contains(head))
             assertTrue(summary.contains(tail))
             assertTrue(summary.contains("hierarchy middle omitted") || summary.contains("hierarchy truncated"))
             assertTrue(summary.length <= 12_000)
+            assertTrue("Only two bounded ranges should be read", requestedByteCounts.size == 2)
+            assertTrue("The total bytes read must be bounded", requestedByteCounts.sum() <= 48_000)
         } finally {
             check(!file.exists() || file.delete())
         }
@@ -160,13 +188,21 @@ class MainActivitySmokeTest {
 
     @Test
     fun revealedVaultPasswordIsRedactedBeforeHierarchyDiagnostics() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val secret = "vault-visible-secret-should-not-enter-junit"
         val hierarchy = """<node text="Пароль: $secret" content-desc="ПОКАЗАТЬ"/>"""
+        val rawHierarchyFile = File(context.cacheDir, "android-ui-smoke-password-hierarchy.xml")
 
-        val sanitized = redactSensitiveHierarchyText(hierarchy)
+        val diagnostics = collectHomeScreenDiagnostics(
+            device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()),
+            context = context,
+            hierarchyFile = rawHierarchyFile,
+            dumpHierarchy = { it.writeText(hierarchy, Charsets.UTF_8) }
+        )
 
-        assertFalse(sanitized.contains(secret))
-        assertTrue(sanitized.contains("Пароль: [REDACTED]"))
+        assertFalse(diagnostics.contains(secret))
+        assertTrue(diagnostics.contains("[REDACTED]"))
+        assertFalse("Raw hierarchy containing the revealed password must be erased from cache", rawHierarchyFile.exists())
     }
 
     @Test
@@ -174,8 +210,9 @@ class MainActivitySmokeTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val stale = File(context.cacheDir, "glafira-rollback-recovery-diagnostic-fixture.tmp")
         try {
+            assertFalse("The isolated fixture starts with no pending recovery", recoveryPendingForDiagnostics(context))
             stale.writeText("fixture represents an active recovery temp", Charsets.UTF_8)
-            assertTrue(recoveryPendingForDiagnostics(context))
+            assertTrue("The fixture temp itself must make recovery pending", recoveryPendingForDiagnostics(context))
             assertTrue("Diagnostics must not delete a recovery temp that may be in use", stale.isFile)
         } finally {
             check(!stale.exists() || stale.delete())
@@ -229,7 +266,9 @@ class MainActivitySmokeTest {
                 preferences.getBoolean("biometric_enabled", false) == previousBiometric
             )
         } finally {
-            check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit())
+            restorePreferencePreservingFailure(primaryFailure) {
+                preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()
+            }
         }
     }
 
