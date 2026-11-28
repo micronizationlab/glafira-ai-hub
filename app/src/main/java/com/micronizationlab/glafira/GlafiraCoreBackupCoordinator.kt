@@ -144,7 +144,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
                             recoverInterruptedRestore(
                                 passphrase,
                                 onCommitted = { recoveryConfirmedCommit = true },
-                                onSnapshotCleaned = { recoveryCleanedSnapshot = true }
+                                onSnapshotCleaned = { recoveryCleanedSnapshot = true },
+                                snapshotAlreadyDurable = recoveryCleanedSnapshot
                             )
                             !pathExistsNoFollow(journal.toPath())
                         } catch (rollback: Exception) {
@@ -328,7 +329,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private fun recoverInterruptedRestore(
         passphrase: CharArray,
         onCommitted: () -> Unit = {},
-        onSnapshotCleaned: () -> Unit = {}
+        onSnapshotCleaned: () -> Unit = {},
+        snapshotAlreadyDurable: Boolean = false
     ): Boolean {
         if (pathExistsNoFollow(journal.toPath()) && Files.isSymbolicLink(journal.toPath())) {
             throw IOException("Обнаружена символическая ссылка вместо журнала восстановления; чтение и очистка остановлены.")
@@ -347,7 +349,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
             // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
             onCommitted()
-            cleanupCommittedJournal(onSnapshotCleaned)
+            cleanupCommittedJournal(
+                onSnapshotCleaned = onSnapshotCleaned,
+                snapshotAlreadyDurable = snapshotAlreadyDurable
+            )
             return true
         }
         if (!pathExistsNoFollow(marker.toPath())) {
@@ -492,12 +497,18 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
     }
 
-    private fun cleanupCommittedJournal(onSnapshotCleaned: () -> Unit = {}) {
+    private fun cleanupCommittedJournal(
+        onSnapshotCleaned: () -> Unit = {},
+        snapshotAlreadyDurable: Boolean = false
+    ) {
         validateCommittedMarker()
         runtimeHooks.beforeCommittedJournalCleanup()
         // Portable Core exports contain decrypted task/result data. Remove a crash-left
         // export before deleting the rollback evidence that makes recovery safe.
-        deleteCommittedPortableSnapshot(onSnapshotCleaned)
+        val portableSnapshotDirectory = File(app.filesDir, ".glafira-core-snapshot")
+        if (!snapshotAlreadyDurable || pathExistsNoFollow(portableSnapshotDirectory.toPath())) {
+            deleteCommittedPortableSnapshot(onSnapshotCleaned)
+        }
         check(!safetyArchive.exists() || safetyArchive.delete()) {
             "Не удалось удалить архив отката; журнал завершения сохранён."
         }
