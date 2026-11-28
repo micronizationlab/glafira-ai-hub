@@ -60,6 +60,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var armJournalDirectorySyncFailureAfterSnapshotCleanup = false
         var journalDirectorySyncFailureArmed = false
         var journalDirectorySyncCalls = 0
+        var plaintextSnapshotCleanupParentSyncCalls = 0
         var plaintextSnapshotDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCompletedCalls = 0
         override suspend fun <T> withPaused(block: () -> T): T {
@@ -111,6 +112,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 ) {
                     armJournalDirectorySyncFailureAfterSnapshotCleanup = false
                     journalDirectorySyncFailureArmed = true
+                    plaintextSnapshotCleanupParentSyncCalls++
                 }
                 if (failPlaintextSnapshotDirectorySyncOnce) {
                     plaintextSnapshotAbsentAtParentDirectorySyncFailure =
@@ -142,6 +144,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
             fixtureRuntimeHooks.armJournalDirectorySyncFailureAfterSnapshotCleanup = false
             fixtureRuntimeHooks.journalDirectorySyncFailureArmed = false
+            fixtureRuntimeHooks.plaintextSnapshotCleanupParentSyncCalls = 0
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -1139,7 +1142,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertEquals(
                 "The portable snapshot parent must be synced once; the catch path must not repeat deletion",
                 1,
-                fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls
+                fixtureRuntimeHooks.plaintextSnapshotCleanupParentSyncCalls
             )
             assertEquals(1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
             fixtureRuntimeHooks.failJournalDirectorySyncAfterSnapshotCleanupCount = 0
