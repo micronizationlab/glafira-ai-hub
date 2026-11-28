@@ -173,6 +173,9 @@ jobs:
               ' <<< "$page_response" >/dev/null 2>"$validation_error"; then
                 :
               else
+                validation_detail="$(redacted_detail "$validation_error")"
+                printf 'UNKNOWN: GraphQL page validation failed; no subsequent cursor was requested. %s\n' \
+                  "\${validation_detail:-jq rejected the page without stderr.}" >&2
                 return 1
               fi
               has_next="$(jq -r '.data.repository.pullRequests.pageInfo.hasNextPage' <<< "$page_response")"
@@ -591,9 +594,18 @@ jobs:
               [[ "$?" -eq 1 ]]
             fi
             [[ -z "$output" ]]
-            grep -Fq "GraphQL response validation failed" "$tmp/graphql-$invalid_graphql.err"
+            grep -Fq "GraphQL cursor-based open-PR request failed" "$tmp/graphql-$invalid_graphql.err"
           done
-          echo "GraphQL empty documents, missing pagination metadata and partial errors fail closed: PASS"
+          for invalid_pr in missing-checks invalid-state invalid-identity; do
+            if output="$(GRAPHQL_FIXTURE="$tmp/graphql-$invalid_pr.jsonl" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-$invalid_pr.err")"; then
+              echo "invalid PR node '$invalid_pr' was incorrectly accepted" >&2; exit 1
+            else
+              [[ "$?" -eq 1 ]]
+            fi
+            [[ -z "$output" ]]
+            grep -Fq "GraphQL response validation failed" "$tmp/graphql-$invalid_pr.err"
+          done
+          echo "GraphQL empty documents, missing pagination metadata, partial errors and malformed PR nodes fail closed: PASS"
 
           # A later-page GraphQL failure must discard partial stdout and never call REST.
           cat > "$tmp/fake-bin/gh" <<'GH'
