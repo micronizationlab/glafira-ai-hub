@@ -163,8 +163,8 @@ class MainActivitySmokeTest {
     fun hierarchyFileReadIsBoundedAndRetainsHeadAndTail() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.cacheDir, "android-ui-smoke-large-hierarchy-fixture.xml")
-        val head = "<node text=\\"startup-gate\\"/>"
-        val tail = "<node text=\\"active-screen-tail\\"/>"
+        val head = """<node text="startup-gate"/>"""
+        val tail = """<node text="active-screen-tail"/>"""
         try {
             file.writeText(head + "x".repeat(1_000_000) + tail, Charsets.UTF_8)
             val requestedByteCounts = mutableListOf<Int>()
