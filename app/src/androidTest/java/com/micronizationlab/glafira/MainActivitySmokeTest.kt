@@ -187,6 +187,10 @@ class MainActivitySmokeTest {
         val device = launch()
         assertTrue("Home window must expose at least one child for the truncation fixture",
             device.hasObject(By.descContains("Открыть очередь задач")))
+        val markerLength = "<hierarchy summary bounded; nodes=1>\n".length
+        assertThrows(IllegalArgumentException::class.java) {
+            captureSafeWindowHierarchy(maximumNodes = 1, maximumCharacters = markerLength + 1)
+        }
         val maximumCharacters = 200
         val hierarchy = captureSafeWindowHierarchy(maximumNodes = 1, maximumCharacters = maximumCharacters)
         assertTrue("Truncated hierarchy must retain an explicit notice: $hierarchy",
