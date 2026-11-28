@@ -16,6 +16,7 @@ internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
+    fun beforeCommittedJournalDirectoryDelete() = Unit
     fun beforeDirectorySync(directory: File) = Unit
     fun afterDirectorySync(directory: File) = Unit
 }
@@ -403,6 +404,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
             syncDirectory(journal)
             // Non-recursive deletion refuses to remove any unexpected entry. If either the
             // directory removal or parent fsync fails, recreate the durable commit marker.
+            runtimeHooks.beforeCommittedJournalDirectoryDelete()
             Files.delete(journal.toPath())
             syncDirectory(app.noBackupFilesDir)
         } catch (cleanupFailure: Exception) {
