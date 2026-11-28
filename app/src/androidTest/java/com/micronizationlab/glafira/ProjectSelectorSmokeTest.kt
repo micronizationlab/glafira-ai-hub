@@ -17,6 +17,7 @@ import org.junit.runner.RunWith
 class ProjectSelectorSmokeTest {
     private lateinit var preferences: android.content.SharedPreferences
     private var originalBiometric = false
+    private var preferenceCaptured = false
 
     @Before
     fun captureBiometricPreference() {
@@ -25,6 +26,7 @@ class ProjectSelectorSmokeTest {
         try {
             preferences = context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
             originalBiometric = preferences.getBoolean("biometric_enabled", false)
+            preferenceCaptured = true
         } catch (failure: Throwable) {
             UiSmokeTestPreferenceLock.release()
             throw failure
@@ -33,6 +35,7 @@ class ProjectSelectorSmokeTest {
 
     @After
     fun restoreBiometricPreference() {
+        if (!preferenceCaptured) return
         try {
             restoreBiometricPreferenceAndRelock(
                 InstrumentationRegistry.getInstrumentation().targetContext,
@@ -40,6 +43,7 @@ class ProjectSelectorSmokeTest {
                 originalBiometric
             )
         } finally {
+            preferenceCaptured = false
             UiSmokeTestPreferenceLock.release()
         }
     }
