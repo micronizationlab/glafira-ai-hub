@@ -53,12 +53,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var plaintextSnapshotDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCompletedCalls = 0
         var pauseCount = 0
+        var failPauseForRestoreCount = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
             return block()
         }
         val pauseContexts = mutableListOf<Context>()
-        override fun pauseForRestore(context: Context) { pauseContexts += context }
+        override fun pauseForRestore(context: Context) {
+            pauseContexts += context
+            if (failPauseForRestoreCount > 0) {
+                failPauseForRestoreCount--
+                throw IOException("injected pause failure after restore")
+            }
+        }
         override fun beforeCommittedJournalCleanup() {
             if (failCommittedCleanupOnce || failCommittedCleanupCount > 0) {
                 failCommittedCleanupOnce = false
@@ -93,6 +100,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             testRunId = UUID.randomUUID().toString()
             fixtureRuntimeHooks.pauseContexts.clear()
             fixtureRuntimeHooks.pauseCount = 0
+            fixtureRuntimeHooks.failPauseForRestoreCount = 0
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -815,6 +823,33 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
+        }
+    }
+
+    @Test
+    fun failedRestoreRemovesPlaintextExportWhenRollbackAlsoFails() = runBlocking {
+        store.enqueue(task("restore-failure-existing-task"))
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-failed-restore-plaintext".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
+        try {
+            withOwnedRollbackKey {
+                fixtureRuntimeHooks.failPauseForRestoreCount = 2
+                val failure = assertThrows(IOException::class.java) {
+                    runBlocking { coordinator.restore(archive, passphrase) }
+                }
+                assertTrue("The rollback failure must remain attached to the original restore failure",
+                    failure.suppressed.any { it is IllegalStateException })
+                assertFalse("Failed restore must not leave its plaintext snapshot directory", snapshotDirectory.exists())
+                assertTrue("Rollback journal remains available for owner recovery", File(journal, "restore.pending").isFile)
+                assertTrue("The original Core task remains present after failed restore", store.getTask("restore-failure-existing-task") != null)
+            }
+        } finally {
+            fixtureRuntimeHooks.failPauseForRestoreCount = 0
+            archive.delete()
+            passphrase.fill(0.toChar())
         }
     }
 
