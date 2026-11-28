@@ -1516,8 +1516,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun recoveryUsesTheWriterRollbackKeyAliasAcrossCoordinatorInstances() = runBlocking {
         val passphrase = "writer-alias-recovery".toCharArray()
-        val writerCipher = GlafiraRollbackSnapshotCipher("writer-alias-$testRunId")
-        val readerCipher = GlafiraRollbackSnapshotCipher("reader-alias-$testRunId")
+        val writerCipher = GlafiraRollbackSnapshotCipher(rollbackCipher.keyAlias + "_second")
+        val readerCipher = GlafiraRollbackSnapshotCipher(rollbackCipher.keyAlias + "_third")
+        registerFixtureKeyAlias(writerCipher.keyAlias, testRunId)
+        registerFixtureKeyAlias(readerCipher.keyAlias, testRunId)
         val writer = GlafiraCoreBackupCoordinator(context, store, writerCipher, fixtureRuntimeHooks)
         val reader = GlafiraCoreBackupCoordinator(context, store, readerCipher, fixtureRuntimeHooks)
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
