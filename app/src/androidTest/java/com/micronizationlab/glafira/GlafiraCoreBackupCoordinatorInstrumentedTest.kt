@@ -1327,7 +1327,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
         try {
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-            check(journal.mkdirs())
+            check(!Files.isSymbolicLink(journal.toPath())) { "Refusing to create a sentinel inside a linked journal." }
+            check(journal.mkdirs() || Files.isDirectory(journal.toPath(), LinkOption.NOFOLLOW_LINKS))
             val sentinel = File(journal, "must-survive-pre-rollback-validation")
             sentinel.writeText("pre-rollback-sentinel", Charsets.UTF_8)
             withOwnedRestoreJournal {
@@ -1337,17 +1338,26 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     }
                     assertEquals("Неполный набор таблиц Core.", failure.message)
                     assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
-                    assertFalse(File(journal, "restore.pending").exists())
-                    assertTrue("Validation must reject before prepareRollback can clear the journal directory.", sentinel.isFile)
-                    assertEquals("pre-rollback-sentinel", sentinel.readText(Charsets.UTF_8))
+                    assertFalse("Journal path must not be replaced by a symlink", Files.isSymbolicLink(journal.toPath()))
+                    assertFalse(Files.exists(File(journal, "restore.pending").toPath(), LinkOption.NOFOLLOW_LINKS))
+                    assertTrue("Validation must reject before prepareRollback can clear the journal directory.", Files.isRegularFile(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS))
+                    val sentinelValue = Files.newInputStream(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS)
+                        .bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    assertEquals("pre-rollback-sentinel", sentinelValue)
                 } finally {
                     // This sentinel journal is deliberately test-created and has no rollback
-                    // ownership record. Remove only our sentinel and then its empty directory
-                    // before withOwnedRestoreJournal performs installation-key cleanup.
-                    if (sentinel.exists()) check(sentinel.delete())
-                    check(!Files.isSymbolicLink(journal.toPath())) { "Refusing to touch a linked sentinel journal." }
-                    if (rollbackJournalPathPresent(journal) && journal.list().orEmpty().isEmpty()) {
-                        check(journal.delete()) { "Could not remove the empty test sentinel journal." }
+                    // ownership record. Never inspect or delete a child through a linked journal path.
+                    if (!Files.isSymbolicLink(journal.toPath())) {
+                        if (Files.exists(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                            check(Files.isRegularFile(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS))
+                            Files.delete(sentinel.toPath())
+                        }
+                        if (Files.isDirectory(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                            Files.newDirectoryStream(journal.toPath()).use { entries ->
+                                check(!entries.iterator().hasNext()) { "Sentinel journal unexpectedly contains other entries." }
+                            }
+                            Files.delete(journal.toPath())
+                        }
                     }
                 }
             }
