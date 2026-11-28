@@ -15,7 +15,6 @@ internal object UiSmokeTestPreferenceLock {
     fun acquire() = lock.lock()
     fun release() = lock.unlock()
 }
-
 internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
     if (journal.exists() && !journal.deleteRecursively()) {
