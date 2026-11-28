@@ -331,13 +331,40 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
         if (!pathExistsNoFollow(marker.toPath())) {
             if (pathExistsNoFollow(journal.toPath())) {
-                val unexpectedEntries = Files.newDirectoryStream(journal.toPath()).use { entries ->
-                    entries.any()
+                val expectedPreparationArtifacts = setOf(
+                    safetyDatabase.name,
+                    safetyArchive.name,
+                    "${JOURNAL_MARKER}.tmp"
+                )
+                val entries = Files.newDirectoryStream(journal.toPath()).use { stream ->
+                    stream.map { it.fileName.toString() }.toList()
                 }
-                if (unexpectedEntries) {
-                    throw IOException("В журнале восстановления обнаружены данные без маркера; Core остаётся заблокирован для проверки.")
+                val unexpected = entries.filterNot { it in expectedPreparationArtifacts }
+                if (unexpected.isNotEmpty()) {
+                    throw IOException(
+                        "В журнале восстановления обнаружены неизвестные данные без маркера; " +
+                            "Core остаётся заблокирован для проверки: ${unexpected.joinToString()}."
+                    )
                 }
-                Files.delete(journal.toPath())
+                entries.forEach { name ->
+                    val artifact = File(journal, name)
+                    if (Files.isSymbolicLink(artifact.toPath()) ||
+                        !Files.isRegularFile(artifact.toPath(), LinkOption.NOFOLLOW_LINKS)
+                    ) {
+                        throw IOException("Небезопасный артефакт незавершённой подготовки отката: $name")
+                    }
+                }
+                // No pending marker means live files were never replaced. Remove only the
+                // exact artifacts that prepareRollback() is allowed to publish before its marker.
+                entries.forEach { name ->
+                    if (!Files.deleteIfExists(File(journal, name).toPath())) {
+                        throw IOException("Не удалось удалить незавершённый артефакт отката: $name")
+                    }
+                }
+                rollbackCipher.deleteKey()
+                if (!Files.deleteIfExists(journal.toPath())) {
+                    throw IOException("Не удалось удалить пустой журнал незавершённой подготовки отката.")
+                }
                 syncDirectory(app.noBackupFilesDir)
             }
             cleanupPortableSnapshotPreservingUnexpected()
