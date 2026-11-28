@@ -111,7 +111,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // A marker whose first directory fsync failed is different: it must be
                         // re-confirmed by recovery before success can be reported.
                         if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
-                            completedVerification ?: throw error
+                            val verification = completedVerification ?: throw error
+                            verification.copy(recoveryRequired = journal.exists())
                         } else throw error
                     }
                 } finally {
