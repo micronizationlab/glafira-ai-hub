@@ -1261,27 +1261,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         try {
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
             check(journal.mkdirs())
-            val sentinel = File(journal, "must-survive-pre-rollback-validation")
-            sentinel.writeText("pre-rollback-sentinel", Charsets.UTF_8)
             withOwnedRestoreJournal {
-                try {
-                    val failure = assertThrows(IllegalArgumentException::class.java) {
-                        runBlocking { isolatedCoordinator().restore(archive, passphrase) }
-                    }
-                    assertEquals("Неполный набор таблиц Core.", failure.message)
-                    assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
-                    assertFalse(File(journal, "restore.pending").exists())
-                    assertTrue("Validation must reject before prepareRollback can clear the journal directory.", sentinel.isFile)
-                    assertEquals("pre-rollback-sentinel", sentinel.readText(Charsets.UTF_8))
-                } finally {
-                    // This sentinel journal is deliberately test-created and has no rollback
-                    // ownership record. Remove only our sentinel and then its empty directory
-                    // before withOwnedRestoreJournal performs installation-key cleanup.
-                    if (sentinel.exists()) check(sentinel.delete())
-                    if (journal.exists() && journal.list().orEmpty().isEmpty()) {
-                        check(journal.delete()) { "Could not remove the empty test sentinel journal." }
-                    }
+                val failure = assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking { isolatedCoordinator().restore(archive, passphrase) }
                 }
+                assertEquals("Неполный набор таблиц Core.", failure.message)
+                assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
+                assertFalse("Invalid archive must not create a pending restore marker.", File(journal, "restore.pending").exists())
+                assertFalse("The empty markerless journal is reconciled before archive validation.", journal.exists())
+                assertFalse("Invalid archive must not leave rollback archive artifacts.", File(context.noBackupFilesDir, "glafira-restore-safety.glb").exists())
             }
         } finally {
             archive.delete()
