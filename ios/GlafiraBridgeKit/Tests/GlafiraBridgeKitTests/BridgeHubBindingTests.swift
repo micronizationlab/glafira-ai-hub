@@ -306,6 +306,14 @@ final class BridgeHubBindingTests: XCTestCase {
                 XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .duplicateJSONKey)
             }
         }
+
+        let leadingZeroDuplicate = validJSON.replacingOccurrences(
+            of: #""desktopHubId":"desktop-hub-0001""#,
+            with: #""desktopHubId":"desktop-hub-0001","desktopHubId":01"#
+        )
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(leadingZeroDuplicate.utf8))) { error in
+            XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .invalidPayload)
+        }
     }
 
     func testJSONScannerComparesDecodedUTF8MemberNamesWithoutUnicodeNormalization() throws {
