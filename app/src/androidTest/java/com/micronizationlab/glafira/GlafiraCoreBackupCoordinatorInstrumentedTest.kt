@@ -53,6 +53,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failCommittedJournalDirectoryDeleteCount = 0
         var pauseCount = 0
         var failPauseForRestoreCount = 0
+        var pauseFailure: IOException? = null
         var failPlaintextSnapshotDirectorySyncOnce = false
         var armPlaintextSnapshotDirectorySyncOnLastPauseFailure = false
         var plaintextSnapshotAbsentAtParentDirectorySyncFailure = false
@@ -76,7 +77,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     armPlaintextSnapshotDirectorySyncOnLastPauseFailure = false
                     failPlaintextSnapshotDirectorySyncOnce = true
                 }
-                throw IOException("injected pause failure after restore")
+                throw pauseFailure ?: IOException("injected pause failure after restore")
             }
         }
         override fun beforeCommittedJournalCleanup() {
@@ -874,6 +875,38 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun pendingDispatchUsesSharedRecoveryGuardForCommittedJournalAndPlaintextTemps() {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val committed = File(journal, "restore.committed")
+        val plaintextDirectory = File(context.filesDir, ".glafira-core-snapshot")
+        val replacement = File(context.filesDir, "dispatch-guard.restore-tmp")
+        try {
+            check(journal.mkdirs())
+            committed.writeText("GLAFIRA_RESTORE_COMMITTED_V1")
+            assertTrue("Committed recovery marker blocks queued remote dispatch",
+                isPendingDispatchBlocked(context))
+            check(journal.deleteRecursively())
+            check(plaintextDirectory.mkdir())
+            File(plaintextDirectory, "core-portable-v2.json").writeText("plaintext fixture")
+            assertTrue("A plaintext portable snapshot blocks queued remote dispatch",
+                isPendingDispatchBlocked(context))
+            check(plaintextDirectory.deleteRecursively())
+            BackupArchive.registerRestoreReplacementTemp(
+                context,
+                replacement.relativeTo(context.filesDir).invariantSeparatorsPath
+            )
+            replacement.writeText("partial decrypted replacement")
+            assertTrue("A registered partial replacement blocks queued remote dispatch",
+                isPendingDispatchBlocked(context))
+        } finally {
+            check(!journal.exists() || journal.deleteRecursively())
+            check(!plaintextDirectory.exists() || plaintextDirectory.deleteRecursively())
+            check(!replacement.exists() || replacement.delete())
+            BackupArchive.cleanupRestoreReplacementTemps(context)
+        }
+    }
+
+    @Test
     fun sharedInterruptedRestoreGuardRejectsJournalSymlinkWithoutMarkers() {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val target = File(context.cacheDir, "markerless-journal-symlink-target").apply { check(mkdirs()) }
@@ -890,35 +923,53 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    fun recoveryRejectsSymlinkedRollbackArtifactsWithoutConsumingTargets() = runBlocking {
+    fun recoveryRejectsDatabaseSymlinkWithoutConsumingItsTarget() = runBlocking {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
-        val marker = File(journal, "restore.pending").apply { writeText("GLAFIRA_RESTORE_ROLLBACK_V3") }
-        val databaseTarget = File(context.cacheDir, "rollback-database-target-${testRunId}").apply {
+        File(journal, "restore.pending").writeText("GLAFIRA_RESTORE_ROLLBACK_V3")
+        val target = File(context.cacheDir, "rollback-database-target-$testRunId").apply {
             writeText("database target must survive")
         }
-        val archiveTarget = File(context.cacheDir, "rollback-archive-target-${testRunId}").apply {
-            writeText("archive target must survive")
-        }
         val database = File(journal, "database.db")
-        val archive = File(journal, "files.glb")
+        File(journal, "files.glb").writeText("regular archive placeholder")
         val passphrase = disposablePassphrase()
         try {
-            Files.createSymbolicLink(database.toPath(), databaseTarget.toPath())
-            Files.createSymbolicLink(archive.toPath(), archiveTarget.toPath())
+            Files.createSymbolicLink(database.toPath(), target.toPath())
             val failure = assertThrows(IllegalArgumentException::class.java) {
                 runBlocking { isolatedCoordinator().recover(passphrase) }
             }
             assertTrue(failure.message.orEmpty().contains("Повреждён журнал восстановления"))
-            assertEquals("database target must survive", databaseTarget.readText())
-            assertEquals("archive target must survive", archiveTarget.readText())
+            assertEquals("database target must survive", target.readText())
             assertTrue(Files.isSymbolicLink(database.toPath()))
-            assertTrue(Files.isSymbolicLink(archive.toPath()))
         } finally {
             Files.deleteIfExists(database.toPath())
+            check(!journal.exists() || journal.deleteRecursively())
+            check(target.delete())
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun recoveryRejectsArchiveSymlinkWithoutConsumingItsTarget() = runBlocking {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
+        File(journal, "restore.pending").writeText("GLAFIRA_RESTORE_ROLLBACK_V3")
+        File(journal, "database.db").writeText("regular database placeholder")
+        val target = File(context.cacheDir, "rollback-archive-target-$testRunId").apply {
+            writeText("archive target must survive")
+        }
+        val archive = File(journal, "files.glb")
+        val passphrase = disposablePassphrase()
+        try {
+            Files.createSymbolicLink(archive.toPath(), target.toPath())
+            val failure = assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue(failure.message.orEmpty().contains("Повреждён журнал восстановления"))
+            assertEquals("archive target must survive", target.readText())
+            assertTrue(Files.isSymbolicLink(archive.toPath()))
+        } finally {
             Files.deleteIfExists(archive.toPath())
             check(!journal.exists() || journal.deleteRecursively())
-            check(databaseTarget.delete())
-            check(archiveTarget.delete())
+            check(target.delete())
             passphrase.fill(0.toChar())
         }
     }
@@ -1171,11 +1222,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
         try {
             withOwnedRollbackKey {
+                val originalRestoreFailure = IOException("injected original restore failure")
+                fixtureRuntimeHooks.pauseFailure = originalRestoreFailure
                 fixtureRuntimeHooks.failPauseForRestoreCount = 2
                 fixtureRuntimeHooks.armPlaintextSnapshotDirectorySyncOnLastPauseFailure = true
                 val failure = assertThrows(IOException::class.java) {
                     runBlocking { coordinator.restore(archive, passphrase) }
                 }
+                assertSame("Cleanup must not replace the original restore failure", originalRestoreFailure, failure)
                 assertTrue("The rollback failure remains attached to the original restore failure",
                     failure.suppressed.any { it is IllegalStateException })
                 assertTrue("Catch-path plaintext cleanup fsync failure remains attached to the original restore failure",
@@ -1972,6 +2026,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val replacement = File(context.filesDir, "diagnostic-restore-fixture.restore-tmp")
         val passphrase = disposablePassphrase()
         try {
+            BackupArchive.registerRestoreReplacementTemp(
+                context,
+                replacement.relativeTo(context.filesDir).invariantSeparatorsPath
+            )
             replacement.writeText("partial decrypted replacement")
             assertTrue("An orphaned plaintext replacement must keep Core blocked",
                 GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
