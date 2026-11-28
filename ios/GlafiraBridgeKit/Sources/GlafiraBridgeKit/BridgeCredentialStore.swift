@@ -51,7 +51,7 @@ public struct BridgeHubBinding: Codable, Equatable, Sendable {
         }
         let lifetime = expiresAtEpochMs - enrolledAtEpochMs
         guard (BridgeHubBindingValidation.minimumLifetimeMilliseconds...BridgeHubBindingValidation.maximumLifetimeMilliseconds).contains(lifetime) else {
-            throw BridgeCredentialStoreError.invalidHubBinding
+            throw BridgeHubBindingError.invalidBinding
         }
         self.desktopHubId = desktopHubId
         self.endpoint = canonicalEndpoint
@@ -93,7 +93,7 @@ public struct BridgeHubBinding: Codable, Equatable, Sendable {
             enrolledAtEpochMs: enrolledAtEpochMs,
             expiresAtEpochMs: expiresAtEpochMs
         )
-        guard canonical == self else { throw BridgeCredentialStoreError.invalidHubBinding }
+        guard canonical == self else { throw BridgeHubBindingError.invalidBinding }
     }
 }
 
