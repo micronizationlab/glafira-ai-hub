@@ -46,17 +46,27 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var testRunId: String
     private var fixtureLifetimeFile: RandomAccessFile? = null
     private var fixtureLifetimeFileLock: java.nio.channels.FileLock? = null
-    private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
+    private inner class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
         var beforeCommittedCleanupAction: (() -> Unit)? = null
         var pauseCount = 0
+        var failPauseForRestoreCount = 0
+        var failPlaintextSnapshotDirectorySyncOnce = false
+        var plaintextSnapshotDirectorySyncCalls = 0
+        var plaintextSnapshotDirectorySyncCompletedCalls = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
             return block()
         }
         val pauseContexts = mutableListOf<Context>()
-        override fun pauseForRestore(context: Context) { pauseContexts += context }
+        override fun pauseForRestore(context: Context) {
+            pauseContexts += context
+            if (failPauseForRestoreCount > 0) {
+                failPauseForRestoreCount--
+                throw IOException("injected pause failure after restore")
+            }
+        }
         override fun beforeCommittedJournalCleanup() {
             val action = beforeCommittedCleanupAction
             beforeCommittedCleanupAction = null
@@ -65,6 +75,20 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
                 throw IOException("injected interruption before committed journal cleanup")
+            }
+        }
+        override fun beforeDirectorySync(directory: File) {
+            if (directory.absoluteFile == context.filesDir.absoluteFile) {
+                plaintextSnapshotDirectorySyncCalls++
+                if (failPlaintextSnapshotDirectorySyncOnce) {
+                    failPlaintextSnapshotDirectorySyncOnce = false
+                    throw IOException("injected plaintext snapshot parent-directory fsync failure")
+                }
+            }
+        }
+        override fun afterDirectorySync(directory: File) {
+            if (directory.absoluteFile == context.filesDir.absoluteFile) {
+                plaintextSnapshotDirectorySyncCompletedCalls++
             }
         }
     }
@@ -80,6 +104,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             testRunId = UUID.randomUUID().toString()
             fixtureRuntimeHooks.pauseContexts.clear()
             fixtureRuntimeHooks.pauseCount = 0
+            fixtureRuntimeHooks.failPauseForRestoreCount = 0
+            fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -802,6 +828,39 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
+        }
+    }
+
+    @Test
+    fun failedRestoreRemovesPlaintextExportWhenRollbackAlsoFails() = runBlocking {
+        store.enqueue(task("restore-failure-existing-task"))
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-failed-restore-plaintext".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
+        try {
+            withOwnedRollbackKey {
+                fixtureRuntimeHooks.failPauseForRestoreCount = 2
+                val failure = assertThrows(IOException::class.java) {
+                    runBlocking { coordinator.restore(archive, passphrase) }
+                }
+                assertTrue("The rollback failure remains attached to the original restore failure",
+                    failure.suppressed.any { it is IllegalStateException })
+                assertFalse("Failed restore must not leave its plaintext snapshot directory", snapshotDirectory.exists())
+                assertTrue("Rollback journal remains available for owner recovery", File(journal, "restore.pending").isFile)
+                assertTrue("Original Core task remains present after failed restore",
+                    store.getTask("restore-failure-existing-task") != null)
+                fixtureRuntimeHooks.failPauseForRestoreCount = 0
+                isolatedCoordinator().recover(passphrase)
+                assertFalse("Owner recovery clears the retained rollback journal", journal.exists())
+                assertTrue("Original Core task remains present after owner recovery",
+                    store.getTask("restore-failure-existing-task") != null)
+            }
+        } finally {
+            fixtureRuntimeHooks.failPauseForRestoreCount = 0
+            archive.delete()
+            passphrase.fill(0.toChar())
         }
     }
 
@@ -1550,6 +1609,69 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 thirdFixture.deleteKey()
                 clearFixtureKeyAliasOwner(thirdFixture.keyAlias, testRunId)
             }
+        }
+    }
+
+    @Test
+    fun recoveryRejectsCommittedJournalSymlinkWithoutTouchingTargetArtifacts() = runBlocking {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val target = File(context.cacheDir, "committed-journal-target-$runId").apply { check(mkdir()) }
+        val committed = File(target, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
+        val database = File(target, "database.db").apply { writeText("must-survive") }
+        val archive = File(target, "files.glb").apply { writeText("must-survive-too") }
+        val passphrase = "GLAFIRA-committed-journal-link".toCharArray()
+        try {
+            Files.createSymbolicLink(journal.toPath(), target.toPath())
+            val failure = assertThrows(IllegalStateException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Recovery must stop at the explicit journal symlink guard",
+                failure.message.orEmpty().contains("символическая ссылка"))
+            assertTrue("Committed marker in the symlink target is preserved", committed.isFile)
+            assertEquals("must-survive", database.readText())
+            assertEquals("must-survive-too", archive.readText())
+        } finally {
+            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
+            check(target.deleteRecursively())
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun committedCleanupFsyncsFilesDirectoryOnlyOnceAcrossRecoveryRetry() = runBlocking {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
+        val pending = File(journal, "restore.pending").apply { writeText("GLAFIRA_RESTORE_ROLLBACK_V3") }
+        val committed = File(journal, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
+        val database = File(journal, "database.db").apply { writeText("encrypted-fixture-placeholder") }
+        val archive = File(journal, "files.glb").apply { writeText("encrypted-fixture-placeholder") }
+        val passphrase = "committed-snapshot-parent-fsync".toCharArray()
+        try {
+            fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls = 0
+            fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls = 0
+            fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = true
+            val failure = assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertEquals("Injected fsync failure must be the observed error",
+                "injected plaintext snapshot parent-directory fsync failure", failure.message)
+            assertEquals(1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls)
+            assertEquals(0, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
+            assertTrue(committed.exists() && database.exists() && archive.exists())
+
+            isolatedCoordinator().recover(passphrase)
+            assertEquals("Retry must complete one filesDir fsync", 1,
+                fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
+            assertEquals("Recovery must not repeat snapshot cleanup after journal cleanup", 2,
+                fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls)
+            assertFalse(pending.exists())
+            assertFalse(committed.exists())
+            assertFalse(database.exists())
+            assertFalse(archive.exists())
+            assertFalse(journal.exists())
+        } finally {
+            fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
+            passphrase.fill(0.toChar())
         }
     }
 

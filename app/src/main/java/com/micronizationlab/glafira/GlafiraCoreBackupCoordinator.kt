@@ -13,6 +13,8 @@ internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
+    fun beforeDirectorySync(directory: File) = Unit
+    fun afterDirectorySync(directory: File) = Unit
 }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
@@ -58,10 +60,11 @@ class GlafiraCoreBackupCoordinator internal constructor(
             }
         }
 
-    suspend fun recover(passphrase: CharArray) = GlafiraCoreMaintenanceGate.withExclusive {
+    suspend fun recover(passphrase: CharArray): Unit = GlafiraCoreMaintenanceGate.withExclusive {
         runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 recoverInterruptedRestore(passphrase)
+                Unit
             } }
         }
     }
@@ -84,6 +87,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     }
                     prepareRollback(passphrase)
                     var completedVerification: BackupVerification? = null
+                    var recoveryCleanedSnapshot = false
                     try {
                         val verification = BackupArchive.restore(app, selected, passphrase)
                         completedVerification = verification
@@ -99,11 +103,18 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // recovery below re-syncs this journal before treating it as committed.
                         val commitMarkerNeedsReconfirmation = committedMarker.isFile
                         val cleanupSucceeded = try {
-                            recoverInterruptedRestore(passphrase)
+                            recoveryCleanedSnapshot = recoverInterruptedRestore(passphrase)
                             !marker.exists() && !committedMarker.exists()
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
                             false
+                        }
+                        if (!recoveryCleanedSnapshot) {
+                            try {
+                                deleteCommittedPortableSnapshot()
+                            } catch (cleanup: Exception) {
+                                error.addSuppressed(cleanup)
+                            }
                         }
                         // A marker seen here belongs to this attempt: any previous journal was
                         // recovered before the selected archive was read. Successful re-sync and
@@ -175,16 +186,20 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
     }
 
-    private fun recoverInterruptedRestore(passphrase: CharArray) {
+    /** Returns true when journal recovery already performed portable-snapshot cleanup. */
+    private fun recoverInterruptedRestore(passphrase: CharArray): Boolean {
+        check(!Files.isSymbolicLink(journal.toPath())) {
+            "Обнаружена символическая ссылка вместо журнала восстановления; чтение и очистка остановлены."
+        }
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
             cleanupCommittedJournal()
-            return
+            return true
         }
-        if (!marker.exists()) return
+        if (!marker.exists()) return false
         require(safetyArchive.isFile && safetyDatabase.isFile) { "Повреждён журнал восстановления; Core заблокирован." }
         val markerVersion = marker.readText(Charsets.UTF_8).trim()
         val encryptedRollback = markerVersion == "GLAFIRA_RESTORE_ROLLBACK_V3"
@@ -209,6 +224,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
             runtimeHooks.pauseForRestore(app)
             checkpointDatabase()
             clearJournal()
+            return true
         } catch (error: Exception) {
             throw IllegalStateException("Не удалось проверить или восстановить safety snapshot. Core остаётся заблокирован до успешного отката.", error)
         } finally {
@@ -363,8 +379,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     private fun sync(file: File) { FileOutputStream(file, true).use { it.fd.sync() } }
     private fun syncDirectory(directory: File) {
+        runtimeHooks.beforeDirectorySync(directory)
         val fd = android.system.Os.open(directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
         try { android.system.Os.fsync(fd) } finally { android.system.Os.close(fd) }
+        runtimeHooks.afterDirectorySync(directory)
     }
 
     companion object {
@@ -378,8 +396,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
-            val marker = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER)
-            val committed = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), COMMITTED_MARKER)
+            val journal = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
+            check(!Files.isSymbolicLink(journal.toPath())) {
+                "Обнаружена символическая ссылка вместо журнала восстановления; проверка состояния остановлена."
+            }
+            val marker = File(journal, JOURNAL_MARKER)
+            val committed = File(journal, COMMITTED_MARKER)
             if (marker.exists() || committed.exists()) return true
             val stale = app.cacheDir.listFiles { file ->
                 file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
