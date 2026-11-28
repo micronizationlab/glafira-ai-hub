@@ -400,6 +400,8 @@ fun BackupSettingsSection() {
                                         "Данные восстановлены: ${failure.verification.fileCount} файлов. Не удалось удалить временную зашифрованную копию архива: ${failure.message}"
                                     }
                                 }
+                                is CommittedRestoreArchiveCleanupException ->
+                                    "Данные восстановлены: ${failure.verification.fileCount} файлов. Не удалось удалить временную зашифрованную копию архива: ${failure.archivePath}. Core не заблокирован; данные уже восстановлены."
                                 null -> result.getOrThrow()
                                 else -> "Ошибка восстановления: ${failure.message ?: "неизвестная ошибка"}"
                             }
