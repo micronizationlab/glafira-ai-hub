@@ -6,6 +6,9 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
+import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 
 /** Runtime boundary used by backup maintenance. The production implementation pauses pending delivery and the Core runtime. Only tests that explicitly inject fixture-local hooks bypass those production side effects; tests using the public two-argument constructor still exercise the real pause behavior. */
@@ -16,6 +19,14 @@ internal interface GlafiraBackupRuntimeHooks {
     fun beforeDirectorySync(directory: File) = Unit
     fun afterDirectorySync(directory: File) = Unit
 }
+
+private fun pathExistsNoFollow(path: Path): Boolean =
+    try {
+        Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+        true
+    } catch (_: NoSuchFileException) {
+        false
+    }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
     override suspend fun <T> withPaused(block: () -> T): T = PendingDeliveryRuntime.withPaused(block)
@@ -178,29 +189,39 @@ class GlafiraCoreBackupCoordinator internal constructor(
             file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
         }.orEmpty()
         stale.forEach { file ->
-            check(!file.exists() || file.delete()) {
-                "Не удалось удалить временный расшифрованный снимок; Core остаётся заблокирован."
+            val path = file.toPath()
+            if (pathExistsNoFollow(path)) {
+                try {
+                    Files.delete(path)
+                } catch (error: IOException) {
+                    throw IOException(
+                        "Не удалось удалить временный расшифрованный снимок; Core остаётся заблокирован.",
+                        error
+                    )
+                }
             }
         }
     }
 
     /** Returns true when journal recovery already performed portable-snapshot cleanup. */
     private fun recoverInterruptedRestore(passphrase: CharArray): Boolean {
-        if (Files.isSymbolicLink(journal.toPath())) {
+        if (pathExistsNoFollow(journal.toPath()) && Files.isSymbolicLink(journal.toPath())) {
             throw IOException("Обнаружена символическая ссылка вместо журнала восстановления; чтение и очистка остановлены.")
         }
-        if (Files.isSymbolicLink(marker.toPath()) || Files.isSymbolicLink(committedMarker.toPath())) {
+        if ((pathExistsNoFollow(marker.toPath()) && Files.isSymbolicLink(marker.toPath())) ||
+            (pathExistsNoFollow(committedMarker.toPath()) && Files.isSymbolicLink(committedMarker.toPath()))
+        ) {
             throw IOException("Обнаружена символическая ссылка вместо маркера восстановления; откатные данные сохранены.")
         }
         cleanupStaleDecryptedRollbackSnapshots()
-        if (Files.exists(committedMarker.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+        if (pathExistsNoFollow(committedMarker.toPath())) {
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
             cleanupCommittedJournal()
             return true
         }
-        if (!Files.exists(marker.toPath(), LinkOption.NOFOLLOW_LINKS)) return false
+        if (!pathExistsNoFollow(marker.toPath())) return false
         require(safetyArchive.isFile && safetyDatabase.isFile) { "Повреждён журнал восстановления; Core заблокирован." }
         val markerVersion = marker.readText(Charsets.UTF_8).trim()
         val encryptedRollback = markerVersion == "GLAFIRA_RESTORE_ROLLBACK_V3"
