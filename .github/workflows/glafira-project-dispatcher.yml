@@ -418,7 +418,7 @@ jobs:
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
-          trap 'status=$?; printf "dispatcher renderer fixture failed at line %s (exit %s)\\n" "${BASH_LINENO[0]:-$LINENO}" "$status" >&2' ERR
+          trap 'status=$?; failed_command="$(printf "%s" "$BASH_COMMAND" | sed -E "s/(gh[pousr]_[A-Za-z0-9_-]{10,}|github_pat_[A-Za-z0-9_-]{10,}|Bearer [^ ]+)/[REDACTED]/g")"; printf "dispatcher renderer fixture failed (exit %s): %s\\n" "$status" "$failed_command" >&2' ERR
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
