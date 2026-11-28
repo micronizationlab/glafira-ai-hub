@@ -85,8 +85,24 @@ internal fun restoreBiometricPreferenceAndRelock(
 }
 
 /** Read recovery indicators without deleting a temp file that an active recovery may own. */
-internal fun recoveryPendingForDiagnostics(context: Context): Boolean =
-    GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
+/** Read recovery state without deleting a rollback temp that may be in active use. */
+internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
+    val app = context.applicationContext
+    val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
+    val markers = listOf(
+        File(journal, "restore.pending"),
+        File(journal, "restore.committed"),
+        File(app.filesDir, ".glafira-core-snapshot")
+    )
+    if (Files.isSymbolicLink(journal.toPath()) ||
+        markers.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) } ||
+        BackupArchive.hasRestoreReplacementTemps(app)
+    ) return true
+    val stale = app.cacheDir.listFiles { file ->
+        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+    } ?: return true
+    return stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+}
 
 /** Capture only structural accessibility metadata; never read text or content descriptions. */
 internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacters: Int = 12_000): String {
