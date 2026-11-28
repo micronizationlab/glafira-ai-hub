@@ -502,14 +502,15 @@ jobs:
           grep -Fq "GraphQL response validation failed (jq exit 1)" "$tmp/graphql-validation.err"
           [[ "$(cat "$tmp/graphql-validation-calls.log")" == "graphql" ]]
           mkdir -p "$tmp/fake-gh-valid" "$tmp/failing-validation-jq"
+          cat > "$tmp/expected-valid-pages.jsonl" <<'JSON'
+          {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}
+          JSON
           cat > "$tmp/fake-gh-valid/gh" <<'GH_VALID_PAGES'
           #!/usr/bin/env bash
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             echo graphql >> "$CALL_LOG"
-            cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
-          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}
-          JSON
+            cat "$EXPECTED_PAGES_FILE"
             exit 0
           fi
           echo unexpected-rest >> "$CALL_LOG"
@@ -517,10 +518,15 @@ jobs:
           GH_VALID_PAGES
           cat > "$tmp/failing-validation-jq/jq" <<'JQ_VALIDATION'
           #!/usr/bin/env bash
+          set -euo pipefail
+          [[ "$1" == "-s" && "$2" == "-e" && "$3" == 'all(.[]; .data.repository.pullRequests.nodes != null)' ]] || exit 43
+          [[ "$4" == *"glafira-open-prs-pages."* ]] || exit 44
+          cmp -s "$4" "$EXPECTED_PAGES_FILE" || exit 45
+          printf 'validator\\n' >> "$JQ_CALL_LOG"
           exit 42
           JQ_VALIDATION
           chmod +x "$tmp/fake-gh-valid/gh" "$tmp/failing-validation-jq/jq"
-          if CALL_LOG="$tmp/graphql-validation-jq42-calls.log" PATH="$tmp/fake-gh-valid:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-validation-jq42.out" 2>"$tmp/graphql-validation-jq42.err"; then
+          if CALL_LOG="$tmp/graphql-validation-jq42-calls.log" JQ_CALL_LOG="$tmp/validation-jq-stages.log" EXPECTED_PAGES_FILE="$tmp/expected-valid-pages.jsonl" PATH="$tmp/fake-gh-valid:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-validation-jq42.out" 2>"$tmp/graphql-validation-jq42.err"; then
             echo "injected jq validator exit 42 was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
@@ -528,6 +534,7 @@ jobs:
           [[ ! -s "$tmp/graphql-validation-jq42.out" ]]
           grep -Fq "GraphQL response validation failed (jq exit 42)" "$tmp/graphql-validation-jq42.err"
           [[ "$(cat "$tmp/graphql-validation-jq42-calls.log")" == "graphql" ]]
+          [[ "$(cat "$tmp/validation-jq-stages.log")" == "validator" ]]
           echo "GraphQL malformed-page validation and injected jq exit 42 fail closed without REST fallback: PASS"
           mkdir -p "$tmp/failing-aggregation-jq"
           real_jq="$(command -v jq)"
