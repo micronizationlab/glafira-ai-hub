@@ -1,10 +1,11 @@
 import Foundation
+import CoreFoundation
 import Security
 import LocalAuthentication
 import Darwin
 
 /// Non-secret lifecycle identity of the authoritative Windows Hub enrollment.
-public struct BridgeHubBinding: Codable, Equatable, Sendable {
+public struct BridgeHubBinding: Equatable, Sendable {
     public let desktopHubId: String
     /// Canonical HTTPS endpoint including the Windows Hub API base path.
     public let endpoint: String
@@ -18,15 +19,6 @@ public struct BridgeHubBinding: Codable, Equatable, Sendable {
         var components = URLComponents(string: endpoint)!
         components.path = ""
         return components.string!
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case desktopHubId
-        case endpoint
-        case certificateSHA256
-        case scopes
-        case enrolledAtEpochMs
-        case expiresAtEpochMs
     }
 
     public init(
@@ -59,23 +51,6 @@ public struct BridgeHubBinding: Codable, Equatable, Sendable {
         self.scopes = scopes.sorted()
         self.enrolledAtEpochMs = enrolledAtEpochMs
         self.expiresAtEpochMs = expiresAtEpochMs
-    }
-
-    public init(from decoder: Decoder) throws {
-        // A bare Codable payload bypasses envelope, byte-size, depth and duplicate-key checks.
-        // Persisted bindings must enter through BridgeHubBindingPersistence.decode.
-        throw BridgeHubBindingError.invalidBinding
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        try validate()
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(desktopHubId, forKey: .desktopHubId)
-        try container.encode(endpoint, forKey: .endpoint)
-        try container.encode(certificateSHA256, forKey: .certificateSHA256)
-        try container.encode(scopes, forKey: .scopes)
-        try container.encode(enrolledAtEpochMs, forKey: .enrolledAtEpochMs)
-        try container.encode(expiresAtEpochMs, forKey: .expiresAtEpochMs)
     }
 
     public func validate() throws {
@@ -243,7 +218,7 @@ public enum BridgeHubBindingPersistence {
                   let scopes = object["scopes"] as? [String],
                   let enrolledAtEpochMs = integerValue(object["enrolledAtEpochMs"]),
                   let expiresAtEpochMs = integerValue(object["expiresAtEpochMs"]) else {
-                throw BridgeHubBindingError.invalidBinding
+                throw BridgeHubBindingPersistenceError.invalidPayload
             }
             return try BridgeHubBinding(
                 desktopHubId: desktopHubId,
