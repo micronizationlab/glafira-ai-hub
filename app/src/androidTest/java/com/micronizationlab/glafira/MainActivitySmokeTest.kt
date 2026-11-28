@@ -59,6 +59,31 @@ class MainActivitySmokeTest {
 
 
     @Test
+    fun homeScreenWaitFailureStillCollectsStartupDiagnostics() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        prepareUnlockedHome(context)
+        val device = UiDevice.getInstance(instrumentation)
+        val failure = assertThrows(IllegalStateException::class.java) {
+            awaitHomeScreen(device, context, waitForWorkspace = {
+                throw IllegalStateException("injected accessibility wait failure")
+            })
+        }
+        assertTrue(failure.message.orEmpty().contains("recovery=false"))
+        assertTrue(failure.message.orEmpty().contains("biometric=false"))
+        assertTrue(failure.message.orEmpty().contains("injected accessibility wait failure"))
+    }
+
+    @Test
+    fun hierarchySummaryPreservesHeadTailAndReportsTruncation() {
+        val hierarchy = "HEAD" + "x".repeat(12_100) + "TAIL"
+        val summary = summarizeWindowHierarchy(hierarchy)
+        assertTrue(summary.startsWith("HEAD"))
+        assertTrue(summary.contains("truncated"))
+        assertTrue(summary.endsWith("TAIL"))
+    }
+
+    @Test
     fun startupDiagnosticsRetainGatesWhenWindowHierarchyCannotBeWritten() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
