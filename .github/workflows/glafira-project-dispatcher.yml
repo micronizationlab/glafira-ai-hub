@@ -526,8 +526,10 @@ jobs:
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
-          scan_counter="$RUNNER_TEMP/glafira-dispatcher-stable-scan-count"
-          boundary_counter="$RUNNER_TEMP/glafira-dispatcher-stable-boundary-count"
+          call_log="$PWD/.glafira-dispatcher-gh-call-log"
+          scan_counter="$PWD/.glafira-dispatcher-stable-scan-count"
+          boundary_counter="$PWD/.glafira-dispatcher-stable-boundary-count"
+          printf "%s\\n" "$1 $2 $3" >> "$call_log"
           if [[ "$1" == "api" && "$2" == "graphql" && "$3" == "--paginate" ]]; then
             [[ "$4" == "-f" && "$5" == query=* && "$5" == *"pageInfo"* ]] || exit 90
             count="$(cat "$scan_counter" 2>/dev/null || printf '0')"
@@ -553,13 +555,16 @@ jobs:
           exit 99
           GH
           chmod +x "$tmp/fake-bin/gh"
-          : > "$RUNNER_TEMP/glafira-dispatcher-stable-scan-count"
-          : > "$RUNNER_TEMP/glafira-dispatcher-stable-boundary-count"
+          : > "$PWD/.glafira-dispatcher-gh-call-log"
+          : > "$PWD/.glafira-dispatcher-stable-scan-count"
+          : > "$PWD/.glafira-dispatcher-stable-boundary-count"
           stable_boundary_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
-          printf 'stable-boundary fixture returned PR numbers: %s; scans=%s; boundary checks=%s\n' "$(jq -c '[.[].number]' <<< "$stable_boundary_prs")" "$(cat "$RUNNER_TEMP/glafira-dispatcher-stable-scan-count")" "$(cat "$RUNNER_TEMP/glafira-dispatcher-stable-boundary-count")"
+          printf 'stable-boundary fixture returned PR numbers: %s; scans=%s; boundary checks=%s\n' "$(jq -c '[.[].number]' <<< "$stable_boundary_prs")" "$(cat "$PWD/.glafira-dispatcher-stable-scan-count")" "$(cat "$PWD/.glafira-dispatcher-stable-boundary-count")"
           jq -e 'length == 3 and .[0].number == 3 and .[1].number == 1 and .[2].number == 2' <<< "$stable_boundary_prs" >/dev/null
           [[ "$(cat "$RUNNER_TEMP/glafira-dispatcher-stable-scan-count")" == "2" ]]
           [[ "$(cat "$RUNNER_TEMP/glafira-dispatcher-stable-boundary-count")" == "2" ]]
+          printf 'stable-boundary mock calls: %s\n' "$(tr '\n' ';' < "$call_log")"
+          rm -f "$call_log" "$scan_counter" "$boundary_counter"
 
           # A later-page GraphQL failure must discard partial stdout and never call REST.
           cat > "$tmp/fake-bin/gh" <<'GH'
