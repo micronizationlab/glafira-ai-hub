@@ -3,6 +3,8 @@ package com.micronizationlab.glafira
 import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.util.UUID
 
 /** Runtime boundary used by backup maintenance. The production implementation pauses pending delivery and the Core runtime. Only tests that explicitly inject fixture-local hooks bypass those production side effects; tests using the public two-argument constructor still exercise the real pause behavior. */
@@ -10,12 +12,14 @@ internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
+    fun beforeCommittedJournalDirectoryCleanup() = Unit
 }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
     override suspend fun <T> withPaused(block: () -> T): T = PendingDeliveryRuntime.withPaused(block)
     override fun pauseForRestore(context: Context) = GlafiraCoreRuntimeOwner.pauseForRestore(context)
     override fun beforeCommittedJournalCleanup() = Unit
+    override fun beforeCommittedJournalDirectoryCleanup() = Unit
 }
 
 /** Portable logical Core data inside an authenticated archive; raw SQLite is local rollback only. */
@@ -111,7 +115,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // A marker whose first directory fsync failed is different: it must be
                         // re-confirmed by recovery before success can be reported.
                         if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
-                            completedVerification ?: throw error
+                            val verification = completedVerification ?: throw error
+                            verification.copy(recoveryRequired = Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS))
                         } else throw error
                     }
                 } finally {
@@ -172,6 +177,11 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     private fun recoverInterruptedRestore(passphrase: CharArray) {
         cleanupStaleDecryptedRollbackSnapshots()
+        // Never traverse a journal symlink. A markerless journal is still recovery state:
+        // it can be the empty directory left after both durable markers were removed.
+        require(!Files.isSymbolicLink(journal.toPath())) {
+            "Обнаружена символическая ссылка вместо каталога журнала восстановления; Core заблокирован."
+        }
         if (committedMarker.exists()) {
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
@@ -179,7 +189,22 @@ class GlafiraCoreBackupCoordinator internal constructor(
             cleanupCommittedJournal()
             return
         }
-        if (!marker.exists()) return
+        if (!marker.exists()) {
+            if (Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                require(journal.isDirectory) {
+                    "Путь журнала восстановления не является каталогом; Core заблокирован."
+                }
+                val remaining = journal.listFiles()
+                    ?: error("Не удалось прочитать каталог журнала восстановления; Core заблокирован.")
+                require(remaining.isEmpty()) {
+                    "В каталоге журнала восстановления остались неизвестные данные; они сохранены, Core заблокирован."
+                }
+                runtimeHooks.beforeCommittedJournalDirectoryCleanup()
+                check(journal.delete()) { "Не удалось удалить пустой каталог журнала восстановления; Core заблокирован." }
+                syncDirectory(app.noBackupFilesDir)
+            }
+            return
+        }
         require(safetyArchive.isFile && safetyDatabase.isFile) { "Повреждён журнал восстановления; Core заблокирован." }
         val markerVersion = marker.readText(Charsets.UTF_8).trim()
         val encryptedRollback = markerVersion == "GLAFIRA_RESTORE_ROLLBACK_V3"
@@ -263,7 +288,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
         syncDirectory(journal)
         // All rollback evidence and both markers are now durably gone; only empty-directory
         // removal and its parent fsync remain. The restore caller already recorded its commit.
-        check(journal.deleteRecursively()) { "Не удалось удалить каталог журнала восстановления." }
+        runtimeHooks.beforeCommittedJournalDirectoryCleanup()
+        check(journal.delete()) { "Не удалось удалить пустой каталог журнала восстановления." }
         syncDirectory(app.noBackupFilesDir)
     }
 
@@ -307,9 +333,11 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
-            val marker = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), JOURNAL_MARKER)
-            val committed = File(File(app.noBackupFilesDir, JOURNAL_DIRECTORY), COMMITTED_MARKER)
-            if (marker.exists() || committed.exists()) return true
+            val journal = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
+            val marker = File(journal, JOURNAL_MARKER)
+            val committed = File(journal, COMMITTED_MARKER)
+            if (Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS) ||
+                marker.exists() || committed.exists()) return true
             val stale = app.cacheDir.listFiles { file ->
                 file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
             }.orEmpty()

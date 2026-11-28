@@ -25,10 +25,11 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
-data class BackupVerification(
+data class BackupVerification @JvmOverloads constructor(
     val createdAt: String,
     val fileCount: Int,
-    val totalBytes: Long
+    val totalBytes: Long,
+    val recoveryRequired: Boolean = false
 )
 
 object BackupArchive {
