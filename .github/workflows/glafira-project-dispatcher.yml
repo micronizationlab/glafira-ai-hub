@@ -856,13 +856,18 @@ jobs:
           GH_STALE
           chmod +x "$tmp/fake-bin/gh"
           printf '0\n' > "$tmp/report-stale-scan-count"
-          if ! GH_REPO="micronizationlab/glafira-ai-hub" SCAN_COUNTER="$tmp/report-stale-scan-count" GITHUB_STEP_SUMMARY="$tmp/report-stale-snapshot.md" GLAFIRA_GH_BIN="$tmp/fake-bin/gh" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh"; then
-            echo "production report failed on a changed final PR identity" >&2; exit 1
+          if GH_REPO="micronizationlab/glafira-ai-hub" SCAN_COUNTER="$tmp/report-stale-scan-count" GITHUB_STEP_SUMMARY="$tmp/report-stale-snapshot.md" GLAFIRA_GH_BIN="$tmp/fake-bin/gh" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh"; then
+            echo "production report accepted a PR identity change during Actions history retrieval" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
           fi
-          grep -Fq "new-head-000" "$tmp/report-stale-snapshot.md"
-          grep -Fq "NO MATCHING RUN FOR EXACT PR/HEAD/BASE" "$tmp/report-stale-snapshot.md"
+          grep -Fq "PR identity changed during Actions history retrieval" "$tmp/report-stale-snapshot.md"
+          grep -Fq "Current identity is UNKNOWN" "$tmp/report-stale-snapshot.md"
+          if grep -Fq "| PR |" "$tmp/report-stale-snapshot.md"; then
+            echo "PR status table appeared after stale Actions history" >&2; exit 1
+          fi
           if grep -Fq "old-head-success" "$tmp/report-stale-snapshot.md"; then
-            echo "stale Actions run was attached to the new PR head" >&2; exit 1
+            echo "stale Actions success was published after PR identity changed" >&2; exit 1
           fi
 
           echo "dispatcher fail-closed integration: production initial-fetch and reconciliation failures return UNKNOWN with no table; post-history refresh prevents stale-head success: PASS"
