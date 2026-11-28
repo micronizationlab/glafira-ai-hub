@@ -306,6 +306,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                 throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные.")
             }
             Files.delete(directory)
+            syncDirectory(app.filesDir)
         } else {
             syncDirectory(app.filesDir)
         }
