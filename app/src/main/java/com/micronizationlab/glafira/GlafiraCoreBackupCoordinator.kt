@@ -406,6 +406,13 @@ class GlafiraCoreBackupCoordinator internal constructor(
         } else null
         val rollbackDatabase = decryptedDatabase ?: safetyDatabase
         try {
+            // Remove only the known portable plaintext export before applying the safety archive.
+            // Unknown staging siblings must be preserved and keep recovery blocked; BackupArchive
+            // restores an exact file set and would otherwise delete post-marker operator data.
+            cleanupPortableSnapshotPreservingUnexpected()
+            if (pathExistsNoFollow(File(app.filesDir, ".glafira-core-snapshot").toPath())) {
+                throw IOException("В каталоге переносимого снимка обнаружены неизвестные данные; safety restore остановлен.")
+            }
             // Decrypt and validate the database before applying the safety archive to live files.
             // A missing Keystore key must fail closed without regenerating a key or partially restoring files.
             if (encryptedRollback) rollbackCipher.decrypt(safetyDatabase, rollbackDatabase)
