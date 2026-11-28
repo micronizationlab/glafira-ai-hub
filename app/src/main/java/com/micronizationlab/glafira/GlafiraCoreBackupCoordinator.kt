@@ -320,6 +320,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
         cleanupStaleDecryptedRollbackSnapshots()
         BackupArchive.cleanupRestoreReplacementTemps(app)
         if (pathExistsNoFollow(committedMarker.toPath())) {
+            // Validate the exact marker before telling callers that restored data is committed.
+            validateCommittedMarker()
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
@@ -411,10 +413,17 @@ class GlafiraCoreBackupCoordinator internal constructor(
     }
 
     /** Idempotent after the durable commit marker; never discards that marker on partial cleanup. */
-    private fun cleanupCommittedJournal(onSnapshotCleaned: () -> Unit = {}) {
-        require(committedMarker.isFile && committedMarker.readText(Charsets.UTF_8) == COMMITTED_VALUE) {
-            "Некорректная отметка завершения восстановления; журнал сохранён."
+    private fun validateCommittedMarker() {
+        if (!Files.isRegularFile(committedMarker.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            throw IOException("Отметка завершения восстановления отсутствует или небезопасна; журнал сохранён.")
         }
+        if (committedMarker.readText(Charsets.UTF_8) != COMMITTED_VALUE) {
+            throw IOException("Некорректная отметка завершения восстановления; журнал сохранён.")
+        }
+    }
+
+    private fun cleanupCommittedJournal(onSnapshotCleaned: () -> Unit = {}) {
+        validateCommittedMarker()
         runtimeHooks.beforeCommittedJournalCleanup()
         // Portable Core exports contain decrypted task/result data. Remove a crash-left
         // export before deleting the rollback evidence that makes recovery safe.
@@ -493,8 +502,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
         val export = File(app.filesDir, GlafiraPortableCoreSnapshot.PATH).toPath().toAbsolutePath().normalize()
         if (export.parent != directory) throw IOException("Некорректный путь переносимого снимка Core.")
         if (!pathExistsNoFollow(directory)) {
-            onSnapshotCleaned()
             syncDirectory(app.filesDir)
+            onSnapshotCleaned()
             return
         }
         if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
@@ -513,10 +522,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
             throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные.")
         }
         Files.delete(directory)
-        // Record cleanup before syncing the parent or deleting later journal entries; a later
-        // failure must not repeat an already-completed snapshot deletion.
-        onSnapshotCleaned()
+        // Report cleanup only after the parent directory sync makes the deletion durable.
         syncDirectory(app.filesDir)
+        onSnapshotCleaned()
     }
 
     /** Make restored payload and directory entries durable before publishing COMMITTED_MARKER. */
