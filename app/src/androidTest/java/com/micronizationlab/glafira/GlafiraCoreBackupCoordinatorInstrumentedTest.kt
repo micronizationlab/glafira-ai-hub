@@ -118,6 +118,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
     private val fixtureRuntimeHooks = FixtureBackupRuntimeHooks()
 
+    /** Avoid embedding reusable credentials in the instrumented test source. */
     private fun newTestPassphrase(): CharArray =
         "GLAFIRA-${UUID.randomUUID()}-${UUID.randomUUID()}".toCharArray()
 
