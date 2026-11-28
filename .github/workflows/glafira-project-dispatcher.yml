@@ -118,7 +118,7 @@ jobs:
             projection_file="$tmp/projection-$attempt.json"
             boundary_error="$tmp/boundary-error-$attempt.log"
 
-            if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
+            if pages="$(command gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
               if jq -s -e '
                 length > 0
                 and all(.[]; (.data.repository.pullRequests.nodes | type) == "array"
@@ -150,7 +150,7 @@ jobs:
                   ]' <<< "$pages" > "$projection_file" 2>"$projection_error"; then
                     expected_total="$(jq -s -r '.[0].data.repository.pullRequests.totalCount' <<< "$pages")"
                     expected_boundary="$(jq -s -r '.[0].data.repository.pullRequests.nodes[0].number // empty' <<< "$pages")"
-                    if boundary="$(gh api graphql -f query="$boundary_query" 2>"$boundary_error")"; then
+                    if boundary="$(command gh api graphql -f query="$boundary_query" 2>"$boundary_error")"; then
                       if jq -e --argjson total "$expected_total" --arg boundary "$expected_boundary" '
                         .data.repository.pullRequests.totalCount == $total
                         and ((.data.repository.pullRequests.nodes[0].number // "") | tostring) == $boundary
