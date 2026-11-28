@@ -123,8 +123,24 @@ internal fun awaitHomeScreen(
  * A diagnostic read must never reclaim a rollback temp file: recovery may be actively
  * decrypting it. Treat any journal or stale temp as pending without mutating filesystem state.
  */
-internal fun recoveryPendingForDiagnostics(context: Context): Boolean =
-    GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
+internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
+    val app = context.applicationContext
+    val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
+    if (Files.isSymbolicLink(journal.toPath())) return true
+    val marker = File(journal, "restore.pending")
+    val committed = File(journal, "restore.committed")
+    if (Files.exists(marker.toPath(), LinkOption.NOFOLLOW_LINKS) ||
+        Files.exists(committed.toPath(), LinkOption.NOFOLLOW_LINKS)
+    ) {
+        return true
+    }
+    // Diagnostics must not call the production cleanup routine: a matching temp
+    // can be the active decrypted rollback database used by a recovery in progress.
+    val stale = app.cacheDir.listFiles { file ->
+        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+    } ?: return true
+    return stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+}
 
 private fun redactHierarchyFile(source: File, destination: File) {
     val patterns = listOf("text=\"Пароль:", "content-desc=\"Пароль:")
