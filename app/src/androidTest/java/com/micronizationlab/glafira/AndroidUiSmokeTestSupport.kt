@@ -11,8 +11,16 @@ import java.io.File
  */
 internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-    if (journal.exists() && !journal.deleteRecursively()) {
-        error("Could not reset interrupted-restore journal for UI smoke test")
+    val journalPath = journal.toPath()
+    if (java.nio.file.Files.exists(journalPath, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+        val removed = if (java.nio.file.Files.isSymbolicLink(journalPath)) {
+            journal.delete()
+        } else if (journal.isDirectory) {
+            journal.deleteRecursively()
+        } else {
+            journal.delete()
+        }
+        check(removed) { "Could not reset interrupted-restore journal for UI smoke test" }
     }
     check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
         "Interrupted-restore state leaked into UI smoke test"
