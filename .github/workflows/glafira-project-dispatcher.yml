@@ -85,7 +85,8 @@ jobs:
           repo="$1"
           query='query($endCursor: String) {
             repository(owner: "micronizationlab", name: "glafira-ai-hub") {
-              pullRequests(first: 100, after: $endCursor, states: OPEN) {
+              pullRequests(first: 100, after: $endCursor, states: OPEN, orderBy: {field: CREATED_AT, direction: DESC}) {
+                totalCount
                 pageInfo { hasNextPage endCursor }
                 nodes {
                   number title headRefName headRefOid baseRefOid isDraft url
@@ -98,62 +99,95 @@ jobs:
               }
             }
           }'
+          boundary_query='query {
+            repository(owner: "micronizationlab", name: "glafira-ai-hub") {
+              pullRequests(first: 1, states: OPEN, orderBy: {field: CREATED_AT, direction: DESC}) {
+                totalCount
+                nodes { number }
+              }
+            }
+          }'
           tmp="$(mktemp -d "$RUNNER_TEMP/glafira-open-prs.XXXXXX")"
           trap 'rm -rf "$tmp"' EXIT
-          graphql_error="$tmp/graphql-error.log"
-          validation_error="$tmp/validation-error.log"
-          projection_error="$tmp/projection-error.log"
-          projection_file="$tmp/projection.json"
 
-          # REST offset pagination can omit still-open PRs during concurrent closes.
-          # GraphQL cursor pagination is the only accepted inventory source.
-          if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
-            if jq -s -e '
-              length > 0
-              and all(.[]; (.data.repository.pullRequests.nodes | type) == "array"
-                and .data.repository.pullRequests.pageInfo != null)
-              and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
-            ' >/dev/null 2>"$validation_error" <<< "$pages"; then
-              if jq -s '[
-                .[].data.repository.pullRequests.nodes[] |
-                {
-                  number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
-                  statusCheckRollup: [
-                    .statusCheckRollup.contexts.nodes[]? |
-                    {
-                      name: (.name // .context // "check"),
-                      status: (.status // .state // "unknown"),
-                      conclusion: (.conclusion // null),
-                      detailsUrl: (.detailsUrl // .targetUrl // "")
-                    }
-                  ]
-                }
-              ]' <<< "$pages" > "$projection_file" 2>"$projection_error"; then
-                cat "$projection_file"
-                exit 0
+          for attempt in 1 2; do
+            graphql_error="$tmp/graphql-error-$attempt.log"
+            validation_error="$tmp/validation-error-$attempt.log"
+            projection_error="$tmp/projection-error-$attempt.log"
+            projection_file="$tmp/projection-$attempt.json"
+            boundary_error="$tmp/boundary-error-$attempt.log"
+
+            if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
+              if jq -s -e '
+                length > 0
+                and (.[0].data.repository.pullRequests.totalCount | type) == "number"
+                and all(.[]; (.data.repository.pullRequests.nodes | type) == "array"
+                  and .data.repository.pullRequests.pageInfo != null
+                  and .data.repository.pullRequests.totalCount == .[0].data.repository.pullRequests.totalCount)
+                and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
+                and ([.[].data.repository.pullRequests.nodes[]] | length) == .[0].data.repository.pullRequests.totalCount
+              ' >/dev/null 2>"$validation_error" <<< "$pages"; then
+                if jq -s '[
+                  .[].data.repository.pullRequests.nodes[] |
+                  {
+                    number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
+                    statusCheckRollup: [
+                      .statusCheckRollup.contexts.nodes[]? |
+                      {
+                        name: (.name // .context // "check"),
+                        status: (.status // .state // "unknown"),
+                        conclusion: (.conclusion // null),
+                        detailsUrl: (.detailsUrl // .targetUrl // "")
+                      }
+                    ]
+                  }
+                ]' <<< "$pages" > "$projection_file" 2>"$projection_error"; then
+                  expected_total="$(jq -r '.[0].data.repository.pullRequests.totalCount' <<< "$pages")"
+                  expected_boundary="$(jq -r '.[0].data.repository.pullRequests.nodes[0].number // empty' <<< "$pages")"
+                  if boundary="$(gh api graphql -f query="$boundary_query" 2>"$boundary_error")"; then
+                    if jq -e --argjson total "$expected_total" --arg boundary "$expected_boundary" '
+                      .data.repository.pullRequests.totalCount == $total
+                      and ((.data.repository.pullRequests.nodes[0].number // "") | tostring) == $boundary
+                    ' >/dev/null <<< "$boundary"; then
+                      cat "$projection_file"
+                      exit 0
+                    fi
+                    if [[ "$attempt" -eq 1 ]]; then
+                      continue
+                    fi
+                    printf 'UNKNOWN: Open-PR inventory boundary changed during both cursor scans; no complete stable snapshot is available.\n' >&2
+                    exit 1
+                  else
+                    boundary_status=$?
+                    boundary_detail="$(tail -n 3 "$boundary_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                    printf 'UNKNOWN: GraphQL open-PR boundary verification failed (exit %s). %s\n' \
+                      "$boundary_status" "${boundary_detail:-No boundary-query stderr was captured.}" >&2
+                    exit 1
+                  fi
+                else
+                  projection_status=$?
+                  projection_detail="$(tail -n 3 "$projection_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                  printf 'UNKNOWN: GraphQL open-PR projection failed (jq exit %s). %s\n' \
+                    "$projection_status" "${projection_detail:-No jq projection stderr was captured.}" >&2
+                  exit 1
+                fi
               else
-                projection_status=$?
-                projection_detail="$(tail -n 3 "$projection_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
-                printf 'UNKNOWN: GraphQL open-PR projection failed (jq exit %s). %s\n' \
-                  "$projection_status" "${projection_detail:-No jq projection stderr was captured.}" >&2
+                validation_status=$?
+                validation_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                printf 'UNKNOWN: GraphQL open-PR response failed schema/completeness validation (jq exit %s). %s\n' \
+                  "$validation_status" "${validation_detail:-No jq validation stderr was captured.}" >&2
                 exit 1
               fi
             else
-              validation_status=$?
-              validation_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
-              printf 'UNKNOWN: GraphQL open-PR response failed schema/completeness validation (jq exit %s). %s\n' \
-                "$validation_status" "${validation_detail:-No jq validation stderr was captured.}" >&2
+              graphql_status=$?
+              graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+              printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
+                "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
               exit 1
             fi
-          else
-            graphql_status=$?
-            graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
-            printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
-              "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
-            exit 1
-          fi
+          done
+          exit 1
           FETCH
-
           cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
           #!/usr/bin/env bash
           set -euo pipefail
