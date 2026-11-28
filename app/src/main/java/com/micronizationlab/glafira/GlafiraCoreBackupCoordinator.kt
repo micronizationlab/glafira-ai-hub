@@ -110,7 +110,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         }
                         if (!recoveryCleanedSnapshot) {
                             try {
-                                deletePortableSnapshotDirectory()
+                                deleteCommittedPortableSnapshot()
                             } catch (cleanup: Exception) {
                                 error.addSuppressed(cleanup)
                             }
