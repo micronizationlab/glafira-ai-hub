@@ -102,7 +102,7 @@ jobs:
           validation_error="$RUNNER_TEMP/glafira-open-prs-graphql-validation-error.log"
           if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
             if jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null 2>"$validation_error" <<< "$pages"; then
-              jq -s '[
+              if aggregated="$(jq -s '[
                 .[].data.repository.pullRequests.nodes[] |
                 {
                   number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
@@ -116,8 +116,16 @@ jobs:
                     }
                   ]
                 }
-              ]' <<< "$pages"
-              exit 0
+              ]' <<< "$pages" 2>"$RUNNER_TEMP/glafira-open-prs-graphql-aggregation-error.log")"; then
+                printf '%s\n' "$aggregated"
+                exit 0
+              else
+                aggregation_status=$?
+                aggregation_detail="$(tail -n 3 "$RUNNER_TEMP/glafira-open-prs-graphql-aggregation-error.log" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g; s/[[:space:]]+$//')"
+                printf 'UNKNOWN: GraphQL response aggregation failed (jq exit %s); REST offset fallback is disabled. %s\n' \
+                  "$aggregation_status" "${aggregation_detail:-jq aggregation failed without stderr.}" >&2
+                exit 1
+              fi
             else
               jq_status=$?
               graphql_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g; s/[[:space:]]+$//')"
@@ -256,7 +264,7 @@ jobs:
             else
               probe_status=$?
             fi
-            printf 'Probe %s returned exit %s\n' "$probe_name" "$probe_status" >&2
+            printf 'Probe %s (%s) returned exit %s\n' "$probe_name" "$probe_script" "$probe_status" >&2
             return "$probe_status"
           }
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
@@ -269,18 +277,37 @@ jobs:
             run_probe "injected top-level failure" 'exit 37'
           }
           no_probe_failure() { return 0; }
-          if run_probe "function with internal failure" 'probe() { false; true; }; probe' 2>"$RUNNER_TEMP/dispatcher-function-probe.err"; then
+          if run_probe "function with internal failure" 'probe() { false; true; }; probe' 2>"$tmp/dispatcher-function-probe.err"; then
             echo "run_probe accepted a function that failed before a later success" >&2; exit 1
           else
-            [[ "$?" -eq 1 ]]
+            probe_status=$?
+            if [[ "$probe_status" -ne 1 ]]; then
+              echo "function probe returned unexpected exit $probe_status" >&2; exit 1
+            fi
           fi
-          grep -Fq "Probe function with internal failure returned exit 1" "$RUNNER_TEMP/dispatcher-function-probe.err"
+          grep -Fq "Probe function with internal failure" "$tmp/dispatcher-function-probe.err"
+          grep -Fq "returned exit 1" "$tmp/dispatcher-function-probe.err"
+          if run_probe "pipeline failure with successful final stage" 'false | true; echo should-not-run' 2>"$tmp/dispatcher-pipeline-probe.err"; then
+            echo "run_probe accepted a failed pipeline because its final command succeeded" >&2; exit 1
+          else
+            probe_status=$?
+            if [[ "$probe_status" -ne 1 ]]; then
+              echo "pipeline probe returned unexpected exit $probe_status" >&2; exit 1
+            fi
+          fi
+          grep -Fq "Probe pipeline failure with successful final stage" "$tmp/dispatcher-pipeline-probe.err"
+          grep -Fq "returned exit 1" "$tmp/dispatcher-pipeline-probe.err"
           if [[ "${GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE:-0}" == "1" ]]; then
             forced_probe_command=force_probe_failure
           else
             forced_probe_command=no_probe_failure
           fi
-          "$forced_probe_command"
+          if "$forced_probe_command"; then
+            :
+          else
+            forced_probe_status=$?
+            exit "$forced_probe_status"
+          fi
           cat > "$tmp/prs.json" <<'JSON'
           [
             {"number":553,"title":"current [link](https://evil.test) | title","headRefName":"docs/reconcile","headRefOid":"sha-current","baseRefOid":"base-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
@@ -388,9 +415,11 @@ jobs:
           expected_graphql_outage="UNKNOWN: GraphQL cursor-based open-PR request failed (gh exit 23); REST offset fallback is disabled. injected GraphQL page two failure: [REDACTED] [REDACTED]"
           [[ "$(cat "$tmp/graphql-outage.err")" == "$expected_graphql_outage" ]]
 
-          if grep -Eq 'ghp_|github_pat_|0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ|0123456789' "$tmp/graphql-outage.err"; then
-            echo "a prefix or fragment of a synthetic credential reached the sanitized diagnostic" >&2; exit 1
-          fi
+          for credential_fragment in ghp_ github_pat_ 01234567 89ABCDEF GHIJKLMN OPQRSTUV WXYZ; do
+            if grep -Fq "$credential_fragment" "$tmp/graphql-outage.err"; then
+              echo "credential fragment '$credential_fragment' reached the sanitized diagnostic" >&2; exit 1
+            fi
+          done
           echo "validated sanitized GraphQL outage diagnostic: $(cat "$tmp/graphql-outage.err")"
           # A valid gh response followed by jq validation failure must have a distinct diagnostic.
           mkdir -p "$tmp/fake-gh"
@@ -446,6 +475,26 @@ jobs:
           grep -Fq "GraphQL response validation failed (jq exit 42)" "$tmp/graphql-validation-jq42.err"
           [[ "$(cat "$tmp/graphql-validation-jq42-calls.log")" == "graphql" ]]
           echo "GraphQL malformed-page validation and injected jq exit 42 fail closed without REST fallback: PASS"
+          mkdir -p "$tmp/failing-aggregation-jq"
+          real_jq="$(command -v jq)"
+          cat > "$tmp/failing-aggregation-jq/jq" <<'JQ_AGGREGATION'
+          #!/usr/bin/env bash
+          if [[ "${2:-}" == "-e" ]]; then
+            exec "$REAL_JQ" "$@"
+          fi
+          exit 42
+          JQ_AGGREGATION
+          chmod +x "$tmp/failing-aggregation-jq/jq"
+          if CALL_LOG="$tmp/graphql-aggregation-calls.log" REAL_JQ="$real_jq" PATH="$tmp/fake-gh-valid:$tmp/failing-aggregation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-aggregation.out" 2> "$tmp/graphql-aggregation.err"; then
+            echo "injected jq aggregation exit 42 was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ ! -s "$tmp/graphql-aggregation.out" ]]
+          grep -Fq "GraphQL response aggregation failed (jq exit 42)" "$tmp/graphql-aggregation.err"
+          [[ "$(cat "$tmp/graphql-aggregation-calls.log")" == "graphql" ]]
+          echo "GraphQL aggregation failure is distinct from validation failure and fails closed: PASS"
+
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
@@ -574,7 +623,7 @@ jobs:
           if [[ -n "${FETCH_CALL_LOG:-}" ]]; then
             printf 'invoked\n' >> "$FETCH_CALL_LOG"
           fi
-          cat "$1"
+          cat "$FETCH_DISTINCT_SOURCE"
           FETCH_DISTINCT
           chmod +x "$tmp/fetch-distinct-prs.sh"
           env -u FETCH_CALL_LOG bash "$tmp/fetch-distinct-prs.sh" "$tmp/large-prs-head-delta.json" > "$tmp/distinct-without-log.json"
@@ -594,6 +643,12 @@ jobs:
           grep -Fq "second PR inventory fetch failed" "$tmp/second-fetch-error.log"
           [[ "$(wc -l < "$tmp/failed-fetch-calls.log")" -eq 1 ]]
           [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 2 ]]
+          if FETCH_CALL_LOG="$tmp/unwritable-fetch-log/missing/failed-fetch-calls.log" bash "$tmp/fetch-failed-prs.sh" "$tmp/large-prs.json" > "$tmp/failed-fetch-log-failure.out" 2>/dev/null; then
+            echo "failed-fetch fixture ignored an invocation-log append failure" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ ! -s "$tmp/failed-fetch-log-failure.out" ]]
           if FETCH_CALL_LOG="$tmp/comparator-fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/missing-comparator-latest.json" "$tmp/fetch-same-prs.sh" "$tmp/missing-comparator.sh" "$tmp/large-prs.json" 2>"$tmp/missing-comparator.err"; then
             echo "missing comparator was incorrectly accepted" >&2; exit 1
           else
@@ -616,10 +671,10 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           cp "$2" "$CAPTURED_CANDIDATE"
-          exec "$REAL_COMPARATOR" "$@"
+          exec bash "$REAL_COMPARATOR" "$@"
           CAPTURE_COMPARATOR
           chmod +x "$tmp/capturing-comparator.sh"
-          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/jq-failed-fetch.log" CAPTURED_CANDIDATE="$tmp/captured-jq-failure-candidate.json" REAL_COMPARATOR="$comparator" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-distinct-prs.sh" "$tmp/capturing-comparator.sh" "$tmp/large-prs-head-delta.json" > "$tmp/reconcile-jq-failed.out" 2>"$tmp/reconcile-jq-failed.err"; then
+          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/jq-failed-fetch.log" FETCH_DISTINCT_SOURCE="$tmp/large-prs-head-delta.json" CAPTURED_CANDIDATE="$tmp/captured-jq-failure-candidate.json" REAL_COMPARATOR="$comparator" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-distinct-prs.sh" "$tmp/capturing-comparator.sh" "micronizationlab/glafira-ai-hub" > "$tmp/reconcile-jq-failed.out" 2>"$tmp/reconcile-jq-failed.err"; then
             echo "injected jq failure was incorrectly accepted by production reconciliation wrapper" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
@@ -661,14 +716,15 @@ jobs:
           fi
           echo "dispatcher fail-closed integration: second-fetch, comparator, local-open, jq and report-summary failures return non-zero: PASS"
 
-          if GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE=1 bash "$RUNNER_TEMP/test-renderer.sh" > "$RUNNER_TEMP/dispatcher-forced-failure.out" 2> "$RUNNER_TEMP/dispatcher-forced-failure.err"; then
+          if GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE=1 bash "$RUNNER_TEMP/test-renderer.sh" > "$tmp/dispatcher-forced-failure.out" 2> "$tmp/dispatcher-forced-failure.err"; then
             echo "forced renderer failure unexpectedly passed" >&2; exit 1
           else
             forced_failure_status=$?
           fi
           [[ "$forced_failure_status" -eq 37 ]]
-          grep -Fq "Probe injected top-level failure returned exit 37" "$RUNNER_TEMP/dispatcher-forced-failure.err"
-          if grep -Fq "Dispatcher fixture failed" "$RUNNER_TEMP/dispatcher-forced-failure.err"; then
+          grep -Fq "Probe injected top-level failure" "$tmp/dispatcher-forced-failure.err"
+          grep -Fq "returned exit 37" "$tmp/dispatcher-forced-failure.err"
+          if grep -Fq "Dispatcher fixture failed" "$tmp/dispatcher-forced-failure.err"; then
             echo "expected child failure leaked as an ERR-trap fixture failure" >&2; exit 1
           fi
           echo "dispatcher expected child failure reports exit 37 without triggering ERR trap: PASS"
