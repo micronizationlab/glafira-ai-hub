@@ -239,7 +239,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
     private fun cleanupStaleDecryptedRollbackSnapshots() {
         val stale = app.cacheDir.listFiles { file ->
             file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-        }.orEmpty()
+        } ?: throw IOException("Не удалось прочитать каталог временных снимков восстановления.")
         stale.forEach { file ->
             val path = file.toPath()
             if (pathExistsNoFollow(path)) {
@@ -483,7 +483,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                 }
                 val stale = app.cacheDir.listFiles { file ->
                     file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-                }.orEmpty()
+                } ?: throw IOException("Не удалось проверить каталог временных снимков восстановления.")
                 stale.any { pathExistsNoFollow(it.toPath()) }
             }.getOrDefault(true)
         }
