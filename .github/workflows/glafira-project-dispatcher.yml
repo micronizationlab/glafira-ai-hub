@@ -898,7 +898,7 @@ jobs:
           chmod +x "$tmp/fake-bin/gh"
           : > "$tmp/rollup-history-calls.log"
           GH_REPO="micronizationlab/glafira-ai-hub" CALL_LOG="$tmp/rollup-history-calls.log" GITHUB_STEP_SUMMARY="$tmp/rollup-only-report.md" GLAFIRA_GH_BIN="$tmp/fake-bin/gh" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh"
-          grep -Fq 'Android CI: COMPLETED/success' "$tmp/rollup-only-report.md"
+          grep -Fq 'HEAD-ONLY / BASE NOT VERIFIED: Android CI: COMPLETED/SUCCESS' "$tmp/rollup-only-report.md"
           [[ ! -s "$tmp/rollup-history-calls.log" ]]
           echo "dispatcher usable-rollup fallback suppression: PASS"
           echo "dispatcher fail-closed integration: production initial-fetch and reconciliation failures return UNKNOWN with no table; post-history refresh prevents stale-head success: PASS"
