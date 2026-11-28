@@ -49,12 +49,21 @@ final class BridgeOwnershipTrustTests: XCTestCase {
     func testRejectsOversizedDERBeforeCryptographicParsing() throws {
         let oversizedDER = Data(repeating: 0x5A, count: BridgeOwnershipTrustValidation.maximumDEREncodedPublicKeyBytes + 1)
         let matchingFingerprint = SHA256.hash(data: oversizedDER).map { String(format: "%02x", $0) }.joined()
-        XCTAssertThrowsError(try key(fingerprint: matchingFingerprint, publicKey: oversizedDER))
-        XCTAssertThrowsError(try BridgeOwnershipTrustedSigningKey(
+        var parserInvoked = false
+
+        let isValid = BridgeOwnershipTrustValidation.isValid(
             ownerCoreId: "owner-core-0001",
             signingKeyEpoch: 7,
             signingPublicKeySHA256: matchingFingerprint,
-            derEncodedPublicKey: oversizedDER
-        ))
+            derEncodedPublicKey: oversizedDER,
+            publicKeyParser: { _ in
+                parserInvoked = true
+                return true
+            }
+        )
+
+        XCTAssertFalse(isValid, "Oversized DER must be rejected by the size guard")
+        XCTAssertFalse(parserInvoked, "Oversized DER must be rejected before P-256 parsing")
+        XCTAssertThrowsError(try key(fingerprint: matchingFingerprint, publicKey: oversizedDER))
     }
 }
