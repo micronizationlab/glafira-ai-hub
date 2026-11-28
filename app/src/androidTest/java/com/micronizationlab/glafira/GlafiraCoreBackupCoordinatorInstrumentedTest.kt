@@ -1623,7 +1623,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         runBlocking {
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
             val marker = File(journal, "restore.pending")
-            val journalOwner = File(journal, "test-owner")
+            val journalOwner = File(context.noBackupFilesDir, "glafira-v3-reentry-journal-owner")
             val rollbackDatabase = File(journal, "database.db")
             val rollbackArchive = File(journal, "files.glb")
             val owner = File(context.noBackupFilesDir, "glafira-v3-reentry-test-owner")
@@ -1643,6 +1643,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             if (journal.exists()) {
                                 check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
                                 check(journal.deleteRecursively())
+                                check(!journalOwner.exists() || journalOwner.delete())
                                 if (rollbackKeyExists()) deleteFixtureRollbackKey()
                             } else check(!rollbackKeyExists()) {
                                 "Refusing to delete a rollback key without its owned journal."
