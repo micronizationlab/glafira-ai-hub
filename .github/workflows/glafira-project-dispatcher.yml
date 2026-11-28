@@ -839,7 +839,7 @@ jobs:
           if ! GH_REPO="micronizationlab/glafira-ai-hub" SCAN_COUNTER="$tmp/report-stale-scan-count" GITHUB_STEP_SUMMARY="$tmp/report-stale-snapshot.md" PATH="$tmp/fake-bin:$PATH" bash "$RUNNER_TEMP/build-dispatcher-status-report.sh"; then
             echo "production report failed on a changed final PR identity" >&2; exit 1
           fi
-          grep -Fq "new-head-0000" "$tmp/report-stale-snapshot.md"
+          grep -Fq "new-head-000" "$tmp/report-stale-snapshot.md"
           grep -Fq "NO MATCHING RUN FOR EXACT PR/HEAD/BASE" "$tmp/report-stale-snapshot.md"
           if grep -Fq "old-head-success" "$tmp/report-stale-snapshot.md"; then
             echo "stale Actions run was attached to the new PR head" >&2; exit 1
