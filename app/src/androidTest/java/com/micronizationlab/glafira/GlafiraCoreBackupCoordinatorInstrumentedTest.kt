@@ -49,6 +49,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
+        var failCommittedDirectoryCleanupOnce = false
         var pauseCount = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
@@ -61,6 +62,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
                 throw IOException("injected interruption before committed journal cleanup")
+            }
+        }
+        override fun beforeCommittedJournalDirectoryCleanup() {
+            if (failCommittedDirectoryCleanupOnce) {
+                failCommittedDirectoryCleanupOnce = false
+                throw IOException("injected interruption after committed markers were removed")
             }
         }
     }
@@ -1550,6 +1557,35 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fixtureRuntimeHooks.failCommittedCleanupCount = 0
             archive.delete()
             passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun markerlessCommittedJournalBlocksCoreUntilEmptyDirectoryCleanupCompletes() = runBlocking {
+        store.enqueue(task("markerless-journal-cleanup"))
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-markerless-journal-cleanup".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        try {
+            withOwnedRollbackKey {
+                fixtureRuntimeHooks.failCommittedDirectoryCleanupOnce = true
+                val verification = coordinator.restore(archive, passphrase)
+                assertTrue("Committed restore reports pending journal cleanup", verification.recoveryRequired)
+                assertTrue("Markerless journal remains a blocking recovery condition", GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+                assertFalse("Pending marker has already been durably removed", File(journal, "restore.pending").exists())
+                assertFalse("Committed marker has already been durably removed", File(journal, "restore.committed").exists())
+                assertTrue("Only the empty journal directory remains", journal.isDirectory && journal.listFiles()?.isEmpty() == true)
+
+                isolatedCoordinator().recover(passphrase)
+                assertFalse("Recovery removes the markerless empty journal directory", journal.exists())
+                assertFalse("Core recovery guard clears after directory cleanup", GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+                assertTrue("Committed restore data remains available", store.getTask("markerless-journal-cleanup") != null)
+            }
+        } finally {
+            fixtureRuntimeHooks.failCommittedDirectoryCleanupOnce = false
+            archive.delete()
+            passphrase.fill('\u0000')
         }
     }
 
