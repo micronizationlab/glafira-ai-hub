@@ -1526,7 +1526,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 // durable commit is already published, so restore must report success
                 // while preserving the journal for a later cleanup pass.
                 fixtureRuntimeHooks.failCommittedCleanupCount = 2
-                coordinator.restore(archive, passphrase)
+                val cleanupPending = assertThrows(CommittedRestoreCleanupPendingException::class.java) {
+                    runBlocking { coordinator.restore(archive, passphrase) }
+                }
+                assertTrue("The result preserves completed restore verification",
+                    cleanupPending.verification.fileCount > 0)
                 assertTrue("Committed journal remains available for later cleanup", File(journal, "restore.committed").isFile)
                 assertTrue("Rollback evidence remains while cleanup is pending", File(journal, "database.db").isFile)
                 fixtureRuntimeHooks.failCommittedCleanupCount = 0
