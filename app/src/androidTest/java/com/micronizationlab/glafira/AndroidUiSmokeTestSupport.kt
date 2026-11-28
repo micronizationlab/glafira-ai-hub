@@ -31,7 +31,7 @@ internal fun collectHomeScreenDiagnostics(
     device: UiDevice,
     context: Context,
     hierarchyFile: File,
-    waitFailure: Throwable? = null
+    waitStatus: String = "not recorded"
 ): String {
     val captureFailure = runCatching { device.dumpWindowHierarchy(hierarchyFile) }.exceptionOrNull()
     val hierarchy = if (captureFailure != null) {
@@ -45,8 +45,8 @@ internal fun collectHomeScreenDiagnostics(
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
     val biometricState = runCatching { isBiometricEnabled(context).toString() }
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
-    val waitState = waitFailure?.let { "timeout/error: ${it.javaClass.simpleName}: ${it.message}" } ?: "ok"
-    return "recovery=$recoveryState, biometric=$biometricState, wait=$waitState. Window hierarchy: $hierarchy"
+    val hierarchyPath = "hierarchyPath=${hierarchyFile.absolutePath}"
+    return "recovery=$recoveryState, biometric=$biometricState, wait=$waitStatus, $hierarchyPath. Window hierarchy: $hierarchy"
 }
 
 /**
@@ -61,13 +61,15 @@ internal fun awaitHomeScreen(
         device.wait(Until.hasObject(By.descContains("Открыть очередь задач")), timeoutMillis)
     }
 ) {
-    val idleWaitFailure = runCatching { device.waitForIdle(5_000) }.exceptionOrNull()
+    val idleWait = runCatching { device.waitForIdle(5_000) }
     val accessibilityWait = runCatching(waitForWorkspace)
     if (accessibilityWait.getOrNull() == true) return
 
-    val waitFailure = accessibilityWait.exceptionOrNull() ?: idleWaitFailure
+    val idleStatus = idleWait.exceptionOrNull()?.let { "error: ${it.javaClass.simpleName}: ${it.message}" } ?: "completed"
+    val accessibilityStatus = accessibilityWait.exceptionOrNull()?.let { "error: ${it.javaClass.simpleName}: ${it.message}" } ?: "timed out"
+    val waitStatus = "idle=$idleStatus, accessibility=$accessibilityStatus"
     val hierarchyFile = File(context.cacheDir, "android-ui-smoke-window-hierarchy.xml")
-    val diagnostics = collectHomeScreenDiagnostics(device, context, hierarchyFile, waitFailure)
+    val diagnostics = collectHomeScreenDiagnostics(device, context, hierarchyFile, waitStatus)
     error("Home workspace did not become accessible. $diagnostics")
 }
 
