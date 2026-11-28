@@ -7,6 +7,8 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 /** Serialize UI suites that temporarily change the same app-wide biometric preference. */
 internal object UiSmokeTestPreferenceLock {
@@ -52,13 +54,24 @@ internal fun collectHomeScreenDiagnostics(
             }
         }.exceptionOrNull()
     }
-    val recoveryState = runCatching { GlafiraCoreBackupCoordinator.hasInterruptedRestore(context).toString() }
+    val recoveryState = runCatching { recoveryPendingForDiagnostics(context).toString() }
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
     val biometricState = runCatching { isBiometricEnabled(context).toString() }
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
     val hierarchyPath = "hierarchyPath=${hierarchyFile.absolutePath}"
     val cleanupStatus = cleanupFailure?.let { "hierarchyCleanup=error: ${it.javaClass.simpleName}: ${it.message}, " } ?: ""
     return "recovery=$recoveryState, biometric=$biometricState, wait=$waitStatus, ${cleanupStatus}$hierarchyPath. Window hierarchy: $hierarchy"
+}
+
+/** Read recovery indicators without deleting a temp file that an active recovery may own. */
+internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
+    val app = context.applicationContext
+    val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
+    if (Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) return true
+    val stale = app.cacheDir.listFiles { file ->
+        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+    } ?: throw IllegalStateException("Could not inspect recovery temp directory.")
+    return stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
 }
 
 internal fun awaitHomeScreen(
@@ -92,7 +105,7 @@ internal fun readRedactedHierarchySummary(file: File, maximumCharacters: Int = 1
     val raw = if (length <= maximumBytes) {
         file.readText(Charsets.UTF_8)
     } else {
-        val marker = "\\n<... hierarchy middle omitted ...>\\n"
+        val marker = "\n<... hierarchy middle omitted ...>\n"
         val available = (maximumBytes - marker.toByteArray(Charsets.UTF_8).size).toInt()
         require(available > 0) { "Hierarchy summary limit is too small." }
         val headBytes = available / 2
