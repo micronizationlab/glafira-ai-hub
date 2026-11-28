@@ -577,6 +577,7 @@ jobs:
           exit 99
           GH
           chmod +x "$tmp/fake-bin/gh"
+          printf "TEST FIXTURE: fake gh bytes=%s first-lines=%s\\n" "$(wc -c < "$tmp/fake-bin/gh")" "$(head -n 2 "$tmp/fake-bin/gh" | tr "\\n" "|")" >&2
           if output="$(CALL_LOG="$tmp/gh-calls.log" GLAFIRA_TEST_TRACE=1 GLAFIRA_GH_BIN="$tmp/fake-bin/gh" GLAFIRA_GH_BIN="$tmp/fake-bin/gh" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-outage.err")"; then
             echo "GraphQL outage was incorrectly accepted; calls=$(cat "$tmp/gh-calls.log" 2>/dev/null || true); stderr=$(tail -n 3 "$tmp/graphql-outage.err" 2>/dev/null || true)" >&2; exit 1
           else
