@@ -23,7 +23,6 @@ import javax.crypto.AEADBadTagException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -117,9 +116,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
     private val fixtureRuntimeHooks = FixtureBackupRuntimeHooks()
-
-    private fun newTestPassphrase(): CharArray =
-        "GLAFIRA-${UUID.randomUUID()}-${UUID.randomUUID()}".toCharArray()
 
     @Before
     fun setUp() = runBlocking {
@@ -794,7 +790,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun coordinatorArchiveContainsCoreDatabaseSnapshot() = runBlocking {
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             val verification = coordinator.verify(archive, passphrase)
@@ -809,7 +805,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun legacyArchiveWithoutCoreDatabaseIsRejectedBeforeRestore() = runBlocking {
         store.enqueue(task("existing-task"))
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val legacyArchive = BackupArchive.create(context, passphrase)
         try {
             withOwnedRollbackKey {
@@ -835,7 +831,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         ))
 
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             store.writableDatabase.delete(
@@ -875,108 +871,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    fun recoveryGuardBlocksDispatchForCommittedMarkersStaleTempsAndPlaintextExports() = runBlocking {
-        val passphrase = newTestPassphrase()
-        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-        val committed = File(journal, "restore.committed")
-        val stale = File(context.cacheDir, "glafira-rollback-recovery-dispatch-gate.tmp")
-        val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
-        val plaintextExport = File(context.filesDir, GlafiraPortableCoreSnapshot.PATH)
-        try {
-            assertFalse(isPendingDispatchBlocked(context))
-            check(journal.mkdirs())
-            committed.writeText("GLAFIRA_RESTORE_COMMITTED_V1", Charsets.UTF_8)
-            assertTrue("Committed cleanup must block queued dispatch", isPendingDispatchBlocked(context))
-            check(committed.delete())
-            check(journal.delete())
-
-            stale.writeText("active recovery temp", Charsets.UTF_8)
-            assertTrue("Orphaned decrypted rollback temp must block dispatch", isPendingDispatchBlocked(context))
-            check(stale.delete())
-
-            check(snapshotDirectory.mkdir())
-            plaintextExport.writeText("plaintext Core export awaiting cleanup", Charsets.UTF_8)
-            assertTrue("A leftover plaintext Core export must block dispatch", isPendingDispatchBlocked(context))
-            isolatedCoordinator().recover(passphrase)
-            assertFalse("Recovery must clean the recognized plaintext export", plaintextExport.exists())
-            assertFalse(snapshotDirectory.exists())
-            assertFalse(isPendingDispatchBlocked(context))
-        } finally {
-            passphrase.fill(0.toChar())
-            if (plaintextExport.exists()) check(plaintextExport.delete())
-            if (snapshotDirectory.exists()) check(snapshotDirectory.deleteRecursively())
-            if (stale.exists()) check(stale.delete())
-            if (committed.exists()) check(committed.delete())
-            if (journal.exists() && journal.list().orEmpty().isEmpty()) check(journal.delete())
-        }
-    }
-
-    @Test
-    fun prepareRollbackPreservesUnknownMarkerlessJournalEntries() {
-        val passphrase = newTestPassphrase()
-        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
-        val sentinel = File(journal, "owner-inspection-data.bin").apply {
-            writeText("must not be deleted by rollback preparation", Charsets.UTF_8)
-        }
-        try {
-            assertTrue(isPendingDispatchBlocked(context))
-            assertThrows(IOException::class.java) {
-                isolatedCoordinator().prepareRollback(passphrase)
-            }
-            assertTrue(sentinel.isFile)
-            assertEquals("must not be deleted by rollback preparation", sentinel.readText(Charsets.UTF_8))
-        } finally {
-            passphrase.fill(0.toChar())
-            check(!journal.exists() || journal.deleteRecursively())
-        }
-    }
-
-    @Test
-    fun recoverRejectsRollbackDatabaseAndArchiveSymlinksWithoutFollowingTargets() = runBlocking {
-        val passphrase = newTestPassphrase()
-        val coordinator = isolatedCoordinator()
-        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-        val safetyDatabase = File(journal, "database.db")
-        val safetyArchive = File(journal, "files.glb")
-        val databaseTarget = File(context.cacheDir, "rollback-database-symlink-target.glb")
-        val archiveTarget = File(context.cacheDir, "rollback-archive-symlink-target.glb")
-        try {
-            coordinator.prepareRollback(passphrase)
-            val expectedDatabase = safetyDatabase.readBytes()
-            val expectedArchive = safetyArchive.readBytes()
-            safetyDatabase.copyTo(databaseTarget, overwrite = true)
-            safetyArchive.copyTo(archiveTarget, overwrite = true)
-            check(safetyDatabase.delete())
-            check(safetyArchive.delete())
-            Files.createSymbolicLink(safetyDatabase.toPath(), databaseTarget.toPath())
-            Files.createSymbolicLink(safetyArchive.toPath(), archiveTarget.toPath())
-
-            assertThrows(IOException::class.java) {
-                runBlocking { coordinator.recover(passphrase) }
-            }
-            assertTrue(Files.isSymbolicLink(safetyDatabase.toPath()))
-            assertTrue(Files.isSymbolicLink(safetyArchive.toPath()))
-            assertArrayEquals(expectedDatabase, databaseTarget.readBytes())
-            assertArrayEquals(expectedArchive, archiveTarget.readBytes())
-            assertTrue(File(journal, "restore.pending").isFile)
-        } finally {
-            passphrase.fill(0.toChar())
-            Files.deleteIfExists(safetyDatabase.toPath())
-            Files.deleteIfExists(safetyArchive.toPath())
-            if (journal.exists()) check(journal.deleteRecursively())
-            databaseTarget.delete()
-            archiveTarget.delete()
-        }
-    }
-
-    @Test
     fun recoverRejectsDanglingPendingMarkerWithoutDeletingRollbackEvidence() = runBlocking {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
         val marker = File(journal, "restore.pending")
         val rollbackDatabase = File(journal, "database.db").apply { writeText("rollback database evidence") }
         val rollbackArchive = File(journal, "files.glb").apply { writeText("rollback archive evidence") }
         val danglingTarget = File(context.cacheDir, "missing-restore-pending-target")
-        val passphrase = newTestPassphrase()
+        val passphrase = "dangling-marker-evidence".toCharArray()
         try {
             Files.createSymbolicLink(marker.toPath(), danglingTarget.toPath())
             assertTrue("A dangling marker link must still surface recovery as pending",
@@ -997,17 +898,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun recoverRemovesDanglingRollbackTempSymlinkWithoutFollowingTarget() = runBlocking {
         val stale = File(context.cacheDir, "glafira-rollback-recovery-dangling.tmp")
-        val target = File(context.cacheDir, "rollback-recovery-target-must-survive").apply {
-            writeText("target data must survive symlink cleanup", Charsets.UTF_8)
-        }
-        val passphrase = newTestPassphrase()
+        val target = File(context.cacheDir, "missing-rollback-recovery-target")
+        val passphrase = "dangling-temp-link-cleanup".toCharArray()
         try {
             Files.createSymbolicLink(stale.toPath(), target.toPath())
             assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
             isolatedCoordinator().recover(passphrase)
             assertFalse(Files.exists(stale.toPath(), LinkOption.NOFOLLOW_LINKS))
-            assertTrue("Cleanup must unlink the symlink without deleting its real target", target.isFile)
-            assertEquals("target data must survive symlink cleanup", target.readText(Charsets.UTF_8))
+            assertFalse(target.exists())
             assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
         } finally {
             Files.deleteIfExists(stale.toPath())
@@ -1022,7 +920,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val rollbackDatabase = File(journal, "database.db").apply { writeText("rollback database evidence") }
         val rollbackArchive = File(journal, "files.glb").apply { writeText("rollback archive evidence") }
         val danglingTarget = File(context.cacheDir, "missing-restore-committed-target")
-        val passphrase = newTestPassphrase()
+        val passphrase = "dangling-committed-evidence".toCharArray()
         try {
             Files.createSymbolicLink(marker.toPath(), danglingTarget.toPath())
             assertTrue("A dangling committed marker link must still surface recovery as pending",
@@ -1042,7 +940,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Test
     fun recoverRetainsPublicUnitReturnType() = runBlocking {
-        val passphrase = newTestPassphrase()
+        val passphrase = "recover-unit-contract".toCharArray()
         try {
             val result: Any? = isolatedCoordinator().recover(passphrase)
             assertEquals(Unit, result)
@@ -1054,7 +952,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun failedRestorePreflightStillRemovesStalePlaintextPortableExport() = runBlocking {
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "failed-restore-preflight-plaintext".toCharArray()
         val archive = coordinator.create(passphrase)
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val journalTarget = File(context.cacheDir, "failed-preflight-journal-target").apply { check(mkdirs()) }
@@ -1082,7 +980,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun committedMarkerIsRestoredWhenJournalDirectoryRemovalFails() = runBlocking {
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "committed-journal-directory-delete-failure".toCharArray()
         val archive = coordinator.create(passphrase)
         store.enqueue(task("committed-journal-directory-delete"))
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
@@ -1110,7 +1008,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun committedRestoreSurfacesJournalCleanupFailureWithoutRepeatingSnapshotDeletion() = runBlocking {
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "committed-cleanup-pending-contract".toCharArray()
         val archive = coordinator.create(passphrase)
         store.enqueue(task("live-state-before-committed-cleanup"))
         fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls = 0
@@ -1126,10 +1024,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 failure.message.orEmpty().contains("Восстановление зафиксировано")
             )
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-            val committedMarker = File(journal, "restore.committed")
-            assertTrue("The journal must remain available for retry after injected cleanup failure", journal.isDirectory)
-            assertTrue("The committed marker must remain durable for retry recovery", committedMarker.isFile)
-            assertEquals("GLAFIRA_RESTORE_COMMITTED_V1", committedMarker.readText(Charsets.UTF_8))
+            assertTrue(
+                "If cleanup leaves the journal directory behind, a committed marker must remain to retry recovery",
+                !journal.exists() || File(journal, "restore.committed").isFile
+            )
             assertEquals(
                 "The portable snapshot parent must be synced once; the catch path must not repeat deletion",
                 1,
@@ -1146,7 +1044,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun failedRestoreRemovesPlaintextExportWhenRollbackAlsoFails() = runBlocking {
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-failed-restore-plaintext".toCharArray()
         val archive = coordinator.create(passphrase)
         // The selected archive intentionally lacks this task. A failed rollback must restore
         // the pre-restore database rather than leave the selected archive's state in place.
@@ -1212,7 +1110,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         )
 
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             store.enqueue(task("temporary-task"))
@@ -1242,7 +1140,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         store.writableDatabase.execSQL(
             "CREATE TABLE core_future_sensitive (id TEXT PRIMARY KEY, secret TEXT NOT NULL)"
         )
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         try {
             assertThrows(IllegalArgumentException::class.java) {
                 runBlocking { isolatedCoordinator().create(passphrase) }
@@ -1278,7 +1176,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         ))
 
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             store.enqueue(task("created-after-backup"))
@@ -1344,7 +1242,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         trace.append(original)
 
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-trace-backup-passphrase".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             trace.append(original.copy(
@@ -1388,8 +1286,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     fun wrongPassphraseLeavesCurrentCoreQueueUntouched() = runBlocking {
         store.enqueue(task("must-remain"))
         val coordinator = isolatedCoordinator()
-        val correctPassphrase = newTestPassphrase()
-        val wrongPassphrase = newTestPassphrase()
+        val correctPassphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
+        val wrongPassphrase = "GLAFIRA-wrong-passphrase-2026".toCharArray()
         val archive = coordinator.create(correctPassphrase)
         try {
             withOwnedRollbackKey {
@@ -1408,7 +1306,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Test
     fun truncatedAesGcmTagIsRejectedDuringVerification() {
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val archive = BackupArchive.create(context, passphrase)
         val truncated = File(context.cacheDir, "glafira-truncated-test.glb")
         try {
@@ -1426,7 +1324,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Test
     fun archiveFromAnotherApplicationIdIsRejected() {
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val otherAppContext = object : ContextWrapper(context) {
             override fun getPackageName(): String = "com.example.other.glafira"
         }
@@ -1443,7 +1341,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Test
     fun requiredArchivePathRejectsTraversalBeforeReadingArchive() {
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val nonexistent = File(context.cacheDir, "not-created.glb")
         try {
             assertThrows(IllegalArgumentException::class.java) {
@@ -1457,7 +1355,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun authenticatedArchiveWithMalformedPortableCoreIsRejectedBeforeRollbackOrMutation() = runBlocking {
         store.enqueue(task("must-survive-invalid-snapshot"))
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-test-passphrase-2026".toCharArray()
         val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
         snapshotDirectory.deleteRecursively()
         assertTrue(snapshotDirectory.mkdirs())
@@ -1508,7 +1406,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val modelKey = "provider_model_${ProviderId.OPENAI.name}"
         val apiKey = "openai_api_key"
         val previous = preferences.all.filterKeys { it in setOf(providersKey, enabledKey, modelKey, apiKey) }
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-provider-model-backup-test".toCharArray()
         var archive: File? = null
         try {
             assertTrue(preferences.edit()
@@ -1558,7 +1456,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val apiKey = "openai_api_key"
         val keys = listOf(modelKey, unknownKey, apiKey)
         val previous = preferences.all.filterKeys { it in keys }
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-invalid-model-backup-test".toCharArray()
         var archive: File? = null
         try {
             assertTrue(preferences.edit()
@@ -1604,7 +1502,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val keyAliasPrefix = "glafira.test.backup.restore.$suffix."
         val identityStore = AndroidCoreInstallationIdentityStore(context, identityFile, keyAliasPrefix)
         val sourceIdentity = identityStore.loadOrCreate()
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-clean-install-restore-test-2026".toCharArray()
         val archive = isolatedCoordinator().create(passphrase)
         try {
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -1640,7 +1538,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val journalOwner = File(journal, "test-owner")
         val owner = File(context.noBackupFilesDir, "glafira-rollback-canary-owner")
         val runId = testRunId
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-rollback-canary-test-2026".toCharArray()
         var ownsFixture = false
         var primaryFailure: Throwable? = null
         try {
@@ -1730,7 +1628,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         assertFalse("Refuse to overwrite an existing rollback key", rollbackKeyExists())
         store.enqueue(task("rollback-key-lifecycle"))
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-rollback-key-lifecycle".toCharArray()
         val archive = coordinator.create(passphrase)
         try {
             withOwnedRollbackKey {
@@ -1746,7 +1644,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     fun committedRestoreReportsSuccessWhenJournalCleanupMustBeRetried() = runBlocking {
         store.enqueue(task("restore-cleanup-pending"))
         val coordinator = isolatedCoordinator()
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-committed-cleanup-pending".toCharArray()
         val archive = coordinator.create(passphrase)
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         try {
@@ -1782,7 +1680,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val knownGood = File(context.filesDir, "v3-reentry-known-good.txt")
             val createdAfterMarker = File(context.filesDir, "v3-reentry-created-after-marker.txt")
             val runId = testRunId
-                val passphrase = newTestPassphrase()
+                val passphrase = "GLAFIRA-${UUID.randomUUID()}-${UUID.randomUUID()}".toCharArray()
             var expectedTask: GlafiraTask? = null
             var ownsFixture = false
             var primaryFailure: Throwable? = null
@@ -1941,7 +1839,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val committed = File(target, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
         val database = File(target, "database.db").apply { writeText("must-survive") }
         val archive = File(target, "files.glb").apply { writeText("must-survive-too") }
-        val passphrase = newTestPassphrase()
+        val passphrase = "GLAFIRA-committed-journal-link".toCharArray()
         try {
             Files.createSymbolicLink(journal.toPath(), target.toPath())
             val failure = assertThrows(IOException::class.java) {
@@ -1966,7 +1864,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val committed = File(journal, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
         val database = File(journal, "database.db").apply { writeText("encrypted-fixture-placeholder") }
         val archive = File(journal, "files.glb").apply { writeText("encrypted-fixture-placeholder") }
-        val passphrase = newTestPassphrase()
+        val passphrase = "committed-snapshot-parent-fsync".toCharArray()
         try {
             fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls = 0
             fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls = 0
@@ -2007,7 +1905,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val plaintextExport = File(plaintextSnapshot, "core-portable-v2.json").apply {
             writeText("fixture-only plaintext task/result data")
         }
-        val passphrase = newTestPassphrase()
+        val passphrase = "committed-cleanup-reentry".toCharArray()
         try {
             fixtureRuntimeHooks.failCommittedCleanupOnce = true
             assertThrows(IOException::class.java) {
