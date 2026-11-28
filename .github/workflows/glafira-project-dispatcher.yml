@@ -321,7 +321,9 @@ jobs:
           row562="$(grep -F '| [#562]' <<< "$output")"
           grep -q 'GLAFIRA Java Format Check: COMPLETED/failure' <<< "$row562"
           grep -q 'Security Scan: COMPLETED/success' <<< "$row562"
-          ! grep -q 'metadata-skipped' <<< "$row562"
+          if grep -q 'metadata-skipped' <<< "$row562"; then
+            echo "metadata-only run was incorrectly selected" >&2; exit 1
+          fi
           grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#563]' <<< "$output")"
           grep -q 'NO MATCHING RUN FOR EXACT PR/HEAD/BASE' <<< "$(grep -F '| [#564]' <<< "$output")"
           row565="$(grep -F '| [#565]' <<< "$output")"
@@ -525,7 +527,7 @@ jobs:
           cat > "$tmp/fetch-same-prs.sh" <<'FETCH_SAME'
           #!/usr/bin/env bash
           set -euo pipefail
-          if [[ -n "${FETCH_CALL_LOG:-}" ]]; then printf '%s\\n' "$1" >> "$FETCH_CALL_LOG"; fi
+          if [[ -n "${FETCH_CALL_LOG:-}" ]]; then printf '%s\n' "$1" >> "$FETCH_CALL_LOG"; fi
           cat "$1"
           FETCH_SAME
           cat > "$tmp/fetch-failed-prs.sh" <<'FETCH_FAIL'
@@ -539,6 +541,7 @@ jobs:
           [[ "$reconcile_result" == "UNCHANGED" ]]
           changed_result="$(FETCH_CALL_LOG="$tmp/fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-head-delta.json")"
           [[ "$changed_result" == "CHANGED" ]]
+          [[ "$(wc -l < "$tmp/fetch-calls.log")" -eq 2 ]]
           if bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-fetch-failed.json" "$tmp/fetch-failed-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/second-fetch-error.log"; then
             echo "second PR inventory fetch failure was incorrectly accepted" >&2; exit 1
           else
