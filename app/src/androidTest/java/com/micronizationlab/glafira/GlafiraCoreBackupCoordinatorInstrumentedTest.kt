@@ -369,15 +369,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     private fun writeFixtureRootOwnerMarker(runId: String, root: File, alias: String) {
         val marker = fixtureRootOwnerMarker(root)
-        check(marker.createNewFile()) { "Fixture root ownership marker already exists." }
+        check(!marker.exists()) { "Fixture root ownership marker already exists." }
+        val temporary = File(root, ".fixture.owner.${UUID.randomUUID()}.tmp")
         try {
-            FileOutputStream(marker, false).use { output ->
+            FileOutputStream(temporary, false).use { output ->
                 output.write("$runId\n$alias".toByteArray(Charsets.UTF_8))
                 output.fd.sync()
             }
+            check(temporary.renameTo(marker)) { "Could not atomically publish fixture root ownership." }
+            // A complete marker survives a directory-fsync failure so the next setup can
+            // still prove ownership and safely reclaim this interrupted fixture.
             syncMarkerDirectory(root)
         } catch (error: Throwable) {
-            if (marker.exists()) marker.delete()
+            if (temporary.exists()) temporary.delete()
             throw error
         }
     }
@@ -550,6 +554,23 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             GlafiraRollbackSnapshotCipher(alias).deleteKey()
             deleteTreeWithoutFollowingLinks(root.toPath())
             syncMarkerDirectory(appContext.cacheDir)
+        }
+    }
+
+    @Test
+    fun fixtureRootOwnerMarkerPublicationNeverOverwritesExistingEvidence() {
+        val runId = UUID.randomUUID().toString()
+        val root = File(appContext.cacheDir, "owner-marker-atomic-$runId")
+        assertTrue(root.mkdir())
+        val marker = fixtureRootOwnerMarker(root).apply { writeText("pre-existing-owner") }
+        try {
+            assertThrows(IllegalStateException::class.java) {
+                writeFixtureRootOwnerMarker(runId, root, "glafira_test_rollback_" + runId.replace("-", ""))
+            }
+            assertEquals("Existing ownership evidence must remain byte-for-byte intact", "pre-existing-owner", marker.readText())
+            assertEquals("Failed publication must not leave temporary marker files", 1, root.listFiles().orEmpty().size)
+        } finally {
+            deleteTreeWithoutFollowingLinks(root.toPath())
         }
     }
 
