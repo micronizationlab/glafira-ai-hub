@@ -559,7 +559,7 @@ jobs:
           : > "$PWD/.glafira-dispatcher-stable-scan-count"
           : > "$PWD/.glafira-dispatcher-stable-boundary-count"
           stable_boundary_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
-          printf 'stable-boundary fixture returned PR numbers: %s; scans=%s; boundary checks=%s\n' "$(jq -c '[.[].number]' <<< "$stable_boundary_prs")" "$(cat "$PWD/.glafira-dispatcher-stable-scan-count")" "$(cat "$PWD/.glafira-dispatcher-stable-boundary-count")"
+printf 'stable-boundary fixture returned PR numbers: %s; scans=%s; boundary checks=%s; calls=%s\n' "$(jq -c '[.[].number]' <<< "$stable_boundary_prs")" "$(cat "$PWD/.glafira-dispatcher-stable-scan-count")" "$(cat "$PWD/.glafira-dispatcher-stable-boundary-count")" "$(tr '\n' ';' < "$PWD/.glafira-dispatcher-gh-call-log")"
           jq -e 'length == 3 and .[0].number == 3 and .[1].number == 1 and .[2].number == 2' <<< "$stable_boundary_prs" >/dev/null
           [[ "$(cat "$RUNNER_TEMP/glafira-dispatcher-stable-scan-count")" == "2" ]]
           [[ "$(cat "$RUNNER_TEMP/glafira-dispatcher-stable-boundary-count")" == "2" ]]
