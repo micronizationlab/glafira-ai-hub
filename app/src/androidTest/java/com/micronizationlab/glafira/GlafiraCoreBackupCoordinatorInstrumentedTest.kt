@@ -54,6 +54,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failPlaintextSnapshotDirectorySyncOnce = false
         var armPlaintextSnapshotDirectorySyncOnLastPauseFailure = false
         var plaintextSnapshotAbsentAtParentDirectorySyncFailure = false
+        var failJournalDirectorySyncAfterSnapshotCleanupCount = 0
+        var journalDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCompletedCalls = 0
         override suspend fun <T> withPaused(block: () -> T): T {
@@ -80,6 +82,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
         override fun beforeDirectorySync(directory: File) {
+            val journalDirectory = File(context.noBackupFilesDir, "glafira-restore-journal").absoluteFile
+            if (directory.absoluteFile == journalDirectory) {
+                journalDirectorySyncCalls++
+                if (plaintextSnapshotDirectorySyncCompletedCalls > 0 &&
+                    failJournalDirectorySyncAfterSnapshotCleanupCount > 0
+                ) {
+                    failJournalDirectorySyncAfterSnapshotCleanupCount--
+                    throw IOException("injected journal fsync failure after portable snapshot cleanup")
+                }
+            }
             if (directory.absoluteFile == context.filesDir.absoluteFile) {
                 plaintextSnapshotDirectorySyncCalls++
                 if (failPlaintextSnapshotDirectorySyncOnce) {
@@ -902,6 +914,37 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val result: Any? = isolatedCoordinator().recover(passphrase)
             assertEquals(Unit, result)
         } finally {
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun committedRestoreSurfacesJournalCleanupFailureWithoutRepeatingSnapshotDeletion() = runBlocking {
+        val coordinator = isolatedCoordinator()
+        val passphrase = "committed-cleanup-pending-contract".toCharArray()
+        val archive = coordinator.create(passphrase)
+        store.enqueue(task("live-state-before-committed-cleanup"))
+        fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls = 0
+        fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls = 0
+        fixtureRuntimeHooks.journalDirectorySyncCalls = 0
+        fixtureRuntimeHooks.failJournalDirectorySyncAfterSnapshotCleanupCount = 2
+        try {
+            val failure = assertThrows(IOException::class.java) {
+                runBlocking { coordinator.restore(archive, passphrase) }
+            }
+            assertTrue(
+                "A committed restore with incomplete journal cleanup must not be reported as success",
+                failure.message.orEmpty().contains("Восстановление зафиксировано")
+            )
+            assertEquals(
+                "The portable snapshot parent must be synced once; the catch path must not repeat deletion",
+                1,
+                fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls
+            )
+            assertEquals(1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
+        } finally {
+            fixtureRuntimeHooks.failJournalDirectorySyncAfterSnapshotCleanupCount = 0
+            archive.delete()
             passphrase.fill(0.toChar())
         }
     }
