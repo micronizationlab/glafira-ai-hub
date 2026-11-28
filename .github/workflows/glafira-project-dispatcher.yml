@@ -425,7 +425,7 @@ jobs:
           JSON
             classic_token="$(printf '%s' 'ghp_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')"
             fine_grained_token="$(printf '%s' 'github_pat_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-' '0123456789')"
-            printf 'injected GraphQL page two failure (%s %s)\n' "$classic_token" "$fine_grained_token" >&2
+            printf 'injected GraphQL page two failure: %s %s\n' "$classic_token" "$fine_grained_token" >&2
             exit 23
           fi
           echo unexpected-rest >> "$CALL_LOG"
@@ -439,17 +439,167 @@ jobs:
           fi
           [[ -z "$output" ]]
           [[ "$(cat "$tmp/gh-calls.log")" == "graphql" ]]
-          grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
-          grep -Fq "exit 23" "$tmp/graphql-outage.err"
-          grep -Fq "[REDACTED]" "$tmp/graphql-outage.err"
-          if grep -Eq 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_-]{20,}' "$tmp/graphql-outage.err"; then
-            echo "raw synthetic credential reached the sanitized diagnostic" >&2; exit 1
-          fi
+          expected_graphql_outage="UNKNOWN: GraphQL cursor-based open-PR request failed (gh exit 23); REST offset fallback is disabled. injected GraphQL page two failure: [REDACTED] [REDACTED]"
+          [[ "$(cat "$tmp/graphql-outage.err")" == "$expected_graphql_outage" ]]
+
+          for credential_fragment in ghp_ github_pat_ 01234567 89ABCDEF GHIJKLMN OPQRSTUV WXYZ; do
+            if grep -Fq "$credential_fragment" "$tmp/graphql-outage.err"; then
+              echo "credential fragment '$credential_fragment' reached the sanitized diagnostic" >&2; exit 1
+            fi
+          done
           echo "validated sanitized GraphQL outage diagnostic: $(cat "$tmp/graphql-outage.err")"
+
+          # Credentials adjacent to punctuation must be redacted without stripping punctuation.
+          mkdir -p "$tmp/fake-bin-parenthesized"
+          cat > "$tmp/fake-bin-parenthesized/gh" <<'GH_PAREN'
+          #!/usr/bin/env bash
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            token_one="$(printf '%s' 'ghp_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')"
+            token_two="$(printf '%s' 'github_pat_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-' '0123456789')"
+            printf 'punctuation-adjacent credentials: (%s), (%s)\n' "$token_one" "$token_two" >&2
+            exit 23
+          fi
+          exit 99
+          GH_PAREN
+          chmod +x "$tmp/fake-bin-parenthesized/gh"
+          if output="$(PATH="$tmp/fake-bin-parenthesized:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-parenthesized.err")"; then
+            echo "parenthesized GraphQL credential fixture was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ -z "$output" ]]
+          [[ "$(cat "$tmp/graphql-parenthesized.err")" == "UNKNOWN: GraphQL cursor-based open-PR request failed (gh exit 23); REST offset fallback is disabled. punctuation-adjacent credentials: ([REDACTED]), ([REDACTED])" ]]
+          for credential_fragment in ghp_ github_pat_ 01234567 89ABCDEF GHIJKLMN OPQRSTUV WXYZ; do
+            if grep -Fq "$credential_fragment" "$tmp/graphql-parenthesized.err"; then
+              echo "punctuation-adjacent credential fragment '$credential_fragment' was not redacted" >&2; exit 1
+            fi
+          done
+
+          # A valid gh response followed by jq validation failure must have a distinct diagnostic.
+          mkdir -p "$tmp/fake-gh"
+
+          cat > "$tmp/fake-gh/gh" <<'GH_VALID'
+          #!/usr/bin/env bash
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            echo graphql >> "$CALL_LOG"
+            cat <<'JSON'
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-one"}}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}
+          JSON
+            exit 0
+          fi
+          echo unexpected-rest >> "$CALL_LOG"
+          exit 99
+          GH_VALID
+          chmod +x "$tmp/fake-gh/gh"
+          if CALL_LOG="$tmp/graphql-validation-calls.log" PATH="$tmp/fake-gh:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-validation.out" 2>"$tmp/graphql-validation.err"; then
+            echo "jq response-validation failure was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ ! -s "$tmp/graphql-validation.out" ]]
+
+          grep -Fq "GraphQL response validation failed (jq exit 1)" "$tmp/graphql-validation.err"
+          [[ "$(cat "$tmp/graphql-validation-calls.log")" == "graphql" ]]
+          mkdir -p "$tmp/fake-gh-valid" "$tmp/failing-validation-jq"
+          cat > "$tmp/expected-valid-pages.jsonl" <<'JSON'
+          {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}
+          JSON
+          cat > "$tmp/fake-gh-valid/gh" <<'GH_VALID_PAGES'
+          #!/usr/bin/env bash
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            echo graphql >> "$CALL_LOG"
+            cat "$EXPECTED_PAGES_FILE"
+            exit 0
+          fi
+          echo unexpected-rest >> "$CALL_LOG"
+          exit 99
+          GH_VALID_PAGES
+          cat > "$tmp/failing-validation-jq/jq" <<'JQ_VALIDATION'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [[ "$1" == "-s" && "$2" == "-e" && "$3" == 'all(.[]; .data.repository.pullRequests.nodes != null)' ]] || {
+            printf 'unexpected validator arguments: %s\n' "$*" >&2
+            exit 43
+          }
+          printf 'validator\n' >> "$JQ_CALL_LOG"
+          exit 42
+          JQ_VALIDATION
+          chmod +x "$tmp/fake-gh-valid/gh" "$tmp/failing-validation-jq/jq"
+          if CALL_LOG="$tmp/graphql-validation-jq42-calls.log" JQ_CALL_LOG="$tmp/validation-jq-stages.log" EXPECTED_PAGES_FILE="$tmp/expected-valid-pages.jsonl" PATH="$tmp/fake-gh-valid:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-validation-jq42.out" 2>"$tmp/graphql-validation-jq42.err"; then
+            echo "injected jq validator exit 42 was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ ! -s "$tmp/graphql-validation-jq42.out" ]]
+          grep -Fq "GraphQL response validation failed (jq exit 42)" "$tmp/graphql-validation-jq42.err"
+          [[ "$(cat "$tmp/graphql-validation-jq42-calls.log")" == "graphql" ]]
+          validator_count="$(grep -Fxc validator "$tmp/validation-jq-stages.log")"
+          test "$validator_count" -eq 1
+          echo "GraphQL malformed-page validation and injected jq exit 42 fail closed without REST fallback: PASS"
+          mkdir -p "$tmp/failing-aggregation-jq"
+          real_jq="$(command -v jq)"
+          cat > "$tmp/failing-aggregation-jq/jq" <<'JQ_AGGREGATION'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "-s" && "$2" == "-e" ]]; then
+            [[ "$3" == 'all(.[]; .data.repository.pullRequests.nodes != null)' ]] || exit 43
+            cmp -s "$4" "$EXPECTED_PAGES_FILE" || exit 44
+            printf 'validator\n' >> "$JQ_CALL_LOG"
+            exec "$REAL_JQ" "$@"
+          fi
+          [[ "$1" == "-s" && "$2" == *"statusCheckRollup"* && "$2" == *"detailsUrl"* ]] || exit 45
+          [[ "$3" == *"glafira-open-prs-pages."* ]] || exit 46
+          cmp -s "$3" "$EXPECTED_PAGES_FILE" || exit 47
+          printf 'aggregator\n' >> "$JQ_CALL_LOG"
+          printf 'partial-aggregation-output-sentinel\n'
+          exit 42
+          JQ_AGGREGATION
+          chmod +x "$tmp/failing-aggregation-jq/jq"
+          if CALL_LOG="$tmp/graphql-aggregation-calls.log" JQ_CALL_LOG="$tmp/aggregation-jq-stages.log" EXPECTED_PAGES_FILE="$tmp/expected-valid-pages.jsonl" REAL_JQ="$real_jq" PATH="$tmp/fake-gh-valid:$tmp/failing-aggregation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-aggregation.out" 2> "$tmp/graphql-aggregation.err"; then
+            echo "injected jq aggregation exit 42 was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ ! -s "$tmp/graphql-aggregation.out" ]]
+          grep -Fq "GraphQL response aggregation failed (jq exit 42)" "$tmp/graphql-aggregation.err"
+          [[ "$(cat "$tmp/graphql-aggregation-calls.log")" == "graphql" ]]
+          validator_count="$(grep -Fxc validator "$tmp/aggregation-jq-stages.log" || true)"
+          aggregator_count="$(grep -Fxc aggregator "$tmp/aggregation-jq-stages.log" || true)"
+          [[ "$validator_count" -eq 1 && "$aggregator_count" -eq 1 ]]
+          [[ "$(wc -l < "$tmp/aggregation-jq-stages.log")" -eq 2 ]]
+          echo "GraphQL aggregation failure is distinct from validation failure, emits no partial output and fails closed: PASS"
+
+          mkdir -p "$tmp/failing-tail"
+          cat > "$tmp/failing-tail/tail" <<'TAIL_FAIL'
+          #!/usr/bin/env bash
+          exit 44
+          TAIL_FAIL
+          chmod +x "$tmp/failing-tail/tail"
+          if CALL_LOG="$tmp/graphql-validation-tail-calls.log" JQ_CALL_LOG="$tmp/validation-tail-stages.log" EXPECTED_PAGES_FILE="$tmp/expected-valid-pages.jsonl" PATH="$tmp/failing-tail:$tmp/fake-gh-valid:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-validation-tail.out" 2> "$tmp/graphql-validation-tail.err"; then
+            echo "unreadable validation stderr log was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -Fq "GraphQL response validation failed (jq exit 42); REST offset fallback is disabled. jq rejected the GraphQL response without stderr." "$tmp/graphql-validation-tail.err"
+
+          if CALL_LOG="$tmp/graphql-aggregation-tail-calls.log" JQ_CALL_LOG="$tmp/aggregation-tail-stages.log" EXPECTED_PAGES_FILE="$tmp/expected-valid-pages.jsonl" REAL_JQ="$real_jq" PATH="$tmp/failing-tail:$tmp/fake-gh-valid:$tmp/failing-aggregation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-aggregation-tail.out" 2> "$tmp/graphql-aggregation-tail.err"; then
+            echo "unreadable aggregation stderr log was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -Fq "GraphQL response aggregation failed (jq exit 42); REST offset fallback is disabled. jq aggregation failed without stderr." "$tmp/graphql-aggregation-tail.err"
+
+          grep -Fq 'gh api graphql --paginate -f query="$query" >"$pages_file"' "$fetch_prs"
+          grep -Fq "jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' \"\$pages_file\"" "$fetch_prs"
+          ! grep -Fq 'pages="$(gh api graphql' "$fetch_prs"
+          ! grep -Fq 'aggregated="$(jq -s' "$fetch_prs"
+
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
-          grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
-          grep -Fq 'pullRequests: [(.pull_requests // [])[]?' "$fetch_runs"
+          grep -Fq 'for page in $(seq 1 10)' "$RUNNER_TEMP/fetch-workflow-runs.sh"
+          grep -Fq 'pullRequests: [(.pull_requests // [])[]?' "$RUNNER_TEMP/fetch-workflow-runs.sh"
           cat > "$tmp/raw-workflow-runs.json" <<'JSON'
           {"workflow_runs":[
             {"head_sha":"head-one","name":"CI","display_title":"METADATA_ONLY - sample title","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run/one","pull_requests":[{"number":999,"base":{"sha":"base-999"}}]},
