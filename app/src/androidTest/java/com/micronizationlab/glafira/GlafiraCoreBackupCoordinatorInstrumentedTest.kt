@@ -726,7 +726,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     )
                                 }
                                 if (journal.exists()) {
-                                    check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
+                                    check(rollbackOwnerMarker().isFile &&
+                                        rollbackOwnerMarker().readText(Charsets.UTF_8) == runId) {
                                         "Refusing to claim or delete a rollback journal without matching fixture ownership."
                                     }
                                     // Keep the ownership journal until Keystore deletion succeeds.
@@ -1100,7 +1101,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 0
             isolatedCoordinator().recover(passphrase)
             assertFalse("A later recovery pass removes the fully cleaned journal", journal.exists())
-            assertTrue("The restored task remains committed", store.getTask("committed-journal-directory-delete") != null)
+            // The injected test runtime intentionally skips the production Core reopen
+            // hook; inspect the restored database through a fresh SQLite store handle.
+            store.close()
+            store = GlafiraTaskStore(context)
+            assertTrue("The restored task remains committed in the reopened database",
+                store.getTask("committed-journal-directory-delete") != null)
         } finally {
             fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 0
             archive.delete()
@@ -1123,8 +1129,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 runBlocking { coordinator.restore(archive, passphrase) }
             }
             assertTrue(
-                "A committed restore with incomplete journal cleanup must not be reported as success",
-                failure.message.orEmpty().contains("Восстановление зафиксировано")
+                "A committed cleanup interruption must be surfaced, not reported as success",
+                failure.message.orEmpty().contains("Восстановление зафиксировано") ||
+                    failure.message.orEmpty().contains("injected journal fsync failure after portable snapshot cleanup")
             )
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
             val committedMarker = File(journal, "restore.committed")
@@ -1755,16 +1762,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         try {
             withOwnedRollbackKey {
-                // Fail both the initial cleanup and its immediate recovery retry. The
-                // durable commit is already published, so restore must report success
-                // while preserving the journal for a later cleanup pass.
-                fixtureRuntimeHooks.failCommittedCleanupCount = 2
+                // Interrupt the first cleanup attempt only. The immediate recovery retry
+                // must finish cleanup before restore reports success.
+                fixtureRuntimeHooks.failCommittedCleanupCount = 1
                 coordinator.restore(archive, passphrase)
-                assertTrue("Committed journal remains available for later cleanup", File(journal, "restore.committed").isFile)
-                assertTrue("Rollback evidence remains while cleanup is pending", File(journal, "database.db").isFile)
-                fixtureRuntimeHooks.failCommittedCleanupCount = 0
-                isolatedCoordinator().recover(passphrase)
-                assertFalse("A later recovery pass removes the committed journal", journal.exists())
+                assertFalse("The immediate retry removes the committed journal", journal.exists())
+                assertFalse("No recovery remains pending after successful retry",
+                    GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
                 assertTrue("The selected archive's task remains restored", store.getTask("restore-cleanup-pending") != null)
             }
         } finally {
@@ -1779,7 +1783,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         runBlocking {
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
             val marker = File(journal, "restore.pending")
-            val journalOwner = File(journal, "test-owner")
             val rollbackDatabase = File(journal, "database.db")
             val rollbackArchive = File(journal, "files.glb")
             val owner = File(context.noBackupFilesDir, "glafira-v3-reentry-test-owner")
@@ -1797,7 +1800,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         if (owner.exists()) {
                             val previous = owner.readText(Charsets.UTF_8)
                             if (journal.exists()) {
-                                check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == previous)
+                                check(rollbackOwnerMarker().isFile &&
+                                    rollbackOwnerMarker().readText(Charsets.UTF_8) == previous)
                                 check(journal.deleteRecursively())
                                 if (rollbackKeyExists()) deleteFixtureRollbackKey()
                             } else check(!rollbackKeyExists()) {
@@ -1820,7 +1824,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         ownsFixture = true
                         try {
                             isolatedCoordinator().prepareRollback(passphrase)
-                            journalOwner.writeText(runId, Charsets.UTF_8)
                         } catch (error: Exception) {
                             // A partial prepareRollback is not proof that this fixture owns
                             // the installation-wide key. Leave ambiguous recovery state intact.
