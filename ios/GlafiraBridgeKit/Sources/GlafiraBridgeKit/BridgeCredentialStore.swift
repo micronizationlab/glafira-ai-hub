@@ -215,7 +215,7 @@ public enum BridgeHubBindingPersistence {
                 "expiresAtEpochMs": binding.expiresAtEpochMs
             ]
             let envelope: [String: Any] = ["schemaVersion": 1, "binding": bindingObject]
-            let data = try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])
+            let data = try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys, .withoutEscapingSlashes])
             try validatePayloadSize(data)
             return data
         } catch let error as BridgeHubBindingError {
