@@ -245,6 +245,7 @@ jobs:
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
+          trap 'status=$?; printf "Dispatcher fixture failed (exit %s): %s\\n" "$status" "$BASH_COMMAND" >&2' ERR
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
@@ -533,14 +534,15 @@ jobs:
           grep -Fq "comparator is missing, unreadable or invalid" "$tmp/invalid-comparator.err"
           [[ ! -e "$tmp/invalid-comparator-latest.json" ]]
           [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 2 ]]
-          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/jq-failed-fetch.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/reconcile-jq-failed.err"; then
+          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/jq-failed-fetch.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json" > "$tmp/reconcile-jq-failed.out" 2>"$tmp/reconcile-jq-failed.err"; then
             echo "injected jq failure was incorrectly accepted by production reconciliation wrapper" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
           grep -Fq "UNKNOWN: PR inventory comparison failed" "$tmp/reconcile-jq-failed.err"
           [[ "$(wc -l < "$tmp/jq-failed-fetch.log")" -eq 1 ]]
-          [[ ! -e "$tmp/reconcile-jq-failed.json" ]]
+          cmp -s "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json"
+          [[ ! -s "$tmp/reconcile-jq-failed.out" ]]
           mkdir -p "$tmp/unwritable-fetch-log"
           if FETCH_CALL_LOG="$tmp/unwritable-fetch-log/missing/calls.log" bash "$tmp/fetch-same-prs.sh" "$tmp/large-prs.json" > "$tmp/fetch-log-failure.out" 2>/dev/null; then
             echo "fixture fetch succeeded despite an unwriteable invocation log" >&2; exit 1
