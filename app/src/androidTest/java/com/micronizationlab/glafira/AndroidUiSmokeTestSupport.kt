@@ -134,49 +134,86 @@ internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
 }
 
 /** Capture only structural accessibility metadata; never read text or content descriptions. */
-internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacters: Int = 12_000): String {
+internal fun formatHierarchySummary(
+    lines: List<String>,
+    maximumNodes: Int,
+    maximumCharacters: Int,
+    nodesOmitted: Boolean
+): String {
     require(maximumNodes > 0) { "Hierarchy node limit must be positive." }
-    val truncationNoticePrefix = "<hierarchy summary bounded; nodes="
-    val truncationNoticeSuffix = ">\n"
-    val truncationNoticeReserve =
-        truncationNoticePrefix.length + maximumNodes.toString().length + truncationNoticeSuffix.length
-    require(maximumCharacters >= truncationNoticeReserve + 2) {
-        "Hierarchy character limit must leave room for the truncation notice."
+    val noticePrefix = "<hierarchy summary bounded; nodes="
+    val noticeSuffix = ">\\n"
+    val noticeReserve = noticePrefix.length + maximumNodes.toString().length + noticeSuffix.length
+    require(maximumCharacters >= noticeReserve + 2) {
+        "Hierarchy character limit must leave room for content and the truncation notice."
     }
-    val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-        ?: return "<no active accessibility root>"
-    val bodyLimit = maximumCharacters - truncationNoticeReserve
+    val bodyLimit = maximumCharacters - noticeReserve
     val output = StringBuilder()
     var visited = 0
-    var truncated = false
+    var charactersOmitted = false
+    for ((index, line) in lines.take(maximumNodes).withIndex()) {
+        if (visited >= maximumNodes) break
+        visited++
+        val remaining = bodyLimit - output.length
+        if (line.length > remaining) {
+            output.append(line.take(remaining))
+            charactersOmitted = true
+            break
+        }
+        output.append(line)
+        if (output.length == bodyLimit && index < lines.lastIndex) {
+            charactersOmitted = true
+            break
+        }
+    }
+    val truncated = nodesOmitted || lines.size > maximumNodes || charactersOmitted
+    return if (truncated) {
+        output.toString() + noticePrefix + visited + noticeSuffix
+    } else {
+        output.toString()
+    }
+}
+
+internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacters: Int = 12_000): String {
+    require(maximumNodes > 0) { "Hierarchy node limit must be positive." }
+    val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+        ?: return "<no active accessibility root>"
+    val lines = ArrayList<String>(maximumNodes)
+    var nodesOmitted = false
     fun visit(node: AccessibilityNodeInfo, depth: Int) {
-        if (visited >= maximumNodes || output.length >= bodyLimit) {
-            truncated = true
+        if (lines.size >= maximumNodes) {
+            nodesOmitted = true
             return
         }
-        visited++
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
-        output.append("  ".repeat(depth.coerceAtMost(16)))
-            .append(node.className ?: "unknown")
-            .append(" id=").append(node.viewIdResourceName ?: "-")
-            .append(" bounds=").append(bounds.flattenToString())
-            .append(" clickable=").append(node.isClickable)
-            .append(" enabled=").append(node.isEnabled)
-            .append(" children=").append(node.childCount)
-            .append('\n')
+        lines += buildString {
+            append("  ".repeat(depth.coerceAtMost(16)))
+                .append(node.className ?: "unknown")
+                .append(" id=").append(node.viewIdResourceName ?: "-")
+                .append(" bounds=").append(bounds.flattenToString())
+                .append(" clickable=").append(node.isClickable)
+                .append(" enabled=").append(node.isEnabled)
+                .append(" children=").append(node.childCount)
+                .append('\\n')
+        }
         for (index in 0 until node.childCount) {
-            if (visited >= maximumNodes || output.length >= bodyLimit) {
-                truncated = true
+            val child = node.getChild(index) ?: continue
+            if (lines.size >= maximumNodes) {
+                nodesOmitted = true
+                child.recycle()
                 break
             }
-            node.getChild(index)?.let { child -> visit(child, depth + 1) }
+            try {
+                visit(child, depth + 1)
+            } finally {
+                child.recycle()
+            }
+            if (nodesOmitted) break
         }
     }
     visit(root, 0)
-    if (!truncated && (visited >= maximumNodes || output.length >= bodyLimit)) truncated = true
-    if (!truncated) return output.toString().take(maximumCharacters)
-    return output.toString().take(bodyLimit) + truncationNoticePrefix + visited + truncationNoticeSuffix
+    return formatHierarchySummary(lines, maximumNodes, maximumCharacters, nodesOmitted)
 }
 
 internal fun collectHomeScreenDiagnostics(
