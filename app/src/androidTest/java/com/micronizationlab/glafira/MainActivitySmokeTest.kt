@@ -182,7 +182,7 @@ class MainActivitySmokeTest {
     }
 
     @Test
-    fun recoveryDiagnosticsUseTheSharedGuardAndSafeHierarchyOmitsKnownWindowText() {
+    fun recoveryDiagnosticsRemainReadOnlyAndSafeHierarchyOmitsKnownWindowText() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val device = launch()
         val knownText = "ГЛАФИРА"
@@ -195,7 +195,7 @@ class MainActivitySmokeTest {
         try {
             assertTrue(stale.mkdir())
             sentinel.writeText("diagnostic fixture must remain unchanged")
-            assertTrue(recoveryPendingForDiagnostics(context))
+            assertTrue("Read-only diagnostics must report the outstanding rollback temp", recoveryPendingForDiagnostics(context))
             assertTrue("A non-empty recovery temp directory cannot be deleted by the shared guard", stale.isDirectory)
             assertEquals("diagnostic fixture must remain unchanged", sentinel.readText())
             val hierarchy = captureSafeWindowHierarchy()
