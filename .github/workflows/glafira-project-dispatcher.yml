@@ -421,6 +421,33 @@ jobs:
             fi
           done
           echo "validated sanitized GraphQL outage diagnostic: $(cat "$tmp/graphql-outage.err")"
+
+          # Credentials adjacent to punctuation must be redacted without stripping punctuation.
+          mkdir -p "$tmp/fake-bin-parenthesized"
+          cat > "$tmp/fake-bin-parenthesized/gh" <<'GH_PAREN'
+          #!/usr/bin/env bash
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            token_one="$(printf '%s' 'ghp_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')"
+            token_two="$(printf '%s' 'github_pat_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-' '0123456789')"
+            printf 'punctuation-adjacent credentials: (%s), (%s)\\n' "$token_one" "$token_two" >&2
+            exit 23
+          fi
+          exit 99
+          GH_PAREN
+          chmod +x "$tmp/fake-bin-parenthesized/gh"
+          if output="$(PATH="$tmp/fake-bin-parenthesized:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-parenthesized.err")"; then
+            echo "parenthesized GraphQL credential fixture was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ -z "$output" ]]
+          [[ "$(cat "$tmp/graphql-parenthesized.err")" == "UNKNOWN: GraphQL cursor-based open-PR request failed (gh exit 23); REST offset fallback is disabled. punctuation-adjacent credentials: ([REDACTED]), ([REDACTED])" ]]
+          for credential_fragment in ghp_ github_pat_ 01234567 89ABCDEF GHIJKLMN OPQRSTUV WXYZ; do
+            if grep -Fq "$credential_fragment" "$tmp/graphql-parenthesized.err"; then
+              echo "punctuation-adjacent credential fragment '$credential_fragment' was not redacted" >&2; exit 1
+            fi
+          done
+
           # A valid gh response followed by jq validation failure must have a distinct diagnostic.
           mkdir -p "$tmp/fake-gh"
 
