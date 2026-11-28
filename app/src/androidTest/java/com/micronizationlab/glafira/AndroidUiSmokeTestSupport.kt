@@ -7,12 +7,6 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
 
-/**
- * UI smoke tests must start from the normal workspace, not inherit an interrupted
- * restore journal left by a recovery test or a reused emulator snapshot.
- *
- * Recovery behavior is covered by dedicated instrumentation tests.
- */
 internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
     if (journal.exists() && !journal.deleteRecursively()) {
@@ -32,6 +26,23 @@ internal fun restorePreferencePreservingFailure(primaryFailure: Throwable?, rest
         primaryFailure.addSuppressed(restoreFailure)
     } else {
         throw restoreFailure
+    }
+}
+
+/** Always attempt preference restoration, even when fixture cleanup fails. */
+internal fun cleanupAndRestorePreservingFailure(
+    primaryFailure: Throwable?,
+    cleanup: () -> Unit,
+    restore: () -> Boolean
+) {
+    val cleanupFailure = runCatching(cleanup).exceptionOrNull()
+    val failureToPreserve = primaryFailure ?: cleanupFailure
+    if (primaryFailure != null && cleanupFailure != null) {
+        primaryFailure.addSuppressed(cleanupFailure)
+    }
+    restorePreferencePreservingFailure(failureToPreserve, restore)
+    if (primaryFailure == null && cleanupFailure != null) {
+        throw cleanupFailure
     }
 }
 
@@ -61,10 +72,6 @@ internal fun collectHomeScreenDiagnostics(
     return "recovery=$recoveryState, biometric=$biometricState, wait=$waitStatus, $hierarchyPath. Window hierarchy: $hierarchy"
 }
 
-/**
- * Wait for the Compose workspace to publish its accessibility tree before UI assertions.
- * If it does not appear, report a best-effort hierarchy snapshot and both startup gates.
- */
 internal fun awaitHomeScreen(
     device: UiDevice,
     context: Context,
