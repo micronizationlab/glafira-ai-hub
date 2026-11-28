@@ -88,6 +88,9 @@ class MainActivitySmokeTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         prepareUnlockedHome(context)
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val previousBiometric = preferences.getBoolean("biometric_enabled", false)
+        assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
         val device = UiDevice.getInstance(instrumentation)
         val parentFile = File(context.cacheDir, "ui-smoke-hierarchy-parent-file").apply {
             writeText("not a directory", Charsets.UTF_8)
@@ -96,10 +99,13 @@ class MainActivitySmokeTest {
             val impossibleHierarchy = File(parentFile, "window.xml")
             val diagnostics = collectHomeScreenDiagnostics(device, context, impossibleHierarchy)
             assertTrue("Recovery gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("recovery=false"))
-            assertTrue("Biometric gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("biometric=false"))
-            assertTrue(diagnostics.contains("dump failed:"))
+            assertTrue("Biometric gate must reflect the enabled fixture: $diagnostics", diagnostics.contains("biometric=true"))
+            assertTrue(diagnostics.contains("wait=not recorded"))
+            assertTrue(diagnostics.contains("hierarchyPath="))
+            assertTrue(diagnostics.contains("dump failed:") || diagnostics.contains("read failed:"))
         } finally {
             parentFile.delete()
+            preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
         }
     }
 
