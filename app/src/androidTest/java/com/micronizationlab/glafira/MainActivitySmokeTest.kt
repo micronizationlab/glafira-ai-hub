@@ -138,7 +138,7 @@ class MainActivitySmokeTest {
     }
 
     @Test
-    fun recoveryDiagnosticsAreReadOnlyAndSafeHierarchyOmitsKnownWindowText() {
+    fun recoveryDiagnosticsUseTheSharedGuardAndSafeHierarchyOmitsKnownWindowText() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val device = launch()
         val knownText = "ГЛАФИРА"
@@ -147,11 +147,13 @@ class MainActivitySmokeTest {
         assertTrue("Known description fixture must be visible before hierarchy capture",
             device.hasObject(By.descContains(knownDescription)))
         val stale = File(context.cacheDir, "glafira-rollback-recovery-ui-diagnostic-${System.nanoTime()}.tmp")
+        val sentinel = File(stale, "preserve-this-undeletable-fixture")
         try {
-            stale.writeText("diagnostic fixture must remain unchanged")
+            assertTrue(stale.mkdir())
+            sentinel.writeText("diagnostic fixture must remain unchanged")
             assertTrue(recoveryPendingForDiagnostics(context))
-            assertTrue(stale.isFile)
-            assertTrue(stale.readText() == "diagnostic fixture must remain unchanged")
+            assertTrue("A non-empty recovery temp directory cannot be deleted by the shared guard", stale.isDirectory)
+            assertEquals("diagnostic fixture must remain unchanged", sentinel.readText())
             val hierarchy = captureSafeWindowHierarchy()
             assertFalse("A real active window must be traversed, not replaced by the no-root fallback",
                 hierarchy.contains("<no active accessibility root>"))
@@ -159,7 +161,23 @@ class MainActivitySmokeTest {
             assertFalse("Known visible text must not enter diagnostics", hierarchy.contains(knownText))
             assertFalse("Known accessibility description must not enter diagnostics", hierarchy.contains(knownDescription))
         } finally {
-            check(!stale.exists() || stale.delete())
+            check(!stale.exists() || stale.deleteRecursively())
+        }
+    }
+
+    @Test
+    fun interruptedBiometricPreferenceIsRecoveredBeforeTheNextSmokeTest() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val original = preferences.getBoolean("biometric_enabled", false)
+        try {
+            persistOriginalBiometricPreference(context, true)
+            assertTrue(preferences.edit().putBoolean("biometric_enabled", false).commit())
+            recoverInterruptedBiometricPreference(context, preferences)
+            assertTrue("A later smoke test must recover the persisted original preference",
+                preferences.getBoolean("biometric_enabled", false))
+        } finally {
+            check(preferences.edit().putBoolean("biometric_enabled", original).commit())
         }
     }
 
