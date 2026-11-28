@@ -775,13 +775,30 @@ jobs:
           else
             forced_failure_status=$?
           fi
-          [[ "$forced_failure_status" -eq 37 ]]
+          if [[ "$forced_failure_status" -ne 37 ]]; then
+            cat "$tmp/dispatcher-forced-failure.err" >&2
+            printf 'Forced renderer child returned unexpected status %s (expected 37).\\n' "$forced_failure_status" >&2
+            exit "$forced_failure_status"
+          fi
           grep -Fq "Probe injected top-level failure" "$tmp/dispatcher-forced-failure.err"
           grep -Fq "(exit 37) returned exit 37" "$tmp/dispatcher-forced-failure.err"
           if grep -Fq "Dispatcher fixture failed" "$tmp/dispatcher-forced-failure.err"; then
             echo "expected child failure leaked as an ERR-trap fixture failure" >&2; exit 1
           fi
           echo "dispatcher expected child failure reports exit 37 without triggering ERR trap: PASS"
+
+          if GLAFIRA_FIXTURE_FORCE_ERR_TRAP=1 bash "$RUNNER_TEMP/test-renderer.sh" > "$tmp/dispatcher-err-trap.out" 2> "$tmp/dispatcher-err-trap.err"; then
+            echo "uncaught renderer script-scope failure was incorrectly accepted" >&2; exit 1
+          else
+            err_trap_status=$?
+          fi
+          if [[ "$err_trap_status" -ne 37 ]]; then
+            cat "$tmp/dispatcher-err-trap.err" >&2
+            printf 'Renderer ERR trap fixture returned unexpected status %s (expected 37).\\n' "$err_trap_status" >&2
+            exit "$err_trap_status"
+          fi
+          grep -Fq "Dispatcher fixture failed (exit 37): bash -c 'exit 37'" "$tmp/dispatcher-err-trap.err"
+          echo "actual renderer ERR trap reports child status and command context: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
