@@ -468,9 +468,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             "Refusing to delete a rollback journal without a regular owner marker."
         }
 
-        // Open each path component relative to a secured directory handle. The journal
-        // and its children are then validated/deleted relative to the opened directory,
-        // so replacing a parent path cannot redirect cleanup outside this fixture.
         val dataDirectory = openSecureDirectory(dataRoot)
         dataDirectory.use { data ->
             data.newDirectoryStream(dataRoot.fileSystem.getPath("cache"), LinkOption.NOFOLLOW_LINKS).use { cache ->
@@ -521,7 +518,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             }
                             for (entry in entries) journalDirectory.deleteFile(entry.fileName)
                         }
-                        // Keep the key until this directory-relative removal and parent fsync succeed.
                         noBackup.deleteDirectory(journalName)
                     }
                 }
@@ -1219,8 +1215,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                         .bufferedReader(Charsets.UTF_8).use { it.readText() }
                     assertEquals("pre-rollback-sentinel", sentinelValue)
                 } finally {
-                    // This sentinel journal is deliberately test-created and has no rollback
-                    // ownership record. Never inspect or delete a child through a linked journal path.
                     if (!Files.isSymbolicLink(journal.toPath())) {
                         if (Files.exists(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                             check(Files.isRegularFile(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS))
