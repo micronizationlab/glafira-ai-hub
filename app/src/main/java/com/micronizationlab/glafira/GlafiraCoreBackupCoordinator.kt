@@ -90,7 +90,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                 try {
                     // Preflight is inside the protected try/finally: even a failed recovery
                     // must still attempt plaintext-export and selected-archive cleanup.
-                    recoverInterruptedRestore(passphrase)
+                    recoverInterruptedRestore(passphrase, allowUnknownMarkerlessJournal = true)
                     require(archive.isFile && archive.length() in 1..MAX_ARCHIVE_BYTES)
                     archive.inputStream().use { input -> selected.outputStream().use { output ->
                         BackupArchive.copyBounded(input, output)
@@ -300,13 +300,14 @@ class GlafiraCoreBackupCoordinator internal constructor(
     /** Returns true when journal recovery already performed portable-snapshot cleanup. */
     private fun recoverInterruptedRestore(
         passphrase: CharArray,
-        onSnapshotCleaned: () -> Unit = {}
+        onSnapshotCleaned: () -> Unit = {},
+        allowUnknownMarkerlessJournal: Boolean = false
     ): Boolean {
         val journalPath = journal.toPath()
         if (pathExistsNoFollow(journalPath) &&
             (Files.isSymbolicLink(journalPath) || !Files.isDirectory(journalPath, LinkOption.NOFOLLOW_LINKS))
         ) {
-            throw IOException("Журнал восстановления заменён ссылкой или файлом; чтение и очистка остановлены.")
+            throw IOException("Обнаружена символическая ссылка вместо журнала восстановления; чтение и очистка остановлены.")
         }
         if ((pathExistsNoFollow(marker.toPath()) && Files.isSymbolicLink(marker.toPath())) ||
             (pathExistsNoFollow(committedMarker.toPath()) && Files.isSymbolicLink(committedMarker.toPath()))
@@ -327,6 +328,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     entries.iterator().hasNext()
                 }
                 if (hasUnexpectedEntries) {
+                    if (allowUnknownMarkerlessJournal) return false
                     throw IOException("В журнале восстановления остались неизвестные данные; они сохранены для проверки.")
                 }
             }
