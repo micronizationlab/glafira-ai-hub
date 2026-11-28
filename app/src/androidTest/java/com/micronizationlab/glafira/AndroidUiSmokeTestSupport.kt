@@ -134,19 +134,19 @@ internal fun formatHierarchySummary(
     val output = StringBuilder()
     var visited = 0
     var charactersOmitted = false
-    lines.take(maximumNodes).forEachIndexed { index, line ->
-        if (visited >= maximumNodes) return@forEachIndexed
+    for ((index, line) in lines.take(maximumNodes).withIndex()) {
+        if (visited >= maximumNodes) break
         visited++
         val remaining = bodyLimit - output.length
         if (line.length > remaining) {
             output.append(line.take(remaining))
             charactersOmitted = true
-            return@forEachIndexed
+            break
         }
         output.append(line)
         if (output.length == bodyLimit && index < lines.lastIndex) {
             charactersOmitted = true
-            return@forEachIndexed
+            break
         }
     }
     val truncated = nodesOmitted || lines.size > maximumNodes || charactersOmitted
