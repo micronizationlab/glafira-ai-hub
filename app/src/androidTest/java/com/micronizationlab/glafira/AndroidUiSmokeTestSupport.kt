@@ -72,7 +72,7 @@ internal fun awaitHomeScreen(
     val waitStatus = "idle=$idleStatus, accessibility=$accessibilityStatus"
     val hierarchyFile = File(context.cacheDir, "android-ui-smoke-window-hierarchy.xml")
     val diagnostics = collectHomeScreenDiagnostics(device, context, hierarchyFile, waitStatus)
-    error("Home workspace did not become accessible. $diagnostics")
+    throw IllegalStateException("Home workspace did not become accessible. $diagnostics", accessibilityWait.exceptionOrNull())
 }
 
 /** Keep both the start and end of large UI hierarchies; screen identity often appears near the tail. */
