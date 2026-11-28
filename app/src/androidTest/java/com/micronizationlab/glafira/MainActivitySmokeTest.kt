@@ -12,15 +12,34 @@ import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainActivitySmokeTest {
+    private lateinit var preferences: android.content.SharedPreferences
+    private var originalBiometric = false
+
+    @Before
+    fun captureBiometricPreference() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        originalBiometric = preferences.getBoolean("biometric_enabled", false)
+    }
+
+    @After
+    fun restoreBiometricPreference() {
+        check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
+            "Could not restore biometric preference after UI smoke test"
+        }
+    }
 
     private fun clickFresh(device: UiDevice, selector: BySelector) {
         var lastStale: StaleObjectException? = null
