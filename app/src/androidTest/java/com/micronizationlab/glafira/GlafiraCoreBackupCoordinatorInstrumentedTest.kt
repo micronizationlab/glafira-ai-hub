@@ -745,6 +745,163 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun ownedJournalCleanupRejectsLinkedJournalBeforeKeyDeletion() {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val outside = File(context.cacheDir, "journal-link-outside-$runId").apply { check(mkdir()) }
+        val canary = File(outside, "must-survive.txt").apply { writeText("outside") }
+        var callbackRan = false
+        writeRollbackOwnerMarker(runId)
+        try {
+            Files.createSymbolicLink(journal.toPath(), outside.toPath())
+            assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) { callbackRan = true }
+            }
+            assertFalse("Linked journal must be rejected before key deletion", callbackRan)
+            assertTrue("Journal symlink remains for inspection", Files.isSymbolicLink(journal.toPath()))
+            assertEquals("outside", canary.readText())
+        } finally {
+            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
+            clearRollbackOwnerMarker(runId)
+            deleteTreeWithoutFollowingLinks(outside.toPath())
+        }
+    }
+
+    @Test
+    fun ownedJournalCleanupRejectsLinkedExternalOwnerMarkerBeforeKeyDeletion() {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdir()) }
+        File(journal, "restore.pending").writeText("GLAFIRA_RESTORE_ROLLBACK_V3")
+        val outside = File(context.cacheDir, "owner-marker-link-outside-$runId").apply { writeText("must-survive") }
+        val ownerMarker = rollbackOwnerMarker()
+        var callbackRan = false
+        try {
+            Files.createSymbolicLink(ownerMarker.toPath(), outside.toPath())
+            assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) { callbackRan = true }
+            }
+            assertFalse("Linked owner marker must be rejected before key deletion", callbackRan)
+            assertTrue("Rollback journal remains intact", File(journal, "restore.pending").isFile)
+            assertEquals("must-survive", outside.readText())
+        } finally {
+            if (Files.isSymbolicLink(ownerMarker.toPath())) Files.delete(ownerMarker.toPath())
+            if (rollbackJournalPathPresent(journal)) deleteTreeWithoutFollowingLinks(journal.toPath())
+            outside.delete()
+        }
+    }
+
+    @Test
+    fun ownedJournalCleanupRecognizesDanglingJournalSymlinkAndPreservesProof() {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val missingTarget = File(context.cacheDir, "missing-journal-target-$runId")
+        var callbackRan = false
+        writeRollbackOwnerMarker(runId)
+        try {
+            Files.createSymbolicLink(journal.toPath(), missingTarget.toPath())
+            assertFalse("File.exists must not see the dangling target", journal.exists())
+            assertTrue("NOFOLLOW path detection must see the link itself", rollbackJournalPathPresent(journal))
+            assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) { callbackRan = true }
+            }
+            assertFalse("Dangling journal link must be rejected before key deletion", callbackRan)
+            assertTrue("Dangling journal link remains as evidence", Files.isSymbolicLink(journal.toPath()))
+            assertTrue("External owner proof remains", rollbackOwnerMarker().isFile)
+        } finally {
+            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
+            clearRollbackOwnerMarker(runId)
+        }
+    }
+
+    @Test
+    fun ownedJournalCleanupRejectsLinkedNoBackupParentBeforeKeyDeletion() {
+        val runId = testRunId
+        val noBackupRoot = context.noBackupFilesDir
+        val originalNoBackup = File(testRoot, "no-backup-original")
+        val journal = File(noBackupRoot, "glafira-restore-journal").apply { check(mkdir()) }
+        File(journal, "restore.pending").writeText("GLAFIRA_RESTORE_ROLLBACK_V3")
+        val outside = File(context.cacheDir, "no-backup-link-outside-$runId").apply { check(mkdir()) }
+        val canary = File(outside, "must-survive.txt").apply { writeText("outside") }
+        val source = File(context.cacheDir, "no-backup-link-key-source-$runId").apply { writeText("key-canary") }
+        val encrypted = File(context.cacheDir, "no-backup-link-key-$runId")
+        var callbackRan = false
+        writeRollbackOwnerMarker(runId)
+        try {
+            rollbackCipher.encrypt(source, encrypted)
+            assertTrue(rollbackCipher.keyExists())
+            check(noBackupRoot.renameTo(originalNoBackup))
+            Files.createSymbolicLink(noBackupRoot.toPath(), outside.toPath())
+            assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(File(noBackupRoot, "glafira-restore-journal"), runId) {
+                    callbackRan = true
+                    rollbackCipher.deleteKey()
+                }
+            }
+            assertFalse("Linked no-backup parent must be rejected before key deletion", callbackRan)
+            assertTrue("Rollback key remains", rollbackCipher.keyExists())
+            assertEquals("outside", canary.readText())
+        } finally {
+            if (Files.isSymbolicLink(noBackupRoot.toPath())) Files.delete(noBackupRoot.toPath())
+            if (originalNoBackup.exists() && !noBackupRoot.exists()) check(originalNoBackup.renameTo(noBackupRoot))
+            val restoredJournal = File(noBackupRoot, "glafira-restore-journal")
+            if (rollbackJournalPathPresent(restoredJournal)) deleteTreeWithoutFollowingLinks(restoredJournal.toPath())
+            rollbackCipher.deleteKey()
+            source.delete()
+            encrypted.delete()
+            clearRollbackOwnerMarker(runId)
+            deleteTreeWithoutFollowingLinks(outside.toPath())
+        }
+    }
+
+    @Test
+    fun ownedJournalCleanupKeepsExternalOwnerProofWhenKeyDeletionFails() {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdir()) }
+        File(journal, "restore.pending").writeText("GLAFIRA_RESTORE_ROLLBACK_V3")
+        val source = File(context.cacheDir, "rollback-key-cleanup-source-$runId").apply { writeText("key-canary") }
+        val encrypted = File(context.cacheDir, "rollback-key-cleanup-encrypted-$runId")
+        writeRollbackOwnerMarker(runId)
+        try {
+            rollbackCipher.encrypt(source, encrypted)
+            val injected = IllegalStateException("injected rollback key deletion failure")
+            val caught = assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) { throw injected }
+            }
+            org.junit.Assert.assertSame("The injected key-deletion failure must be the caught exception", injected, caught)
+            assertFalse("Journal is removed and parent synced before key deletion", rollbackJournalPathPresent(journal))
+            assertTrue("External owner proof remains so key cleanup can be retried", rollbackOwnerMarker().isFile)
+            assertTrue("Rollback key remains after injected deletion failure", rollbackCipher.keyExists())
+        } finally {
+            rollbackCipher.deleteKey()
+            source.delete()
+            encrypted.delete()
+            clearRollbackOwnerMarker(runId)
+        }
+    }
+
+    @Test
+    fun ownedJournalCleanupRejectsUnexpectedEntryBeforeDeletingAnything() {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdir()) }
+        val database = File(journal, "database.db").apply { writeText("encrypted-fixture-placeholder") }
+        val canary = File(journal, "unexpected-canary.txt").apply { writeText("must-survive") }
+        var callbackRan = false
+        writeRollbackOwnerMarker(runId)
+        try {
+            assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) { callbackRan = true }
+            }
+            assertFalse("Unexpected content must block key deletion", callbackRan)
+            assertTrue("Known rollback data remains intact", database.isFile)
+            assertEquals("must-survive", canary.readText())
+            assertTrue("Journal remains when its content is unexpected", rollbackJournalPathPresent(journal))
+        } finally {
+            if (rollbackJournalPathPresent(journal)) deleteTreeWithoutFollowingLinks(journal.toPath())
+            clearRollbackOwnerMarker(runId)
+        }
+    }
+
+    @Test
     fun failedExclusiveMkdirNeverDeletesPreexistingFixtureLookingDirectory() {
         val runId = UUID.randomUUID().toString()
         val existing = File(appContext.cacheDir, "glafira-backup-test-" + runId)
@@ -1361,7 +1518,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
         try {
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-            check(journal.mkdirs())
+            check(!Files.isSymbolicLink(journal.toPath())) { "Refusing to create a sentinel inside a linked journal." }
+            check(journal.mkdirs() || Files.isDirectory(journal.toPath(), LinkOption.NOFOLLOW_LINKS))
             val sentinel = File(journal, "must-survive-pre-rollback-validation")
             sentinel.writeText("pre-rollback-sentinel", Charsets.UTF_8)
             withOwnedRestoreJournal {
@@ -1371,16 +1529,24 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     }
                     assertEquals("Неполный набор таблиц Core.", failure.message)
                     assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
-                    assertFalse(File(journal, "restore.pending").exists())
-                    assertTrue("Validation must reject before prepareRollback can clear the journal directory.", sentinel.isFile)
-                    assertEquals("pre-rollback-sentinel", sentinel.readText(Charsets.UTF_8))
+                    assertFalse("Journal path must not be replaced by a symlink", Files.isSymbolicLink(journal.toPath()))
+                    assertFalse(Files.exists(File(journal, "restore.pending").toPath(), LinkOption.NOFOLLOW_LINKS))
+                    assertTrue("Validation must reject before prepareRollback can clear the journal directory.", Files.isRegularFile(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS))
+                    val sentinelValue = Files.newInputStream(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS)
+                        .bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    assertEquals("pre-rollback-sentinel", sentinelValue)
                 } finally {
-                    // This sentinel journal is deliberately test-created and has no rollback
-                    // ownership record. Remove only our sentinel and then its empty directory
-                    // before withOwnedRestoreJournal performs installation-key cleanup.
-                    if (sentinel.exists()) check(sentinel.delete())
-                    if (journal.exists() && journal.list().orEmpty().isEmpty()) {
-                        check(journal.delete()) { "Could not remove the empty test sentinel journal." }
+                    if (!Files.isSymbolicLink(journal.toPath())) {
+                        if (Files.exists(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                            check(Files.isRegularFile(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS))
+                            Files.delete(sentinel.toPath())
+                        }
+                        if (Files.isDirectory(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                            Files.newDirectoryStream(journal.toPath()).use { entries ->
+                                check(!entries.iterator().hasNext()) { "Sentinel journal unexpectedly contains other entries." }
+                            }
+                            Files.delete(journal.toPath())
+                        }
                     }
                 }
             }
