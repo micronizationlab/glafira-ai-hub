@@ -143,6 +143,6 @@ internal suspend fun replayPendingMessages(context: Context) {
     }
 }
 
-/** No queued or replayed remote operation may run while any recovery state is pending. */
+/** A process may have died between restore commit phases; no remote operation may use that snapshot. */
 internal fun isPendingDispatchBlocked(context: Context): Boolean =
-    GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
+    File(context.noBackupFilesDir, "glafira-restore-journal/restore.pending").exists()
