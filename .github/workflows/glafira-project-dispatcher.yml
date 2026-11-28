@@ -246,11 +246,23 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           trap 'status=$?; printf "Dispatcher fixture failed (exit %s): %s\\n" "$status" "$BASH_COMMAND" >&2' ERR
+          run_probe() {
+            local probe_name="$1"
+            shift
+            "$@" || {
+              local probe_status=$?
+              printf 'Probe %s returned exit %s\\n' "$probe_name" "$probe_status" >&2
+              return "$probe_status"
+            }
+          }
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
+          if [[ "${GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE:-0}" == "1" ]]; then
+            run_probe "injected top-level failure" bash -c 'exit 37'
+          fi
           cat > "$tmp/prs.json" <<'JSON'
           [
             {"number":553,"title":"current [link](https://evil.test) | title","headRefName":"docs/reconcile","headRefOid":"sha-current","baseRefOid":"base-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
@@ -355,36 +367,33 @@ jobs:
           fi
           [[ -z "$output" ]]
           [[ "$(cat "$tmp/gh-calls.log")" == "graphql" ]]
-          grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
-          grep -Fq "exit 23" "$tmp/graphql-outage.err"
-          grep -Fq "[REDACTED] [REDACTED]" "$tmp/graphql-outage.err"
-          grep -Eq '\[REDACTED\] \[REDACTED\]$' "$tmp/graphql-outage.err"
+          expected_graphql_outage="UNKNOWN: GraphQL cursor-based open-PR request failed (gh exit 23); REST offset fallback is disabled. injected GraphQL page two failure: [REDACTED] [REDACTED]"
+          [[ "$(cat "$tmp/graphql-outage.err")" == "$expected_graphql_outage" ]]
           if grep -Eq 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_-]{20,}' "$tmp/graphql-outage.err"; then
             echo "raw synthetic credential reached the sanitized diagnostic" >&2; exit 1
           fi
           echo "validated sanitized GraphQL outage diagnostic: $(cat "$tmp/graphql-outage.err")"
           # A valid gh response followed by jq validation failure must have a distinct diagnostic.
-          mkdir -p "$tmp/fake-gh" "$tmp/failing-validation-jq"
+          mkdir -p "$tmp/fake-gh"
           cat > "$tmp/fake-gh/gh" <<'GH_VALID'
           #!/usr/bin/env bash
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
-            printf '%s\n' '{"data":{"repository":{"pullRequests":{"nodes":[]}}}}'
+            cat <<'JSON'
+          {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}
+          JSON
             exit 0
           fi
           exit 99
           GH_VALID
-          cat > "$tmp/failing-validation-jq/jq" <<'JQ_VALIDATE'
-          #!/usr/bin/env bash
-          exit 42
-          JQ_VALIDATE
-          chmod +x "$tmp/fake-gh/gh" "$tmp/failing-validation-jq/jq"
+          chmod +x "$tmp/fake-gh/gh"
           if PATH="$tmp/fake-gh:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-validation.out" 2>"$tmp/graphql-validation.err"; then
             echo "jq response-validation failure was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
           [[ ! -s "$tmp/graphql-validation.out" ]]
-          grep -Fq "GraphQL response validation failed (jq exit 42)" "$tmp/graphql-validation.err"
+          grep -Fq "GraphQL response validation failed (jq exit 1)" "$tmp/graphql-validation.err"
           echo "GraphQL request and jq response-validation failures are distinguished: PASS"
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
@@ -501,21 +510,34 @@ jobs:
           FETCH_SAME
           cat > "$tmp/fetch-failed-prs.sh" <<'FETCH_FAIL'
           #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ -n "${FETCH_CALL_LOG:-}" ]]; then
+            printf 'invoked\\n' >> "$FETCH_CALL_LOG"
+          fi
           exit 23
           FETCH_FAIL
+          FETCH_FAIL
           chmod +x "$tmp/fetch-same-prs.sh" "$tmp/fetch-failed-prs.sh"
+          cat > "$tmp/fetch-distinct-prs.sh" <<'FETCH_DISTINCT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cat "$1"
+          FETCH_DISTINCT
+          chmod +x "$tmp/fetch-distinct-prs.sh"
+          cp "$tmp/large-prs.json" "$tmp/reconcile-baseline-before.json"
           reconcile_result="$(FETCH_CALL_LOG="$tmp/comparator-fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-latest.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json")"
           [[ "$reconcile_result" == "UNCHANGED" ]]
           [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 1 ]]
           changed_result="$(FETCH_CALL_LOG="$tmp/comparator-fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-head-delta.json")"
           [[ "$changed_result" == "CHANGED" ]]
           [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 2 ]]
-          if bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-fetch-failed.json" "$tmp/fetch-failed-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/second-fetch-error.log"; then
+          if FETCH_CALL_LOG="$tmp/failed-fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-fetch-failed.json" "$tmp/fetch-failed-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/second-fetch-error.log"; then
             echo "second PR inventory fetch failure was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
           grep -Fq "second PR inventory fetch failed" "$tmp/second-fetch-error.log"
+          [[ "$(wc -l < "$tmp/failed-fetch-calls.log")" -eq 1 ]]
           [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 2 ]]
           if FETCH_CALL_LOG="$tmp/comparator-fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/missing-comparator-latest.json" "$tmp/fetch-same-prs.sh" "$tmp/missing-comparator.sh" "$tmp/large-prs.json" 2>"$tmp/missing-comparator.err"; then
             echo "missing comparator was incorrectly accepted" >&2; exit 1
@@ -534,14 +556,15 @@ jobs:
           grep -Fq "comparator is missing, unreadable or invalid" "$tmp/invalid-comparator.err"
           [[ ! -e "$tmp/invalid-comparator-latest.json" ]]
           [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 2 ]]
-          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/jq-failed-fetch.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json" > "$tmp/reconcile-jq-failed.out" 2>"$tmp/reconcile-jq-failed.err"; then
+          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/jq-failed-fetch.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-distinct-prs.sh" "$comparator" "$tmp/large-prs-head-delta.json" > "$tmp/reconcile-jq-failed.out" 2>"$tmp/reconcile-jq-failed.err"; then
             echo "injected jq failure was incorrectly accepted by production reconciliation wrapper" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
           grep -Fq "UNKNOWN: PR inventory comparison failed" "$tmp/reconcile-jq-failed.err"
           [[ "$(wc -l < "$tmp/jq-failed-fetch.log")" -eq 1 ]]
-          cmp -s "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json"
+          cmp -s "$tmp/large-prs-head-delta.json" "$tmp/reconcile-jq-failed.json"
+          cmp -s "$tmp/reconcile-baseline-before.json" "$tmp/large-prs.json"
           [[ ! -s "$tmp/reconcile-jq-failed.out" ]]
           mkdir -p "$tmp/unwritable-fetch-log"
           if FETCH_CALL_LOG="$tmp/unwritable-fetch-log/missing/calls.log" bash "$tmp/fetch-same-prs.sh" "$tmp/large-prs.json" > "$tmp/fetch-log-failure.out" 2>/dev/null; then
@@ -550,6 +573,8 @@ jobs:
             [[ "$?" -ne 0 ]]
           fi
           [[ ! -s "$tmp/fetch-log-failure.out" ]]
+          env -u FETCH_CALL_LOG bash "$tmp/fetch-same-prs.sh" "$tmp/large-prs.json" > "$tmp/fetch-without-optional-log.json"
+          cmp -s "$tmp/large-prs.json" "$tmp/fetch-without-optional-log.json"
           if bash "$reconcile" "$tmp/large-prs.json" "$tmp" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/local-open-error.log"; then
             echo "unwritable local snapshot path was incorrectly accepted" >&2; exit 1
           else
@@ -565,6 +590,16 @@ jobs:
             echo "normal PR table appeared in failure summary" >&2; exit 1
           fi
           echo "dispatcher fail-closed integration: second-fetch, comparator, local-open, jq and report-summary failures return non-zero: PASS"
+          if GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE=1 bash "$RUNNER_TEMP/test-renderer.sh" > "$RUNNER_TEMP/dispatcher-forced-failure.out" 2> "$RUNNER_TEMP/dispatcher-forced-failure.err"; then
+            echo "forced top-level fixture failure was incorrectly accepted" >&2; exit 1
+          else
+            forced_failure_status=$?
+          fi
+          [[ "$forced_failure_status" -eq 37 ]]
+          grep -Fq "Probe injected top-level failure returned exit 37" "$RUNNER_TEMP/dispatcher-forced-failure.err"
+          grep -Fq "Dispatcher fixture failed (exit 37): run_probe" "$RUNNER_TEMP/dispatcher-forced-failure.err"
+          echo "dispatcher ERR trap preserves originating probe name and exit 37: PASS"
+          bash "$RUNNER_TEMP/test-renderer.sh"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
