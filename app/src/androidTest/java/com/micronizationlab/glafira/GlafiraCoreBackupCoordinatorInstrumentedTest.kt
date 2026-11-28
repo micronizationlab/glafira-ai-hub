@@ -985,7 +985,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    fun recoverRemovesDanglingRollbackTempSymlinkWithoutFollowingTarget() = runBlocking {
+    fun recoverRemovesDanglingRollbackTempSymlinkWhenTargetIsAbsent() = runBlocking {
         val stale = File(context.cacheDir, "glafira-rollback-recovery-dangling-only.tmp")
         val missingTarget = File(context.cacheDir, "rollback-recovery-missing-target-$testRunId")
         val passphrase = disposablePassphrase()
