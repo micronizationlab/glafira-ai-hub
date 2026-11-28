@@ -502,7 +502,6 @@ jobs:
             [[ "$5" == *"pageInfo"* && "$5" == *"endCursor"* ]] || exit 91
             cat <<'JSON'
           {"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":true,"endCursor":"cursor-page-2"},"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
-          {"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
             exit 0
           elif [[ "$1" == "api" && "$2" == "graphql" && "$3" == "-f" ]]; then
