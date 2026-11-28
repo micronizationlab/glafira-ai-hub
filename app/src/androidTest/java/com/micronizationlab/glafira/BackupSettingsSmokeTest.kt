@@ -22,14 +22,24 @@ class BackupSettingsSmokeTest {
     @Before
     fun captureBiometricPreference() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        preferences = context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
-        originalBiometric = preferences.getBoolean("biometric_enabled", false)
+        UiSmokeTestPreferenceLock.acquire()
+        try {
+            preferences = context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
+            originalBiometric = preferences.getBoolean("biometric_enabled", false)
+        } catch (failure: Throwable) {
+            UiSmokeTestPreferenceLock.release()
+            throw failure
+        }
     }
 
     @After
     fun restoreBiometricPreference() {
-        check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
-            "Could not restore biometric preference after UI smoke test"
+        try {
+            check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
+                "Could not restore biometric preference after UI smoke test"
+            }
+        } finally {
+            UiSmokeTestPreferenceLock.release()
         }
     }
     @Test
