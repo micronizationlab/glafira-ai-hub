@@ -267,7 +267,7 @@ jobs:
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
-          trap 'status=$?; printf "Dispatcher fixture failed (exit %s): %s\\n" "$status" "$BASH_COMMAND" >&2' ERR
+          trap 'status=$?; printf "Dispatcher fixture failed (exit %s): %s\n" "$status" "$BASH_COMMAND" >&2' ERR
           if [[ "${GLAFIRA_FIXTURE_FORCE_ERR_TRAP:-0}" == "1" ]]; then
             bash -c 'exit 37'
           fi
@@ -826,7 +826,7 @@ jobs:
           fi
           if [[ "$forced_failure_status" -ne 37 ]]; then
             cat "$tmp/dispatcher-forced-failure.err" >&2
-            printf 'Forced renderer child returned unexpected status %s (expected 37).\\n' "$forced_failure_status" >&2
+            printf 'Forced renderer child returned unexpected status %s (expected 37).\n' "$forced_failure_status" >&2
             exit "$forced_failure_status"
           fi
           grep -Fq "Probe injected top-level failure" "$tmp/dispatcher-forced-failure.err"
