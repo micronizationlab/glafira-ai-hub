@@ -909,6 +909,37 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun recoveryCleansOrphanedPlaintextExportAndPreservesUnknownStagingData() = runBlocking {
+        val directory = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
+        val export = File(context.filesDir, GlafiraPortableCoreSnapshot.PATH).apply {
+            writeText("orphaned plaintext export")
+        }
+        val passphrase = disposablePassphrase()
+        try {
+            assertTrue("An orphaned portable snapshot must keep Core blocked",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            isolatedCoordinator().recover(passphrase)
+            assertFalse(export.exists())
+            assertFalse(directory.exists())
+            assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+
+            check(directory.mkdirs())
+            export.writeText("orphaned plaintext export")
+            val unknown = File(directory, "operator-canary.bin").apply { writeText("preserve") }
+            assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertFalse("Known plaintext export is removed even when an unknown sibling remains", export.exists())
+            assertEquals("preserve", unknown.readText())
+            assertTrue("Unknown staging data continues to block Core", GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+        } finally {
+            passphrase.fill(0.toChar())
+            check(!directory.exists() || directory.deleteRecursively())
+        }
+    }
+
+    @Test
     fun markerlessUnknownJournalEntriesKeepRecoveryBlockedAndArePreserved() = runBlocking {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
         val unexpected = File(journal, "operator-evidence.txt").apply { writeText("must remain for inspection") }
