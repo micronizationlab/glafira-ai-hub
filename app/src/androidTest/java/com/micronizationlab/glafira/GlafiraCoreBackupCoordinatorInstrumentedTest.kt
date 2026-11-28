@@ -846,7 +846,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val marker = rollbackOwnerMarker()
         assertFalse(marker.exists())
         val failure = assertThrows(IOException::class.java) {
-            writeRollbackOwnerMarker(testRunId) { throw IOException("injected before temporary marker write") }
+            writeRollbackOwnerMarker(
+                testRunId,
+                beforePublish = { throw IOException("injected before temporary marker write") }
+            )
         }
         assertEquals("injected before temporary marker write", failure.message)
         assertFalse(marker.exists())
