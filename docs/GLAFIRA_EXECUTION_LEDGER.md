@@ -912,3 +912,10 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 - **Acceptance:** fail closed on a symlinked journal with no marker; no provider request or result persistence; byte-for-byte target preservation; absent journal and ordinary dispatch continue to work; normal marker remains blocked; actual production execution path is tested; independent review and all required exact-head checks pass.
 - **Out of scope:** backup/archive implementation, cryptography, protocol, queue schema, retry policy, UI, scheduler or unrelated Core code.
 - **Lifecycle:** owner approval is recorded above; fresh priority scan → PROPOSED → READY before reservation merge; exact PR #834 merge SHA → READY → RESERVED. If reconciliation is interrupted after merge, append READY → RESERVED with the exact merge SHA before any subsequent reservation proceeds. Implementation remains blocked until #827 is merged and a separate exact post-merge Main/path pin is recorded.
+
+### W10 post-merge reconciliation — 2026-11-28
+
+- **Documentation merge:** PR #834 merged as a documentation-only reservation at exact merge SHA `3ae8aaa600cda8bee5276de3ce95baa472b4d2bb`.
+- **Lifecycle guard:** the required fresh pre-assignment priority scan was not captured as a complete, timestamped snapshot of both Action Pool A and Workstream 11 before that merge. Therefore this entry does **not** claim a PROPOSED → READY or READY → RESERVED transition.
+- **Canonical status:** W10 remains **PROPOSED and inactive**. The merge SHA is recorded for provenance only; it does not authorize implementation, assignment, or edits to `PendingDelivery.kt` / `PendingDeliveryInstrumentedTest.kt`.
+- **Next gate:** perform and record the full two-pool priority scan against current protected Main, then obtain the required owner acceptance and append the valid lifecycle transition before implementation. Do not infer readiness from the documentation merge.
