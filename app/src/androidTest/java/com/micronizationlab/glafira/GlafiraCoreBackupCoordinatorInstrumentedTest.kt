@@ -1235,7 +1235,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 1,
                 fixtureRuntimeHooks.plaintextSnapshotCleanupParentSyncCalls
             )
-            assertEquals(1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
+            assertEquals(2, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
             fixtureRuntimeHooks.failJournalDirectorySyncAfterSnapshotCleanupCount = 0
             fixtureRuntimeHooks.journalDirectorySyncFailureArmed = false
             isolatedCoordinator().recover(passphrase)
@@ -1561,6 +1561,33 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         } finally {
             passphrase.fill('\u0000')
+        }
+    }
+
+    @Test
+    fun recoverCleansExactArtifactsFromInterruptedRollbackPreparation() = runBlocking {
+        store.enqueue(task("must-survive-interrupted-prepare"))
+        val passphrase = disposablePassphrase()
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        try {
+            isolatedCoordinator().prepareRollback(passphrase)
+            val pending = File(journal, "restore.pending")
+            assertTrue("prepareRollback publishes its marker only after the two rollback artifacts", pending.isFile)
+            assertTrue(pending.delete())
+            File(journal, "restore.pending.tmp").writeText("partial marker publication")
+            assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+
+            isolatedCoordinator().recover(passphrase)
+
+            assertFalse("Only the known partial preparation artifacts are removed", journal.exists())
+            assertFalse("The abandoned preparation key is removed", rollbackCipher.keyExists())
+            assertEquals("must-survive-interrupted-prepare",
+                store.getTask("must-survive-interrupted-prepare")?.taskId)
+            assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+        } finally {
+            check(!journal.exists() || journal.deleteRecursively())
+            rollbackCipher.deleteKey()
+            passphrase.fill(0.toChar())
         }
     }
 
@@ -1901,7 +1928,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         runBlocking {
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
             val marker = File(journal, "restore.pending")
-            val journalOwner = File(journal, "test-owner")
+            val journalOwner = File(context.noBackupFilesDir, "v3-reentry-journal-owner")
             val rollbackDatabase = File(journal, "database.db")
             val rollbackArchive = File(journal, "files.glb")
             val owner = File(context.noBackupFilesDir, "glafira-v3-reentry-test-owner")
@@ -2199,10 +2226,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 unexpected.writeText("preserve-this-unexpected-data")
             }
 
-            val cleanupPending = assertThrows(IOException::class.java) {
+            val cleanupPending = assertThrows(CommittedRestoreCleanupPendingException::class.java) {
                 runBlocking { coordinator.restore(archive, passphrase) }
             }
-            assertTrue(cleanupPending.message.orEmpty().contains("Восстановление зафиксировано"))
+            assertTrue("Committed cleanup retains the restore verification",
+                cleanupPending.verification.fileCount > 0)
             assertFalse("Committed cleanup must remove the known plaintext export", plaintextExport.exists())
             assertTrue("Restore-finally cleanup must preserve unexpected staging data", unexpected.isFile)
             assertEquals("preserve-this-unexpected-data", unexpected.readText(Charsets.UTF_8))
