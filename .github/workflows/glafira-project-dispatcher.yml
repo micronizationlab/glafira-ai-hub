@@ -103,9 +103,11 @@ jobs:
           aggregation_error="$RUNNER_TEMP/glafira-open-prs-graphql-aggregation-error.log"
           pages_file=""
           aggregated_file=""
+          seen_cursors_file=""
           cleanup_fetch_files() {
             [[ -z "$pages_file" ]] || rm -f "$pages_file"
             [[ -z "$aggregated_file" ]] || rm -f "$aggregated_file"
+            [[ -z "$seen_cursors_file" ]] || rm -f "$seen_cursors_file"
             rm -f "$graphql_error" "$validation_error" "$aggregation_error"
           }
           pages_file="$(mktemp "$RUNNER_TEMP/glafira-open-prs-pages.XXXXXX")" || {
@@ -124,10 +126,79 @@ jobs:
             if [[ -r "$error_file" ]]; then
               detail="$(tail -n 3 "$error_file" 2>/dev/null || true)"
             fi
-            printf '%s' "$detail" | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer[[:space:]]+[A-Za-z0-9._~+\/-]+=*)/[REDACTED]/g; s/[[:space:]]+$//' || true
+            printf '%s' "$detail" | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[-A-Za-z0-9._~+\/=_]+)/[REDACTED]/g; s/[[:space:]]+$//' || true
           }
 
-          if gh api graphql --paginate -f query="$query" >"$pages_file" 2>"$graphql_error"; then
+          fetch_graphql_pages() {
+            seen_cursors_file="$(mktemp "$RUNNER_TEMP/glafira-open-prs-cursors.XXXXXX")" || {
+              echo "UNKNOWN: cannot allocate GraphQL cursor ledger." >&2
+              return 1
+            }
+            local cursor=""
+            local next_cursor=""
+            local has_next=""
+            local page_response=""
+            local page_count=0
+            while [[ "$page_count" -lt 100 ]]; do
+              page_count=$((page_count + 1))
+              if [[ -z "$cursor" ]]; then
+                if ! page_response="$(gh api graphql -f query="$query" 2>>"$graphql_error")"; then
+                  return 1
+                fi
+              else
+                if ! page_response="$(gh api graphql -f query="$query" -F endCursor="$cursor" 2>>"$graphql_error")"; then
+                  return 1
+                fi
+              fi
+              printf '%s\n' "$page_response" >> "$pages_file"
+              if ! jq -s -e '
+                length == 1
+                and (.[0].errors // []) == []
+                and (.[0].data.repository.pullRequests.nodes | type) == "array"
+                and (.[0].data.repository.pullRequests.pageInfo | type) == "object"
+                and (.[0].data.repository.pullRequests.pageInfo.hasNextPage | type) == "boolean"
+                and (
+                  if .[0].data.repository.pullRequests.pageInfo.hasNextPage then
+                    (.[0].data.repository.pullRequests.pageInfo.endCursor | type) == "string"
+                    and (.[0].data.repository.pullRequests.pageInfo.endCursor | length) > 0
+                  else true end
+                )
+                and all(.[0].data.repository.pullRequests.nodes[];
+                  has("statusCheckRollup")
+                  and (
+                    .statusCheckRollup == null
+                    or (
+                      (.statusCheckRollup.contexts | type) == "object"
+                      and (.statusCheckRollup.contexts.nodes | type) == "array"
+                    )
+                  )
+                )
+              ' <<< "$page_response" >/dev/null 2>"$validation_error"; then
+                return 1
+              fi
+              has_next="$(jq -r '.data.repository.pullRequests.pageInfo.hasNextPage' <<< "$page_response")"
+              next_cursor="$(jq -r '.data.repository.pullRequests.pageInfo.endCursor // empty' <<< "$page_response")"
+              if [[ -n "$next_cursor" ]]; then
+                if grep -Fqx -- "$next_cursor" "$seen_cursors_file"; then
+                  echo "UNKNOWN: GraphQL pagination repeated a previously seen cursor; inventory is incomplete." >&2
+                  return 1
+                fi
+                printf '%s\n' "$next_cursor" >> "$seen_cursors_file"
+              fi
+              if [[ "$has_next" == "false" ]]; then
+                return 0
+              fi
+              if [[ -z "$next_cursor" ]]; then
+                echo "UNKNOWN: GraphQL pagination requested another page without a usable cursor." >&2
+                return 1
+              fi
+              cursor="$next_cursor"
+            done
+            echo "UNKNOWN: GraphQL pagination exceeded the bounded 100-page limit." >&2
+            return 1
+          }
+
+          if fetch_graphql_pages; then
             if jq -s -e '
               length > 0
               and all(.[];
@@ -149,6 +220,14 @@ jobs:
                   and .number == (.number | floor)
                   and (.headRefOid | type) == "string" and .headRefOid != ""
                   and (.baseRefOid | type) == "string" and .baseRefOid != ""
+                  and has("statusCheckRollup")
+                  and (
+                    .statusCheckRollup == null
+                    or (
+                      (.statusCheckRollup.contexts | type) == "object"
+                      and (.statusCheckRollup.contexts.nodes | type) == "array"
+                    )
+                  )
                 )
               )
               and all(.[0:-1][];
