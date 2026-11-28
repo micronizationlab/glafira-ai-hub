@@ -919,3 +919,29 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 - **Lifecycle guard:** the required fresh pre-assignment priority scan was not captured as a complete, timestamped snapshot of both Action Pool A and Workstream 11 before that merge. Therefore this entry does **not** claim a PROPOSED → READY or READY → RESERVED transition.
 - **Canonical status:** W10 remains **PROPOSED and inactive**. The merge SHA is recorded for provenance only; it does not authorize implementation, assignment, or edits to `PendingDelivery.kt` / `PendingDeliveryInstrumentedTest.kt`.
 - **Next gate:** perform and record the full two-pool priority scan against current protected Main, then obtain the required owner acceptance and append the valid lifecycle transition before implementation. Do not infer readiness from the documentation merge.
+
+## Proposed WBS reservation — Backup recovery fail-closed artifact matrix — 2026-11-28
+
+### WBS registry extension (append-only; existing reservations and events remain unchanged)
+
+| Work Item ID | Registered parent | Step / executable leaf | Owner | Scope | Status | Evidence / next action |
+|---|---|---|---|---|---|---|
+| GLAFIRA-S148-W01 | `1.2.1.2` | `1.2.1.2.2` | GLAFIRA | Fail-closed backup recovery artifact ownership and cleanup retry matrix; issue #854 | PROPOSED | Reservation PR #855; exact base Main `7f99def18acc0b02665158df2ad1693a89428ede`; owner approval and fresh Action Pool A / Workstream 11 scan required before READY/RESERVED |
+
+### GLAFIRA-S148-W01 — detailed proposed WBS record
+
+- **Hierarchy:** `1.2` Backup and Recovery → `1.2.1` Local rollback-journal confidentiality and integrity → `1.2.1.2` Interrupted restore recovery and restart re-entry → `1.2.1.2.2` Fail-closed backup recovery artifact ownership and cleanup retry matrix.
+- **Tracker:** issue #854. Program Step 148 remains PARTIAL; this is one prerequisite slice only and does not complete Step 148, 25, 136 or 158.
+- **Owner approval:** NOT YET RECORDED. This record is PROPOSED and inactive. The owner's general direction to continue the 11 workstreams is not treated as approval of this new exclusive file scope.
+- **Accountable executor:** GLAFIRA, only after the reservation is approved and READY/RESERVED transitions are recorded.
+- **Independent reviewer:** Proofline / CodeRabbit review-only; owner controls merge.
+- **Reservation branch / base:** `wbs/GLAFIRA-S148-W01-backup-recovery-failure-matrix-20261128`, based on protected Main `7f99def18acc0b02665158df2ad1693a89428ede`.
+- **Reservation-PR allowed path:** this append-only section in `docs/GLAFIRA_EXECUTION_LEDGER.md` only. No source or test implementation is authorized by the reservation PR.
+- **Exclusive implementation paths after reservation merge:** `app/src/main/java/com/micronizationlab/glafira/GlafiraCoreBackupCoordinator.kt` and the new `app/src/androidTest/java/com/micronizationlab/glafira/GlafiraCoreBackupRecoveryFailureMatrixInstrumentedTest.kt` only.
+- **Explicitly excluded paths:** `app/src/main/java/com/micronizationlab/glafira/PendingDelivery.kt` and `app/src/androidTest/java/com/micronizationlab/glafira/GlafiraCoreBackupCoordinatorInstrumentedTest.kt`. The former remains behind the separate proposed W10 activation gate; the latter is exclusively owned by WBS leaf `1.2.1.2.1` and must not be shared or sequentially extended.
+- **Scope:** (1) preserve genuinely unexpected markerless journal entries while cleaning only recognized, owned plaintext export and partial rollback artifacts; (2) fail closed on symlinked or non-regular journal, rollback database, archive and marker paths without following or modifying targets; (3) preserve committed recovery evidence when cleanup is interrupted and prove deterministic retry; (4) exercise these cases in the new dedicated instrumentation file.
+- **Dependencies:** PR #812 and its required predecessor chain must merge first. After that, reread protected Main, inspect the exact merged recovery implementation and record a fresh post-merge path/base pin before implementation.
+- **Reservation predecessors:** explicit owner approval of this exact WBS leaf and both implementation paths; a fresh, complete Action Pool A and Workstream 11 scan against current Main immediately before READY/RESERVED; confirmation that no equal- or higher-priority dependency-ready item supersedes this work. If Main or the ready pool changes, repeat the scan. Until all predecessors are evidenced, keep PROPOSED/inactive.
+- **Acceptance:** no unowned journal entry or symlink target is followed, modified or recursively deleted; recognized plaintext export is cleaned even when an unrelated markerless journal entry is preserved; partial rollback preparation can be reconciled safely; committed cleanup failure retains a durable marker and can be retried without repeating snapshot deletion; exact-head Android JVM, Debug APK, Shared Contracts, managed emulator, Security Scan and Dispatcher pass with inspected logs and non-empty JUnit evidence; independent review and post-merge Main validation pass.
+- **Out of scope:** pending-delivery dispatch, provider routing/retry policy, archive schema/format changes, cryptography redesign, UI, OS process-kill guarantees, physical-device acceptance and full Program Step 148 completion.
+- **Lifecycle:** PROPOSED only. No READY, RESERVED or IN_PROGRESS event is recorded. Implementation remains blocked until owner approval, fresh priority scan, reservation merge, PR #812 dependency merge and a new exact-Main/path pin.
