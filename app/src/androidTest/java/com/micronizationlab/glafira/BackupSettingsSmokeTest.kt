@@ -38,10 +38,7 @@ class BackupSettingsSmokeTest {
         )
         try {
             val device = UiDevice.getInstance(instrumentation)
-            assertTrue(
-                "GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
-            )
+            awaitHomeScreen(device, context, "Открыть настройки")
             val settingsButton = device.findObject(By.descContains("Открыть настройки"))
             assertTrue(
                 "Settings action is not visible",
