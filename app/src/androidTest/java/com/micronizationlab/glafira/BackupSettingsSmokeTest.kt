@@ -92,6 +92,11 @@ class BackupSettingsSmokeTest {
                 device.wait(Until.hasObject(By.text("НАСТРОЙКИ")), 10_000)
             )
 
+            // Verify the fixture really cleared the persisted folder before exercising the action.
+            assertTrue(
+                "Backup folder preference was not cleared for the missing-folder scenario",
+                device.wait(Until.hasObject(By.textContains("Папка не выбрана")), 2_000)
+            )
             // Compose Settings is a verticalScroll Column. The heading is not a stable
             // accessibility selector on every emulator API level, so locate the actual
             // actionable semantic node while moving through the viewport in bounded steps.
@@ -120,7 +125,9 @@ class BackupSettingsSmokeTest {
                 "Manual backup action does not expose a sufficiently large visible hit target: $bounds",
                 bounds.width() > 0 && bounds.height() >= 80
             )
-            device.click(bounds.centerX(), bounds.centerY())
+            // Invoke the actual accessibility action instead of tapping a potentially
+            // stale/clipped coordinate from a previous scroll frame.
+            button.click()
             device.waitForIdle()
             val guidance = device.wait(
                 Until.findObject(By.descContains("Сначала выбери папку Google Drive или Яндекс Диска.")), 10_000
