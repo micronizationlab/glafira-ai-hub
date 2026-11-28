@@ -598,8 +598,8 @@ jobs:
 
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
-          grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
-          grep -Fq 'pullRequests: [(.pull_requests // [])[]?' "$fetch_runs"
+          grep -Fq 'for page in $(seq 1 10)' "$RUNNER_TEMP/fetch-workflow-runs.sh"
+          grep -Fq 'pullRequests: [(.pull_requests // [])[]?' "$RUNNER_TEMP/fetch-workflow-runs.sh"
           cat > "$tmp/raw-workflow-runs.json" <<'JSON'
           {"workflow_runs":[
             {"head_sha":"head-one","name":"CI","display_title":"METADATA_ONLY - sample title","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run/one","pull_requests":[{"number":999,"base":{"sha":"base-999"}}]},
@@ -921,8 +921,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
-          grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
-          grep -Fq 'pullRequests: [(.pull_requests // [])[]?' "$fetch_runs"
+          grep -Fq 'for page in $(seq 1 10)' "$RUNNER_TEMP/fetch-workflow-runs.sh"
+          grep -Fq 'pullRequests: [(.pull_requests // [])[]?' "$RUNNER_TEMP/fetch-workflow-runs.sh"
           cat > "$tmp/raw-workflow-runs.json" <<'JSON'
           {"workflow_runs":[
             {"head_sha":"head-one","name":"CI","display_title":"METADATA_ONLY - sample title","status":"completed","conclusion":"success","created_at":"2026-11-24T12:00:00Z","html_url":"https://example.test/run/one","pull_requests":[{"number":999,"base":{"sha":"base-999"}}]},
