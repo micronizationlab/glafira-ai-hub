@@ -332,9 +332,11 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            [[ "$3" == "--paginate" && "$4" == "-f" && "$5" == query=* ]] || exit 90
+            [[ "$5" == *"pageInfo"* && "$5" == *"endCursor"* ]] || exit 91
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-page-2"},"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
             exit 0
           fi
@@ -349,12 +351,14 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            [[ "$3" == "--paginate" && "$4" == "-f" && "$5" == query=* ]] || exit 90
+            [[ "$5" == *"pageInfo"* && "$5" == *"endCursor"* ]] || exit 91
             echo graphql >> "$CALL_LOG"
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-page-2"},"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
-            echo "injected GraphQL page two failure (ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ)" >&2
-            exit 1
+            echo "injected GraphQL page two failure (ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ) [github_pat_0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ]" >&2
+            exit 23
           fi
           echo unexpected-rest >> "$CALL_LOG"
           exit 99
@@ -363,13 +367,25 @@ jobs:
           if output="$(CALL_LOG="$tmp/gh-calls.log" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-outage.err")"; then
             echo "GraphQL outage was incorrectly accepted" >&2; exit 1
           else
-            [[ "$?" -eq 1 ]]
+            [[ "$?" -eq 23 ]]
           fi
           [[ -z "$output" ]]
           [[ "$(cat "$tmp/gh-calls.log")" == "graphql" ]]
+          grep -Fq "UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit 23); REST offset fallback is disabled." "$tmp/graphql-outage.err"
           grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
-          grep -Fq "[REDACTED]" "$tmp/graphql-outage.err"
-          ! grep -Fq "ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" "$tmp/graphql-outage.err"
+          [[ "$(grep -oF '[REDACTED]' "$tmp/graphql-outage.err" | wc -l | tr -d ' ')" -eq 2 ]]
+          classic_token="ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+          fine_token="github_pat_0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+          for token in "$classic_token" "$fine_token"; do
+            for ((i = 0; i + 4 <= ${#token}; i++)); do
+              fragment="${token:i:4}"
+              if grep -Fq -- "$fragment" "$tmp/graphql-outage.err"; then
+                echo "redacted diagnostic leaked token fragment: $fragment" >&2
+                exit 1
+              fi
+            done
+          done
+          cat "$tmp/graphql-outage.err"
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
@@ -477,16 +493,20 @@ jobs:
           reconcile="$RUNNER_TEMP/reconcile-pr-inventory.sh"
           cat > "$tmp/fetch-same-prs.sh" <<'FETCH_SAME'
           #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ -n "${FETCH_CALL_LOG:-}" ]]; then printf '%s\\n' "$1" >> "$FETCH_CALL_LOG"; fi
           cat "$1"
           FETCH_SAME
           cat > "$tmp/fetch-failed-prs.sh" <<'FETCH_FAIL'
           #!/usr/bin/env bash
+          set -euo pipefail
           exit 23
           FETCH_FAIL
           chmod +x "$tmp/fetch-same-prs.sh" "$tmp/fetch-failed-prs.sh"
-          reconcile_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-latest.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json")"
+          : > "$tmp/fetch-calls.log"
+          reconcile_result="$(FETCH_CALL_LOG="$tmp/fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-latest.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json")"
           [[ "$reconcile_result" == "UNCHANGED" ]]
-          changed_result="$(bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-head-delta.json")"
+          changed_result="$(FETCH_CALL_LOG="$tmp/fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-head-delta.json")"
           [[ "$changed_result" == "CHANGED" ]]
           if bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-fetch-failed.json" "$tmp/fetch-failed-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/second-fetch-error.log"; then
             echo "second PR inventory fetch failure was incorrectly accepted" >&2; exit 1
@@ -494,24 +514,32 @@ jobs:
             [[ "$?" -eq 1 ]]
           fi
           grep -Fq "second PR inventory fetch failed" "$tmp/second-fetch-error.log"
-          if bash "$reconcile" "$tmp/large-prs.json" "$tmp/missing-comparator-latest.json" "$tmp/fetch-same-prs.sh" "$tmp/missing-comparator.sh" "$tmp/large-prs.json" 2>"$tmp/missing-comparator.err"; then
+          fetch_count_before="$(wc -l < "$tmp/fetch-calls.log")"
+          if FETCH_CALL_LOG="$tmp/fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/missing-comparator-latest.json" "$tmp/fetch-same-prs.sh" "$tmp/missing-comparator.sh" "$tmp/large-prs.json" 2>"$tmp/missing-comparator.err"; then
             echo "missing comparator was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
           grep -Fq "comparator is missing, unreadable or invalid" "$tmp/missing-comparator.err"
+          [[ "$(wc -l < "$tmp/fetch-calls.log")" -eq "$fetch_count_before" ]]
+          [[ ! -e "$tmp/missing-comparator-latest.json" ]]
           printf 'not a valid bash script (\n' > "$tmp/invalid-comparator.sh"
-          if bash "$reconcile" "$tmp/large-prs.json" "$tmp/invalid-comparator-latest.json" "$tmp/fetch-same-prs.sh" "$tmp/invalid-comparator.sh" "$tmp/large-prs.json" 2>"$tmp/invalid-comparator.err"; then
+          fetch_count_before="$(wc -l < "$tmp/fetch-calls.log")"
+          if FETCH_CALL_LOG="$tmp/fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/invalid-comparator-latest.json" "$tmp/fetch-same-prs.sh" "$tmp/invalid-comparator.sh" "$tmp/large-prs.json" 2>"$tmp/invalid-comparator.err"; then
             echo "invalid comparator was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
           grep -Fq "comparator is missing, unreadable or invalid" "$tmp/invalid-comparator.err"
-          if PATH="$tmp/failing-jq:$PATH" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json"; then
+          [[ "$(wc -l < "$tmp/fetch-calls.log")" -eq "$fetch_count_before" ]]
+          [[ ! -e "$tmp/invalid-comparator-latest.json" ]]
+          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/reconcile-jq-failed.err"; then
             echo "injected jq failure was incorrectly accepted by production reconciliation wrapper" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
+          grep -Fq "PR inventory comparison failed (jq exit 42)" "$tmp/reconcile-jq-failed.err"
+          grep -Fq "UNKNOWN: PR inventory comparison failed (exit 2)" "$tmp/reconcile-jq-failed.err"
           if bash "$reconcile" "$tmp/large-prs.json" "$tmp" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/local-open-error.log"; then
             echo "unwritable local snapshot path was incorrectly accepted" >&2; exit 1
           else
