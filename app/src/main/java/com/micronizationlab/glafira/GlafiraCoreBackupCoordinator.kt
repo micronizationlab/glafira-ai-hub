@@ -5,6 +5,14 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 
+class CommittedRestoreCleanupPendingException(
+    val verification: BackupVerification,
+    cause: Throwable
+) : java.io.IOException(
+    "Восстановление завершено, но очистка журнала ожидает recovery; Core остаётся заблокирован.",
+    cause
+)
+
 /** Runtime boundary used by backup maintenance. The production implementation pauses pending delivery and the Core runtime. Only tests that explicitly inject fixture-local hooks bypass those production side effects; tests using the public two-argument constructor still exercise the real pause behavior. */
 internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
@@ -95,8 +103,11 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // If marker publication reached rename but its first directory fsync failed,
                         // recovery below re-syncs this journal before treating it as committed.
                         val commitMarkerNeedsReconfirmation = committedMarker.isFile
+                        var recoveryConfirmedCommit = false
                         val cleanupSucceeded = try {
-                            recoverInterruptedRestore(passphrase)
+                            recoverInterruptedRestore(passphrase) {
+                                recoveryConfirmedCommit = true
+                            }
                             !marker.exists() && !committedMarker.exists()
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
@@ -110,8 +121,14 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // journal for the next recovery pass and report the verified restore result.
                         // A marker whose first directory fsync failed is different: it must be
                         // re-confirmed by recovery before success can be reported.
-                        if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
-                            completedVerification ?: throw error
+                        if (committedThisAttempt || recoveryConfirmedCommit ||
+                            (commitMarkerNeedsReconfirmation && cleanupSucceeded)
+                        ) {
+                            val verification = completedVerification ?: throw error
+                            if (!cleanupSucceeded) {
+                                throw CommittedRestoreCleanupPendingException(verification, error)
+                            }
+                            verification
                         } else throw error
                     }
                 } finally {
@@ -170,12 +187,16 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
     }
 
-    private fun recoverInterruptedRestore(passphrase: CharArray) {
+    private fun recoverInterruptedRestore(
+        passphrase: CharArray,
+        onCommitted: () -> Unit = {}
+    ) {
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
+            onCommitted()
             cleanupCommittedJournal()
             return
         }
