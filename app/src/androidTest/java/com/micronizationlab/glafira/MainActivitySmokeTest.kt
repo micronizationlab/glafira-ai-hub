@@ -34,7 +34,9 @@ class MainActivitySmokeTest {
         UiSmokeTestPreferenceLock.acquire()
         try {
             preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+            recoverInterruptedBiometricPreference(context, preferences)
             originalBiometric = preferences.getBoolean("biometric_enabled", false)
+            persistOriginalBiometricPreference(context, originalBiometric)
             preferenceCaptured = true
         } catch (failure: Throwable) {
             UiSmokeTestPreferenceLock.release()
