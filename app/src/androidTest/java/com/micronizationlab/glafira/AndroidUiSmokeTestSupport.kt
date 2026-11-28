@@ -5,8 +5,15 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import java.io.BufferedReader
+import java.io.BufferedWriter
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.io.RandomAccessFile
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
@@ -57,17 +64,30 @@ internal fun collectHomeScreenDiagnostics(
     device: UiDevice,
     context: Context,
     hierarchyFile: File,
-    waitStatus: String = "not recorded"
+    waitStatus: String = "not recorded",
+    dumpHierarchy: (File) -> Unit = { device.dumpWindowHierarchy(it) }
 ): String {
-    val captureFailure = runCatching { device.dumpWindowHierarchy(hierarchyFile) }.exceptionOrNull()
-    val hierarchy = if (captureFailure != null) {
-        "<dump failed: ${captureFailure.javaClass.simpleName}: ${captureFailure.message}>"
-    } else {
-        val readResult = runCatching {
-            redactSensitiveHierarchyText(readBoundedWindowHierarchy(hierarchyFile))
+    val captureFailure = runCatching { dumpHierarchy(hierarchyFile) }.exceptionOrNull()
+    val hierarchy = try {
+        if (captureFailure != null) {
+            "<dump failed: ${captureFailure.javaClass.simpleName}: ${captureFailure.message}>"
+        } else {
+            val readResult = runCatching {
+                val sanitizedFile = File.createTempFile("android-ui-smoke-redacted-", ".xml", context.cacheDir)
+                try {
+                    redactHierarchyFile(hierarchyFile, sanitizedFile)
+                    readBoundedWindowHierarchy(sanitizedFile)
+                } finally {
+                    eraseAndDelete(sanitizedFile)
+                }
+            }
+            readResult.getOrNull()
+                ?: "<read failed: ${readResult.exceptionOrNull()?.javaClass?.simpleName}: ${readResult.exceptionOrNull()?.message}>"
         }
-        readResult.getOrNull()
-            ?: "<read failed: ${readResult.exceptionOrNull()?.javaClass?.simpleName}: ${readResult.exceptionOrNull()?.message}>"
+    } finally {
+        // UiAutomator's dump is raw XML and may contain revealed vault values. Do not
+        // leave the unredacted source in app cache or uploaded test artifacts.
+        eraseAndDelete(hierarchyFile)
     }
     val recoveryState = runCatching { recoveryPendingForDiagnostics(context).toString() }
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
@@ -104,20 +124,72 @@ internal fun awaitHomeScreen(
  * A diagnostic read must never reclaim a rollback temp file: recovery may be actively
  * decrypting it. Treat any journal or stale temp as pending without mutating filesystem state.
  */
-internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
-    val app = context.applicationContext
-    val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
-    if (Files.isSymbolicLink(journal.toPath()) || Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-        return true
+internal fun recoveryPendingForDiagnostics(context: Context): Boolean =
+    GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
+
+private fun redactHierarchyFile(source: File, destination: File) {
+    val patterns = listOf("text=\\"Пароль:", "content-desc=\\"Пароль:")
+    val maxPatternLength = patterns.maxOf { it.length }
+    BufferedReader(InputStreamReader(FileInputStream(source), Charsets.UTF_8)).use { reader ->
+        BufferedWriter(OutputStreamWriter(FileOutputStream(destination), Charsets.UTF_8)).use { writer ->
+            val window = CharArray(maxPatternLength)
+            while (true) {
+                reader.mark(maxPatternLength)
+                val count = reader.read(window)
+                reader.reset()
+                if (count < 0) break
+                val pattern = patterns.firstOrNull { candidate ->
+                    count >= candidate.length && candidate.indices.all { index -> window[index] == candidate[index] }
+                }
+                if (pattern == null) {
+                    val character = reader.read()
+                    if (character < 0) break
+                    writer.write(character)
+                } else {
+                    repeat(pattern.length) { reader.read() }
+                    writer.write(pattern)
+                    var character = reader.read()
+                    while (character >= 0 && character != '"'.code) {
+                        character = reader.read()
+                    }
+                    writer.write("[REDACTED]")
+                    if (character == '"'.code) writer.write('"'.code)
+                }
+            }
+        }
     }
-    val stale = app.cacheDir.listFiles { file ->
-        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-    }.orEmpty()
-    return stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+}
+
+/** Best-effort overwrite before deleting raw or sanitized hierarchy files from app cache. */
+private fun eraseAndDelete(file: File) {
+    val path = file.toPath()
+    if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return
+    if (Files.isSymbolicLink(path)) {
+        check(file.delete()) { "Could not remove hierarchy diagnostic symlink." }
+        return
+    }
+    if (file.isFile) {
+        RandomAccessFile(file, "rw").use { target ->
+            val zeros = ByteArray(8_192)
+            var remaining = target.length()
+            target.seek(0L)
+            while (remaining > 0L) {
+                val count = minOf(remaining, zeros.size.toLong()).toInt()
+                target.write(zeros, 0, count)
+                remaining -= count
+            }
+            target.fd.sync()
+        }
+    }
+    check(file.delete()) { "Could not remove hierarchy diagnostic file." }
 }
 
 /** Read at most four bytes per output character, preserving the head and tail of huge dumps. */
-internal fun readBoundedWindowHierarchy(file: File, maximumCharacters: Int = 12_000): String {
+internal fun readBoundedWindowHierarchy(
+    file: File,
+    maximumCharacters: Int = 12_000,
+    readRange: (File, Long, Int) -> String = ::readUtf8Range
+): String {
     require(maximumCharacters > 0) { "Hierarchy summary limit must be positive." }
     val maximumBytes = maximumCharacters.toLong() * 4L
     val length = file.length()
@@ -129,17 +201,18 @@ internal fun readBoundedWindowHierarchy(file: File, maximumCharacters: Int = 12_
     require(contentBytes > 0) { "Hierarchy summary limit is too small." }
     val headBytes = contentBytes / 2
     val tailBytes = contentBytes - headBytes
-    fun readRange(offset: Long, byteCount: Int): String =
-        RandomAccessFile(file, "r").use { source ->
-            source.seek(offset)
-            val bytes = ByteArray(byteCount)
-            source.readFully(bytes)
-            String(bytes, Charsets.UTF_8)
-        }
-    val head = readRange(0L, headBytes)
-    val tail = readRange((length - tailBytes).coerceAtLeast(0L), tailBytes)
+    val head = readRange(file, 0L, headBytes)
+    val tail = readRange(file, (length - tailBytes).coerceAtLeast(0L), tailBytes)
     return summarizeWindowHierarchy(head + marker + tail, maximumCharacters)
 }
+
+private fun readUtf8Range(file: File, offset: Long, byteCount: Int): String =
+    RandomAccessFile(file, "r").use { source ->
+        source.seek(offset)
+        val bytes = ByteArray(byteCount)
+        source.readFully(bytes)
+        String(bytes, Charsets.UTF_8)
+    }
 
 /** Remove revealed password-vault values before hierarchy text can enter JUnit artifacts. */
 internal fun redactSensitiveHierarchyText(hierarchy: String): String {
