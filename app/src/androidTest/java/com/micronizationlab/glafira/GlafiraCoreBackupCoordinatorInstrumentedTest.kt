@@ -430,6 +430,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         runId: String,
         beforeJournalDeletion: () -> Unit = {}
     ) {
+        check(fixtureLifetimeFileLock?.isValid == true) {
+            "No-follow rollback-journal cleanup requires the fixture lifetime lock."
+        }
         val fixtureRoot = testRoot.toPath().toAbsolutePath().normalize()
         val noBackupRoot = context.noBackupFilesDir.toPath().toAbsolutePath().normalize()
         val expectedNoBackupRoot = fixtureRoot.resolve("no-backup")
