@@ -84,9 +84,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
         runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 recoverInterruptedRestore(passphrase)
-                // Commit state is local to this restore attempt; a prior cleanup failure must
-                // never make a later rollback look like a successful restore.
                 var committedThisAttempt = false
+                var primaryRestoreFailure: Exception? = null
                 val selected = File(app.cacheDir, "glafira-selected-${UUID.randomUUID()}.glb")
                 try {
                     require(archive.isFile && archive.length() in 1..MAX_ARCHIVE_BYTES)
@@ -107,14 +106,17 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         recoverPendingAfterRestore(app)
                         runtimeHooks.pauseForRestore(app)
                         checkpointDatabase()
-                        clearJournal { committedThisAttempt = true }
+                        clearJournal(
+                            onCommitted = { committedThisAttempt = true },
+                            onSnapshotCleaned = { recoveryCleanedSnapshot = true }
+                        )
                         verification
                     } catch (error: Exception) {
-                        // If marker publication reached rename but its first directory fsync failed,
-                        // recovery below re-syncs this journal before treating it as committed.
                         val commitMarkerNeedsReconfirmation = committedMarker.isFile
                         val cleanupSucceeded = try {
-                            recoveryCleanedSnapshot = recoverInterruptedRestore(passphrase)
+                            recoverInterruptedRestore(passphrase) {
+                                recoveryCleanedSnapshot = true
+                            }
                             !marker.exists() && !committedMarker.exists()
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
@@ -122,26 +124,53 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         }
                         if (!recoveryCleanedSnapshot) {
                             try {
-                                deleteCommittedPortableSnapshot()
+                                deleteCommittedPortableSnapshot {
+                                    recoveryCleanedSnapshot = true
+                                }
                             } catch (cleanup: Exception) {
                                 error.addSuppressed(cleanup)
                             }
                         }
-                        // A marker seen here belongs to this attempt: any previous journal was
-                        // recovered before the selected archive was read. Successful re-sync and
-                        // cleanup therefore confirm this attempt's durable commit.
-                        // Once this attempt's commit marker was fsynced, cleanup failure is
-                        // not a restore failure: the selected data is committed. Leave the durable
-                        // journal for the next recovery pass and report the verified restore result.
-                        // A marker whose first directory fsync failed is different: it must be
-                        // re-confirmed by recovery before success can be reported.
+                        if (committedThisAttempt && !cleanupSucceeded) {
+                            throw IOException(
+                                "Восстановление зафиксировано, но очистка журнала не завершена; Core остаётся заблокирован до recovery.",
+                                error
+                            )
+                        }
                         if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
                             completedVerification ?: throw error
-                        } else throw error
+                        } else {
+                            throw error
+                        }
                     }
+                } catch (error: Exception) {
+                    primaryRestoreFailure = error
+                    throw error
                 } finally {
-                    selected.delete()
-                    File(app.filesDir, ".glafira-core-snapshot").deleteRecursively()
+                    try {
+                        if (selected.exists()) check(selected.delete()) {
+                            "Не удалось удалить временную копию выбранного архива."
+                        }
+                        cleanupPortableSnapshotPreservingUnexpected()
+                    } catch (cleanup: Exception) {
+                        val primary = primaryRestoreFailure
+                        if (primary != null) {
+                            primary.addSuppressed(cleanup)
+                            if (committedThisAttempt) {
+                                throw IOException(
+                                    "Восстановление зафиксировано, но очистка временных данных не завершена.",
+                                    primary
+                                )
+                            }
+                        } else if (committedThisAttempt) {
+                            throw IOException(
+                                "Восстановление зафиксировано, но очистка временных данных не завершена.",
+                                cleanup
+                            )
+                        } else {
+                            throw cleanup
+                        }
+                    }
                 }
             } }
         }
