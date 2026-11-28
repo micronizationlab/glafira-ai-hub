@@ -91,15 +91,14 @@ class MainActivitySmokeTest {
     fun startupDiagnosticsRetainGatesWhenWindowHierarchyCannotBeWritten() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        prepareUnlockedHome(context)
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val previousBiometric = preferences.getBoolean("biometric_enabled", false)
-        assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
-        val device = UiDevice.getInstance(instrumentation)
-        val parentFile = File(context.cacheDir, "ui-smoke-hierarchy-parent-file").apply {
-            writeText("not a directory", Charsets.UTF_8)
-        }
+        val parentFile = File(context.cacheDir, "ui-smoke-hierarchy-parent-file")
         try {
+            prepareUnlockedHome(context)
+            assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
+            parentFile.writeText("not a directory", Charsets.UTF_8)
+            val device = UiDevice.getInstance(instrumentation)
             val impossibleHierarchy = File(parentFile, "window.xml")
             val diagnostics = collectHomeScreenDiagnostics(device, context, impossibleHierarchy)
             assertTrue("Recovery gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("recovery=false"))
@@ -108,8 +107,13 @@ class MainActivitySmokeTest {
             assertTrue(diagnostics.contains("hierarchyPath="))
             assertTrue(diagnostics.contains("dump failed:") || diagnostics.contains("read failed:"))
         } finally {
-            parentFile.delete()
-            preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
+            try {
+                parentFile.delete()
+            } finally {
+                check(preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()) {
+                    "Could not restore biometric preference after startup diagnostics test"
+                }
+            }
         }
     }
 
