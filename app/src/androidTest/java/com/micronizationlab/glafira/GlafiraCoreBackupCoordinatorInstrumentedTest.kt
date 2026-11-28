@@ -799,7 +799,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             val marker = rollbackOwnerMarker()
                             if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
                                 val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-                                val journalOwner = File(journal, "test-owner")
                                 if (primaryFailure != null && (rollbackJournalPathPresent(journal) || rollbackKeyExists())) {
                                     throw IllegalStateException(
                                         "Preserving fixture root, journal and fixture key after a failed test."
