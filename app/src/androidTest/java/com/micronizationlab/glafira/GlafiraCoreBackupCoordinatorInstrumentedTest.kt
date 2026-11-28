@@ -914,6 +914,42 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun restoreTempCleanupRetriesParentSyncAfterFileWasAlreadyDeleted() {
+        val relative = "restore-fsync-fixture-$testRunId.restore-tmp"
+        val replacement = File(context.filesDir, relative)
+        val syncedDirectories = mutableListOf<File>()
+        var failFirstSync = true
+        try {
+            BackupArchive.registerRestoreReplacementTemp(context, relative)
+            replacement.writeText("owned decrypted fixture")
+            assertThrows(IOException::class.java) {
+                BackupArchive.cleanupRestoreReplacementTemps(context) { directory ->
+                    if (failFirstSync) {
+                        failFirstSync = false
+                        throw IOException("injected parent directory fsync failure")
+                    }
+                    syncedDirectories += directory
+                }
+            }
+            assertFalse("The first cleanup attempt deletes the owned temp before fsync fails", replacement.exists())
+            assertTrue("The registry must remain until the parent deletion is durable",
+                BackupArchive.hasRestoreReplacementTemps(context))
+            BackupArchive.cleanupRestoreReplacementTemps(context) { directory ->
+                syncedDirectories += directory
+            }
+            assertTrue(
+                "Retry must fsync the parent directory even though the temp file is already absent",
+                syncedDirectories.any { it.canonicalFile == context.filesDir.canonicalFile }
+            )
+            assertFalse("A successful retry removes the registry and clears recovery pending",
+                BackupArchive.hasRestoreReplacementTemps(context))
+        } finally {
+            check(!replacement.exists() || replacement.delete())
+            runCatching { BackupArchive.cleanupRestoreReplacementTemps(context) }
+        }
+    }
+
+    @Test
     fun sharedInterruptedRestoreGuardRejectsJournalSymlinkWithoutMarkers() {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val target = File(context.cacheDir, "markerless-journal-symlink-target").apply { check(mkdirs()) }
