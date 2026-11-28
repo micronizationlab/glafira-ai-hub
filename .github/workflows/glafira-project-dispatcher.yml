@@ -99,28 +99,37 @@ jobs:
             }
           }'
           graphql_error="$RUNNER_TEMP/glafira-open-prs-graphql-error.log"
-          if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")" && jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null <<< "$pages"; then
-            jq -s '[
-              .[].data.repository.pullRequests.nodes[] |
-              {
-                number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
-                statusCheckRollup: [
-                  .statusCheckRollup.contexts.nodes[]? |
-                  {
-                    name: (.name // .context // "check"),
-                    status: (.status // .state // "unknown"),
-                    conclusion: (.conclusion // null),
-                    detailsUrl: (.detailsUrl // .targetUrl // "")
-                  }
-                ]
-              }
-            ]' <<< "$pages"
-            exit 0
+          validation_error="$RUNNER_TEMP/glafira-open-prs-graphql-validation-error.log"
+          if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
+            if jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null 2>"$validation_error" <<< "$pages"; then
+              jq -s '[
+                .[].data.repository.pullRequests.nodes[] |
+                {
+                  number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
+                  statusCheckRollup: [
+                    .statusCheckRollup.contexts.nodes[]? |
+                    {
+                      name: (.name // .context // "check"),
+                      status: (.status // .state // "unknown"),
+                      conclusion: (.conclusion // null),
+                      detailsUrl: (.detailsUrl // .targetUrl // "")
+                    }
+                  ]
+                }
+              ]' <<< "$pages"
+              exit 0
+            else
+              jq_status=$?
+              graphql_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+              printf 'UNKNOWN: GraphQL response validation failed (jq exit %s); REST offset fallback is disabled. %s\n' \
+                "$jq_status" "${graphql_detail:-jq rejected the GraphQL response without stderr.}" >&2
+              exit 1
+            fi
           else
-            graphql_status=$?
+            gh_status=$?
             graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
-            printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
-              "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
+            printf 'UNKNOWN: GraphQL cursor-based open-PR request failed (gh exit %s); REST offset fallback is disabled. %s\n' \
+              "$gh_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
             exit 1
           fi
           FETCH
@@ -347,11 +356,35 @@ jobs:
           [[ "$(cat "$tmp/gh-calls.log")" == "graphql" ]]
           grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
           grep -Fq "exit 23" "$tmp/graphql-outage.err"
-          grep -Fq "[REDACTED]" "$tmp/graphql-outage.err"
+          grep -Fq "[REDACTED] [REDACTED]" "$tmp/graphql-outage.err"
+          grep -Eq '\[REDACTED\] \[REDACTED\]$' "$tmp/graphql-outage.err"
           if grep -Eq 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_-]{20,}' "$tmp/graphql-outage.err"; then
             echo "raw synthetic credential reached the sanitized diagnostic" >&2; exit 1
           fi
           echo "validated sanitized GraphQL outage diagnostic: $(cat "$tmp/graphql-outage.err")"
+          # A valid gh response followed by jq validation failure must have a distinct diagnostic.
+          mkdir -p "$tmp/fake-gh" "$tmp/failing-validation-jq"
+          cat > "$tmp/fake-gh/gh" <<'GH_VALID'
+          #!/usr/bin/env bash
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            printf '%s\n' '{"data":{"repository":{"pullRequests":{"nodes":[]}}}}'
+            exit 0
+          fi
+          exit 99
+          GH_VALID
+          cat > "$tmp/failing-validation-jq/jq" <<'JQ_VALIDATE'
+          #!/usr/bin/env bash
+          exit 42
+          JQ_VALIDATE
+          chmod +x "$tmp/fake-gh/gh" "$tmp/failing-validation-jq/jq"
+          if PATH="$tmp/fake-gh:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "$repo" > "$tmp/graphql-validation.out" 2>"$tmp/graphql-validation.err"; then
+            echo "jq response-validation failure was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ ! -s "$tmp/graphql-validation.out" ]]
+          grep -Fq "GraphQL response validation failed (jq exit 42)" "$tmp/graphql-validation.err"
+          echo "GraphQL request and jq response-validation failures are distinguished: PASS"
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
@@ -459,7 +492,10 @@ jobs:
           reconcile="$RUNNER_TEMP/reconcile-pr-inventory.sh"
           cat > "$tmp/fetch-same-prs.sh" <<'FETCH_SAME'
           #!/usr/bin/env bash
-          echo invoked >> "$FETCH_CALL_LOG"
+          set -euo pipefail
+          if [[ -n "${FETCH_CALL_LOG:-}" ]]; then
+            printf 'invoked\n' >> "$FETCH_CALL_LOG"
+          fi
           cat "$1"
           FETCH_SAME
           cat > "$tmp/fetch-failed-prs.sh" <<'FETCH_FAIL'
@@ -469,14 +505,17 @@ jobs:
           chmod +x "$tmp/fetch-same-prs.sh" "$tmp/fetch-failed-prs.sh"
           reconcile_result="$(FETCH_CALL_LOG="$tmp/comparator-fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-latest.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json")"
           [[ "$reconcile_result" == "UNCHANGED" ]]
+          [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 1 ]]
           changed_result="$(FETCH_CALL_LOG="$tmp/comparator-fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-changed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs-head-delta.json")"
           [[ "$changed_result" == "CHANGED" ]]
+          [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 2 ]]
           if bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-fetch-failed.json" "$tmp/fetch-failed-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/second-fetch-error.log"; then
             echo "second PR inventory fetch failure was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
           grep -Fq "second PR inventory fetch failed" "$tmp/second-fetch-error.log"
+          [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 2 ]]
           if FETCH_CALL_LOG="$tmp/comparator-fetch-calls.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/missing-comparator-latest.json" "$tmp/fetch-same-prs.sh" "$tmp/missing-comparator.sh" "$tmp/large-prs.json" 2>"$tmp/missing-comparator.err"; then
             echo "missing comparator was incorrectly accepted" >&2; exit 1
           else
@@ -494,11 +533,21 @@ jobs:
           grep -Fq "comparator is missing, unreadable or invalid" "$tmp/invalid-comparator.err"
           [[ ! -e "$tmp/invalid-comparator-latest.json" ]]
           [[ "$(wc -l < "$tmp/comparator-fetch-calls.log")" -eq 2 ]]
-          if PATH="$tmp/failing-jq:$PATH" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json"; then
+          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/jq-failed-fetch.log" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/reconcile-jq-failed.err"; then
             echo "injected jq failure was incorrectly accepted by production reconciliation wrapper" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
+          grep -Fq "UNKNOWN: PR inventory comparison failed" "$tmp/reconcile-jq-failed.err"
+          [[ "$(wc -l < "$tmp/jq-failed-fetch.log")" -eq 1 ]]
+          [[ ! -e "$tmp/reconcile-jq-failed.json" ]]
+          mkdir -p "$tmp/unwritable-fetch-log"
+          if FETCH_CALL_LOG="$tmp/unwritable-fetch-log/missing/calls.log" bash "$tmp/fetch-same-prs.sh" "$tmp/large-prs.json" > "$tmp/fetch-log-failure.out" 2>/dev/null; then
+            echo "fixture fetch succeeded despite an unwriteable invocation log" >&2; exit 1
+          else
+            [[ "$?" -ne 0 ]]
+          fi
+          [[ ! -s "$tmp/fetch-log-failure.out" ]]
           if bash "$reconcile" "$tmp/large-prs.json" "$tmp" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json" 2>"$tmp/local-open-error.log"; then
             echo "unwritable local snapshot path was incorrectly accepted" >&2; exit 1
           else
