@@ -561,8 +561,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
                 val stale = app.cacheDir.listFiles { file ->
                     file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
                 } ?: throw IOException("Не удалось проверить каталог временных снимков восстановления.")
+                val portableSnapshotDirectory = File(app.filesDir, ".glafira-core-snapshot")
                 stale.any { pathExistsNoFollow(it.toPath()) } ||
-                    BackupArchive.hasRestoreReplacementTemps(app)
+                    BackupArchive.hasRestoreReplacementTemps(app) ||
+                    pathExistsNoFollow(portableSnapshotDirectory.toPath())
             }.getOrDefault(true)
         }
     }
