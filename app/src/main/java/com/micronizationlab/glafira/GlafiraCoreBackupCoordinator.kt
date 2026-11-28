@@ -103,7 +103,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // recovery below re-syncs this journal before treating it as committed.
                         val commitMarkerNeedsReconfirmation = committedMarker.isFile
                         val cleanupSucceeded = try {
-                            recoverInterruptedRestore(passphrase)
+                            recoverInterruptedRestore(passphrase) { committedThisAttempt = true }
                             !marker.exists() && !committedMarker.exists()
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
@@ -181,12 +181,14 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
     }
 
-    private fun recoverInterruptedRestore(passphrase: CharArray) {
+    private fun recoverInterruptedRestore(passphrase: CharArray, onCommitted: () -> Unit = {}) {
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
-            // Re-sync this exact journal before deleting rollback evidence, including
-            // when recovery runs through a newly constructed coordinator.
+            require(committedMarker.isFile && committedMarker.readText(Charsets.UTF_8) == COMMITTED_VALUE) {
+                "Некорректная отметка завершения восстановления; журнал сохранён."
+            }
             syncDirectory(journal)
+            onCommitted()
             cleanupCommittedJournal()
             return
         }
