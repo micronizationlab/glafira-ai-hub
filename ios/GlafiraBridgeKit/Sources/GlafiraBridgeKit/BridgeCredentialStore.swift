@@ -342,8 +342,11 @@ private struct StrictJSONStructureValidator {
             let byte = bytes[index]
             if byte == 0x22 {
                 index += 1
-                guard decodeValue else { return nil }
                 let encoded = Data(bytes[start..<index])
+                guard String(data: encoded, encoding: .utf8) != nil else {
+                    throw BridgeHubBindingPersistenceError.invalidPayload
+                }
+                guard decodeValue else { return nil }
                 guard let value = try? stringDecoder.decode(String.self, from: encoded) else {
                     throw BridgeHubBindingPersistenceError.invalidPayload
                 }
@@ -353,17 +356,51 @@ private struct StrictJSONStructureValidator {
             if byte == 0x5C {
                 index += 1
                 guard index < bytes.count else { throw BridgeHubBindingPersistenceError.invalidPayload }
-                if bytes[index] == 0x75 {
-                    guard index + 4 < bytes.count else { throw BridgeHubBindingPersistenceError.invalidPayload }
-                    index += 5
-                } else {
+                switch bytes[index] {
+                case 0x22, 0x5C, 0x2F, 0x62, 0x66, 0x6E, 0x72, 0x74:
                     index += 1
+                case 0x75:
+                    let firstUnit = try parseHexQuad(at: index + 1)
+                    index += 5
+                    if (0xD800...0xDBFF).contains(firstUnit) {
+                        guard index + 5 < bytes.count,
+                              bytes[index] == 0x5C, bytes[index + 1] == 0x75 else {
+                            throw BridgeHubBindingPersistenceError.invalidPayload
+                        }
+                        let secondUnit = try parseHexQuad(at: index + 2)
+                        guard (0xDC00...0xDFFF).contains(secondUnit) else {
+                            throw BridgeHubBindingPersistenceError.invalidPayload
+                        }
+                        index += 6
+                    } else if (0xDC00...0xDFFF).contains(firstUnit) {
+                        throw BridgeHubBindingPersistenceError.invalidPayload
+                    }
+                default:
+                    throw BridgeHubBindingPersistenceError.invalidPayload
                 }
             } else {
                 index += 1
             }
         }
         throw BridgeHubBindingPersistenceError.invalidPayload
+    }
+
+    private func parseHexQuad(at offset: Int) throws -> UInt16 {
+        guard offset >= 0, offset + 4 <= bytes.count else {
+            throw BridgeHubBindingPersistenceError.invalidPayload
+        }
+        var value: UInt16 = 0
+        for byte in bytes[offset..<(offset + 4)] {
+            let digit: UInt16
+            switch byte {
+            case 0x30...0x39: digit = UInt16(byte - 0x30)
+            case 0x41...0x46: digit = UInt16(byte - 0x41 + 10)
+            case 0x61...0x66: digit = UInt16(byte - 0x61 + 10)
+            default: throw BridgeHubBindingPersistenceError.invalidPayload
+            }
+            value = (value << 4) | digit
+        }
+        return value
     }
 
     private mutating func parsePrimitive() throws {
