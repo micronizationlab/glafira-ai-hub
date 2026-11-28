@@ -429,7 +429,7 @@ jobs:
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             token_one="$(printf '%s' 'ghp_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')"
             token_two="$(printf '%s' 'github_pat_' '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-' '0123456789')"
-            printf 'punctuation-adjacent credentials: (%s), (%s)\\n' "$token_one" "$token_two" >&2
+            printf 'punctuation-adjacent credentials: (%s), (%s)\n' "$token_one" "$token_two" >&2
             exit 23
           fi
           exit 99
