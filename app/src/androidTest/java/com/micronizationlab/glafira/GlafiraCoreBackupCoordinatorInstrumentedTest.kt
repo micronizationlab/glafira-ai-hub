@@ -1566,17 +1566,22 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val missingTarget = File(context.cacheDir, "missing-committed-journal-target-$testRunId")
         try {
-            fixtureRuntimeHooks.danglingSymlinkJournal = journal
-            fixtureRuntimeHooks.danglingSymlinkTarget = missingTarget
-            val verification = isolatedCoordinator().restore(archive, passphrase)
-            assertTrue("A dangling symlink at the committed journal path requires recovery", verification.recoveryRequired)
-            assertTrue("The injected journal path remains a symbolic link", Files.isSymbolicLink(journal.toPath()))
-            assertTrue("Core preflight rejects the dangling journal symlink", GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-            assertFalse("The dangling link target is never created or followed", missingTarget.exists())
+            withOwnedRollbackKey {
+                try {
+                    fixtureRuntimeHooks.danglingSymlinkJournal = journal
+                    fixtureRuntimeHooks.danglingSymlinkTarget = missingTarget
+                    val verification = isolatedCoordinator().restore(archive, passphrase)
+                    assertTrue("A dangling symlink at the committed journal path requires recovery", verification.recoveryRequired)
+                    assertTrue("The injected journal path remains a symbolic link", Files.isSymbolicLink(journal.toPath()))
+                    assertTrue("Core preflight rejects the dangling journal symlink", GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+                    assertFalse("The dangling link target is never created or followed", missingTarget.exists())
+                } finally {
+                    fixtureRuntimeHooks.danglingSymlinkJournal = null
+                    fixtureRuntimeHooks.danglingSymlinkTarget = null
+                    if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
+                }
+            }
         } finally {
-            fixtureRuntimeHooks.danglingSymlinkJournal = null
-            fixtureRuntimeHooks.danglingSymlinkTarget = null
-            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
             archive.delete()
             passphrase.fill('\u0000')
         }
