@@ -173,7 +173,18 @@ class GlafiraCoreBackupCoordinator internal constructor(
             syncDirectory(journal)
             syncDirectory(app.noBackupFilesDir)
         } catch (error: Exception) {
-            if (!marker.exists()) journal.deleteRecursively()
+            if (!marker.exists()) {
+                try {
+                    check(journal.deleteRecursively()) {
+                        "Не удалось удалить незавершённый журнал подготовки отката."
+                    }
+                    // No pending marker means live files were never replaced; once the
+                    // partial journal is gone its writer-specific Keystore key is disposable.
+                    rollbackCipher.deleteKey()
+                } catch (cleanup: Exception) {
+                    error.addSuppressed(cleanup)
+                }
+            }
             throw error
         }
     }
