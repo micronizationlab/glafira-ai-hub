@@ -803,7 +803,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                     "Refusing to inspect or clean a rollback journal through a symbolic-link path."
                                 }
                                 val journalExists = Files.exists(journalPath, LinkOption.NOFOLLOW_LINKS)
-                                val journalOwner = File(journal, "test-owner")
+                                // Fixture ownership metadata is external; production recovery must never
+            // interpret a test-only journal entry as disposable rollback evidence.
+            val journalOwner = File(context.noBackupFilesDir, "glafira-v3-reentry-journal-owner")
                                 if (primaryFailure != null && (journalExists || rollbackKeyExists())) {
                                     throw IllegalStateException(
                                         "Preserving fixture root, journal and fixture key after a failed test."
@@ -1642,6 +1644,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             }
                             check(!knownGood.exists() || knownGood.delete())
                             check(!createdAfterMarker.exists() || createdAfterMarker.delete())
+                            check(!journalOwner.exists() || journalOwner.delete())
                             check(owner.delete())
                         }
                         assertFalse("Refuse to overwrite an unowned journal", journal.exists())
