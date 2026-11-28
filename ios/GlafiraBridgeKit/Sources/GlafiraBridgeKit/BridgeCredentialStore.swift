@@ -292,7 +292,6 @@ private struct StrictJSONStructureValidator {
     private let maximumDepth: Int
     private var index = 0
     private var duplicateKeyFound = false
-    private var duplicateKeyFound = false
 
     init(bytes: [UInt8], maximumDepth: Int) {
         self.bytes = bytes
