@@ -38,11 +38,13 @@ class BackupSettingsSmokeTest {
         )
         try {
             val device = UiDevice.getInstance(instrumentation)
+            awaitHomeScreen(device, context)
             assertTrue(
-                "GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
+                "Settings action did not become accessible after workspace readiness",
+                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 10_000)
             )
             val settingsButton = device.findObject(By.descContains("Открыть настройки"))
+                ?: error("Settings action disappeared after readiness wait")
             assertTrue(
                 "Settings action is not visible",
                 settingsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
