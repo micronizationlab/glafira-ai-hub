@@ -378,7 +378,7 @@ jobs:
           exit 42
           JQ_VALIDATE
           chmod +x "$tmp/fake-gh/gh" "$tmp/failing-validation-jq/jq"
-          if PATH="$tmp/fake-gh:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "$repo" > "$tmp/graphql-validation.out" 2>"$tmp/graphql-validation.err"; then
+          if PATH="$tmp/fake-gh:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-validation.out" 2>"$tmp/graphql-validation.err"; then
             echo "jq response-validation failure was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
