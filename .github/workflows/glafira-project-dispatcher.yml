@@ -671,7 +671,7 @@ jobs:
           if grep -Fq "Dispatcher fixture failed" "$RUNNER_TEMP/dispatcher-forced-failure.err"; then
             echo "expected child failure leaked as an ERR-trap fixture failure" >&2; exit 1
           fi
-          echo "dispatcher ERR trap preserves originating probe name and exit 37: PASS"
+          echo "dispatcher expected child failure reports exit 37 without triggering ERR trap: PASS"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
           TEST
           bash "$RUNNER_TEMP/test-renderer.sh"
