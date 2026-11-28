@@ -202,6 +202,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     /** Returns true when journal recovery already performed portable-snapshot cleanup. */
     private fun recoverInterruptedRestore(passphrase: CharArray): Boolean {
+        check(!Files.isSymbolicLink(journal.toPath())) {
+            "Обнаружена символическая ссылка вместо журнала восстановления; чтение и очистка остановлены."
+        }
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
             // Re-sync this exact journal before deleting rollback evidence, including
