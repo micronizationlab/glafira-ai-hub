@@ -136,7 +136,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     }
                     val installationMarker = rollbackOwnerMarker()
                     val fixtureJournal = File(testRoot, "no-backup/glafira-restore-journal")
-                    check(!installationMarker.exists() && !fixtureJournal.exists()) {
+                    check(!installationMarker.exists() && !rollbackJournalPathPresent(fixtureJournal)) {
                         "Preserving fixture root because rollback ownership/recovery evidence remains."
                     }
                     checkFixtureRootOwnership(testRunId, testRoot)
@@ -428,7 +428,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun deleteOwnedRollbackJournalWithoutFollowingLinks(
         journal: File,
         runId: String,
-        beforeJournalDeletion: () -> Unit = {}
+        afterJournalDeletion: () -> Unit = {}
     ) {
         check(fixtureLifetimeFileLock?.isValid == true) {
             "No-follow rollback-journal cleanup requires the fixture lifetime lock."
@@ -469,11 +469,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         check(recordedOwner == runId) {
             "Refusing to delete a rollback journal owned by another fixture."
         }
-        // Key deletion is deliberately first. If it fails, the journal and its owner
-        // proof remain. Only after it succeeds do we remove the journal without following links.
-        beforeJournalDeletion()
+        // Keep the key until the journal is durably removed. Root/alias owner markers
+        // live outside the journal and remain until the caller clears them after key deletion.
         deleteTreeWithoutFollowingLinks(expectedJournal)
         syncMarkerDirectory(expectedNoBackupRoot.toFile())
+        afterJournalDeletion()
     }
 
     private fun fixtureKeyOwnerMarker(alias: String, runId: String): File {
@@ -579,7 +579,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 ) return@forEach
             }
             val journal = File(root, "no-backup/glafira-restore-journal")
-            if (journal.exists()) return@forEach
+            if (rollbackJournalPathPresent(journal)) return@forEach
             GlafiraRollbackSnapshotCipher(alias).deleteKey()
             if (root.exists()) {
                 deleteTreeWithoutFollowingLinks(root.toPath())
@@ -771,21 +771,29 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
-    fun ownedJournalCleanupKeepsJournalWhenRollbackKeyDeletionFails() {
+    fun ownedJournalCleanupKeepsExternalOwnerProofWhenRollbackKeyDeletionFails() {
         val runId = testRunId
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdir()) }
-        val owner = File(journal, "test-owner").apply { writeText(runId) }
+        File(journal, "test-owner").writeText(runId)
+        val source = File(context.cacheDir, "rollback-key-cleanup-source-$runId").apply { writeText("key-canary") }
+        val encrypted = File(context.cacheDir, "rollback-key-cleanup-encrypted-$runId")
+        val externalOwner = rollbackOwnerMarker()
         try {
-            assertThrows(IllegalStateException::class.java) {
-                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) {
-                    throw IllegalStateException("injected rollback key deletion failure")
-                }
+            rollbackCipher.encrypt(source, encrypted)
+            assertTrue("Rollback key exists before cleanup", rollbackCipher.keyExists())
+            val injected = IllegalStateException("injected rollback key deletion failure")
+            val caught = assertThrows(IllegalStateException::class.java) {
+                deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) { throw injected }
             }
-            assertTrue("Journal remains as recovery proof when key deletion fails", journal.isDirectory)
-            assertTrue("Owner marker remains as recovery proof", owner.isFile)
+            org.junit.Assert.assertSame("The injected key-deletion failure must be the caught exception", injected, caught)
+            assertFalse("Journal is removed and parent is synced before key deletion", rollbackJournalPathPresent(journal))
+            assertTrue("External owner marker remains so key cleanup can be retried", externalOwner.isFile)
+            assertTrue("Rollback key remains after injected deletion failure", rollbackCipher.keyExists())
         } finally {
-            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
-            else if (journal.exists()) deleteTreeWithoutFollowingLinks(journal.toPath())
+            rollbackCipher.deleteKey()
+            source.delete()
+            encrypted.delete()
+            if (rollbackJournalPathPresent(journal)) deleteTreeWithoutFollowingLinks(journal.toPath())
         }
     }
 
