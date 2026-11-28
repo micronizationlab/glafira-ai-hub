@@ -46,10 +46,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var testRunId: String
     private var fixtureLifetimeFile: RandomAccessFile? = null
     private var fixtureLifetimeFileLock: java.nio.channels.FileLock? = null
-    private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
+    private inner class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
         var pauseCount = 0
+        var stagingDirectorySyncCalls = 0
+        var stagingDirectorySyncCompletedCalls = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
             return block()
@@ -61,6 +63,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
                 throw IOException("injected interruption before committed journal cleanup")
+            }
+        }
+        override fun beforeDirectorySync(directory: File) {
+            if (directory.absoluteFile == File(context.filesDir, ".glafira-core-snapshot").absoluteFile) {
+                stagingDirectorySyncCalls++
+            }
+        }
+        override fun afterDirectorySync(directory: File) {
+            if (directory.absoluteFile == File(context.filesDir, ".glafira-core-snapshot").absoluteFile) {
+                stagingDirectorySyncCompletedCalls++
             }
         }
     }
@@ -76,6 +88,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             testRunId = UUID.randomUUID().toString()
             fixtureRuntimeHooks.pauseContexts.clear()
             fixtureRuntimeHooks.pauseCount = 0
+            fixtureRuntimeHooks.stagingDirectorySyncCalls = 0
+            fixtureRuntimeHooks.stagingDirectorySyncCompletedCalls = 0
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -1581,6 +1595,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue("Unexpected staging data remains available for owner inspection", unexpectedStagingData.isFile)
             assertEquals("must-survive", unexpectedStagingData.readText())
             assertFalse("Known plaintext export is deleted even when unrelated staging data exists", plaintextExport.exists())
+            assertEquals("The staging directory is fsynced immediately after plaintext unlink", 1,
+                fixtureRuntimeHooks.stagingDirectorySyncCompletedCalls)
             assertTrue("Journal remains committed until unexpected staging data is handled", committed.isFile)
             assertTrue("The cleanup error identifies the unexpected staging data",
                 blockedCleanup.message.orEmpty().contains("посторонними данными"))
