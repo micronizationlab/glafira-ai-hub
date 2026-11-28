@@ -1769,7 +1769,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 assertFalse("The immediate retry removes the committed journal", journal.exists())
                 assertFalse("No recovery remains pending after successful retry",
                     GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-                assertTrue("The selected archive's task remains restored", store.getTask("restore-cleanup-pending") != null)
+                store.close()
+                store = GlafiraTaskStore(context)
+                assertTrue("The selected archive's task remains restored in the reopened database",
+                    store.getTask("restore-cleanup-pending") != null)
             }
         } finally {
             fixtureRuntimeHooks.failCommittedCleanupCount = 0
@@ -1851,6 +1854,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
                     isolatedCoordinator().recover(passphrase)
                 }
+                // The injected runtime hook does not reopen Core for us; inspect the
+                // recovered snapshot through a fresh SQLite connection.
+                store.close()
+                store = GlafiraTaskStore(context)
                 assertEquals(expectedTask, store.getTask("known-good-before-marker"))
                 assertNull(store.getTask("mutated-after-marker"))
                 assertEquals("known-good-before-marker", knownGood.readText(Charsets.UTF_8))
