@@ -124,12 +124,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // A marker whose first directory fsync failed is different: it must be
                         // re-confirmed by recovery before success can be reported.
                         if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
-                            completedVerification ?: throw error
+                            val verified = completedVerification ?: throw error
+                            if (marker.isFile || committedMarker.isFile) verified.copy(recoveryRequired = true) else verified
                         } else throw error
                     }
                 } finally {
                     selected.delete()
-                    File(app.filesDir, ".glafira-core-snapshot").deleteRecursively()
                 }
             } }
         }
