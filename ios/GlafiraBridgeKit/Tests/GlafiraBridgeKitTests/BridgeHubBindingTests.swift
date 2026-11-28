@@ -212,6 +212,17 @@ final class BridgeHubBindingTests: XCTestCase {
         }
     }
 
+    func testPersistencePreservesInt64MaximumTimestampValidationError() throws {
+        let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
+        let payload = validJSON.replacingOccurrences(
+            of: "\\"enrolledAtEpochMs\\":\\(enrolledAt)",
+            with: "\\"enrolledAtEpochMs\\":\\(Int64.max)"
+        )
+        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(payload.utf8))) { error in
+            XCTAssertEqual(error as? BridgeHubBindingError, .invalidBinding)
+        }
+    }
+
     func testPersistenceRejectsNonIntegerNumericTokens() throws {
         let validJSON = String(data: try BridgeHubBindingPersistence.encode(binding()), encoding: .utf8)!
         let expiresAt = enrolledAt + oneHour
