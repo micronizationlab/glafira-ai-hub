@@ -186,18 +186,21 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     /** Returns true when journal recovery already performed portable-snapshot cleanup. */
     private fun recoverInterruptedRestore(passphrase: CharArray): Boolean {
-        check(!Files.isSymbolicLink(journal.toPath())) {
-            "Обнаружена символическая ссылка вместо журнала восстановления; чтение и очистка остановлены."
+        if (Files.isSymbolicLink(journal.toPath())) {
+            throw IOException("Обнаружена символическая ссылка вместо журнала восстановления; чтение и очистка остановлены.")
+        }
+        if (Files.isSymbolicLink(marker.toPath()) || Files.isSymbolicLink(committedMarker.toPath())) {
+            throw IOException("Обнаружена символическая ссылка вместо маркера восстановления; откатные данные сохранены.")
         }
         cleanupStaleDecryptedRollbackSnapshots()
-        if (committedMarker.exists()) {
+        if (Files.exists(committedMarker.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
             cleanupCommittedJournal()
             return true
         }
-        if (!marker.exists()) return false
+        if (!Files.exists(marker.toPath(), LinkOption.NOFOLLOW_LINKS)) return false
         require(safetyArchive.isFile && safetyDatabase.isFile) { "Повреждён журнал восстановления; Core заблокирован." }
         val markerVersion = marker.readText(Charsets.UTF_8).trim()
         val encryptedRollback = markerVersion == "GLAFIRA_RESTORE_ROLLBACK_V3"
@@ -362,17 +365,27 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
-            val journal = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
-            check(!Files.isSymbolicLink(journal.toPath())) {
-                "Обнаружена символическая ссылка вместо журнала восстановления; проверка состояния остановлена."
-            }
-            val marker = File(journal, JOURNAL_MARKER)
-            val committed = File(journal, COMMITTED_MARKER)
-            if (marker.exists() || committed.exists()) return true
-            val stale = app.cacheDir.listFiles { file ->
-                file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-            }.orEmpty()
-            return stale.any { it.exists() && !it.delete() }
+            return runCatching {
+                val journal = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
+                if (Files.isSymbolicLink(journal.toPath()) ||
+                    Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)
+                ) {
+                    return@runCatching true
+                }
+                val marker = File(journal, JOURNAL_MARKER)
+                val committed = File(journal, COMMITTED_MARKER)
+                if (Files.isSymbolicLink(marker.toPath()) ||
+                    Files.isSymbolicLink(committed.toPath()) ||
+                    Files.exists(marker.toPath(), LinkOption.NOFOLLOW_LINKS) ||
+                    Files.exists(committed.toPath(), LinkOption.NOFOLLOW_LINKS)
+                ) {
+                    return@runCatching true
+                }
+                val stale = app.cacheDir.listFiles { file ->
+                    file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+                }.orEmpty()
+                stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+            }.getOrDefault(true)
         }
     }
 }
