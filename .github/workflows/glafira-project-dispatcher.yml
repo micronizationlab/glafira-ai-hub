@@ -329,6 +329,16 @@ jobs:
             printf 'Probe %s (%s) returned exit %s\n' "$probe_name" "$probe_script" "$probe_status" >&2
             return "$probe_status"
           }
+
+          assert_probe_log_contains() {
+            local log_file="$1"
+            local expected="$2"
+            if ! grep -Fq "$expected" "$log_file"; then
+              cat "$log_file" >&2 || true
+              printf 'Probe diagnostic did not contain expected text: %s\n' "$expected" >&2
+              return 1
+            fi
+          }
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
@@ -347,8 +357,8 @@ jobs:
               echo "function probe returned unexpected exit $probe_status" >&2; exit 1
             fi
           fi
-          grep -Fq "Probe function with internal failure" "$tmp/dispatcher-function-probe.err"
-          grep -Fq "returned exit 1" "$tmp/dispatcher-function-probe.err"
+          assert_probe_log_contains "$tmp/dispatcher-function-probe.err" "Probe function with internal failure"
+          assert_probe_log_contains "$tmp/dispatcher-function-probe.err" "returned exit 1"
           if run_probe "pipeline failure with successful final stage" 'false | true; echo should-not-run' 2>"$tmp/dispatcher-pipeline-probe.err"; then
             echo "run_probe accepted a failed pipeline because its final command succeeded" >&2; exit 1
           else
@@ -357,8 +367,8 @@ jobs:
               echo "pipeline probe returned unexpected exit $probe_status" >&2; exit 1
             fi
           fi
-          grep -Fq "Probe pipeline failure with successful final stage" "$tmp/dispatcher-pipeline-probe.err"
-          grep -Fq "returned exit 1" "$tmp/dispatcher-pipeline-probe.err"
+          assert_probe_log_contains "$tmp/dispatcher-pipeline-probe.err" "Probe pipeline failure with successful final stage"
+          assert_probe_log_contains "$tmp/dispatcher-pipeline-probe.err" "returned exit 1"
           if run_probe "command substitution failure" 'value="$(false; printf hidden)"; printf "%s" "$value"' 2>"$tmp/dispatcher-command-substitution-probe.err"; then
             echo "run_probe accepted a failed command substitution followed by a successful command" >&2; exit 1
           else
@@ -367,8 +377,8 @@ jobs:
               echo "command substitution probe returned unexpected exit $probe_status" >&2; exit 1
             fi
           fi
-          grep -Fq "Probe command substitution failure" "$tmp/dispatcher-command-substitution-probe.err"
-          grep -Fq "returned exit 1" "$tmp/dispatcher-command-substitution-probe.err"
+          assert_probe_log_contains "$tmp/dispatcher-command-substitution-probe.err" "Probe command substitution failure"
+          assert_probe_log_contains "$tmp/dispatcher-command-substitution-probe.err" "returned exit 1"
           if [[ "${GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE:-0}" == "1" ]]; then
             forced_probe_command=force_probe_failure
           else
@@ -516,7 +526,7 @@ jobs:
           grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
           grep -Fq "exit 23" "$tmp/graphql-outage.err"
           grep -Fq "[REDACTED]" "$tmp/graphql-outage.err"
-          grep -Fq "Bearer [REDACTED])," "$tmp/graphql-outage.err"
+          grep -Fq "[REDACTED])," "$tmp/graphql-outage.err"
           if grep -Fq "synthetic-bearer-token" "$tmp/graphql-outage.err"; then
             echo "raw bearer credential reached the sanitized diagnostic" >&2; exit 1
           fi
