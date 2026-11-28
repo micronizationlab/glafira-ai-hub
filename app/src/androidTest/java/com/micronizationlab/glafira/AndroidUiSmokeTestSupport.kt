@@ -77,10 +77,10 @@ internal fun awaitHomeScreen(
 internal fun summarizeWindowHierarchy(hierarchy: String, maximumCharacters: Int = 12_000): String {
     require(maximumCharacters > 0) { "Hierarchy summary limit must be positive." }
     if (hierarchy.length <= maximumCharacters) return hierarchy
-    val headCharacters = maximumCharacters / 2
-    val tailCharacters = maximumCharacters - headCharacters
-    val omittedCharacters = hierarchy.length - maximumCharacters
-    return hierarchy.take(headCharacters) +
-        "\n<... truncated $omittedCharacters characters; showing first $headCharacters and last $tailCharacters ...>\n" +
-        hierarchy.takeLast(tailCharacters)
+    val marker = "\n<... hierarchy truncated; showing first and last portions ...>\n"
+    require(maximumCharacters > marker.length) { "Hierarchy summary limit is too small." }
+    val contentCharacters = maximumCharacters - marker.length
+    val headCharacters = contentCharacters / 2
+    val tailCharacters = contentCharacters - headCharacters
+    return hierarchy.take(headCharacters) + marker + hierarchy.takeLast(tailCharacters)
 }
