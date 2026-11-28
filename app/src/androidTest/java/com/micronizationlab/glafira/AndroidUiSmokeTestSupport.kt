@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
@@ -22,6 +23,17 @@ internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     }
 }
 
+/** Preserve the primary test failure if restoring a fixture preference also fails. */
+internal fun restorePreferencePreservingFailure(primaryFailure: Throwable?, restore: () -> Boolean) {
+    val restoreFailure = runCatching {
+        check(restore()) { "Could not restore preference after startup diagnostics test" }
+    }.exceptionOrNull() ?: return
+    if (primaryFailure != null) {
+        primaryFailure.addSuppressed(restoreFailure)
+    } else {
+        throw restoreFailure
+    }
+}
 
 /**
  * Capture the current window hierarchy and startup-gate states for a failed home-screen
@@ -57,13 +69,14 @@ internal fun awaitHomeScreen(
     device: UiDevice,
     context: Context,
     timeoutMillis: Long = 20_000,
+    waitForIdle: () -> Unit = {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 5_000)
+    },
     waitForWorkspace: () -> Boolean = {
         device.wait(Until.hasObject(By.descContains("Открыть очередь задач")), timeoutMillis)
     }
 ) {
-    val idleWait = runCatching {
-        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 5_000)
-    }
+    val idleWait = runCatching(waitForIdle)
     val accessibilityWait = runCatching(waitForWorkspace)
     if (accessibilityWait.getOrNull() == true) return
 
