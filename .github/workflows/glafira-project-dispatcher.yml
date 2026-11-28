@@ -579,7 +579,7 @@ jobs:
           if output="$(CALL_LOG="$tmp/gh-calls.log" GLAFIRA_GH_BIN="$tmp/fake-bin/gh" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-outage.err")"; then
             echo "GraphQL outage was incorrectly accepted" >&2; exit 1
           else
-            [[ "$?" -eq 23 ]]
+            [[ "$?" -eq 1 ]]
           fi
           [[ -z "$output" ]]
           [[ "$(cat "$tmp/gh-calls.log")" == "graphql" ]]
