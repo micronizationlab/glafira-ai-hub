@@ -392,7 +392,19 @@ fun BackupSettingsSection() {
                                     }
                                 }
                             }
-                            status = result.getOrElse { "Ошибка восстановления: ${it.message ?: "неизвестная ошибка"}" }
+                            status = when (val failure = result.exceptionOrNull()) {
+                                is CommittedRestoreCleanupPendingException -> {
+                                    if (GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
+                                        "Данные восстановлены: ${failure.verification.fileCount} файлов. Требуется завершить очистку журнала восстановления; Core остаётся заблокирован до recovery."
+                                    } else {
+                                        "Данные восстановлены: ${failure.verification.fileCount} файлов. Не удалось удалить временную зашифрованную копию архива: ${failure.message}"
+                                    }
+                                }
+                                is CommittedRestoreArchiveCleanupException ->
+                                    "Данные восстановлены: ${failure.verification.fileCount} файлов. Не удалось удалить временную зашифрованную копию архива: ${failure.archivePath}. Core не заблокирован; данные уже восстановлены."
+                                null -> result.getOrThrow()
+                                else -> "Ошибка восстановления: ${failure.message ?: "неизвестная ошибка"}"
+                            }
                             busy = false
                         }
                     }

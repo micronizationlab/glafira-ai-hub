@@ -11,6 +11,11 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.StandardOpenOption
+import java.nio.file.StandardCopyOption
 import java.io.OutputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -41,6 +46,8 @@ object BackupArchive {
     private const val SALT_BYTES = 16
     private const val IV_BYTES = 12
     private const val TAG_BITS = 128
+    private const val RESTORE_TEMP_REGISTRY = ".glafira-restore-temp-registry.json"
+    private const val RESTORE_TEMP_REGISTRY_FORMAT = 1
 
     fun create(context: Context, passphrase: CharArray): File {
         require(passphrase.size >= 12) { "Пароль резервной копии должен содержать не менее 12 символов." }
@@ -214,6 +221,157 @@ object BackupArchive {
         }
     }
 
+    /** A crash-left replacement is decrypted staging data and must keep Core gated until recovery. */
+    internal fun hasRestoreReplacementTemps(context: Context): Boolean {
+        val registry = restoreTempRegistry(context)
+        if (Files.exists(registry.toPath(), LinkOption.NOFOLLOW_LINKS)) return true
+        val root = context.filesDir.toPath()
+        return Files.walk(root).use { paths ->
+            paths.anyMatch { path ->
+                path.fileName?.toString()?.endsWith(".restore-tmp") == true &&
+                    Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+            }
+        }
+    }
+
+    /** Record the exact app-private replacement path before writing any decrypted bytes. */
+    internal fun registerRestoreReplacementTemp(context: Context, relativePath: String) {
+        require(relativePath.endsWith(".restore-tmp") && !relativePath.startsWith("/") &&
+            relativePath.split('/').none { it.isBlank() || it == "." || it == ".." }) {
+            "Invalid restore-owned temporary path."
+        }
+        val paths = readRestoreTempRegistry(context)
+        paths += relativePath
+        writeRestoreTempRegistry(context, paths)
+    }
+
+    private fun unregisterRestoreReplacementTemp(context: Context, relativePath: String) {
+        val paths = readRestoreTempRegistry(context)
+        if (paths.remove(relativePath)) writeRestoreTempRegistry(context, paths)
+    }
+
+    /** Remove only exact replacement paths registered by this restore; preserve all unknown siblings. */
+    internal fun cleanupRestoreReplacementTemps(
+        context: Context,
+        syncDirectory: (File) -> Unit = ::syncRestoreDirectory
+    ) {
+        val registry = restoreTempRegistry(context)
+        val paths = readRestoreTempRegistry(context)
+        val root = context.filesDir.canonicalFile.toPath()
+        paths.forEach { relative ->
+            if (!relative.endsWith(".restore-tmp") || relative.startsWith("/") ||
+                relative.split('/').any { it.isBlank() || it == "." || it == ".." }
+            ) {
+                throw IOException("Реестр восстановления содержит недопустимый путь.")
+            }
+            val target = root.resolve(relative).normalize()
+            if (!target.startsWith(root) || target == root) {
+                throw IOException("Путь временного файла восстановления выходит за каталог данных приложения.")
+            }
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(target) ||
+                    !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
+                ) {
+                    throw IOException("Зарегистрированный временный файл восстановления заменён ссылкой или каталогом: $relative")
+                }
+                Files.delete(target)
+            }
+            // Keep the registry entry until the parent directory deletion is durable.
+            // A previous attempt may have deleted the file but failed its directory fsync.
+            val parent = target.parent
+            if (parent != null && Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS) &&
+                !Files.isSymbolicLink(parent)
+            ) {
+                syncDirectory(parent.toFile())
+            }
+        }
+        if (Files.exists(registry.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.isSymbolicLink(registry.toPath()) ||
+                !Files.isRegularFile(registry.toPath(), LinkOption.NOFOLLOW_LINKS) ||
+                !registry.delete()
+            ) {
+                throw IOException("Не удалось безопасно удалить реестр временных файлов восстановления.")
+            }
+            syncDirectory(context.noBackupFilesDir)
+        }
+        if (hasRestoreReplacementTemps(context)) {
+            throw IOException("Обнаружен незарегистрированный временный файл восстановления; он сохранён для проверки.")
+        }
+    }
+
+    private fun restoreTempRegistry(context: Context): File =
+        File(context.noBackupFilesDir, RESTORE_TEMP_REGISTRY)
+
+    private fun readRestoreTempRegistry(context: Context): MutableSet<String> {
+        val registry = restoreTempRegistry(context)
+        if (!Files.exists(registry.toPath(), LinkOption.NOFOLLOW_LINKS)) return linkedSetOf()
+        if (Files.isSymbolicLink(registry.toPath()) ||
+            !Files.isRegularFile(registry.toPath(), LinkOption.NOFOLLOW_LINKS)
+        ) {
+            throw IOException("Реестр временных файлов восстановления небезопасен.")
+        }
+        return try {
+            val json = JSONObject(registry.readText(Charsets.UTF_8))
+            if (json.optInt("format", -1) != RESTORE_TEMP_REGISTRY_FORMAT) {
+                throw IOException("Неподдерживаемая версия реестра временных файлов восстановления.")
+            }
+            val array = json.optJSONArray("paths")
+                ?: throw IOException("Реестр временных файлов восстановления повреждён.")
+            linkedSetOf<String>().apply {
+                for (index in 0 until array.length()) {
+                    val value = array.optString(index, "")
+                    if (value.isBlank() || !add(value)) {
+                        throw IOException("Реестр временных файлов восстановления содержит повторный или пустой путь.")
+                    }
+                }
+            }
+        } catch (failure: Exception) {
+            if (failure is IOException) throw failure
+            throw IOException("Не удалось прочитать реестр временных файлов восстановления.", failure)
+        }
+    }
+
+    private fun writeRestoreTempRegistry(context: Context, paths: Set<String>) {
+        val registry = restoreTempRegistry(context)
+        val parent = checkNotNull(registry.parentFile)
+        if (paths.isEmpty()) {
+            if (Files.exists(registry.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(registry.toPath()) || !registry.delete()) {
+                    throw IOException("Не удалось удалить пустой реестр временных файлов восстановления.")
+                }
+                syncRestoreDirectory(parent)
+            }
+            return
+        }
+        val json = JSONObject().put("format", RESTORE_TEMP_REGISTRY_FORMAT)
+            .put("paths", JSONArray(paths.toList()))
+        val temporary = File.createTempFile(".glafira-restore-registry-", ".tmp", parent)
+        try {
+            FileOutputStream(temporary).use { output ->
+                output.write(json.toString().toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            Files.move(
+                temporary.toPath(),
+                registry.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING
+            )
+            syncRestoreDirectory(parent)
+        } finally {
+            if (temporary.exists()) temporary.delete()
+        }
+    }
+
+    private fun syncRestoreDirectory(directory: File) {
+        val descriptor = android.system.Os.open(directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
+        try {
+            android.system.Os.fsync(descriptor)
+        } finally {
+            android.system.Os.close(descriptor)
+        }
+    }
+
     private fun applyStaged(context: Context, files: List<StagedFile>, safePreferences: JSONObject) {
         val targetRoot = context.filesDir.canonicalFile
         val restoredPaths = files.map { it.relativePath }.toSet()
@@ -224,14 +382,54 @@ object BackupArchive {
             require(target.path.startsWith(targetRoot.path + File.separator)) { "Недопустимый путь в архиве." }
             target.parentFile?.mkdirs()
             val replacement = File(target.parentFile, target.name + ".restore-tmp")
-            staged.file.copyTo(replacement, overwrite = true)
-            if (target.exists() && !target.delete()) {
-                replacement.delete()
-                throw IllegalStateException("Не удалось заменить файл ${staged.relativePath}")
-            }
-            if (!replacement.renameTo(target)) {
-                replacement.delete()
-                throw IllegalStateException("Не удалось восстановить файл ${staged.relativePath}")
+            val replacementRelative = replacement.relativeTo(targetRoot).invariantSeparatorsPath
+            var replacementCreated = false
+            var registryEntryCreated = false
+            var primaryFailure: Exception? = null
+            try {
+                if (Files.exists(replacement.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    throw IOException("Временный файл восстановления уже существует и не принадлежит текущей операции: $replacementRelative")
+                }
+                registerRestoreReplacementTemp(context, replacementRelative)
+                registryEntryCreated = true
+                Files.newOutputStream(
+                    replacement.toPath(),
+                    StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE
+                ).use { output ->
+                    replacementCreated = true
+                    staged.file.inputStream().use { input -> input.copyTo(output) }
+                }
+                if (target.exists() && !target.delete()) {
+                    throw IllegalStateException("Не удалось заменить файл ${staged.relativePath}")
+                }
+                if (!replacement.renameTo(target)) {
+                    throw IllegalStateException("Не удалось восстановить файл ${staged.relativePath}")
+                }
+                replacementCreated = false
+                unregisterRestoreReplacementTemp(context, replacementRelative)
+                registryEntryCreated = false
+            } catch (failure: Exception) {
+                primaryFailure = failure
+                throw failure
+            } finally {
+                if (replacementCreated && Files.exists(replacement.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    try {
+                        Files.delete(replacement.toPath())
+                        replacementCreated = false
+                    } catch (cleanup: Exception) {
+                        val primary = primaryFailure
+                        if (primary != null) primary.addSuppressed(cleanup) else throw cleanup
+                    }
+                }
+                if (registryEntryCreated && !replacementCreated) {
+                    try {
+                        unregisterRestoreReplacementTemp(context, replacementRelative)
+                    } catch (cleanup: Exception) {
+                        val primary = primaryFailure
+                        if (primary != null) primary.addSuppressed(cleanup) else throw cleanup
+                    }
+                }
             }
         }
 

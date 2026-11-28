@@ -235,11 +235,17 @@ class GlafiraPortableSnapshotInstrumentedTest {
         }
     }
 
-    @Test fun hasInterruptedRestoreCleansOrphanedDecryptedRollbackTemporary() {
+    @Test fun hasInterruptedRestoreReportsOrphanedDecryptedRollbackTemporaryWithoutDeletingIt() {
         val stale = File(context.cacheDir, "glafira-rollback-recovery-orphan.tmp")
-        stale.writeText("sensitive plaintext")
-        assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
-        assertFalse(stale.exists())
+        try {
+            stale.writeText("sensitive plaintext")
+            assertTrue("Orphaned recovery plaintext must keep the recovery gate closed",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertTrue("The shared state check must not mutate or delete a possibly active recovery temp", stale.isFile)
+            assertEquals("sensitive plaintext", stale.readText(Charsets.UTF_8))
+        } finally {
+            check(!stale.exists() || stale.delete())
+        }
     }
 
     @Test fun missingTablesAreRejectedBeforeAnyReplacement() {
