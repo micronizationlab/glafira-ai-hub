@@ -1560,6 +1560,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val plaintextExport = File(plaintextSnapshot, "core-portable-v2.json").apply {
             writeText("fixture-only plaintext task/result data")
         }
+        val unexpectedStagingData = File(plaintextSnapshot, "unexpected.tmp").apply {
+            writeText("must-survive")
+        }
         val passphrase = "committed-cleanup-reentry".toCharArray()
         try {
             fixtureRuntimeHooks.failCommittedCleanupOnce = true
@@ -1572,9 +1575,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue("Rollback archive is retained while cleanup is interrupted", archive.exists())
             assertTrue("Plaintext export remains until committed cleanup can run", plaintextExport.exists())
 
+            val blockedCleanup = assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Unexpected staging data remains available for owner inspection", unexpectedStagingData.isFile)
+            assertEquals("must-survive", unexpectedStagingData.readText())
+            assertFalse("Known plaintext export is deleted even when unrelated staging data exists", plaintextExport.exists())
+            assertTrue("Journal remains committed until unexpected staging data is handled", committed.isFile)
+            assertTrue("The cleanup error identifies the unexpected staging data",
+                blockedCleanup.message.orEmpty().contains("посторонними данными"))
+            check(unexpectedStagingData.delete())
             isolatedCoordinator().recover(passphrase)
-            assertFalse("Crash-left plaintext export is removed during committed recovery", plaintextExport.exists())
-            assertFalse("Plaintext export directory is removed", plaintextSnapshot.exists())
+            assertFalse("Empty snapshot directory is removed after owner cleanup", plaintextSnapshot.exists())
             assertFalse(pending.exists())
             assertFalse(committed.exists())
             assertFalse(database.exists())
