@@ -1514,6 +1514,40 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
     @Test
+    fun recoveryUsesTheWriterRollbackKeyAliasAcrossCoordinatorInstances() = runBlocking {
+        val passphrase = "writer-alias-recovery".toCharArray()
+        val writerCipher = GlafiraRollbackSnapshotCipher("writer-alias-$testRunId")
+        val readerCipher = GlafiraRollbackSnapshotCipher("reader-alias-$testRunId")
+        val writer = GlafiraCoreBackupCoordinator(context, store, writerCipher, fixtureRuntimeHooks)
+        val reader = GlafiraCoreBackupCoordinator(context, store, readerCipher, fixtureRuntimeHooks)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        try {
+            store.enqueue(task("writer-alias-before"))
+            writer.prepareRollback(passphrase)
+            assertEquals(writerCipher.keyAlias, File(journal, "rollback-key-alias").readText(Charsets.UTF_8))
+            assertTrue(writerCipher.keyExists())
+            assertFalse(readerCipher.keyExists())
+            store.enqueue(task("writer-alias-after"))
+
+            reader.recover(passphrase)
+
+            assertTrue("The snapshot created by the writer coordinator is restored",
+                store.getTask("writer-alias-before") != null)
+            assertNull("Changes after rollback preparation are rolled back",
+                store.getTask("writer-alias-after"))
+            assertFalse("Recovery deletes the writer's key, not an unrelated reader key",
+                writerCipher.keyExists())
+            assertFalse(readerCipher.keyExists())
+            assertFalse(journal.exists())
+        } finally {
+            check(!journal.exists() || journal.deleteRecursively())
+            writerCipher.deleteKey()
+            readerCipher.deleteKey()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun committedRestoreReportsSuccessWhenJournalCleanupMustBeRetried() = runBlocking {
         store.enqueue(task("restore-cleanup-pending"))
         val coordinator = isolatedCoordinator()
