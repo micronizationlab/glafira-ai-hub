@@ -322,22 +322,31 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
-    private fun writeRollbackOwnerMarker(runId: String, beforePublish: () -> Unit = {}) {
+    private fun writeRollbackOwnerMarker(
+        runId: String,
+        beforePublish: () -> Unit = {},
+        afterTemporaryWrite: () -> Unit = {},
+        afterPublish: () -> Unit = {}
+    ) {
         val marker = rollbackOwnerMarker()
         val parent = checkNotNull(marker.parentFile)
-        // createNewFile is exclusive; from this point the fixture owns this marker.
-        check(marker.createNewFile()) { "A previous test-owned rollback operation must be recovered first." }
+        check(!marker.exists()) { "A previous test-owned rollback operation must be recovered first." }
+        val temporary = File(parent, ".${marker.name}.${UUID.randomUUID()}.tmp")
         try {
             beforePublish()
-            FileOutputStream(marker, false).use { output ->
+            FileOutputStream(temporary, false).use { output ->
                 output.write(runId.toByteArray(Charsets.UTF_8))
                 output.fd.sync()
             }
+            afterTemporaryWrite()
+            check(temporary.renameTo(marker)) { "Could not atomically publish rollback owner marker." }
+            // Once renamed, keep the complete marker if the parent fsync fails. It is
+            // recovery evidence, not a partial marker that may safely be discarded.
+            afterPublish()
             syncMarkerDirectory(parent)
         } catch (error: Throwable) {
             try {
-                check(!marker.exists() || marker.delete()) { "Could not remove failed owner marker." }
-                syncMarkerDirectory(parent)
+                check(!temporary.exists() || temporary.delete()) { "Could not remove temporary owner marker." }
             } catch (cleanup: Throwable) {
                 error.addSuppressed(cleanup)
             }
@@ -836,11 +845,45 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     fun markerPublishFailureLeavesNoActiveMarkerOrTemporaryFile() {
         val marker = rollbackOwnerMarker()
         assertFalse(marker.exists())
-        assertThrows(IOException::class.java) {
-            writeRollbackOwnerMarker(testRunId) { throw IOException("injected before atomic publish") }
+        val failure = assertThrows(IOException::class.java) {
+            writeRollbackOwnerMarker(testRunId) { throw IOException("injected before temporary marker write") }
         }
+        assertEquals("injected before temporary marker write", failure.message)
         assertFalse(marker.exists())
         assertTrue(marker.parentFile?.listFiles { file -> file.name.startsWith(".${marker.name}.") }?.isEmpty() != false)
+    }
+
+    @Test
+    fun markerWriteFailureRemovesOnlyTemporaryMarker() {
+        val marker = rollbackOwnerMarker()
+        val failure = assertThrows(IOException::class.java) {
+            writeRollbackOwnerMarker(
+                testRunId,
+                afterTemporaryWrite = { throw IOException("injected after temporary marker fsync") }
+            )
+        }
+        assertEquals("injected after temporary marker fsync", failure.message)
+        assertFalse("Unpublished owner marker must not appear", marker.exists())
+        assertTrue("Temporary marker must be removed", marker.parentFile?.listFiles { file ->
+            file.name.startsWith(".${marker.name}.")
+        }?.isEmpty() != false)
+    }
+
+    @Test
+    fun directorySyncFailurePreservesCompletePublishedMarker() {
+        val marker = rollbackOwnerMarker()
+        val failure = assertThrows(IOException::class.java) {
+            writeRollbackOwnerMarker(
+                testRunId,
+                afterPublish = { throw IOException("injected after marker rename before directory fsync") }
+            )
+        }
+        assertEquals("injected after marker rename before directory fsync", failure.message)
+        assertEquals("Published marker must remain complete for recovery", testRunId, marker.readText(Charsets.UTF_8))
+        assertTrue("No temporary marker remains after atomic publication", marker.parentFile?.listFiles { file ->
+            file.name.startsWith(".${marker.name}.")
+        }?.isEmpty() != false)
+        clearRollbackOwnerMarker(testRunId)
     }
 
     @Test
