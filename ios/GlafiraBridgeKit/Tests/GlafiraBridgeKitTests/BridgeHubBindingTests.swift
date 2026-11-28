@@ -135,7 +135,7 @@ final class BridgeHubBindingTests: XCTestCase {
         nested["endpoint"] = "https://8.8.8.8:8443/bridge/v1"
         envelope["binding"] = nested
         XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope))) { error in
-            XCTAssertEqual(error as? BridgeHubBindingError, .invalidHubBinding)
+            XCTAssertEqual(error as? BridgeHubBindingError, .invalidBinding)
         }
     }
 
@@ -207,14 +207,14 @@ final class BridgeHubBindingTests: XCTestCase {
 
     func testPersistenceMapsMalformedJSONAndUnsupportedVersionToBindingError() throws {
         XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data("{".utf8))) { error in
-            XCTAssertEqual(error as? BridgeHubBindingError, .invalidHubBinding)
+            XCTAssertEqual(error as? BridgeHubBindingError, .invalidBinding)
         }
         var envelope = try XCTUnwrap(JSONSerialization.jsonObject(
             with: BridgeHubBindingPersistence.encode(binding())
         ) as? [String: Any])
         envelope["schemaVersion"] = 99
         XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope))) { error in
-            XCTAssertEqual(error as? BridgeHubBindingError, .invalidHubBinding)
+            XCTAssertEqual(error as? BridgeHubBindingError, .invalidBinding)
         }
     }
 
@@ -235,7 +235,7 @@ final class BridgeHubBindingTests: XCTestCase {
         ]
         for payload in invalidVariants {
             XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(payload.utf8))) { error in
-                XCTAssertEqual(error as? BridgeHubBindingError, .invalidHubBinding)
+                XCTAssertEqual(error as? BridgeHubBindingError, .invalidBinding)
             }
         }
     }
