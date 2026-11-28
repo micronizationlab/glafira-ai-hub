@@ -8,6 +8,7 @@ final class BridgeHubBindingTests: XCTestCase {
     private let oneHour: Int64 = 60 * 60 * 1_000
 
     private func binding(
+        hubId: String? = nil,
         endpoint: String? = nil,
         pin: String? = nil,
         scopes: [String] = ["project.read", "ownership.read"],
@@ -15,7 +16,7 @@ final class BridgeHubBindingTests: XCTestCase {
         expiresAt: Int64? = nil
     ) throws -> BridgeHubBinding {
         try BridgeHubBinding(
-            desktopHubId: "desktop-hub-0001",
+            desktopHubId: hubId ?? "desktop-hub-0001",
             endpoint: endpoint ?? self.endpoint,
             certificateSHA256: pin ?? self.pin,
             scopes: scopes,
@@ -38,10 +39,13 @@ final class BridgeHubBindingTests: XCTestCase {
         XCTAssertEqual(value.transportOrigin, "https://192.168.1.20:8443")
     }
 
-    func testAcceptsAndCanonicalizesIPv6UniqueLocalHubEndpoint() throws {
-        let value = try binding(endpoint: "HTTPS://[FD12:3456:789A::1]:8443/bridge/v1")
-        XCTAssertEqual(value.endpoint, "https://[fd12:3456:789a::1]:8443/bridge/v1")
-        XCTAssertEqual(value.transportOrigin, "https://[fd12:3456:789a::1]:8443")
+    func testCanonicalizesEquivalentIPv6SpellingsAndChecksUniqueLocalPrefixBits() throws {
+        let compressed = try binding(endpoint: "HTTPS://[FD12:3456:789A::1]:8443/bridge/v1")
+        let expanded = try binding(endpoint: "https://[fd12:3456:789a:0000:0000:0000:0000:0001]:8443/bridge/v1")
+        XCTAssertEqual(compressed.endpoint, "https://[fd12:3456:789a::1]:8443/bridge/v1")
+        XCTAssertEqual(expanded.endpoint, compressed.endpoint)
+        XCTAssertEqual(expanded, compressed)
+        XCTAssertThrowsError(try binding(endpoint: "https://[fe80::1]:8443/bridge/v1"))
     }
 
     func testRejectsPublicLoopbackAndHostnameEndpoints() {
@@ -54,6 +58,23 @@ final class BridgeHubBindingTests: XCTestCase {
         ] {
             XCTAssertThrowsError(try binding(endpoint: invalid), "Unexpectedly accepted (invalid)")
         }
+    }
+
+    func testDefaultsToWindowsHubPortAndRejectsPrivilegedPorts() throws {
+        let defaulted = try binding(endpoint: "https://192.168.1.20/bridge/v1")
+        XCTAssertEqual(defaulted.endpoint, "https://192.168.1.20:8443/bridge/v1")
+        XCTAssertNoThrow(try binding(endpoint: "https://192.168.1.20:1024/bridge/v1"))
+        XCTAssertThrowsError(try binding(endpoint: "https://192.168.1.20:443/bridge/v1"))
+    }
+
+    func testHubIdentifierMatchesWindowsHostLengthAndCharacterPolicy() throws {
+        XCTAssertThrowsError(try binding(hubId: "hub-1"))
+        let value = try binding(hubId: "hub.id-0001")
+        XCTAssertEqual(value.desktopHubId, "hub.id-0001")
+    }
+
+    func testOversizedScopeListIsRejected() {
+        XCTAssertThrowsError(try binding(scopes: Array(repeating: "project.read", count: 33)))
     }
 
     func testRejectsWrongPathAndNoncanonicalPin() {
@@ -96,12 +117,14 @@ final class BridgeHubBindingTests: XCTestCase {
         {
           "desktopHubId": "desktop-hub-0001",
           "endpoint": "https://8.8.8.8:8443/bridge/v1",
-          "certificateSHA256": "(pin)",
+          "certificateSHA256": "\(pin)",
           "scopes": ["project.read"],
-          "enrolledAtEpochMs": (enrolledAt),
-          "expiresAtEpochMs": (enrolledAt + oneHour)
+          "enrolledAtEpochMs": \(enrolledAt),
+          "expiresAtEpochMs": \(enrolledAt + oneHour)
         }
         """.data(using: .utf8)!
-        XCTAssertThrowsError(try JSONDecoder().decode(BridgeHubBinding.self, from: invalid))
+        XCTAssertThrowsError(try JSONDecoder().decode(BridgeHubBinding.self, from: invalid)) { error in
+            XCTAssertEqual(error as? BridgeHubBindingError, .invalidBinding)
+        }
     }
 }
