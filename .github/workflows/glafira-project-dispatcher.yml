@@ -540,13 +540,22 @@ jobs:
           real_jq="$(command -v jq)"
           cat > "$tmp/failing-aggregation-jq/jq" <<'JQ_AGGREGATION'
           #!/usr/bin/env bash
-          if [[ "${2:-}" == "-e" ]]; then
+          set -euo pipefail
+          if [[ "$1" == "-s" && "$2" == "-e" ]]; then
+            [[ "$3" == 'all(.[]; .data.repository.pullRequests.nodes != null)' ]] || exit 43
+            cmp -s "$4" "$EXPECTED_PAGES_FILE" || exit 44
+            printf 'validator\\n' >> "$JQ_CALL_LOG"
             exec "$REAL_JQ" "$@"
           fi
+          [[ "$1" == "-s" && "$2" == *"statusCheckRollup"* && "$2" == *"detailsUrl"* ]] || exit 45
+          [[ "$3" == *"glafira-open-prs-pages."* ]] || exit 46
+          cmp -s "$3" "$EXPECTED_PAGES_FILE" || exit 47
+          printf 'aggregator\\n' >> "$JQ_CALL_LOG"
+          printf 'partial-aggregation-output-sentinel\\n'
           exit 42
           JQ_AGGREGATION
           chmod +x "$tmp/failing-aggregation-jq/jq"
-          if CALL_LOG="$tmp/graphql-aggregation-calls.log" REAL_JQ="$real_jq" PATH="$tmp/fake-gh-valid:$tmp/failing-aggregation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-aggregation.out" 2> "$tmp/graphql-aggregation.err"; then
+          if CALL_LOG="$tmp/graphql-aggregation-calls.log" JQ_CALL_LOG="$tmp/aggregation-jq-stages.log" EXPECTED_PAGES_FILE="$tmp/expected-valid-pages.jsonl" REAL_JQ="$real_jq" PATH="$tmp/fake-gh-valid:$tmp/failing-aggregation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-aggregation.out" 2> "$tmp/graphql-aggregation.err"; then
             echo "injected jq aggregation exit 42 was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
@@ -554,7 +563,28 @@ jobs:
           [[ ! -s "$tmp/graphql-aggregation.out" ]]
           grep -Fq "GraphQL response aggregation failed (jq exit 42)" "$tmp/graphql-aggregation.err"
           [[ "$(cat "$tmp/graphql-aggregation-calls.log")" == "graphql" ]]
-          echo "GraphQL aggregation failure is distinct from validation failure and fails closed: PASS"
+          [[ "$(cat "$tmp/aggregation-jq-stages.log")" == $'validator\\naggregator' ]]
+          echo "GraphQL aggregation failure is distinct from validation failure, emits no partial output and fails closed: PASS"
+
+          mkdir -p "$tmp/failing-tail"
+          cat > "$tmp/failing-tail/tail" <<'TAIL_FAIL'
+          #!/usr/bin/env bash
+          exit 44
+          TAIL_FAIL
+          chmod +x "$tmp/failing-tail/tail"
+          if CALL_LOG="$tmp/graphql-validation-tail-calls.log" JQ_CALL_LOG="$tmp/validation-tail-stages.log" EXPECTED_PAGES_FILE="$tmp/expected-valid-pages.jsonl" PATH="$tmp/failing-tail:$tmp/fake-gh-valid:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-validation-tail.out" 2> "$tmp/graphql-validation-tail.err"; then
+            echo "unreadable validation stderr log was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -Fq "GraphQL response validation failed (jq exit 42); REST offset fallback is disabled. jq rejected the GraphQL response without stderr." "$tmp/graphql-validation-tail.err"
+
+          if CALL_LOG="$tmp/graphql-aggregation-tail-calls.log" JQ_CALL_LOG="$tmp/aggregation-tail-stages.log" EXPECTED_PAGES_FILE="$tmp/expected-valid-pages.jsonl" REAL_JQ="$real_jq" PATH="$tmp/failing-tail:$tmp/fake-gh-valid:$tmp/failing-aggregation-jq:$PATH" bash "$fetch_prs" "micronizationlab/glafira-ai-hub" > "$tmp/graphql-aggregation-tail.out" 2> "$tmp/graphql-aggregation-tail.err"; then
+            echo "unreadable aggregation stderr log was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -Fq "GraphQL response aggregation failed (jq exit 42); REST offset fallback is disabled. jq aggregation failed without stderr." "$tmp/graphql-aggregation-tail.err"
 
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
