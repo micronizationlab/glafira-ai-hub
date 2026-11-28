@@ -834,10 +834,27 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-failed-restore-plaintext".toCharArray()
         val archive = coordinator.create(passphrase)
-        store.enqueue(task("restore-failure-preexisting-task"))
+        assertTrue("The archive-only task is marked finished before removal",
+            store.transition(
+                "restore-failure-archive-task",
+                setOf(GlafiraTaskState.QUEUED),
+                GlafiraTaskState.CANCELLED,
+                System.currentTimeMillis(),
+                null,
+                "removed from rollback fixture"
+            ))
+        store.deleteFinishedProject("backup-project")
+        store.enqueue(task("restore-failure-preexisting-task").copy(
+            projectId = "pre-restore-project",
+            idempotencyKey = "pre-restore-project:restore-failure-preexisting-task"
+        ))
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
         try {
+            assertNull("Archive-only task is absent from the live pre-restore database",
+                store.getTask("restore-failure-archive-task"))
+            assertTrue("Pre-restore-only task is present before restore",
+                store.getTask("restore-failure-preexisting-task") != null)
             withOwnedRollbackKey {
                 fixtureRuntimeHooks.failPauseForRestoreCount = 2
                 val failure = assertThrows(IOException::class.java) {
@@ -1620,7 +1637,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun recoverRetainsUnitReturningSuspendFunctionType() {
         val recovery: suspend (CharArray) -> Unit = isolatedCoordinator()::recover
-        assertNotNull(recovery)
+        assertTrue("The Unit-returning recovery function reference is available", recovery.toString().isNotBlank())
     }
 
     @Test
