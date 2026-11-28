@@ -332,7 +332,7 @@ jobs:
             cat <<'JSON'
           {"data":{"repository":{"pullRequests":{"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
-            echo "injected GraphQL page two failure" >&2
+            echo "injected GraphQL page two failure (ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ)" >&2
             exit 1
           fi
           echo unexpected-rest >> "$CALL_LOG"
@@ -347,6 +347,8 @@ jobs:
           [[ -z "$output" ]]
           [[ "$(cat "$tmp/gh-calls.log")" == "graphql" ]]
           grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
+          grep -Fq "[REDACTED]" "$tmp/graphql-outage.err"
+          ! grep -Fq "ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" "$tmp/graphql-outage.err"
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
