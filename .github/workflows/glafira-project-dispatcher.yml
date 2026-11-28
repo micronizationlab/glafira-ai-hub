@@ -586,6 +586,11 @@ jobs:
           fi
           grep -Fq "GraphQL response aggregation failed (jq exit 42); REST offset fallback is disabled. jq aggregation failed without stderr." "$tmp/graphql-aggregation-tail.err"
 
+          grep -Fq 'gh api graphql --paginate -f query="$query" >"$pages_file"' "$fetch_prs"
+          grep -Fq "jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' \"$pages_file\"" "$fetch_prs"
+          ! grep -Fq 'pages="$(gh api graphql' "$fetch_prs"
+          ! grep -Fq 'aggregated="$(jq -s' "$fetch_prs"
+
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
@@ -764,8 +769,14 @@ jobs:
           cp "$2" "$CAPTURED_CANDIDATE"
           exec bash "$REAL_COMPARATOR" "$@"
           CAPTURE_COMPARATOR
-          chmod +x "$tmp/capturing-comparator.sh"
-          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/jq-failed-fetch.log" FETCH_DISTINCT_SOURCE="$tmp/large-prs-head-delta.json" CAPTURED_CANDIDATE="$tmp/captured-jq-failure-candidate.json" REAL_COMPARATOR="$comparator" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-distinct-prs.sh" "$tmp/capturing-comparator.sh" "micronizationlab/glafira-ai-hub" > "$tmp/reconcile-jq-failed.out" 2>"$tmp/reconcile-jq-failed.err"; then
+          cat > "$tmp/comparator-call-logged.sh" <<'CALL_LOGGED_COMPARATOR'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          printf 'called\\n' >> "$COMPARATOR_CALL_LOG"
+          exec bash "$REAL_COMPARATOR_SCRIPT" "$@"
+          CALL_LOGGED_COMPARATOR
+          chmod +x "$tmp/capturing-comparator.sh" "$tmp/comparator-call-logged.sh"
+          if PATH="$tmp/failing-jq:$PATH" FETCH_CALL_LOG="$tmp/jq-failed-fetch.log" FETCH_DISTINCT_SOURCE="$tmp/large-prs-head-delta.json" CAPTURED_CANDIDATE="$tmp/captured-jq-failure-candidate.json" REAL_COMPARATOR="$tmp/comparator-call-logged.sh" REAL_COMPARATOR_SCRIPT="$comparator" COMPARATOR_CALL_LOG="$tmp/comparator-call-log.txt" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-distinct-prs.sh" "$tmp/capturing-comparator.sh" "micronizationlab/glafira-ai-hub" > "$tmp/reconcile-jq-failed.out" 2>"$tmp/reconcile-jq-failed.err"; then
             echo "injected jq failure was incorrectly accepted by production reconciliation wrapper" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
@@ -773,6 +784,7 @@ jobs:
           grep -Fq "UNKNOWN: PR inventory comparison failed" "$tmp/reconcile-jq-failed.err"
           [[ "$(wc -l < "$tmp/jq-failed-fetch.log")" -eq 1 ]]
           cmp -s "$tmp/large-prs-head-delta.json" "$tmp/captured-jq-failure-candidate.json"
+          [[ "$(cat "$tmp/comparator-call-log.txt")" == "called" ]]
           cmp -s "$tmp/reconcile-baseline-before.json" "$tmp/large-prs.json"
           [[ ! -s "$tmp/reconcile-jq-failed.out" ]]
           mkdir -p "$tmp/unwritable-fetch-log"
