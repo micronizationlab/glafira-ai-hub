@@ -323,6 +323,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
                 Files.delete(journal.toPath())
                 syncDirectory(app.noBackupFilesDir)
             }
+            cleanupPortableSnapshotPreservingUnexpected()
+            if (pathExistsNoFollow(File(app.filesDir, ".glafira-core-snapshot").toPath())) {
+                throw IOException("В каталоге переносимого снимка Core остались данные; Core остаётся заблокирован для проверки.")
+            }
             return false
         }
         require(
