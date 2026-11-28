@@ -120,14 +120,14 @@ jobs:
               exit 0
             else
               jq_status=$?
-              graphql_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+              graphql_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g; s/[[:space:]]+$//')"
               printf 'UNKNOWN: GraphQL response validation failed (jq exit %s); REST offset fallback is disabled. %s\n' \
                 "$jq_status" "${graphql_detail:-jq rejected the GraphQL response without stderr.}" >&2
               exit 1
             fi
           else
             gh_status=$?
-            graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+            graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g; s/[[:space:]]+$//')"
             printf 'UNKNOWN: GraphQL cursor-based open-PR request failed (gh exit %s); REST offset fallback is disabled. %s\n' \
               "$gh_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
             exit 1
