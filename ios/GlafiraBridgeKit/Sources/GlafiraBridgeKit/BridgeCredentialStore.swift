@@ -204,9 +204,12 @@ public enum BridgeHubBindingPersistence {
 
     public static func decode(_ data: Data) throws -> BridgeHubBinding {
         do {
-            try validatePayloadSize(data)
-            try validateJSONStructure(data)
-            guard let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            // Validate and parse one owned snapshot so externally mutable Data storage
+            // cannot change between structural validation and Foundation decoding.
+            let ownedData = Data(Array(data))
+            try validatePayloadSize(ownedData)
+            try validateJSONStructure(ownedData)
+            guard let envelope = try JSONSerialization.jsonObject(with: ownedData) as? [String: Any],
                   Set(envelope.keys) == Set(["schemaVersion", "binding"]),
                   integerValue(envelope["schemaVersion"]) == 1,
                   let object = envelope["binding"] as? [String: Any],
@@ -269,6 +272,8 @@ private struct StrictJSONStructureValidator {
     private let maximumDepth: Int
     private var index = 0
     private var duplicateKeyFound = false
+    private var unsupportedNumberFound = false
+    private let stringDecoder = JSONDecoder()
 
     init(bytes: [UInt8], maximumDepth: Int) {
         self.bytes = bytes
@@ -281,6 +286,7 @@ private struct StrictJSONStructureValidator {
         skipWhitespace()
         guard index == bytes.count else { throw BridgeHubBindingPersistenceError.invalidPayload }
         if duplicateKeyFound { throw BridgeHubBindingPersistenceError.duplicateJSONKey }
+        if unsupportedNumberFound { throw BridgeHubBindingPersistenceError.invalidPayload }
     }
 
     private mutating func parseValue(depth: Int) throws {
@@ -289,7 +295,7 @@ private struct StrictJSONStructureValidator {
         switch bytes[index] {
         case 0x7B: try parseObject(depth: depth + 1) // {
         case 0x5B: try parseArray(depth: depth + 1) // [
-        case 0x22: _ = try parseString()
+        case 0x22: _ = try parseString(decodeValue: false)
         default: try parsePrimitive()
         }
     }
@@ -302,7 +308,8 @@ private struct StrictJSONStructureValidator {
         var keys = Set<Data>()
         while true {
             skipWhitespace()
-            let key = try parseString()
+            let key = try parseString(decodeValue: true)
+            guard let key else { throw BridgeHubBindingPersistenceError.invalidPayload }
             if !keys.insert(Data(key.utf8)).inserted { duplicateKeyFound = true }
             skipWhitespace()
             guard consume(0x3A) else { throw BridgeHubBindingPersistenceError.invalidPayload } // :
@@ -328,15 +335,16 @@ private struct StrictJSONStructureValidator {
         }
     }
 
-    private mutating func parseString() throws -> String {
+    private mutating func parseString(decodeValue: Bool) throws -> String? {
         guard consume(0x22) else { throw BridgeHubBindingPersistenceError.invalidPayload }
         let start = index - 1
         while index < bytes.count {
             let byte = bytes[index]
             if byte == 0x22 {
                 index += 1
+                guard decodeValue else { return nil }
                 let encoded = Data(bytes[start..<index])
-                guard let value = try? JSONDecoder().decode(String.self, from: encoded) else {
+                guard let value = try? stringDecoder.decode(String.self, from: encoded) else {
                     throw BridgeHubBindingPersistenceError.invalidPayload
                 }
                 return value
@@ -367,9 +375,14 @@ private struct StrictJSONStructureValidator {
         }
         guard index > start else { throw BridgeHubBindingPersistenceError.invalidPayload }
         let token = String(decoding: bytes[start..<index], as: UTF8.self)
-        guard token == "true" || token == "false" || token == "null" ||
-                (isValidJSONNumber(token) && !token.contains(".") && !token.contains("e") && !token.contains("E")) else {
+        if token == "true" || token == "false" || token == "null" { return }
+        guard isValidJSONNumber(token) else {
             throw BridgeHubBindingPersistenceError.invalidPayload
+        }
+        if token.contains(".") || token.contains("e") || token.contains("E") {
+            // Defer valid non-integer numbers until duplicate keys are checked so
+            // malformed JSON still wins, duplicate-key JSON remains distinguishable.
+            unsupportedNumberFound = true
         }
     }
 
