@@ -251,7 +251,7 @@ jobs:
             shift
             "$@" || {
               local probe_status=$?
-              printf 'Probe %s returned exit %s\\n' "$probe_name" "$probe_status" >&2
+              printf 'Probe %s returned exit %s\n' "$probe_name" "$probe_status" >&2
               return "$probe_status"
             }
           }
@@ -512,7 +512,7 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           if [[ -n "${FETCH_CALL_LOG:-}" ]]; then
-            printf 'invoked\\n' >> "$FETCH_CALL_LOG"
+            printf 'invoked\n' >> "$FETCH_CALL_LOG"
           fi
           exit 23
           FETCH_FAIL
