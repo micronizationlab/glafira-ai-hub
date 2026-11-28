@@ -41,13 +41,13 @@ public struct BridgeHubBinding: Codable, Equatable, Sendable {
               let canonicalEndpoint = BridgeHubBindingValidation.canonicalEndpoint(endpoint),
               BridgeHubBindingValidation.validPin(certificateSHA256),
               !scopes.isEmpty,
-              scopes.count == Set(scopes).count,
               scopes.count <= 32,
+              scopes.count == Set(scopes).count,
               scopes.allSatisfy(BridgeHubBindingValidation.validScope),
               (1...BridgeHubBindingValidation.maximumUnixEpochMilliseconds).contains(enrolledAtEpochMs),
               (1...BridgeHubBindingValidation.maximumUnixEpochMilliseconds).contains(expiresAtEpochMs),
               expiresAtEpochMs > enrolledAtEpochMs else {
-            throw BridgeCredentialStoreError.invalidHubBinding
+            throw BridgeHubBindingError.invalidBinding
         }
         let lifetime = expiresAtEpochMs - enrolledAtEpochMs
         guard (BridgeHubBindingValidation.minimumLifetimeMilliseconds...BridgeHubBindingValidation.maximumLifetimeMilliseconds).contains(lifetime) else {
@@ -113,8 +113,8 @@ private enum BridgeHubBindingValidation {
     ]
 
     static func validIdentifier(_ value: String) -> Bool {
-        (1...128).contains(value.utf8.count) && value.allSatisfy {
-            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_")
+        (8...128).contains(value.utf8.count) && value.allSatisfy {
+            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == ".")
         }
     }
 
@@ -125,42 +125,59 @@ private enum BridgeHubBindingValidation {
             return nil
         }
         let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        guard isPrivateLanAddress(host),
-              components.user == nil,
+        let canonicalHost: String
+        if host.contains(":") {
+            guard let ipv6 = canonicalUniqueLocalIPv6Address(host) else { return nil }
+            canonicalHost = "[\(ipv6)]"
+        } else {
+            guard isPrivateIPv4Address(host) else { return nil }
+            canonicalHost = host.lowercased()
+        }
+        let effectivePort = components.port ?? 8443
+        guard components.user == nil,
               components.password == nil,
               components.query == nil,
               components.fragment == nil,
               components.path == "/bridge/v1",
-              components.port == nil || (1...65_535).contains(components.port!) else {
+              (1024...65_535).contains(effectivePort) else {
             return nil
         }
         components.scheme = "https"
-        components.host = host.contains(":") ? "[\(host.lowercased())]" : host.lowercased()
+        components.host = canonicalHost
+        components.port = effectivePort
         guard let normalized = components.string,
               let normalizedURL = URL(string: normalized),
               normalizedURL.path == "/bridge/v1",
-              normalizedURL.scheme == "https" else {
+              normalizedURL.scheme == "https",
+              normalizedURL.port == effectivePort else {
             return nil
         }
         return normalizedURL.absoluteString
     }
 
-    private static func isPrivateLanAddress(_ host: String) -> Bool {
+    private static func isPrivateIPv4Address(_ host: String) -> Bool {
         var ipv4 = in_addr()
-        if host.withCString({ inet_pton(AF_INET, $0, &ipv4) }) == 1 {
-            let octets = host.split(separator: ".").compactMap { UInt8($0) }
-            guard octets.count == 4 else { return false }
-            return octets[0] == 10 ||
-                (octets[0] == 172 && (16...31).contains(octets[1])) ||
-                (octets[0] == 192 && octets[1] == 168)
-        }
+        guard host.withCString({ inet_pton(AF_INET, $0, &ipv4) }) == 1 else { return false }
+        let octets = host.split(separator: ".").compactMap { UInt8($0) }
+        guard octets.count == 4 else { return false }
+        return octets[0] == 10 ||
+            (octets[0] == 172 && (16...31).contains(octets[1])) ||
+            (octets[0] == 192 && octets[1] == 168)
+    }
 
+    private static func canonicalUniqueLocalIPv6Address(_ host: String) -> String? {
         var ipv6 = in6_addr()
-        if host.withCString({ inet_pton(AF_INET6, $0, &ipv6) }) == 1 {
-            let normalized = host.lowercased()
-            return normalized.hasPrefix("fc") || normalized.hasPrefix("fd")
+        guard host.withCString({ inet_pton(AF_INET6, $0, &ipv6) }) == 1 else { return nil }
+        let bytes = withUnsafeBytes(of: ipv6) { Array($0.prefix(16)) }
+        guard bytes.count == 16, (bytes[0] & 0xFE) == 0xFC else { return nil }
+        var buffer = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+        let rendered = withUnsafePointer(to: &ipv6) { address in
+            buffer.withUnsafeMutableBufferPointer { output in
+                inet_ntop(AF_INET6, address, output.baseAddress, socklen_t(output.count))
+            }
         }
-        return false
+        guard rendered != nil else { return nil }
+        return String(cString: buffer)
     }
 
     static func validPin(_ value: String) -> Bool {
@@ -172,6 +189,10 @@ private enum BridgeHubBindingValidation {
     static func validScope(_ value: String) -> Bool {
         supportedScopes.contains(value)
     }
+}
+
+public enum BridgeHubBindingError: Error, Equatable, Sendable {
+    case invalidBinding
 }
 
 public struct BridgeDeviceCredential: Equatable, Sendable {
@@ -199,7 +220,6 @@ public struct BridgeDeviceCredential: Equatable, Sendable {
 public enum BridgeCredentialStoreError: Error, Equatable, Sendable {
     case invalidDeviceIdentifier
     case invalidSecret
-    case invalidHubBinding
     case biometricProtectionUnavailable
     case credentialAlreadyExists
     case credentialNotFound
