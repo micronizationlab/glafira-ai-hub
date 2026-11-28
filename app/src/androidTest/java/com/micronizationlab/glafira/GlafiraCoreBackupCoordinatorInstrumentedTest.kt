@@ -955,17 +955,20 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     @Test
     fun recoverRemovesDanglingRollbackTempSymlinkWithoutFollowingTarget() = runBlocking {
         val stale = File(context.cacheDir, "glafira-rollback-recovery-dangling.tmp")
-        val target = File(context.cacheDir, "missing-rollback-recovery-target")
+        val target = File(context.cacheDir, "rollback-recovery-target-canary").apply {
+            writeText("symlink target must survive recovery")
+        }
         val passphrase = disposablePassphrase()
         try {
             Files.createSymbolicLink(stale.toPath(), target.toPath())
             assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
             isolatedCoordinator().recover(passphrase)
             assertFalse(Files.exists(stale.toPath(), LinkOption.NOFOLLOW_LINKS))
-            assertFalse(target.exists())
+            assertEquals("symlink target must survive recovery", target.readText())
             assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
         } finally {
             Files.deleteIfExists(stale.toPath())
+            check(!target.exists() || target.delete())
             passphrase.fill(0.toChar())
         }
     }
