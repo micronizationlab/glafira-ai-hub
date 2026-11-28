@@ -49,6 +49,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private inner class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
+        var failCommittedJournalDirectoryDeleteCount = 0
         var pauseCount = 0
         var failPauseForRestoreCount = 0
         var failPlaintextSnapshotDirectorySyncOnce = false
@@ -79,6 +80,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
                 throw IOException("injected interruption before committed journal cleanup")
+            }
+        }
+        override fun beforeCommittedJournalDirectoryDelete() {
+            if (failCommittedJournalDirectoryDeleteCount > 0) {
+                failCommittedJournalDirectoryDeleteCount--
+                throw IOException("injected committed journal directory deletion failure")
             }
         }
         override fun beforeDirectorySync(directory: File) {
@@ -965,6 +972,34 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             Files.deleteIfExists(journal.toPath())
             check(!journalTarget.exists() || journalTarget.deleteRecursively())
             check(!snapshotDirectory.exists() || snapshotDirectory.deleteRecursively())
+            archive.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun committedMarkerIsRestoredWhenJournalDirectoryRemovalFails() = runBlocking {
+        val coordinator = isolatedCoordinator()
+        val passphrase = "committed-journal-directory-delete-failure".toCharArray()
+        val archive = coordinator.create(passphrase)
+        store.enqueue(task("committed-journal-directory-delete"))
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        try {
+            fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 2
+            assertThrows(IOException::class.java) {
+                runBlocking { coordinator.restore(archive, passphrase) }
+            }
+            assertTrue("The incomplete journal directory must remain", journal.isDirectory)
+            assertTrue(
+                "The committed marker must be restored after directory deletion fails",
+                File(journal, "restore.committed").isFile
+            )
+            fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 0
+            isolatedCoordinator().recover(passphrase)
+            assertFalse("A later recovery pass removes the fully cleaned journal", journal.exists())
+            assertTrue("The restored task remains committed", store.getTask("committed-journal-directory-delete") != null)
+        } finally {
+            fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 0
             archive.delete()
             passphrase.fill(0.toChar())
         }
