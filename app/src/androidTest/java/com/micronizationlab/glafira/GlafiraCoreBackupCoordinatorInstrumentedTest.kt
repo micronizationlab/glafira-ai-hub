@@ -57,6 +57,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var armPlaintextSnapshotDirectorySyncOnLastPauseFailure = false
         var plaintextSnapshotAbsentAtParentDirectorySyncFailure = false
         var failJournalDirectorySyncAfterSnapshotCleanupCount = 0
+        var armJournalDirectorySyncFailureAfterSnapshotCleanup = false
+        var journalDirectorySyncFailureArmed = false
         var journalDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCompletedCalls = 0
@@ -96,15 +98,20 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             val journalDirectory = File(context.noBackupFilesDir, "glafira-restore-journal").absoluteFile
             if (directory.absoluteFile == journalDirectory) {
                 journalDirectorySyncCalls++
-                if (plaintextSnapshotDirectorySyncCompletedCalls > 0 &&
-                    failJournalDirectorySyncAfterSnapshotCleanupCount > 0
-                ) {
+                if (journalDirectorySyncFailureArmed && failJournalDirectorySyncAfterSnapshotCleanupCount > 0) {
                     failJournalDirectorySyncAfterSnapshotCleanupCount--
                     throw IOException("injected journal fsync failure after portable snapshot cleanup")
                 }
             }
             if (directory.absoluteFile == context.filesDir.absoluteFile) {
                 plaintextSnapshotDirectorySyncCalls++
+                if (armJournalDirectorySyncFailureAfterSnapshotCleanup &&
+                    plaintextSnapshotDirectorySyncCalls >= 2 &&
+                    !File(context.filesDir, ".glafira-core-snapshot").exists()
+                ) {
+                    armJournalDirectorySyncFailureAfterSnapshotCleanup = false
+                    journalDirectorySyncFailureArmed = true
+                }
                 if (failPlaintextSnapshotDirectorySyncOnce) {
                     plaintextSnapshotAbsentAtParentDirectorySyncFailure =
                         !File(context.filesDir, ".glafira-core-snapshot").exists()
@@ -133,6 +140,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fixtureRuntimeHooks.pauseCount = 0
             fixtureRuntimeHooks.failPauseForRestoreCount = 0
             fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
+            fixtureRuntimeHooks.armJournalDirectorySyncFailureAfterSnapshotCleanup = false
+            fixtureRuntimeHooks.journalDirectorySyncFailureArmed = false
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -194,7 +203,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     val installationMarker = rollbackOwnerMarker()
                     val fixtureJournal = File(testRoot, "no-backup/glafira-restore-journal")
                     check(!installationMarker.exists() && !fixtureJournal.exists()) {
-                        "Preserving fixture root because rollback ownership/recovery evidence remains."
+                        "Preserving fixture root because rollback ownership/recovery evidence remains " +
+                            "(ownerMarker=${installationMarker.exists()}, journal=${fixtureJournal.exists()})."
                     }
                     checkFixtureRootOwnership(testRunId, testRoot)
                     rollbackCipher.deleteKey()
@@ -718,7 +728,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             val marker = rollbackOwnerMarker()
                             if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
                                 val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-                                val journalOwner = File(journal, "test-owner")
+                                // Keep test ownership metadata outside the production journal: committed recovery
+            // must reject unknown entries rather than treating fixture metadata as disposable.
+            val journalOwner = File(context.noBackupFilesDir, "v3-reentry-journal-owner")
                                 if (primaryFailure != null && (journal.exists() || rollbackKeyExists())) {
                                     throw IllegalStateException(
                                         "Preserving fixture root, journal and fixture key after a failed test."
@@ -1072,8 +1084,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     fun committedMarkerIsRestoredWhenJournalDirectoryRemovalFails() = runBlocking {
         val coordinator = isolatedCoordinator()
         val passphrase = disposablePassphrase()
-        val archive = coordinator.create(passphrase)
         store.enqueue(task("committed-journal-directory-delete"))
+        val archive = coordinator.create(passphrase)
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         try {
             fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 2
@@ -1106,6 +1118,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls = 0
         fixtureRuntimeHooks.journalDirectorySyncCalls = 0
         fixtureRuntimeHooks.failJournalDirectorySyncAfterSnapshotCleanupCount = 2
+        fixtureRuntimeHooks.armJournalDirectorySyncFailureAfterSnapshotCleanup = true
         try {
             val failure = assertThrows(CommittedRestoreCleanupPendingException::class.java) {
                 runBlocking { coordinator.restore(archive, passphrase) }
@@ -1129,8 +1142,15 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCalls
             )
             assertEquals(1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
+            fixtureRuntimeHooks.failJournalDirectorySyncAfterSnapshotCleanupCount = 0
+            fixtureRuntimeHooks.journalDirectorySyncFailureArmed = false
+            isolatedCoordinator().recover(passphrase)
+            assertFalse("A later recovery pass clears the retained committed journal",
+                File(context.noBackupFilesDir, "glafira-restore-journal").exists())
         } finally {
             fixtureRuntimeHooks.failJournalDirectorySyncAfterSnapshotCleanupCount = 0
+            fixtureRuntimeHooks.armJournalDirectorySyncFailureAfterSnapshotCleanup = false
+            fixtureRuntimeHooks.journalDirectorySyncFailureArmed = false
             archive.delete()
             passphrase.fill(0.toChar())
         }
@@ -1448,6 +1468,31 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun unmarkedJournalWithUnexpectedDataBlocksRestoreBeforeMutation() = runBlocking {
+        store.enqueue(task("must-survive-unmarked-journal"))
+        val passphrase = disposablePassphrase()
+        val archive = isolatedCoordinator().create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        try {
+            check(journal.mkdirs())
+            val sentinel = File(journal, "must-survive-unmarked-journal")
+            sentinel.writeText("unowned-recovery-evidence", Charsets.UTF_8)
+            val failure = assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().restore(archive, passphrase) }
+            }
+            assertTrue(failure.message.orEmpty().contains("данные без маркера"))
+            assertEquals("must-survive-unmarked-journal",
+                store.getTask("must-survive-unmarked-journal")?.taskId)
+            assertEquals("unowned-recovery-evidence", sentinel.readText(Charsets.UTF_8))
+            assertFalse(File(journal, "restore.pending").exists())
+        } finally {
+            if (journal.exists()) check(journal.deleteRecursively())
+            archive.delete()
+            passphrase.fill('\u0000')
+        }
+    }
+
+    @Test
     fun authenticatedArchiveWithMalformedPortableCoreIsRejectedBeforeRollbackOrMutation() = runBlocking {
         store.enqueue(task("must-survive-invalid-snapshot"))
         val passphrase = disposablePassphrase()
@@ -1463,30 +1508,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
 
         try {
-            val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-            check(journal.mkdirs())
-            val sentinel = File(journal, "must-survive-pre-rollback-validation")
-            sentinel.writeText("pre-rollback-sentinel", Charsets.UTF_8)
-            withOwnedRestoreJournal {
-                try {
-                    val failure = assertThrows(IllegalArgumentException::class.java) {
-                        runBlocking { isolatedCoordinator().restore(archive, passphrase) }
-                    }
-                    assertEquals("Неполный набор таблиц Core.", failure.message)
-                    assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
-                    assertFalse(File(journal, "restore.pending").exists())
-                    assertTrue("Validation must reject before prepareRollback can clear the journal directory.", sentinel.isFile)
-                    assertEquals("pre-rollback-sentinel", sentinel.readText(Charsets.UTF_8))
-                } finally {
-                    // This sentinel journal is deliberately test-created and has no rollback
-                    // ownership record. Remove only our sentinel and then its empty directory
-                    // before withOwnedRestoreJournal performs installation-key cleanup.
-                    if (sentinel.exists()) check(sentinel.delete())
-                    if (journal.exists() && journal.list().orEmpty().isEmpty()) {
-                        check(journal.delete()) { "Could not remove the empty test sentinel journal." }
-                    }
-                }
+            val failure = assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { isolatedCoordinator().restore(archive, passphrase) }
             }
+            assertEquals("Неполный набор таблиц Core.", failure.message)
+            assertEquals("must-survive-invalid-snapshot",
+                store.getTask("must-survive-invalid-snapshot")?.taskId)
+            assertFalse("Malformed portable data is rejected before a rollback marker is published",
+                File(context.noBackupFilesDir, "glafira-restore-journal/restore.pending").exists())
         } finally {
             archive.delete()
             passphrase.fill('\u0000')
@@ -1709,6 +1738,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 "Refusing to delete an installation rollback key without its owned journal."
                             }
                             clearRollbackOwnerMarker(runId)
+                            check(!journalOwner.exists() || journalOwner.delete())
                             check(owner.delete())
                         }
                     }
@@ -1748,7 +1778,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 // durable commit is already published, so restore must report success
                 // while preserving the journal for a later cleanup pass.
                 fixtureRuntimeHooks.failCommittedCleanupCount = 2
-                coordinator.restore(archive, passphrase)
+                val cleanupPending = assertThrows(CommittedRestoreCleanupPendingException::class.java) {
+                    runBlocking { coordinator.restore(archive, passphrase) }
+                }
+                assertTrue("The pending result retains the completed restore verification",
+                    cleanupPending.verification.fileCount > 0)
+                assertTrue("The pending result identifies committed cleanup",
+                    cleanupPending.message.orEmpty().contains("Восстановление завершено"))
                 assertTrue("Committed journal remains available for later cleanup", File(journal, "restore.committed").isFile)
                 assertTrue("Rollback evidence remains while cleanup is pending", File(journal, "database.db").isFile)
                 fixtureRuntimeHooks.failCommittedCleanupCount = 0
@@ -1794,6 +1830,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             }
                             check(!knownGood.exists() || knownGood.delete())
                             check(!createdAfterMarker.exists() || createdAfterMarker.delete())
+                            check(!journalOwner.exists() || journalOwner.delete())
                             check(owner.delete())
                         }
                         assertFalse("Refuse to overwrite an unowned journal", journal.exists())
@@ -1834,6 +1871,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     }
                 }
                 // The injected fixture runtime has no authority over the application scheduler.
+                check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId)
                 withTimeout(MAINTENANCE_TIMEOUT_MILLIS) {
                     isolatedCoordinator().recover(passphrase)
                 }
