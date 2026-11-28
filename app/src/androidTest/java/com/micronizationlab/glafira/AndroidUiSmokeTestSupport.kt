@@ -96,8 +96,20 @@ internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
     )
     if (Files.isSymbolicLink(journal.toPath()) ||
         markers.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) } ||
-        BackupArchive.hasRestoreReplacementTemps(app)
+        Files.exists(
+            File(app.noBackupFilesDir, ".glafira-restore-temp-registry.json").toPath(),
+            LinkOption.NOFOLLOW_LINKS
+        )
     ) return true
+    val replacementTemps = runCatching {
+        Files.walk(app.filesDir.toPath()).use { paths ->
+            paths.anyMatch { path ->
+                path.fileName?.toString()?.endsWith(".restore-tmp") == true &&
+                    Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+            }
+        }
+    }.getOrDefault(true)
+    if (replacementTemps) return true
     val stale = app.cacheDir.listFiles { file ->
         file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
     } ?: return true
