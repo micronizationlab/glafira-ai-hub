@@ -907,6 +907,31 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun recoverRejectsDanglingCommittedMarkerWithoutDeletingRollbackEvidence() = runBlocking {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
+        val marker = File(journal, "restore.committed")
+        val rollbackDatabase = File(journal, "database.db").apply { writeText("rollback database evidence") }
+        val rollbackArchive = File(journal, "files.glb").apply { writeText("rollback archive evidence") }
+        val danglingTarget = File(context.cacheDir, "missing-restore-committed-target")
+        val passphrase = "dangling-committed-evidence".toCharArray()
+        try {
+            Files.createSymbolicLink(marker.toPath(), danglingTarget.toPath())
+            assertTrue("A dangling committed marker link must still surface recovery as pending",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Rollback database evidence must remain untouched", rollbackDatabase.isFile)
+            assertTrue("Rollback archive evidence must remain untouched", rollbackArchive.isFile)
+            assertTrue("The dangling committed marker itself must remain for owner inspection", Files.isSymbolicLink(marker.toPath()))
+        } finally {
+            Files.deleteIfExists(marker.toPath())
+            check(!journal.exists() || journal.deleteRecursively())
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun recoverRetainsPublicUnitReturnType() = runBlocking {
         val passphrase = "recover-unit-contract".toCharArray()
         try {
