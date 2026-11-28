@@ -29,37 +29,69 @@ internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
 }
 
 /** Restore the preference, then recreate the task so MainActivity applies the restored lock state. */
+private const val UI_SMOKE_RECOVERY_PREFS = "glafira_ui_smoke_recovery"
+
+internal fun recoverInterruptedBiometricPreference(
+    context: Context,
+    preferences: android.content.SharedPreferences
+) {
+    val state = context.getSharedPreferences(UI_SMOKE_RECOVERY_PREFS, Context.MODE_PRIVATE)
+    if (!state.getBoolean("pending", false)) return
+    val original = state.getBoolean("original_biometric", false)
+    restoreBiometricPreferenceAndRelock(context, preferences, original)
+}
+
+internal fun persistOriginalBiometricPreference(context: Context, originalBiometric: Boolean) {
+    check(context.getSharedPreferences(UI_SMOKE_RECOVERY_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean("original_biometric", originalBiometric)
+        .putBoolean("pending", true)
+        .commit()) {
+        "Could not persist the original biometric preference before UI smoke-test mutation."
+    }
+}
+
+/** Restore persisted state and always invalidate the prior MainActivity task, even on failure. */
 internal fun restoreBiometricPreferenceAndRelock(
     context: Context,
     preferences: android.content.SharedPreferences,
     originalBiometric: Boolean
 ) {
-    check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
-        "Could not restore biometric preference after UI smoke test"
+    var failure: Throwable? = null
+    try {
+        check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
+            "Could not restore biometric preference after UI smoke test"
+        }
+    } catch (error: Throwable) {
+        failure = error
+    } finally {
+        try {
+            context.startActivity(
+                Intent(context, MainActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                )
+            )
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        } catch (relaunch: Throwable) {
+            if (failure == null) failure = relaunch else failure!!.addSuppressed(relaunch)
+        }
     }
-    context.startActivity(
-        Intent(context, MainActivity::class.java).addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        )
-    )
-    InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+    if (failure != null) throw failure!!
+    check(context.getSharedPreferences(UI_SMOKE_RECOVERY_PREFS, Context.MODE_PRIVATE)
+        .edit().clear().commit()) {
+        "Could not clear the persisted UI smoke-test recovery snapshot."
+    }
 }
 
 /** Read recovery indicators without deleting a temp file that an active recovery may own. */
-internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
-    val app = context.applicationContext
-    val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
-    if (Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) return true
-    val stale = app.cacheDir.listFiles { file ->
-        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
-    } ?: throw IllegalStateException("Could not inspect recovery temp directory.")
-    return stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
-}
+internal fun recoveryPendingForDiagnostics(context: Context): Boolean =
+    GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
 
 /** Capture only structural accessibility metadata; never read text or content descriptions. */
 internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacters: Int = 12_000): String {
     require(maximumNodes > 0) { "Hierarchy node limit must be positive." }
-    val truncationNotice = "<hierarchy summary bounded; nodes=limit reached>\n"
+    val truncationNoticePrefix = "<hierarchy summary bounded; nodes="
+    val truncationNoticeSuffix = ">\n"
     require(maximumCharacters > truncationNotice.length) {
         "Hierarchy character limit must leave room for the truncation notice."
     }
@@ -96,7 +128,7 @@ internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacte
     visit(root, 0)
     if (!truncated && (visited >= maximumNodes || output.length >= bodyLimit)) truncated = true
     if (!truncated) return output.toString().take(maximumCharacters)
-    return output.toString().take(bodyLimit) + truncationNotice.replace("limit reached", "nodes=$visited")
+    return output.toString().take(bodyLimit) + truncationNoticePrefix + visited + truncationNoticeSuffix
 }
 
 internal fun collectHomeScreenDiagnostics(
