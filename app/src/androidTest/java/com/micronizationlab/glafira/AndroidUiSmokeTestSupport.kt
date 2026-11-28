@@ -58,12 +58,22 @@ internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
 
 /** Capture only structural accessibility metadata; never read text or content descriptions. */
 internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacters: Int = 12_000): String {
+    require(maximumNodes > 0) { "Hierarchy node limit must be positive." }
+    val truncationNotice = "<hierarchy summary bounded; nodes=limit reached>\n"
+    require(maximumCharacters > truncationNotice.length) {
+        "Hierarchy character limit must leave room for the truncation notice."
+    }
     val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
         ?: return "<no active accessibility root>"
+    val bodyLimit = maximumCharacters - truncationNotice.length
     val output = StringBuilder()
     var visited = 0
+    var truncated = false
     fun visit(node: AccessibilityNodeInfo, depth: Int) {
-        if (visited >= maximumNodes || output.length >= maximumCharacters) return
+        if (visited >= maximumNodes || output.length >= bodyLimit) {
+            truncated = true
+            return
+        }
         visited++
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
@@ -76,15 +86,17 @@ internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacte
             .append(" children=").append(node.childCount)
             .append('\n')
         for (index in 0 until node.childCount) {
-            if (visited >= maximumNodes || output.length >= maximumCharacters) break
+            if (visited >= maximumNodes || output.length >= bodyLimit) {
+                truncated = true
+                break
+            }
             node.getChild(index)?.let { child -> visit(child, depth + 1) }
         }
     }
     visit(root, 0)
-    if (visited >= maximumNodes || output.length >= maximumCharacters) {
-        output.append("<hierarchy summary bounded; nodes=").append(visited).append(">\n")
-    }
-    return output.toString().take(maximumCharacters)
+    if (!truncated && (visited >= maximumNodes || output.length >= bodyLimit)) truncated = true
+    if (!truncated) return output.toString().take(maximumCharacters)
+    return output.toString().take(bodyLimit) + truncationNotice.replace("limit reached", "nodes=$visited")
 }
 
 internal fun collectHomeScreenDiagnostics(
