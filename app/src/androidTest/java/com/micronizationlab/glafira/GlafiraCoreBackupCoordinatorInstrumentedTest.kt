@@ -1571,6 +1571,50 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun backupCreationPreservesUnexpectedSnapshotStagingData() = runBlocking {
+        val directory = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
+        val unexpected = File(directory, "unexpected-owner-data.tmp").apply { writeText("preserve-owner-data") }
+        val passphrase = "GLAFIRA-backup-preserve-staging".toCharArray()
+        try {
+            val failure = assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().create(passphrase) }
+            }
+            assertTrue("Backup must stop on unrelated staging data", failure.message.orEmpty().contains("посторонними данными"))
+            assertTrue("Backup creation must preserve unrelated staging data", unexpected.isFile)
+            assertEquals("preserve-owner-data", unexpected.readText())
+        } finally {
+            unexpected.delete()
+            directory.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun rejectedRestoreRemovesKnownPlaintextButPreservesUnexpectedStagingData() = runBlocking {
+        val directory = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
+        val export = File(directory, "core-portable-v2.json").apply { writeText("stale plaintext task/result data") }
+        val unexpected = File(directory, "unexpected-owner-data.tmp").apply { writeText("preserve-owner-data") }
+        val invalidArchive = File(context.cacheDir, "invalid-restore-" + UUID.randomUUID() + ".glb").apply {
+            writeText("not a GLAFIRA backup")
+        }
+        val passphrase = "GLAFIRA-rejected-restore-cleanup".toCharArray()
+        try {
+            val failure = assertThrows(Exception::class.java) {
+                runBlocking { isolatedCoordinator().restore(invalidArchive, passphrase) }
+            }
+            assertFalse("Rejected restore removes the known stale plaintext export", export.exists())
+            assertTrue("Rejected restore preserves unrelated staging data", unexpected.isFile)
+            assertTrue("Guarded cleanup failure is attached to the original restore failure",
+                failure.suppressed.any { it is IOException && it.message.orEmpty().contains("посторонними данными") })
+        } finally {
+            invalidArchive.delete()
+            unexpected.delete()
+            directory.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun restoreReportsPendingCleanupAndPreservesUnexpectedStagingData() = runBlocking {
         val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-pending-cleanup-state".toCharArray()
