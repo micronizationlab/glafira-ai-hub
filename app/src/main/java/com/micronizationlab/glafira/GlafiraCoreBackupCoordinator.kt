@@ -365,9 +365,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
         fun hasInterruptedRestore(context: Context): Boolean {
             val app = context.applicationContext
             val journal = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
-            check(!Files.isSymbolicLink(journal.toPath())) {
-                "Обнаружена символическая ссылка вместо журнала восстановления; проверка Core остановлена."
-            }
+            // Keep application startup alive so the owner can reach recovery UI.
+            // The recovery operation itself rejects the symlink before following it.
+            if (Files.isSymbolicLink(journal.toPath())) return true
             val marker = File(journal, JOURNAL_MARKER)
             val committed = File(journal, COMMITTED_MARKER)
             if (marker.exists() || committed.exists()) return true
