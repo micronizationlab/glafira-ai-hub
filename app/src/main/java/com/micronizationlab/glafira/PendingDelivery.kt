@@ -145,4 +145,4 @@ internal suspend fun replayPendingMessages(context: Context) {
 
 /** A process may have died between restore commit phases; no remote operation may use that snapshot. */
 internal fun isPendingDispatchBlocked(context: Context): Boolean =
-    File(context.noBackupFilesDir, "glafira-restore-journal/restore.pending").exists()
+    GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
