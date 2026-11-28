@@ -576,7 +576,7 @@ jobs:
           GH
           chmod +x "$tmp/fake-bin/gh"
           if output="$(CALL_LOG="$tmp/gh-calls.log" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-outage.err")"; then
-            echo "GraphQL outage was incorrectly accepted" >&2; exit 1
+            echo "GraphQL outage was incorrectly accepted; calls=$(cat "$tmp/gh-calls.log" 2>/dev/null || true); stderr=$(tail -n 3 "$tmp/graphql-outage.err" 2>/dev/null || true)" >&2; exit 1
           else
             [[ "$?" -eq 23 ]]
           fi
