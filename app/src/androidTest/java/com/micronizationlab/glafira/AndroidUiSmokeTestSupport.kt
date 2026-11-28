@@ -10,7 +10,6 @@ import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
-/** Serialize UI suites that temporarily change the same app-wide biometric preference. */
 internal object UiSmokeTestPreferenceLock {
     private val lock = java.util.concurrent.locks.ReentrantLock(true)
     fun acquire() = lock.lock()
@@ -27,10 +26,6 @@ internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     }
 }
 
-/**
- * Capture the current window hierarchy and startup-gate states for a failed home-screen
- * accessibility wait. This function does not wait for the workspace to appear.
- */
 internal fun collectHomeScreenDiagnostics(
     device: UiDevice,
     context: Context,
@@ -63,7 +58,6 @@ internal fun collectHomeScreenDiagnostics(
     return "recovery=$recoveryState, biometric=$biometricState, wait=$waitStatus, ${cleanupStatus}$hierarchyPath. Window hierarchy: $hierarchy"
 }
 
-/** Read recovery indicators without deleting a temp file that an active recovery may own. */
 internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
     val app = context.applicationContext
     val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
@@ -105,7 +99,6 @@ internal fun awaitHomeScreen(
     throw IllegalStateException("Home workspace did not become accessible. $diagnostics", accessibilityWait.exceptionOrNull())
 }
 
-/** Read only bounded head/tail slices and redact every user-controlled XML text attribute. */
 internal fun readRedactedHierarchySummary(file: File, maximumCharacters: Int = 12_000): String {
     require(maximumCharacters > 0) { "Hierarchy summary limit must be positive." }
     val maximumBytes = maximumCharacters.toLong() * 4L
