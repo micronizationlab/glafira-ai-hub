@@ -133,8 +133,8 @@ internal fun readBoundedWindowHierarchy(file: File, maximumCharacters: Int = 12_
         RandomAccessFile(file, "r").use { source ->
             source.seek(offset)
             val bytes = ByteArray(byteCount)
-            val count = source.read(bytes)
-            if (count <= 0) "" else String(bytes, 0, count, Charsets.UTF_8)
+            source.readFully(bytes)
+            String(bytes, Charsets.UTF_8)
         }
     val head = readRange(0L, headBytes)
     val tail = readRange((length - tailBytes).coerceAtLeast(0L), tailBytes)
