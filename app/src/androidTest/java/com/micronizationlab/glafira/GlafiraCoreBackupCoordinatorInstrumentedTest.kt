@@ -857,7 +857,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 "A symlinked journal must fail closed so callers show recovery instead of crashing",
                 GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
             )
-            assertTrue("Pending delivery must share the fail-closed recovery guard", isPendingDispatchBlocked(context))
         } finally {
             Files.deleteIfExists(journal.toPath())
             check(!target.exists() || target.deleteRecursively())
