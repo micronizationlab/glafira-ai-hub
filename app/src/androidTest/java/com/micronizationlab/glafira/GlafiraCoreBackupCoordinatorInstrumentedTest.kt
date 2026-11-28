@@ -405,7 +405,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     private fun rollbackJournalPathPresent(journal: File): Boolean =
         Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)
-
     @Suppress("UNCHECKED_CAST")
     private fun openSecureDirectory(path: Path): SecureDirectoryStream<Path> {
         val stream = Files.newDirectoryStream(path)
@@ -415,7 +414,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
         return stream as SecureDirectoryStream<Path>
     }
-
     private fun deleteTreeWithoutFollowingLinks(root: Path) {
         check(!Files.isSymbolicLink(root)) { "Refusing to recursively delete a symbolic-link fixture root." }
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
