@@ -46,7 +46,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private lateinit var testRunId: String
     private var fixtureLifetimeFile: RandomAccessFile? = null
     private var fixtureLifetimeFileLock: java.nio.channels.FileLock? = null
-    private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
+    private inner class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
         var failPlaintextSnapshotDirectorySyncOnce = false
