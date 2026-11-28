@@ -52,6 +52,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var pauseCount = 0
         var stagingDirectorySyncCalls = 0
         var stagingDirectorySyncCompletedCalls = 0
+        var injectUnexpectedStagingFileOnCleanup = false
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
             return block()
@@ -59,6 +60,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val pauseContexts = mutableListOf<Context>()
         override fun pauseForRestore(context: Context) { pauseContexts += context }
         override fun beforeCommittedJournalCleanup() {
+            if (injectUnexpectedStagingFileOnCleanup) {
+                injectUnexpectedStagingFileOnCleanup = false
+                File(context.filesDir, ".glafira-core-snapshot/unexpected-owner-data.tmp")
+                    .writeText("preserve-owner-data")
+            }
             if (failCommittedCleanupOnce || failCommittedCleanupCount > 0) {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
@@ -90,6 +96,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fixtureRuntimeHooks.pauseCount = 0
             fixtureRuntimeHooks.stagingDirectorySyncCalls = 0
             fixtureRuntimeHooks.stagingDirectorySyncCompletedCalls = 0
+            fixtureRuntimeHooks.injectUnexpectedStagingFileOnCleanup = false
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -1560,6 +1567,35 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 thirdFixture.deleteKey()
                 clearFixtureKeyAliasOwner(thirdFixture.keyAlias, testRunId)
             }
+        }
+    }
+
+    @Test
+    fun restoreReportsPendingCleanupAndPreservesUnexpectedStagingData() = runBlocking {
+        val coordinator = isolatedCoordinator()
+        val passphrase = "GLAFIRA-pending-cleanup-state".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val unexpected = File(context.filesDir, ".glafira-core-snapshot/unexpected-owner-data.tmp")
+        try {
+            fixtureRuntimeHooks.injectUnexpectedStagingFileOnCleanup = true
+            val verification = coordinator.restore(archive, passphrase)
+            assertTrue("A committed restore with pending cleanup is explicitly reported", verification.recoveryRequired)
+            assertTrue("Unexpected staging data is preserved for owner inspection", unexpected.isFile)
+            assertEquals("preserve-owner-data", unexpected.readText())
+            assertTrue("Committed journal remains until the owner resolves staging data",
+                File(journal, "restore.committed").isFile)
+            assertFalse("Known plaintext export is removed before pending cleanup is reported",
+                File(context.filesDir, GlafiraPortableCoreSnapshot.PATH).exists())
+            check(unexpected.delete())
+            coordinator.recover(passphrase)
+            assertFalse("Owner recovery removes the committed journal after staging cleanup", journal.exists())
+        } finally {
+            fixtureRuntimeHooks.injectUnexpectedStagingFileOnCleanup = false
+            archive.delete()
+            passphrase.fill(0.toChar())
+            if (journal.exists() && !File(journal, "restore.committed").exists()) check(journal.deleteRecursively())
+            if (unexpected.exists()) unexpected.delete()
         }
     }
 
