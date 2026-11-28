@@ -297,6 +297,20 @@ jobs:
           fi
           grep -Fq "Probe pipeline failure with successful final stage" "$tmp/dispatcher-pipeline-probe.err"
           grep -Fq "returned exit 1" "$tmp/dispatcher-pipeline-probe.err"
+
+          cat > "$tmp/err-trap-probe.sh" <<'ERR_TRAP_PROBE'
+          #!/usr/bin/env bash
+          set -Eeuo pipefail
+          trap 'status=$?; printf "Dispatcher fixture failed (exit %s): %s\\n" "$status" "$BASH_COMMAND" >&2' ERR
+          bash -c 'exit 37'
+          ERR_TRAP_PROBE
+          if bash "$tmp/err-trap-probe.sh" >"$tmp/err-trap-probe.out" 2>"$tmp/err-trap-probe.err"; then
+            echo "uncaught script-scope probe failure was incorrectly accepted" >&2; exit 1
+          else
+            trap_probe_status=$?
+          fi
+          [[ "$trap_probe_status" -eq 37 ]]
+          grep -Fq "Dispatcher fixture failed (exit 37): bash -c 'exit 37'" "$tmp/err-trap-probe.err"
           if [[ "${GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE:-0}" == "1" ]]; then
             forced_probe_command=force_probe_failure
           else
@@ -750,7 +764,7 @@ jobs:
           fi
           [[ "$forced_failure_status" -eq 37 ]]
           grep -Fq "Probe injected top-level failure" "$tmp/dispatcher-forced-failure.err"
-          grep -Fq "returned exit 37" "$tmp/dispatcher-forced-failure.err"
+          grep -Fq "(exit 37) returned exit 37" "$tmp/dispatcher-forced-failure.err"
           if grep -Fq "Dispatcher fixture failed" "$tmp/dispatcher-forced-failure.err"; then
             echo "expected child failure leaked as an ERR-trap fixture failure" >&2; exit 1
           fi
