@@ -119,13 +119,14 @@ jobs:
 
             if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
               if jq -s -e '
-                length > 0
-                and (.[0].data.repository.pullRequests.totalCount | type) == "number"
+                (.[0].data.repository.pullRequests.totalCount) as $total
+                | length > 0
+                and ($total | type) == "number"
                 and all(.[]; (.data.repository.pullRequests.nodes | type) == "array"
                   and .data.repository.pullRequests.pageInfo != null
-                  and .data.repository.pullRequests.totalCount == .[0].data.repository.pullRequests.totalCount)
+                  and .data.repository.pullRequests.totalCount == $total)
                 and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
-                and ([.[].data.repository.pullRequests.nodes[]] | length) == .[0].data.repository.pullRequests.totalCount
+                and ([.[].data.repository.pullRequests.nodes[]] | length) == $total
               ' >/dev/null 2>"$validation_error" <<< "$pages"; then
                 if jq -s '[
                   .[].data.repository.pullRequests.nodes[] |
@@ -478,17 +479,21 @@ jobs:
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
-          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
-            [[ "$3" == "--paginate" && "$4" == "-f" && "$5" == query=* ]] || exit 90
+          if [[ "$1" == "api" && "$2" == "graphql" && "$3" == "--paginate" ]]; then
+            [[ "$4" == "-f" && "$5" == query=* ]] || exit 90
             [[ "$5" == *"pageInfo"* && "$5" == *"endCursor"* ]] || exit 91
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-page-2"},"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
-          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":true,"endCursor":"cursor-page-2"},"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":true,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
+            exit 0
+          elif [[ "$1" == "api" && "$2" == "graphql" && "$3" == "-f" ]]; then
+            [[ "$4" == query=* ]] || exit 92
+            printf '%s\n' '{"data":{"repository":{"pullRequests":{"totalCount":2,"nodes":[{"number":1}]}}}}'
             exit 0
           fi
           exit 2
-          GH
+          GH       GH
           chmod +x "$tmp/fake-bin/gh"
           gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup[0].name == "Android CI" and .[1].number == 2' <<< "$gql_prs" >/dev/null
