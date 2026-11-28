@@ -34,6 +34,7 @@ internal interface GlafiraBackupRuntimeHooks {
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
     fun beforeCommittedJournalDirectoryDelete() = Unit
+    fun beforeSelectedArchiveCleanup(selectedArchive: File) = Unit
     fun beforeDirectorySync(directory: File) = Unit
     fun afterDirectorySync(directory: File) = Unit
 }
@@ -181,6 +182,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     var selectedArchiveCleanupFailure: Exception? = null
                     var portableSnapshotCleanupFailure: Exception? = null
                     try {
+                        runtimeHooks.beforeSelectedArchiveCleanup(selected)
                         if (pathExistsNoFollow(selected.toPath())) {
                             check(selected.delete()) { "Не удалось удалить временную копию выбранного архива." }
                         }
