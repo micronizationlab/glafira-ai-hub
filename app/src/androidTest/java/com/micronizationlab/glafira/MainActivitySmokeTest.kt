@@ -162,6 +162,19 @@ class MainActivitySmokeTest {
     }
 
     @Test
+    fun hierarchyTruncationNoticeIsPreservedWithinCharacterLimit() {
+        val device = launch()
+        assertTrue("Home window must expose at least one child for the truncation fixture",
+            device.hasObject(By.descContains("Открыть очередь задач")))
+        val maximumCharacters = 200
+        val hierarchy = captureSafeWindowHierarchy(maximumNodes = 1, maximumCharacters = maximumCharacters)
+        assertTrue("Truncated hierarchy must retain an explicit notice: $hierarchy",
+            hierarchy.contains("<hierarchy summary bounded; nodes=1>"))
+        assertTrue("Hierarchy output must respect its configured character bound",
+            hierarchy.length <= maximumCharacters)
+    }
+
+    @Test
     fun startupDiagnosticsRetainGatesWhenSafeHierarchyCaptureFails() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
