@@ -13,7 +13,6 @@ import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.io.RandomAccessFile
-import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
@@ -128,7 +127,7 @@ internal fun recoveryPendingForDiagnostics(context: Context): Boolean =
     GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
 
 private fun redactHierarchyFile(source: File, destination: File) {
-    val patterns = listOf("text=\\"Пароль:", "content-desc=\\"Пароль:")
+    val patterns = listOf("text=\"Пароль:", "content-desc=\"Пароль:")
     val maxPatternLength = patterns.maxOf { it.length }
     BufferedReader(InputStreamReader(FileInputStream(source), Charsets.UTF_8)).use { reader ->
         BufferedWriter(OutputStreamWriter(FileOutputStream(destination), Charsets.UTF_8)).use { writer ->
