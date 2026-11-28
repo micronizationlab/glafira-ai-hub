@@ -127,9 +127,11 @@ jobs:
                 and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
               ' >/dev/null 2>"$validation_error" <<< "$pages"; then
                 if jq -s -e '
-                  (.[0].data.repository.pullRequests.totalCount) as $total
-                  | all(.[]; .data.repository.pullRequests.totalCount == $total)
-                  and ([.[].data.repository.pullRequests.nodes[]] | length) == $total
+                  . as $pages
+                  | ($pages[0].data.repository.pullRequests.totalCount) as $total
+                  | ([$pages[].data.repository.pullRequests.nodes[]] | length) as $node_count
+                  | all($pages[]; .data.repository.pullRequests.totalCount == $total)
+                  and ($node_count == $total)
                 ' >/dev/null 2>"$count_error" <<< "$pages"; then
                   if jq -s '[
                     .[].data.repository.pullRequests.nodes[] |
