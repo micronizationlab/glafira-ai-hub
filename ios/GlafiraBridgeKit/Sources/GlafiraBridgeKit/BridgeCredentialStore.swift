@@ -117,8 +117,9 @@ private enum BridgeHubBindingValidation {
         components.host = canonicalHost
         components.port = effectivePort
         guard let normalized = components.string,
+              let normalizedComponents = URLComponents(string: normalized),
+              normalizedComponents.percentEncodedPath == "/bridge/v1",
               let normalizedURL = URL(string: normalized),
-              normalizedURL.percentEncodedPath == "/bridge/v1",
               normalizedURL.scheme == "https",
               normalizedURL.port == effectivePort else {
             return nil
