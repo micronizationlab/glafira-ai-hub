@@ -181,12 +181,17 @@ internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacte
                 .append('\\n')
         }
         for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
             if (lines.size >= maximumNodes) {
                 nodesOmitted = true
+                child.recycle()
                 break
             }
-            val child = node.getChild(index) ?: continue
-            visit(child, depth + 1)
+            try {
+                visit(child, depth + 1)
+            } finally {
+                child.recycle()
+            }
             if (nodesOmitted) break
         }
     }
