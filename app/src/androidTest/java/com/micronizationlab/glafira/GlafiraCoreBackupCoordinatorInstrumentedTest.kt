@@ -402,6 +402,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
+    private fun hasNoSymbolicLinkComponents(path: Path, boundary: Path): Boolean {
+        val normalizedBoundary = boundary.toAbsolutePath().normalize()
+        var current: Path? = path.toAbsolutePath().normalize()
+        if (current == null || !current.startsWith(normalizedBoundary)) return false
+        while (current != null && current.startsWith(normalizedBoundary)) {
+            if (Files.isSymbolicLink(current)) return false
+            if (current == normalizedBoundary) return true
+            current = current.parent
+        }
+        return false
+    }
+
     private fun deleteTreeWithoutFollowingLinks(root: Path) {
         check(!Files.isSymbolicLink(root)) { "Refusing to recursively delete a symbolic-link fixture root." }
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
@@ -554,6 +566,36 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             GlafiraRollbackSnapshotCipher(alias).deleteKey()
             deleteTreeWithoutFollowingLinks(root.toPath())
             syncMarkerDirectory(appContext.cacheDir)
+        }
+    }
+
+    @Test
+    fun ownedJournalCleanupRejectsSymlinkedJournalBeforeDeletingRollbackKey() = runBlocking {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val outside = File(context.cacheDir, "journal-link-target-$runId").apply { check(mkdir()) }
+        val canary = File(outside, "canary.txt").apply { writeText("must-survive") }
+        val source = File(context.cacheDir, "journal-link-source-$runId").apply { writeText("rollback-key") }
+        val encrypted = File(context.cacheDir, "journal-link-encrypted-$runId")
+        rollbackCipher.encrypt(source, encrypted)
+        try {
+            assertThrows(IllegalStateException::class.java) {
+                runBlocking {
+                    withOwnedRollbackKey {
+                        Files.createSymbolicLink(journal.toPath(), outside.toPath())
+                    }
+                }
+            }
+            assertTrue("Symlinked journal must not authorize deletion of the rollback key", rollbackCipher.keyExists())
+            assertEquals("Cleanup must not follow the journal symlink", "must-survive", canary.readText())
+        } finally {
+            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
+            rollbackCipher.deleteKey()
+            val marker = rollbackOwnerMarker()
+            if (marker.exists()) clearRollbackOwnerMarker(runId)
+            source.delete()
+            encrypted.delete()
+            if (outside.exists()) deleteTreeWithoutFollowingLinks(outside.toPath())
         }
     }
 
@@ -716,19 +758,31 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             val marker = rollbackOwnerMarker()
                             if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
                                 val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+                                val journalPath = journal.toPath().toAbsolutePath().normalize()
+                                val fixtureRootPath = testRoot.toPath().toAbsolutePath().normalize()
+                                check(hasNoSymbolicLinkComponents(journalPath, fixtureRootPath)) {
+                                    "Refusing to inspect or clean a rollback journal through a symbolic-link path."
+                                }
+                                val journalExists = Files.exists(journalPath, LinkOption.NOFOLLOW_LINKS)
                                 val journalOwner = File(journal, "test-owner")
-                                if (primaryFailure != null && (journal.exists() || rollbackKeyExists())) {
+                                if (primaryFailure != null && (journalExists || rollbackKeyExists())) {
                                     throw IllegalStateException(
                                         "Preserving fixture root, journal and fixture key after a failed test."
                                     )
                                 }
-                                if (journal.exists()) {
-                                    check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
+                                if (journalExists) {
+                                    check(Files.isDirectory(journalPath, LinkOption.NOFOLLOW_LINKS)) {
+                                        "Refusing to clean a non-directory rollback journal."
+                                    }
+                                    check(Files.isRegularFile(journalOwner.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+                                        !Files.isSymbolicLink(journalOwner.toPath()) &&
+                                        journalOwner.readText(Charsets.UTF_8) == runId
+                                    ) {
                                         "Refusing to claim or delete a rollback journal without matching fixture ownership."
                                     }
                                     // Keep the ownership journal until Keystore deletion succeeds.
                                     if (rollbackKeyExists()) deleteFixtureRollbackKey()
-                                    check(journal.deleteRecursively()) { "Could not remove test-owned rollback journal." }
+                                    deleteTreeWithoutFollowingLinks(journalPath)
                                 } else {
                                     check(!rollbackKeyExists()) {
                                         "A fixture owner marker without its journal cannot authorize deletion of its fixture key."
