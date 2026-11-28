@@ -1885,6 +1885,23 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun recoveryDetectsAndCleansOrphanedPlaintextRestoreReplacement() = runBlocking {
+        val replacement = File(context.filesDir, "diagnostic-restore-fixture.restore-tmp")
+        val passphrase = disposablePassphrase()
+        try {
+            replacement.writeText("partial decrypted replacement")
+            assertTrue("An orphaned plaintext replacement must keep Core blocked",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            isolatedCoordinator().recover(passphrase)
+            assertFalse("Recovery removes the orphaned plaintext replacement", replacement.exists())
+            assertFalse(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+        } finally {
+            passphrase.fill(0.toChar())
+            check(!replacement.exists() || replacement.delete())
+        }
+    }
+
+    @Test
     fun recoveryRejectsCommittedJournalSymlinkWithoutTouchingTargetArtifacts() = runBlocking {
         val runId = testRunId
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
