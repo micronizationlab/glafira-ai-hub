@@ -1015,6 +1015,48 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun pendingRollbackPreservesUnknownSnapshotDataBeforeApplyingSafetyArchive() = runBlocking {
+        store.enqueue(task("must-survive-unknown-snapshot"))
+        val passphrase = disposablePassphrase()
+        val coordinator = isolatedCoordinator()
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
+        val plaintextExport = File(snapshotDirectory, "core-portable-v2.json")
+        val unknown = File(snapshotDirectory, "operator-canary.bin")
+        try {
+            coordinator.prepareRollback(passphrase)
+            check(snapshotDirectory.mkdirs())
+            plaintextExport.writeText("known plaintext export")
+            unknown.writeText("operator data must survive")
+            val failure = assertThrows(IOException::class.java) {
+                runBlocking { coordinator.recover(passphrase) }
+            }
+            assertTrue(failure.message.orEmpty().contains("неизвестные данные"))
+            assertFalse("Known plaintext export is removed before safety restore", plaintextExport.exists())
+            assertEquals("operator data must survive", unknown.readText(Charsets.UTF_8))
+            assertTrue("Unknown staging data remains and keeps the journal", snapshotDirectory.isDirectory)
+            assertTrue(File(journal, "restore.pending").isFile)
+            assertTrue(File(journal, "database.db").isFile)
+            assertTrue(File(journal, "files.glb").isFile)
+            assertEquals("must-survive-unknown-snapshot",
+                store.getTask("must-survive-unknown-snapshot")?.taskId)
+
+            check(unknown.delete())
+            coordinator.recover(passphrase)
+            assertFalse(snapshotDirectory.exists())
+            assertFalse(journal.exists())
+            assertFalse(rollbackCipher.keyExists())
+            assertEquals("must-survive-unknown-snapshot",
+                store.getTask("must-survive-unknown-snapshot")?.taskId)
+        } finally {
+            check(!snapshotDirectory.exists() || snapshotDirectory.deleteRecursively())
+            check(!journal.exists() || journal.deleteRecursively())
+            rollbackCipher.deleteKey()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun recoveryCleansOrphanedPlaintextExportAndPreservesUnknownStagingData() = runBlocking {
         val directory = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
         val export = File(context.filesDir, GlafiraPortableCoreSnapshot.PATH).apply {
