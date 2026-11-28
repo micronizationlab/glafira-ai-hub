@@ -592,11 +592,10 @@ jobs:
             echo "normal PR table appeared in failure summary" >&2; exit 1
           fi
           echo "dispatcher fail-closed integration: second-fetch, comparator, local-open, jq and report-summary failures return non-zero: PASS"
-          if GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE=1 bash "$RUNNER_TEMP/test-renderer.sh" > "$RUNNER_TEMP/dispatcher-forced-failure.out" 2> "$RUNNER_TEMP/dispatcher-forced-failure.err"; then
-            echo "forced top-level fixture failure was incorrectly accepted" >&2; exit 1
-          else
-            forced_failure_status=$?
-          fi
+          set +e
+          GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE=1 bash "$RUNNER_TEMP/test-renderer.sh" > "$RUNNER_TEMP/dispatcher-forced-failure.out" 2> "$RUNNER_TEMP/dispatcher-forced-failure.err"
+          forced_failure_status=$?
+          set -e
           [[ "$forced_failure_status" -eq 37 ]]
           grep -Fq "Probe injected top-level failure returned exit 37" "$RUNNER_TEMP/dispatcher-forced-failure.err"
           grep -Fq "Dispatcher fixture failed (exit 37): run_probe" "$RUNNER_TEMP/dispatcher-forced-failure.err"
