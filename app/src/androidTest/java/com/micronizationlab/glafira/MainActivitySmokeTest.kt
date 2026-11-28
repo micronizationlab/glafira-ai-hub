@@ -11,7 +11,6 @@ import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
-import java.io.File
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
@@ -42,9 +41,11 @@ class MainActivitySmokeTest {
     @After
     fun restoreBiometricPreference() {
         try {
-            check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
-                "Could not restore biometric preference after UI smoke test"
-            }
+            restoreBiometricPreferenceAndRelock(
+                InstrumentationRegistry.getInstrumentation().targetContext,
+                preferences,
+                originalBiometric
+            )
         } finally {
             UiSmokeTestPreferenceLock.release()
         }
@@ -129,38 +130,22 @@ class MainActivitySmokeTest {
     }
 
     @Test
-    fun hierarchySummaryPreservesRepresentativeHeadTailAndRespectsLimit() {
-        val headNode = "<node id=\"startup-gate\" text=\"Recovery blocked\"/>"
-        val tailNode = "<node id=\"active-screen\" text=\"Recovery screen\"/>"
-        val hierarchy = headNode + "x".repeat(12_100) + tailNode
-        val summary = summarizeWindowHierarchy(hierarchy)
-        assertTrue(summary.contains(headNode))
-        assertTrue(summary.contains(tailNode))
-        assertTrue(summary.contains("hierarchy truncated"))
-        assertTrue(summary.length <= 12_000)
-    }
-
-    @Test
-    fun startupDiagnosticsRetainGatesWhenWindowHierarchyCannotBeWritten() {
+    fun startupDiagnosticsRetainGatesWhenSafeHierarchyCaptureFails() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-        val parentFile = File(context.cacheDir, "ui-smoke-hierarchy-parent-file")
-        try {
-            prepareUnlockedHome(context)
-            assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
-            parentFile.writeText("not a directory", Charsets.UTF_8)
-            val device = UiDevice.getInstance(instrumentation)
-            val impossibleHierarchy = File(parentFile, "window.xml")
-            val diagnostics = collectHomeScreenDiagnostics(device, context, impossibleHierarchy)
-            assertTrue("Recovery gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("recovery=false"))
-            assertTrue("Biometric gate must reflect the enabled fixture: $diagnostics", diagnostics.contains("biometric=true"))
-            assertTrue(diagnostics.contains("wait=not recorded"))
-            assertTrue(diagnostics.contains("hierarchyPath="))
-            assertTrue(diagnostics.contains("dump failed:") || diagnostics.contains("read failed:"))
-        } finally {
-            check(!parentFile.exists() || parentFile.delete())
-        }
+        prepareUnlockedHome(context)
+        assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
+        val diagnostics = collectHomeScreenDiagnostics(
+            UiDevice.getInstance(instrumentation),
+            context,
+            "idle=completed, accessibility=timed out",
+            captureHierarchy = { throw IllegalStateException("injected hierarchy capture failure") }
+        )
+        assertTrue("Recovery gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("recovery=false"))
+        assertTrue("Biometric gate must reflect the enabled fixture: $diagnostics", diagnostics.contains("biometric=true"))
+        assertTrue(diagnostics.contains("wait=idle=completed, accessibility=timed out"))
+        assertTrue(diagnostics.contains("hierarchy unavailable: IllegalStateException: injected hierarchy capture failure"))
     }
 
     @Test
