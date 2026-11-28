@@ -143,7 +143,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     internal fun prepareRollback(passphrase: CharArray) {
         check(!marker.exists())
-        if (journal.exists()) check(journal.deleteRecursively())
+        check(!Files.isSymbolicLink(journal.toPath())) {
+            "Обнаружена символическая ссылка вместо журнала восстановления; подготовка отката остановлена."
+        }
+        if (Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            check(journal.deleteRecursively())
+        }
         check(journal.mkdirs())
         try {
             synchronized(taskStore) {
@@ -163,7 +168,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
             syncDirectory(journal)
             syncDirectory(app.noBackupFilesDir)
         } catch (error: Exception) {
-            if (!marker.exists()) journal.deleteRecursively()
+            if (!marker.exists() && !Files.isSymbolicLink(journal.toPath())) journal.deleteRecursively()
             throw error
         }
     }
