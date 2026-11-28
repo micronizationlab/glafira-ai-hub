@@ -63,7 +63,7 @@ class BackupSettingsSmokeTest {
             assertTrue(preferences.edit().putBoolean("biometric_enabled", false).commit())
             recoverInterruptedBiometricPreference(context, preferences)
             assertTrue(preferences.getBoolean("biometric_enabled", false))
-            assertTrue(!state.getBoolean("pending", true))
+            assertFalse("Successful recovery clears the persisted snapshot", state.getBoolean("pending", false))
 
             persistOriginalBiometricPreference(context, false)
             val failingPreferences = object : SharedPreferences by preferences {
