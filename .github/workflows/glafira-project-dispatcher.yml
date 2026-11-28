@@ -116,14 +116,15 @@ jobs:
               }
             ]' <<< "$pages"
             exit 0
+          else
+            # REST offset pagination can omit still-open PRs during concurrent closes.
+            # GraphQL cursor pagination is the only accepted inventory source.
+            graphql_status=$?
+            graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+            printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
+              "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
+            exit 1
           fi
-          # REST offset pagination can omit still-open PRs during concurrent closes.
-          # GraphQL cursor pagination is the only accepted inventory source.
-          graphql_status=$?
-          graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
-          printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
-            "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
-          exit 1
           FETCH
           cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
           #!/usr/bin/env bash
