@@ -122,7 +122,6 @@ internal fun readRedactedHierarchySummary(file: File, maximumCharacters: Int = 1
     return summarizeWindowHierarchy(redacted, maximumCharacters)
 }
 
-/** Keep both the start and end of large UI hierarchies; screen identity often appears near the tail. */
 internal fun summarizeWindowHierarchy(hierarchy: String, maximumCharacters: Int = 12_000): String {
     require(maximumCharacters > 0) { "Hierarchy summary limit must be positive." }
     if (hierarchy.length <= maximumCharacters) return hierarchy
