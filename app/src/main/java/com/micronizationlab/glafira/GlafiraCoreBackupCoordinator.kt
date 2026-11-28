@@ -99,7 +99,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // recovery below re-syncs this journal before treating it as committed.
                         val commitMarkerNeedsReconfirmation = committedMarker.isFile
                         val cleanupSucceeded = try {
-                            recoverInterruptedRestore(passphrase)
+                            recoverInterruptedRestore(passphrase) { committedThisAttempt = true }
                             !marker.exists() && !committedMarker.exists()
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
@@ -114,13 +114,22 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // A marker whose first directory fsync failed is different: it must be
                         // re-confirmed by recovery before success can be reported.
                         if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
-                            completedVerification ?: throw error
+                            val verified = completedVerification ?: throw error
+                            if (marker.isFile || committedMarker.isFile) verified.copy(recoveryRequired = true) else verified
                         } else throw error
                     }
+                } catch (error: Exception) {
+                    // Early archive rejection and verification failures can happen before the
+                    // inner restore/rollback transaction starts. Still remove the known plaintext
+                    // export without deleting unrelated staging entries or masking the error.
+                    try {
+                        deleteCommittedPortableSnapshot()
+                    } catch (cleanup: Exception) {
+                        error.addSuppressed(cleanup)
+                    }
+                    throw error
                 } finally {
                     selected.delete()
-                    // Do not recursively remove this directory: it may contain unexpected
-                    // staging data that the guarded cleanup deliberately preserves.
                 }
             } }
         }
@@ -128,12 +137,27 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     private fun createArchive(passphrase: CharArray): File {
         val directory = File(app.filesDir, ".glafira-core-snapshot")
-        if (directory.exists()) check(directory.deleteRecursively())
+        deleteCommittedPortableSnapshot()
         check(directory.mkdirs())
-        return try {
+        var creationFailure: Throwable? = null
+        var createdArchive: File? = null
+        try {
             portable.exportTo(File(app.filesDir, GlafiraPortableCoreSnapshot.PATH))
-            BackupArchive.create(app, passphrase)
-        } finally { directory.deleteRecursively() }
+            return BackupArchive.create(app, passphrase).also { createdArchive = it }
+        } catch (error: Throwable) {
+            creationFailure = error
+            throw error
+        } finally {
+            try {
+                deleteCommittedPortableSnapshot()
+            } catch (cleanup: Throwable) {
+                if (creationFailure != null) creationFailure.addSuppressed(cleanup)
+                else {
+                    createdArchive?.delete()
+                    throw cleanup
+                }
+            }
+        }
     }
 
     internal fun prepareRollback(passphrase: CharArray) {
@@ -174,12 +198,13 @@ class GlafiraCoreBackupCoordinator internal constructor(
         }
     }
 
-    private fun recoverInterruptedRestore(passphrase: CharArray) {
+    private fun recoverInterruptedRestore(passphrase: CharArray, onCommitted: () -> Unit = {}) {
         cleanupStaleDecryptedRollbackSnapshots()
         if (committedMarker.exists()) {
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
+            onCommitted()
             cleanupCommittedJournal()
             return
         }
