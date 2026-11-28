@@ -418,6 +418,8 @@ jobs:
           cat > "$RUNNER_TEMP/test-renderer.sh" <<'TEST'
           #!/usr/bin/env bash
           set -euo pipefail
+          # An exported gh shell function would override PATH-based fake executables in child Bash processes.
+          unset -f gh 2>/dev/null || true
           trap 'status=$?; failed_command="$(printf "%s" "$BASH_COMMAND" | sed -E "s/(gh[pousr]_[A-Za-z0-9_-]{10,}|github_pat_[A-Za-z0-9_-]{10,}|Bearer [^ ]+)/[REDACTED]/g")"; printf "dispatcher renderer fixture failed (exit %s): %s\\n" "$status" "$failed_command" >&2' ERR
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
