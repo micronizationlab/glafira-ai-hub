@@ -887,6 +887,25 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 |---|---|---|---|---|---|
 | 0004 | `WBS-2026-11-27-GLAFIRA-S000-W06-IN_PROGRESS-IN_REVIEW-004` | IN_PROGRESS → IN_REVIEW | 2026-11-27T20:43:49Z | GLAFIRA | Follow-up PR #797 opened on Main base `fa4dd61c766b57d750bc5f08a10355866a9330c6`; review candidate head at opening `77b7ef9a5397df9da5e922155f3adf0445439ef7`. Scope is the existing W06 reservation: stable open-only inventory, bounded GraphQL-to-REST fallback, duplicate-page rejection, three-snapshot stabilization, empty-inventory confirmation, snapshot-preservation diagnostics and production failure-summary assertions. Exact final head and CI evidence must be refreshed after this ledger append. |
 
+## Proposed WBS registration — Bridge pairing UX — 2026-11-28 (PR #801 W08-only repair)
+
+This is a W08-only registration. PR #801 registers Bridge pairing UX only; it does not register Windows Agent UX (which is handled separately by PR #837). Owner authorization: the explicit 2026-11-28 directive to create the shared defect register and act across all 11 workstreams authorizes these W08/W09/W10 registration records, but does not authorize editing the future design artifacts or changing runtime behavior. The controlled shared-ledger exception applies only to the W08 registry row and detailed W08 record; all other rows and prior events remain unchanged.
+
+### GLAFIRA-S000-W08 — Bridge pairing UX
+- **Hierarchy:** task `1.3.1.1.1`; subtask `1.3.1.1.1.1`; seven-component executable leaf `1.3.1.1.1.1.1`.
+- **Tracker / future scope:** issue #677; exclusive future deliverable `docs/design/BRIDGE_PAIRING_UX.md` only.
+- **Accountable executor:** GLAFIRA (owner-authorized; active assignment begins only after a fresh priority scan is recorded).
+- **Independent reviewer:** Proofline (review-only, not the executor); owner acceptance is a separate gate.
+- **Reservation-PR allowed paths:** `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md` §15 and only the W08 registry row + detailed W08 record in this file. No other ledger row, event or prior history may be changed.
+- **Future exclusive path:** `docs/design/BRIDGE_PAIRING_UX.md`, not authorized for editing by this reservation PR.
+- **Dependencies:** Windows Hub pairing/enrollment contract #123; owning-Core authority and trusted recipient boundary #366; Android client dependency chain #392/#381; shared tokens #679/#684. Until shared tokens are accepted, information architecture and wireframes only.
+- **Owner approval:** explicit owner directive on 2026-11-28 to create the shared defect register and act across all 11 workstreams; this authorizes W08 registration only, not design artifact implementation.
+- **Predecessors:** read-only source/contract inventory; fresh Action Pool A / ready-work scan recorded in #782 immediately before assignment; verify no equal- or higher-priority dependency-ready item became ready between scan and assignment. Repeat the scan if the pool changes. Until this fresh scan is evidenced, keep this leaf PROPOSED and inactive.
+- **Procedure:** (1) inventory actual Android and Hub contracts; (2) specify expiring invitation and QR/manual-code fallback; (3) specify one-time bootstrap proof and visual SAS/fingerprint comparison with mismatch abort; (4) allow controlled display of the short-lived one-time proof only on the owner-approved enrollment screen; (5) prohibit reusable credentials, private keys and bearer secrets from logs, diagnostics, screenshots and persistent UI; (6) specify least-privilege scopes and explicit approval/denial; (7) specify device inventory, revoke/rotate, reconnect and restart recovery; (8) cover loading/empty/success/error/expired/cancelled/revoked and accessibility states; (9) cite an existing contract for every action or mark it FUTURE.
+- **Acceptance:** complete state/screen/control inventory; no trust based on device name or arbitrary LAN endpoint; SAS and ephemeral QR/manual-code proof are visible only in the controlled owner-approved enrollment flow; no reusable credentials or secrets logged/persisted; distinct paired/connected/offline/pending/revoked states; independent review and owner approval. No live LAN/two-PC acceptance is implied.
+- **Out of scope:** TLS, cryptography, protocol, permissions, runtime, database/schema, Android HTTPS server, Hub authority and security-policy changes.
+- **Lifecycle:** PROPOSED → READY only after owner accepts this registration and the priority scan is recorded; READY → RESERVED only after this reservation PR merges, recorded with its exact merge SHA. The future design file remains blocked until a separate exact post-merge Main/path pin is recorded.
+
 ## Append-only W10 reservation amendment — Core pending-delivery recovery guard — 2026-11-28
 
 ### W10 registry extension (legacy registry rows and W06 history remain unchanged)
