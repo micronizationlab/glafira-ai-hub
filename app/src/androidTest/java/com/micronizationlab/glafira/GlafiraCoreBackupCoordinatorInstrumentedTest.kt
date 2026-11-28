@@ -1421,17 +1421,22 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         try {
             withOwnedRollbackKey {
+                store.enqueue(task("restore-created-after-backup"))
                 // Fail both the initial cleanup and its immediate recovery retry. The
                 // durable commit is already published, so restore must report success
                 // while preserving the journal for a later cleanup pass.
                 fixtureRuntimeHooks.failCommittedCleanupCount = 2
-                coordinator.restore(archive, passphrase)
+                val verification = coordinator.restore(archive, passphrase)
+                assertTrue("Restore result must disclose pending committed-journal cleanup", verification.recoveryRequired)
+                assertNull("Tasks created after the selected archive must not survive its restore",
+                    store.getTask("restore-created-after-backup"))
                 assertTrue("Committed journal remains available for later cleanup", File(journal, "restore.committed").isFile)
                 assertTrue("Rollback evidence remains while cleanup is pending", File(journal, "database.db").isFile)
                 fixtureRuntimeHooks.failCommittedCleanupCount = 0
                 isolatedCoordinator().recover(passphrase)
                 assertFalse("A later recovery pass removes the committed journal", journal.exists())
                 assertTrue("The selected archive's task remains restored", store.getTask("restore-cleanup-pending") != null)
+                assertNull("The post-archive task remains absent after recovery", store.getTask("restore-created-after-backup"))
             }
         } finally {
             fixtureRuntimeHooks.failCommittedCleanupCount = 0
