@@ -367,9 +367,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
             val app = context.applicationContext
             return runCatching {
                 val journal = File(app.noBackupFilesDir, JOURNAL_DIRECTORY)
-                if (Files.isSymbolicLink(journal.toPath()) ||
-                    Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)
-                ) {
+                if (Files.isSymbolicLink(journal.toPath())) {
                     return@runCatching true
                 }
                 val marker = File(journal, JOURNAL_MARKER)
