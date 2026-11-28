@@ -385,13 +385,8 @@ fun BackupSettingsSection() {
                                             temp.outputStream().use { output -> input.copyTo(output) }
                                         } ?: error("Не удалось прочитать выбранный файл.")
                                         val verification = withCoreBackupCoordinator(context) { it.restore(temp, recoveryPassphrase) }
-                                        if (verification.recoveryRequired) {
-                                            val coreBlocked = GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
-                                            if (coreBlocked) {
-                                                "Данные восстановлены: ${verification.fileCount} файлов из копии от ${verification.createdAt}. Очистка журнала не завершена; Core временно заблокирован. Нажмите «Завершить прерванное восстановление» для очистки журнала. Повторно импортировать архив не нужно."
-                                            } else {
-                                                "Данные восстановлены: ${verification.fileCount} файлов из копии от ${verification.createdAt}. Осталась очистка каталога журнала; Core доступен. Повторно импортировать архив не нужно."
-                                            }
+                                        if (verification.recoveryRequired && GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
+                                            "Данные восстановлены: ${verification.fileCount} файлов из копии от ${verification.createdAt}. Очистка журнала не завершена; Core временно заблокирован. Нажмите «Завершить прерванное восстановление» для очистки журнала. Повторно импортировать архив не нужно."
                                         } else {
                                             "Восстановлено: ${verification.fileCount} файлов из копии от ${verification.createdAt}."
                                         }
