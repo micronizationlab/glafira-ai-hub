@@ -1727,11 +1727,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 } else check(!rollbackKeyExists()) {
                                     "Refusing to delete an installation rollback key without its owned journal."
                                 }
-                                clearRollbackOwnerMarker(runId)
                                 check(!knownGood.exists() || knownGood.delete())
                                 check(!createdAfterMarker.exists() || createdAfterMarker.delete())
                                 check(owner.delete())
                             }
+                            // Recovery may remove the test-owned V3 marker file before this
+                            // finally block. Clear the installation-wide marker independently,
+                            // but only when its content still matches this test run ID.
+                            clearRollbackOwnerMarker(runId)
                         }
                     }
                 } catch (cleanup: Throwable) {
