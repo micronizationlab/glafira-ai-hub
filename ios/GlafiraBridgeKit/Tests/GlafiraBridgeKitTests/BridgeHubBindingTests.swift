@@ -132,12 +132,15 @@ final class BridgeHubBindingTests: XCTestCase {
         XCTAssertThrowsError(try binding(expiresAt: enrolledAt + 365 * 24 * 60 * 60 * 1_000 + 1))
     }
 
-    func testBoundedPersistenceAPIIsTheOnlySupportedBindingCodec() throws {
+    func testBoundedPersistenceAPIIsPreferredAndDeprecatedCodableRemainsCompatible() throws {
         let bindingType: Any.Type = BridgeHubBinding.self
-        XCTAssertFalse(bindingType is Encodable.Type)
-        XCTAssertFalse(bindingType is Decodable.Type)
-        let persisted = try BridgeHubBindingPersistence.encode(binding())
-        XCTAssertEqual(try BridgeHubBindingPersistence.decode(persisted), try binding())
+        XCTAssertTrue(bindingType is Encodable.Type)
+        XCTAssertTrue(bindingType is Decodable.Type)
+        let original = try binding()
+        let legacyData = try JSONEncoder().encode(original)
+        XCTAssertEqual(try JSONDecoder().decode(BridgeHubBinding.self, from: legacyData), original)
+        let persisted = try BridgeHubBindingPersistence.encode(original)
+        XCTAssertEqual(try BridgeHubBindingPersistence.decode(persisted), original)
     }
 
     func testPersistenceRejectsInvalidBindingFields() throws {
