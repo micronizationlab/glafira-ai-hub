@@ -923,7 +923,13 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 
 ## Proposed WBS registration — Windows Agent UX — 2026-11-28 (separate W09-only PR #837)
 
-PR #801 registers W08 Bridge pairing UX only. It does not register W09. This W09-only record is submitted by PR #837 on branch `wbs/GLAFIRA-S000-W09-windows-agent-design-reservation-v2`, based on W08 branch head `fa50f06fddf612aa5e02358f4e21d5e4eb4a6745`. Changed-file scope is WBS §16 plus only the W09 registry row and detailed W09 record in this shared ledger; no W08/W06 row or prior history is changed.
+PR #801 registers W08 Bridge pairing UX only. It does not register W09. This W09-only record is submitted by PR #837 on branch `wbs/GLAFIRA-S000-W09-windows-agent-design-reservation-v2`, based on W08 branch head `15f897d39757289df30fb83784c900fcd2566e7b`. Changed-file scope is WBS §16 plus only the W09 registry row and detailed W09 record in this shared ledger; no W08/W06 row or prior history is changed.
+
+### W09 registry extension (legacy registry rows and W06/W08/W10 history remain unchanged)
+
+| Work Item ID | Registered parent | Step / executable leaf | Owner | Scope | Status | Evidence / next action |
+|---|---|---|---|---|---|---|
+| GLAFIRA-S000-W09 | `1.8.1.1.1` | `1.8.1.1.1.1.1` (subtask `1.8.1.1.1.1`) | GLAFIRA (assignment pending fresh two-pool scan) | Windows Agent subordinate-worker UX design; issue #676; future deliverable `docs/design/WINDOWS_AGENT_UX.md` | PROPOSED | Reservation PR #837; exact current W08 base `15f897d39757289df30fb83784c900fcd2566e7b`; registration only. Fresh Action Pool A + Workstream 11 scan and owner acceptance are required before PROPOSED → READY; exact merge evidence then records READY → RESERVED. Future design artifact remains blocked pending exact post-merge Main/path pin. |
 
 ### GLAFIRA-S000-W09 — Windows Agent UX
 - **Hierarchy:** ancestor chain `1.8` → `1.8.1` → `1.8.1.1`; task `1.8.1.1.1`; subtask `1.8.1.1.1.1`; seven-component executable leaf `1.8.1.1.1.1.1`. The registered parent is task `1.8.1.1.1`; subtask `1.8.1.1.1.1` remains the immediate hierarchy node above the executable leaf.
