@@ -98,7 +98,8 @@ jobs:
               }
             }
           }'
-          if pages="$(gh api graphql --paginate -f query="$query" 2>/dev/null)" && jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null <<< "$pages"; then
+          graphql_error="$RUNNER_TEMP/glafira-open-prs-graphql-error.log"
+          if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")" && jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null <<< "$pages"; then
             jq -s '[
               .[].data.repository.pullRequests.nodes[] |
               {
@@ -118,7 +119,10 @@ jobs:
           fi
           # REST offset pagination can omit still-open PRs during concurrent closes.
           # GraphQL cursor pagination is the only accepted inventory source.
-          echo "UNKNOWN: GraphQL cursor-based open-PR inventory unavailable; REST offset fallback is disabled." >&2
+          graphql_status=$?
+          graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+          printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
+            "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
           exit 1
           FETCH
           cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
@@ -315,20 +319,30 @@ jobs:
           gql_prs="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           jq -e 'length == 2 and .[0].baseRefOid == "b1" and .[0].statusCheckRollup[0].name == "Android CI" and .[1].number == 2' <<< "$gql_prs" >/dev/null
 
-          # A GraphQL outage must not invoke REST or emit partial inventory.
+          # A later-page GraphQL failure must discard partial stdout and never call REST.
           cat > "$tmp/fake-bin/gh" <<'GH'
           #!/usr/bin/env bash
           set -euo pipefail
-          if [[ "$1" == "api" && "$2" == "graphql" ]]; then exit 1; fi
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            echo graphql >> "$CALL_LOG"
+            cat <<'JSON'
+          {"data":{"repository":{"pullRequests":{"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          JSON
+            echo "injected GraphQL page two failure" >&2
+            exit 1
+          fi
+          echo unexpected-rest >> "$CALL_LOG"
           exit 99
           GH
           chmod +x "$tmp/fake-bin/gh"
-          if output="$(PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-outage.err")"; then
+          if output="$(CALL_LOG="$tmp/gh-calls.log" PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub 2>"$tmp/graphql-outage.err")"; then
             echo "GraphQL outage was incorrectly accepted" >&2; exit 1
           else
             [[ "$?" -eq 1 ]]
           fi
           [[ -z "$output" ]]
+          [[ "$(cat "$tmp/gh-calls.log")" == "graphql" ]]
+          grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
@@ -453,6 +467,19 @@ jobs:
             [[ "$?" -eq 1 ]]
           fi
           grep -Fq "second PR inventory fetch failed" "$tmp/second-fetch-error.log"
+          if bash "$reconcile" "$tmp/large-prs.json" "$tmp/missing-comparator-latest.json" "$tmp/fetch-same-prs.sh" "$tmp/missing-comparator.sh" "$tmp/large-prs.json" 2>"$tmp/missing-comparator.err"; then
+            echo "missing comparator was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -Fq "comparator is missing, unreadable or invalid" "$tmp/missing-comparator.err"
+          printf 'not a valid bash script (\n' > "$tmp/invalid-comparator.sh"
+          if bash "$reconcile" "$tmp/large-prs.json" "$tmp/invalid-comparator-latest.json" "$tmp/fetch-same-prs.sh" "$tmp/invalid-comparator.sh" "$tmp/large-prs.json" 2>"$tmp/invalid-comparator.err"; then
+            echo "invalid comparator was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          grep -Fq "comparator is missing, unreadable or invalid" "$tmp/invalid-comparator.err"
           if PATH="$tmp/failing-jq:$PATH" bash "$reconcile" "$tmp/large-prs.json" "$tmp/reconcile-jq-failed.json" "$tmp/fetch-same-prs.sh" "$comparator" "$tmp/large-prs.json"; then
             echo "injected jq failure was incorrectly accepted by production reconciliation wrapper" >&2; exit 1
           else
