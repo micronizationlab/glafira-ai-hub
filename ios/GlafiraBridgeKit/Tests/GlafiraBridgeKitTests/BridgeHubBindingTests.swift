@@ -113,6 +113,9 @@ final class BridgeHubBindingTests: XCTestCase {
     }
 
     func testBoundedPersistenceAPIIsTheOnlySupportedBindingCodec() throws {
+        let bindingType: Any.Type = BridgeHubBinding.self
+        XCTAssertFalse(bindingType is Encodable.Type)
+        XCTAssertFalse(bindingType is Decodable.Type)
         let persisted = try BridgeHubBindingPersistence.encode(binding())
         XCTAssertEqual(try BridgeHubBindingPersistence.decode(persisted), try binding())
     }
