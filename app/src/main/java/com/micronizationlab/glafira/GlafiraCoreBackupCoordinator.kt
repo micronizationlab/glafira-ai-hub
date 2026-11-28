@@ -314,7 +314,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
             taskStore.restoreConsistentSnapshot(rollbackDatabase)
             runtimeHooks.pauseForRestore(app)
             checkpointDatabase()
-            clearJournal()
+            clearJournal(onSnapshotCleaned = onSnapshotCleaned)
             return true
         } catch (error: Exception) {
             throw IllegalStateException("Не удалось проверить или восстановить safety snapshot. Core остаётся заблокирован до успешного отката.", error)
