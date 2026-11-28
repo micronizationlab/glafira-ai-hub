@@ -887,3 +887,28 @@ A subsequent independent review against head `edc6edf4692eda8de2e30db40c5faad24c
 |---|---|---|---|---|---|
 | 0004 | `WBS-2026-11-27-GLAFIRA-S000-W06-IN_PROGRESS-IN_REVIEW-004` | IN_PROGRESS → IN_REVIEW | 2026-11-27T20:43:49Z | GLAFIRA | Follow-up PR #797 opened on Main base `fa4dd61c766b57d750bc5f08a10355866a9330c6`; review candidate head at opening `77b7ef9a5397df9da5e922155f3adf0445439ef7`. Scope is the existing W06 reservation: stable open-only inventory, bounded GraphQL-to-REST fallback, duplicate-page rejection, three-snapshot stabilization, empty-inventory confirmation, snapshot-preservation diagnostics and production failure-summary assertions. Exact final head and CI evidence must be refreshed after this ledger append. |
 
+## Append-only W10 reservation amendment — Core pending-delivery recovery guard — 2026-11-28
+
+### W10 registry extension (legacy registry rows and W06 history remain unchanged)
+
+| Work Item ID | Registered parent | Step / executable leaf | Owner | Scope | Status | Evidence / next action |
+|---|---|---|---|---|---|---|
+| GLAFIRA-S000-W10 | `1.1.7.1.1.1` | `1.1.7.1.1.1.1` (subtask `1.1.7.1.1.1`) | GLAFIRA (active assignment after fresh scan) | Core pending-delivery recovery guard; issue #828 | PROPOSED | PR #834; branch `wbs/GLAFIRA-S000-W10-pending-delivery-journal-guard`; base `06b9bfdee05c9cc626b5fafb7446870b53a0cc5c`; changed files WBS §17 + W10 row/detail only; implementation files `PendingDelivery.kt` and new `PendingDeliveryInstrumentedTest.kt` remain blocked pending #827 merge and exact Main/path pin |
+
+### GLAFIRA-S000-W10 — detailed WBS record
+
+- **Hierarchy:** ancestor chain `1.1` → `1.1.7` → `1.1.7.1`; task `1.1.7.1.1`; subtask `1.1.7.1.1.1`; seven-component executable leaf `1.1.7.1.1.1.1`. The registry parent is the leaf's immediate parent subtask `1.1.7.1.1.1`.
+- **Tracker:** issue #828; no legacy Program 150 step is claimed.
+- **Owner approval:** explicit owner directive on 2026-11-28 to create the shared defect register and act across all 11 workstreams; this authorizes the W10 registration record, not implementation outside its gates.
+- **Accountable executor:** GLAFIRA (active assignment begins only after a fresh priority scan).
+- **Independent reviewer:** Proofline (review-only, not the executor); owner acceptance is a separate gate.
+- **Reservation PR:** #834; branch `wbs/GLAFIRA-S000-W10-pending-delivery-journal-guard`; exact base SHA `06b9bfdee05c9cc626b5fafb7446870b53a0cc5c`; changed files are WBS §17 and only the W10 registry row + detailed W10 record in this file.
+- **Reservation-PR allowed paths:** `docs/GLAFIRA_HIERARCHICAL_WBS_STANDARD.md` §17 and only the W10 registry row + detailed W10 record in this file. No W06/W08/W09 row, other ledger row, event or prior history may be changed.
+- **Exclusive implementation paths after reservation merge:** `app/src/main/java/com/micronizationlab/glafira/PendingDelivery.kt`; `app/src/androidTest/java/com/micronizationlab/glafira/PendingDeliveryInstrumentedTest.kt` (new). The first implementation commit may additionally update only the W10 `Status` cell and append W10 lifecycle events in this ledger, as required by §13; no other ledger row/history is authorized.
+- **Dependencies:** PR #827 supplies the shared symlink-safe preflight. Implementation cannot begin until #827 merges, its exact resulting Main is read, and a separate post-merge pin records the two exclusive implementation paths.
+- **Reservation predecessors:** owner approval recorded above; fresh complete Action Pool A / ready-work scan in #782 immediately before assignment, with timestamp, Main SHA and priority-relevant ready item IDs; verify no equal/higher-priority item became dependency-ready between scan and assignment. If the pool changes, repeat the scan. Until then W10 remains PROPOSED and inactive.
+- **Implementation predecessors only:** #827 merge, inspection of its exact merged source and a separate exact post-merge Main/path pin. These gates do not block W10's reservation lifecycle.
+- **Procedure:** (1) verify shared guard no-follow semantics; (2) replace marker-only path test with the shared recovery guard; (3) ensure early return precedes claim/provider/history/result/ACK writes; (4) add only the narrowest deterministic test seam needed, preserving production defaults; (5) use a symlinked journal to a target directory with no pending marker; (6) invoke actual `executePendingMessage`; (7) assert provider never called, queue unclaimed, no history/result writes and target bytes unchanged; (8) test absent journal, normal pending marker and successful normal dispatch; (9) inspect full exact-head CI logs and JUnit XML.
+- **Acceptance:** fail closed on a symlinked journal with no marker; no provider request or result persistence; byte-for-byte target preservation; absent journal and ordinary dispatch continue to work; normal marker remains blocked; actual production execution path is tested; independent review and all required exact-head checks pass.
+- **Out of scope:** backup/archive implementation, cryptography, protocol, queue schema, retry policy, UI, scheduler or unrelated Core code.
+- **Lifecycle:** owner approval is recorded above; fresh priority scan → PROPOSED → READY before reservation merge; exact PR #834 merge SHA → READY → RESERVED. If reconciliation is interrupted after merge, append READY → RESERVED with the exact merge SHA before any subsequent reservation proceeds. Implementation remains blocked until #827 is merged and a separate exact post-merge Main/path pin is recorded.
