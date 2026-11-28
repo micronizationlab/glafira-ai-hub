@@ -718,7 +718,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                             val marker = rollbackOwnerMarker()
                             if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
                                 val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-                                val journalOwner = File(journal, "test-owner")
+                                val journalOwner = File(context.noBackupFilesDir, "glafira-restore-journal-test-owner-$testRunId")
                                 if (primaryFailure != null && (journal.exists() || rollbackKeyExists())) {
                                     throw IllegalStateException(
                                         "Preserving fixture root, journal and fixture key after a failed test."
@@ -1083,8 +1083,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     fun committedMarkerIsRestoredWhenJournalDirectoryRemovalFails() = runBlocking {
         val coordinator = isolatedCoordinator()
         val passphrase = newTestPassphrase()
-        val archive = coordinator.create(passphrase)
         store.enqueue(task("committed-journal-directory-delete"))
+        val archive = coordinator.create(passphrase)
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         try {
             fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 2
@@ -1138,6 +1138,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertEquals(1, fixtureRuntimeHooks.plaintextSnapshotDirectorySyncCompletedCalls)
         } finally {
             fixtureRuntimeHooks.failJournalDirectorySyncAfterSnapshotCleanupCount = 0
+            if (GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
+                isolatedCoordinator().recover(passphrase)
+            }
             archive.delete()
             passphrase.fill(0.toChar())
         }
