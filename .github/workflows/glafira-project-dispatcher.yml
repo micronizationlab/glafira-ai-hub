@@ -329,7 +329,9 @@ jobs:
           row565="$(grep -F '| [#565]' <<< "$output")"
           grep -q 'Security Scan: COMPLETED/success' <<< "$row565"
           grep -q 'GLAFIRA Java Format Check: COMPLETED/success' <<< "$(grep -F '| [#566]' <<< "$output")"
-          ! grep -q 'evil.test' <<< "$output"
+          if grep -q 'evil.test' <<< "$output"; then
+            echo "untrusted PR title URL was not escaped" >&2; exit 1
+          fi
           ! grep -q '\[link\]' <<< "$output"
 
           mkdir -p "$tmp/fake-bin"
