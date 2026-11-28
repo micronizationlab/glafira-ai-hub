@@ -49,6 +49,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private class FixtureBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
+        var beforeCommittedCleanupAction: (() -> Unit)? = null
         var pauseCount = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
@@ -57,6 +58,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val pauseContexts = mutableListOf<Context>()
         override fun pauseForRestore(context: Context) { pauseContexts += context }
         override fun beforeCommittedJournalCleanup() {
+            val action = beforeCommittedCleanupAction
+            beforeCommittedCleanupAction = null
+            action?.invoke()
             if (failCommittedCleanupOnce || failCommittedCleanupCount > 0) {
                 failCommittedCleanupOnce = false
                 if (failCommittedCleanupCount > 0) failCommittedCleanupCount--
@@ -1711,6 +1715,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val committed = File(journal, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
         val database = File(journal, "database.db").apply { writeText("encrypted-fixture-placeholder") }
         val archive = File(journal, "files.glb").apply { writeText("encrypted-fixture-placeholder") }
+        val plaintextSnapshot = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
+        val plaintextExport = File(plaintextSnapshot, "core-portable-v2.json").apply {
+            writeText("fixture-only plaintext task/result data")
+        }
         val passphrase = "committed-cleanup-reentry".toCharArray()
         try {
             fixtureRuntimeHooks.failCommittedCleanupOnce = true
@@ -1721,8 +1729,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue("Pending marker is retained until cleanup completes", pending.exists())
             assertTrue("Rollback database is retained while cleanup is interrupted", database.exists())
             assertTrue("Rollback archive is retained while cleanup is interrupted", archive.exists())
+            assertTrue("Plaintext export remains until committed cleanup can run", plaintextExport.exists())
 
             isolatedCoordinator().recover(passphrase)
+            assertFalse("Crash-left plaintext export is removed during committed recovery", plaintextExport.exists())
+            assertFalse("Plaintext export directory is removed", plaintextSnapshot.exists())
             assertFalse(pending.exists())
             assertFalse(committed.exists())
             assertFalse(database.exists())
@@ -1733,6 +1744,48 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             passphrase.fill(0.toChar())
             // If recovery did not remove the committed marker, retain the complete fixture evidence.
             if (!committed.exists() && journal.exists()) check(journal.deleteRecursively())
+        }
+    }
+
+    @Test
+    fun restoreRemovesKnownPlaintextExportButPreservesUnexpectedStagingData() = runBlocking {
+        val coordinator = isolatedCoordinator()
+        val passphrase = "preserve-unexpected-staging-data".toCharArray()
+        val archive = coordinator.create(passphrase)
+        val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
+        val plaintextExport = File(snapshotDirectory, "core-portable-v2.json")
+        val unexpected = File(snapshotDirectory, "unexpected-canary.bin")
+        try {
+            store.enqueue(task("created-after-backup"))
+            fixtureRuntimeHooks.beforeCommittedCleanupAction = {
+                check(snapshotDirectory.isDirectory)
+                unexpected.writeText("preserve-this-unexpected-data")
+            }
+
+            coordinator.restore(archive, passphrase)
+
+            assertFalse("Committed cleanup must remove the known plaintext export", plaintextExport.exists())
+            assertTrue("Restore-finally cleanup must preserve unexpected staging data", unexpected.isFile)
+            assertEquals("preserve-this-unexpected-data", unexpected.readText(Charsets.UTF_8))
+            assertTrue("The staging directory remains while unexpected data is present", snapshotDirectory.isDirectory)
+            assertTrue(
+                "Committed recovery evidence remains while staging cleanup is pending",
+                File(context.noBackupFilesDir, "glafira-restore-journal/restore.committed").isFile
+            )
+            assertNull("Restore must still apply the selected archive", store.getTask("created-after-backup"))
+
+            check(unexpected.delete())
+            coordinator.recover(passphrase)
+
+            assertFalse("Empty staging directory is removed after recovery", snapshotDirectory.exists())
+            assertFalse(
+                "Committed journal is removed after unexpected data is cleared",
+                File(context.noBackupFilesDir, "glafira-restore-journal").exists()
+            )
+        } finally {
+            fixtureRuntimeHooks.beforeCommittedCleanupAction = null
+            archive.delete()
+            passphrase.fill(0.toChar())
         }
     }
 
