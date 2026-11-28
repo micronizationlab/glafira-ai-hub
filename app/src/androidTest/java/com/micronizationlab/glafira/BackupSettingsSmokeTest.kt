@@ -7,6 +7,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,6 +16,40 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class BackupSettingsSmokeTest {
+    private lateinit var preferences: android.content.SharedPreferences
+    private var originalBiometric = false
+    private var preferenceCaptured = false
+
+    @Before
+    fun captureBiometricPreference() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        UiSmokeTestPreferenceLock.acquire()
+        try {
+            preferences = context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
+            recoverInterruptedBiometricPreference(context, preferences)
+            originalBiometric = preferences.getBoolean("biometric_enabled", false)
+            persistOriginalBiometricPreference(context, originalBiometric)
+            preferenceCaptured = true
+        } catch (failure: Throwable) {
+            UiSmokeTestPreferenceLock.release()
+            throw failure
+        }
+    }
+
+    @After
+    fun restoreBiometricPreference() {
+        if (!preferenceCaptured) return
+        try {
+            restoreBiometricPreferenceAndRelock(
+                InstrumentationRegistry.getInstrumentation().targetContext,
+                preferences,
+                originalBiometric
+            )
+        } finally {
+            preferenceCaptured = false
+            UiSmokeTestPreferenceLock.release()
+        }
+    }
     @Test
     fun manualBackupActionRemainsEnabledAndExplainsMissingFolder() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -38,11 +74,13 @@ class BackupSettingsSmokeTest {
         )
         try {
             val device = UiDevice.getInstance(instrumentation)
+            awaitHomeScreen(device, context)
             assertTrue(
-                "GLAFIRA home screen did not open",
-                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 20_000)
+                "Settings action did not become accessible after workspace readiness",
+                device.wait(Until.hasObject(By.descContains("Открыть настройки")), 10_000)
             )
             val settingsButton = device.findObject(By.descContains("Открыть настройки"))
+                ?: error("Settings action disappeared after readiness wait")
             assertTrue(
                 "Settings action is not visible",
                 settingsButton.visibleBounds.let { it.width() > 0 && it.height() > 0 }
@@ -84,7 +122,7 @@ class BackupSettingsSmokeTest {
             device.click(bounds.centerX(), bounds.centerY())
             device.waitForIdle()
             val guidance = device.wait(
-                Until.findObject(By.desc("Сначала выбери папку Google Drive или Яндекс Диска.")), 10_000
+                Until.findObject(By.descContains("Сначала выбери папку Google Drive или Яндекс Диска.")), 10_000
             )
             assertNotNull(
                 "Missing-folder guidance was not shown after the manual backup action",

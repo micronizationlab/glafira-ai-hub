@@ -7,12 +7,48 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ProjectSelectorSmokeTest {
+    private lateinit var preferences: android.content.SharedPreferences
+    private var originalBiometric = false
+    private var preferenceCaptured = false
+
+    @Before
+    fun captureBiometricPreference() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        UiSmokeTestPreferenceLock.acquire()
+        try {
+            preferences = context.getSharedPreferences("glafira_prefs", android.content.Context.MODE_PRIVATE)
+            recoverInterruptedBiometricPreference(context, preferences)
+            originalBiometric = preferences.getBoolean("biometric_enabled", false)
+            persistOriginalBiometricPreference(context, originalBiometric)
+            preferenceCaptured = true
+        } catch (failure: Throwable) {
+            UiSmokeTestPreferenceLock.release()
+            throw failure
+        }
+    }
+
+    @After
+    fun restoreBiometricPreference() {
+        if (!preferenceCaptured) return
+        try {
+            restoreBiometricPreferenceAndRelock(
+                InstrumentationRegistry.getInstrumentation().targetContext,
+                preferences,
+                originalBiometric
+            )
+        } finally {
+            preferenceCaptured = false
+            UiSmokeTestPreferenceLock.release()
+        }
+    }
     @Test
     fun homeProjectPickerShowsReadableNamesAndSwitchesBuiltInWorkspaces() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -37,9 +73,10 @@ class ProjectSelectorSmokeTest {
         )
         val device = UiDevice.getInstance(instrumentation)
         val personalSelector = By.desc("Выбрать проект: Личное")
+        awaitHomeScreen(device, context)
         assertTrue(
             "Home screen did not expose the active Personal project selector",
-            device.wait(Until.hasObject(personalSelector), 20_000)
+            device.wait(Until.hasObject(personalSelector), 10_000)
         )
         val selector = device.findObject(personalSelector)
         assertTrue("Home project selector is not clickable", selector.isClickable)

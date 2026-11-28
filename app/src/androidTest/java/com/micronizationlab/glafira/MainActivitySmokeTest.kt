@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.Intent
 import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
@@ -11,13 +12,54 @@ import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import java.io.File
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainActivitySmokeTest {
+    private lateinit var preferences: android.content.SharedPreferences
+    private var originalBiometric = false
+    private var preferenceCaptured = false
+
+    @Before
+    fun captureBiometricPreference() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        UiSmokeTestPreferenceLock.acquire()
+        try {
+            preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+            recoverInterruptedBiometricPreference(context, preferences)
+            originalBiometric = preferences.getBoolean("biometric_enabled", false)
+            persistOriginalBiometricPreference(context, originalBiometric)
+            preferenceCaptured = true
+        } catch (failure: Throwable) {
+            UiSmokeTestPreferenceLock.release()
+            throw failure
+        }
+    }
+
+    @After
+    fun restoreBiometricPreference() {
+        if (!preferenceCaptured) return
+        try {
+            restoreBiometricPreferenceAndRelock(
+                InstrumentationRegistry.getInstrumentation().targetContext,
+                preferences,
+                originalBiometric
+            )
+        } finally {
+            preferenceCaptured = false
+            UiSmokeTestPreferenceLock.release()
+        }
+    }
 
     private fun clickFresh(device: UiDevice, selector: BySelector) {
         var lastStale: StaleObjectException? = null
@@ -52,11 +94,209 @@ class MainActivitySmokeTest {
         )
         context.startActivity(intent)
         return UiDevice.getInstance(instrumentation).also {
-            assertTrue("GLAFIRA home screen did not open",
-                it.wait(Until.hasObject(By.descContains("Открыть очередь задач")), 20_000))
+            awaitHomeScreen(it, context)
         }
     }
 
+    @Test
+    fun homeScreenWaitFailureStillCollectsStartupDiagnostics() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        prepareUnlockedHome(context)
+        val device = UiDevice.getInstance(instrumentation)
+        val injectedFailure = IllegalStateException("injected accessibility wait failure")
+        val failure = assertThrows(IllegalStateException::class.java) {
+            awaitHomeScreen(device, context, waitForWorkspace = {
+                throw injectedFailure
+            })
+        }
+        assertSame(injectedFailure, failure.cause)
+        assertTrue(failure.message.orEmpty().contains("recovery=false"))
+        assertTrue(failure.message.orEmpty().contains("biometric=false"))
+        assertTrue(failure.message.orEmpty().contains("injected accessibility wait failure"))
+    }
+
+    @Test
+    fun hierarchySummaryDoesNotMarkExactNodeOrCharacterLimitsAsTruncated() {
+        val nodeExact = formatHierarchySummary(
+            lines = listOf("first", "second"),
+            maximumNodes = 2,
+            maximumCharacters = 256,
+            nodesOmitted = false
+        )
+        assertEquals("firstsecond", nodeExact)
+        assertFalse(nodeExact.contains("hierarchy summary bounded"))
+
+        val notice = "<hierarchy summary bounded; nodes=2>\\n"
+        val characterExact = formatHierarchySummary(
+            lines = listOf("ab", "cd"),
+            maximumNodes = 2,
+            maximumCharacters = notice.length + 4,
+            nodesOmitted = false
+        )
+        assertEquals("abcd", characterExact)
+        assertFalse(characterExact.contains("hierarchy summary bounded"))
+    }
+
+    @Test
+    fun hierarchySummaryMarksOnlyActualNodeOrCharacterOmission() {
+        val nodeOmitted = formatHierarchySummary(
+            lines = listOf("first", "second"),
+            maximumNodes = 2,
+            maximumCharacters = 256,
+            nodesOmitted = true
+        )
+        assertTrue(nodeOmitted.endsWith("<hierarchy summary bounded; nodes=2>\\n"))
+
+        val characterOmitted = formatHierarchySummary(
+            lines = listOf("abc", "de"),
+            maximumNodes = 2,
+            maximumCharacters = "<hierarchy summary bounded; nodes=2>\\n".length + 4,
+            nodesOmitted = false
+        )
+        assertTrue(characterOmitted.endsWith("<hierarchy summary bounded; nodes=2>\\n"))
+        assertEquals(4 + "<hierarchy summary bounded; nodes=2>\\n".length, characterOmitted.length)
+    }
+
+    @Test
+    fun idleWaitFailureIsReportedAndAccessibilityFailureRemainsCause() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        prepareUnlockedHome(context)
+        val device = UiDevice.getInstance(instrumentation)
+        val idleFailure = IllegalStateException("injected idle timeout")
+        val accessibilityFailure = IllegalArgumentException("injected accessibility failure")
+
+        val failure = assertThrows(IllegalStateException::class.java) {
+            awaitHomeScreen(
+                device = device,
+                context = context,
+                waitForIdle = { throw idleFailure },
+                waitForWorkspace = { throw accessibilityFailure }
+            )
+        }
+
+        assertSame(accessibilityFailure, failure.cause)
+        assertTrue(failure.message.orEmpty().contains("idle=error: IllegalStateException: injected idle timeout"))
+        assertTrue(failure.message.orEmpty().contains("accessibility=error: IllegalArgumentException"))
+    }
+
+    @Test
+    fun recoveryDiagnosticsRemainReadOnlyAndSafeHierarchyOmitsKnownWindowText() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val device = launch()
+        val knownText = "ГЛАФИРА"
+        val knownDescription = "Открыть очередь задач"
+        assertTrue("Known text fixture must be visible before hierarchy capture", device.hasObject(By.text(knownText)))
+        assertTrue("Known description fixture must be visible before hierarchy capture",
+            device.hasObject(By.descContains(knownDescription)))
+        val stale = File(context.cacheDir, "glafira-rollback-recovery-ui-diagnostic-${System.nanoTime()}.tmp")
+        val sentinel = File(stale, "preserve-this-undeletable-fixture")
+        try {
+            assertTrue(stale.mkdir())
+            sentinel.writeText("diagnostic fixture must remain unchanged")
+            assertTrue("Read-only diagnostics must report the outstanding rollback temp", recoveryPendingForDiagnostics(context))
+            assertTrue("A non-empty recovery temp directory cannot be deleted by the shared guard", stale.isDirectory)
+            assertEquals("diagnostic fixture must remain unchanged", sentinel.readText())
+            val hierarchy = captureSafeWindowHierarchy()
+            assertFalse("A real active window must be traversed, not replaced by the no-root fallback",
+                hierarchy.contains("<no active accessibility root>"))
+            assertTrue("Captured hierarchy must contain structural node data", hierarchy.contains("children="))
+            assertFalse("Known visible text must not enter diagnostics", hierarchy.contains(knownText))
+            assertFalse("Known accessibility description must not enter diagnostics", hierarchy.contains(knownDescription))
+        } finally {
+            check(!stale.exists() || stale.deleteRecursively())
+        }
+    }
+
+    @Test
+    fun interruptedBiometricPreferenceIsRecoveredBeforeTheNextSmokeTest() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val state = context.getSharedPreferences("glafira_ui_smoke_recovery", Context.MODE_PRIVATE)
+        val original = preferences.getBoolean("biometric_enabled", false)
+        try {
+            assertTrue("The @Before hook persisted the real original preference",
+                state.getBoolean("pending", false))
+            assertTrue(preferences.edit().putBoolean("biometric_enabled", !original).commit())
+            recoverInterruptedBiometricPreference(context, preferences)
+            assertEquals(original, preferences.getBoolean("biometric_enabled", false))
+            assertFalse("Successful recovery clears the persisted snapshot", state.getBoolean("pending", false))
+
+            // Simulate a second interrupted teardown using the real captured value, not a synthetic one.
+            persistOriginalBiometricPreference(context, original)
+            val failingPreferences = object : SharedPreferences by preferences {
+                override fun edit(): SharedPreferences.Editor {
+                    val editor = preferences.edit()
+                    return object : SharedPreferences.Editor by editor {
+                        override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor {
+                            editor.putBoolean(key, value)
+                            return this
+                        }
+                        override fun commit(): Boolean = false
+                    }
+                }
+            }
+            var relaunchAttempted = false
+            assertThrows(IllegalStateException::class.java) {
+                restoreBiometricPreferenceAndRelock(context, failingPreferences, original) {
+                    relaunchAttempted = true
+                }
+            }
+            assertTrue("Relaunch must still be attempted after preference commit failure", relaunchAttempted)
+            assertTrue("Failed restoration must retain the real original snapshot", state.getBoolean("pending", false))
+
+            assertThrows(IllegalStateException::class.java) {
+                restoreBiometricPreferenceAndRelock(context, preferences, original) {
+                    throw IllegalStateException("injected MainActivity relaunch failure")
+                }
+            }
+            assertTrue("Relaunch failure must also retain the recovery snapshot", state.getBoolean("pending", false))
+            recoverInterruptedBiometricPreference(context, preferences)
+            assertEquals(original, preferences.getBoolean("biometric_enabled", false))
+            assertFalse(state.getBoolean("pending", false))
+        } finally {
+            restoreBiometricPreferenceAndRelock(context, preferences, original)
+        }
+    }
+
+    @Test
+    fun hierarchyTruncationNoticeIsPreservedWithinCharacterLimit() {
+        val device = launch()
+        assertTrue("Home window must expose at least one child for the truncation fixture",
+            device.hasObject(By.descContains("Открыть очередь задач")))
+        val markerLength = "<hierarchy summary bounded; nodes=1>\n".length
+        assertThrows(IllegalArgumentException::class.java) {
+            captureSafeWindowHierarchy(maximumNodes = 1, maximumCharacters = markerLength + 1)
+        }
+        val maximumCharacters = 200
+        val hierarchy = captureSafeWindowHierarchy(maximumNodes = 1, maximumCharacters = maximumCharacters)
+        assertTrue("Truncated hierarchy must retain an explicit notice: $hierarchy",
+            hierarchy.contains("<hierarchy summary bounded; nodes=1>"))
+        assertFalse("The node count must not be duplicated in the truncation notice",
+            hierarchy.contains("nodes=nodes="))
+        assertTrue("Hierarchy output must respect its configured character bound",
+            hierarchy.length <= maximumCharacters)
+    }
+
+    @Test
+    fun startupDiagnosticsRetainGatesWhenSafeHierarchyCaptureFails() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        prepareUnlockedHome(context)
+        assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
+        val diagnostics = collectHomeScreenDiagnostics(
+            UiDevice.getInstance(instrumentation),
+            context,
+            "idle=completed, accessibility=timed out",
+            captureHierarchy = { throw IllegalStateException("injected hierarchy capture failure") }
+        )
+        assertTrue("Recovery gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("recovery=false"))
+        assertTrue("Biometric gate must reflect the enabled fixture: $diagnostics", diagnostics.contains("biometric=true"))
+        assertTrue(diagnostics.contains("wait=idle=completed, accessibility=timed out"))
+        assertTrue(diagnostics.contains("hierarchy unavailable: IllegalStateException: injected hierarchy capture failure"))
+    }
 
     @Test
     fun chatWorkspaceProjectSelectorSwitchesAndDeleteCancelPreservesProject() {
