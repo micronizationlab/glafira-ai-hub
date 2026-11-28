@@ -841,12 +841,38 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val target = File(context.cacheDir, "markerless-journal-symlink-target").apply { check(mkdirs()) }
         try {
             Files.createSymbolicLink(journal.toPath(), target.toPath())
-            assertThrows(IllegalStateException::class.java) {
+            assertTrue(
+                "A symlinked journal must fail closed so callers show recovery instead of crashing",
                 GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
-            }
+            )
         } finally {
             Files.deleteIfExists(journal.toPath())
             check(!target.exists() || target.deleteRecursively())
+        }
+    }
+
+    @Test
+    fun recoverRejectsDanglingPendingMarkerWithoutDeletingRollbackEvidence() = runBlocking {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
+        val marker = File(journal, "restore.pending")
+        val rollbackDatabase = File(journal, "database.db").apply { writeText("rollback database evidence") }
+        val rollbackArchive = File(journal, "files.glb").apply { writeText("rollback archive evidence") }
+        val danglingTarget = File(context.cacheDir, "missing-restore-pending-target")
+        val passphrase = "dangling-marker-evidence".toCharArray()
+        try {
+            Files.createSymbolicLink(marker.toPath(), danglingTarget.toPath())
+            assertTrue("A dangling marker link must still surface recovery as pending",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertThrows(IOException::class.java) {
+                runBlocking { isolatedCoordinator().recover(passphrase) }
+            }
+            assertTrue("Rollback database evidence must remain untouched", rollbackDatabase.isFile)
+            assertTrue("Rollback archive evidence must remain untouched", rollbackArchive.isFile)
+            assertTrue("The dangling marker itself must remain for owner inspection", Files.isSymbolicLink(marker.toPath()))
+        } finally {
+            Files.deleteIfExists(marker.toPath())
+            check(!journal.exists() || journal.deleteRecursively())
+            passphrase.fill(0.toChar())
         }
     }
 
