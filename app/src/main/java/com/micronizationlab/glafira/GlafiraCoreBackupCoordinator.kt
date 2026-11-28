@@ -128,14 +128,14 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         val commitMarkerProbe = runCatching {
                             pathExistsNoFollow(committedMarker.toPath())
                         }
-                        val commitMarkerNeedsReconfirmation = commitMarkerProbe.getOrElse {
-                            error.addSuppressed(it)
-                            true
-                        }
+                        commitMarkerProbe.exceptionOrNull()?.let(error::addSuppressed)
+                        var recoveryConfirmedCommit = false
                         val cleanupSucceeded = try {
-                            recoverInterruptedRestore(passphrase) {
-                                recoveryCleanedSnapshot = true
-                            }
+                            recoverInterruptedRestore(
+                                passphrase,
+                                onCommitted = { recoveryConfirmedCommit = true },
+                                onSnapshotCleaned = { recoveryCleanedSnapshot = true }
+                            )
                             !pathExistsNoFollow(journal.toPath())
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
@@ -150,13 +150,15 @@ class GlafiraCoreBackupCoordinator internal constructor(
                                 error.addSuppressed(cleanup)
                             }
                         }
-                        if (committedThisAttempt && !cleanupSucceeded) {
+                        val restoreWasCommitted = committedThisAttempt || recoveryConfirmedCommit
+                        if (restoreWasCommitted && !cleanupSucceeded) {
+                            committedThisAttempt = true
                             throw CommittedRestoreCleanupPendingException(
                                 completedVerification ?: throw error,
                                 error
                             )
                         }
-                        if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
+                        if (restoreWasCommitted) {
                             committedThisAttempt = true
                             completedVerification ?: throw error
                         } else {
@@ -304,6 +306,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
     /** Returns true when journal recovery already performed portable-snapshot cleanup. */
     private fun recoverInterruptedRestore(
         passphrase: CharArray,
+        onCommitted: () -> Unit = {},
         onSnapshotCleaned: () -> Unit = {}
     ): Boolean {
         if (pathExistsNoFollow(journal.toPath()) && Files.isSymbolicLink(journal.toPath())) {
@@ -320,6 +323,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
             // Re-sync this exact journal before deleting rollback evidence, including
             // when recovery runs through a newly constructed coordinator.
             syncDirectory(journal)
+            onCommitted()
             cleanupCommittedJournal(onSnapshotCleaned)
             return true
         }
