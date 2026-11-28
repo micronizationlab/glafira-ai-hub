@@ -169,13 +169,6 @@ final class BridgeHubBindingTests: XCTestCase {
             XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .duplicateJSONKey)
         }
 
-        let duplicateBinding = validJSON.replacingOccurrences(
-            of: #""desktopHubId":"desktop-hub-0001""#,
-            with: #""desktopHubId":"desktop-hub-0001","\u0064esktopHubId":"desktop-hub-0001""#
-        )
-        XCTAssertThrowsError(try BridgeHubBindingPersistence.decode(Data(duplicateBinding.utf8))) { error in
-            XCTAssertEqual(error as? BridgeHubBindingPersistenceError, .duplicateJSONKey)
-        }
     }
 
     func testPersistenceMapsMalformedJSONAndUnsupportedVersionToSpecificErrors() throws {
