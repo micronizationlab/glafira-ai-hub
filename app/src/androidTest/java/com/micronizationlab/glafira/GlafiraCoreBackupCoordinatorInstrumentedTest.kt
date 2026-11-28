@@ -14,6 +14,11 @@ import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
+import java.nio.channels.Channels
+import java.nio.file.attribute.BasicFileAttributeView
+import java.nio.file.StandardOpenOption
+import java.nio.file.SecureDirectoryStream
+import java.nio.file.OpenOption
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.FileVisitResult
 import java.nio.file.attribute.BasicFileAttributes
@@ -188,7 +193,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                     }
                     val installationMarker = rollbackOwnerMarker()
                     val fixtureJournal = File(testRoot, "no-backup/glafira-restore-journal")
-                    check(!installationMarker.exists() && !fixtureJournal.exists()) {
+                    check(!installationMarker.exists() && !rollbackJournalPathPresent(fixtureJournal)) {
                         "Preserving fixture root because rollback ownership/recovery evidence remains."
                     }
                     checkFixtureRootOwnership(testRunId, testRoot)
@@ -466,6 +471,109 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
 
+    private fun rollbackJournalPathPresent(journal: File): Boolean =
+        Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)
+
+    @Suppress("UNCHECKED_CAST")
+    private fun openSecureDirectory(path: Path): SecureDirectoryStream<Path> {
+        val stream = Files.newDirectoryStream(path)
+        if (stream !is SecureDirectoryStream<*>) {
+            stream.close()
+            throw IOException("The filesystem does not support secure directory operations.")
+        }
+        return stream as SecureDirectoryStream<Path>
+    }
+
+    private fun deleteOwnedRollbackJournalWithoutFollowingLinks(
+        journal: File,
+        runId: String,
+        afterJournalDeletion: () -> Unit = {}
+    ) {
+        check(fixtureLifetimeFileLock?.isValid == true) {
+            "Rollback-journal cleanup requires the fixture lifetime lock."
+        }
+        val fixtureRoot = testRoot.toPath().toAbsolutePath().normalize()
+        val noBackupRoot = context.noBackupFilesDir.toPath().toAbsolutePath().normalize()
+        val expectedNoBackupRoot = fixtureRoot.resolve("no-backup")
+        val expectedJournal = expectedNoBackupRoot.resolve("glafira-restore-journal")
+        val dataRoot = appContext.dataDir.toPath().toAbsolutePath().normalize()
+        val cacheRoot = appContext.cacheDir.toPath().toAbsolutePath().normalize()
+        check(cacheRoot == dataRoot.resolve("cache") && fixtureRoot.parent == cacheRoot) {
+            "Rollback journal escaped the expected application cache."
+        }
+        check(noBackupRoot == expectedNoBackupRoot && journal.toPath().toAbsolutePath().normalize() == expectedJournal) {
+            "Refusing to clean a journal outside the owned fixture."
+        }
+        check(Files.isDirectory(dataRoot, LinkOption.NOFOLLOW_LINKS))
+        check(Files.isDirectory(fixtureRoot, LinkOption.NOFOLLOW_LINKS))
+        check(Files.isDirectory(expectedNoBackupRoot, LinkOption.NOFOLLOW_LINKS))
+        check(Files.isDirectory(expectedJournal, LinkOption.NOFOLLOW_LINKS)) {
+            "Refusing to delete a missing or linked rollback journal."
+        }
+        checkFixtureRootOwnership(runId, testRoot)
+        val ownerMarker = rollbackOwnerMarker()
+        check(Files.isRegularFile(ownerMarker.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Refusing to delete a rollback journal without an external owner marker."
+        }
+
+        val dataDirectory = openSecureDirectory(dataRoot)
+        dataDirectory.use { data ->
+            data.newDirectoryStream(dataRoot.fileSystem.getPath("cache"), LinkOption.NOFOLLOW_LINKS).use { cache ->
+                cache.newDirectoryStream(fixtureRoot.fileName, LinkOption.NOFOLLOW_LINKS).use { fixture ->
+                    fixture.newDirectoryStream(dataRoot.fileSystem.getPath("no-backup"), LinkOption.NOFOLLOW_LINKS).use { noBackup ->
+                        val ownerName = dataRoot.fileSystem.getPath(ownerMarker.name)
+                        val ownerAttributes = noBackup
+                            .getFileAttributeView(ownerName, BasicFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)
+                            ?.readAttributes()
+                            ?: throw IOException("Rollback owner marker attributes are unavailable.")
+                        check(ownerAttributes.isRegularFile && !ownerAttributes.isSymbolicLink) {
+                            "Refusing to use a linked rollback owner marker."
+                        }
+                        val ownerChannel = noBackup.newByteChannel(
+                            ownerName,
+                            setOf<OpenOption>(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)
+                        )
+                        val recordedOwner = Channels.newInputStream(ownerChannel)
+                            .bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        check(recordedOwner == runId) {
+                            "Refusing to delete a rollback journal owned by another fixture."
+                        }
+
+                        val journalName = dataRoot.fileSystem.getPath("glafira-restore-journal")
+                        noBackup.newDirectoryStream(journalName, LinkOption.NOFOLLOW_LINKS).use { journalDirectory ->
+                            val entries = journalDirectory.toList()
+                            val allowedNames = setOf(
+                                "restore.pending",
+                                "restore.pending.tmp",
+                                "restore.committed",
+                                "restore.committed.tmp",
+                                "database.db",
+                                "files.glb"
+                            )
+                            for (entry in entries) {
+                                val name = entry.fileName
+                                check(name.toString() in allowedNames) {
+                                    "Refusing to delete unexpected rollback journal content: $name"
+                                }
+                                val attributes = journalDirectory
+                                    .getFileAttributeView(name, BasicFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)
+                                    ?.readAttributes()
+                                    ?: throw IOException("Rollback journal entry attributes are unavailable.")
+                                check(attributes.isRegularFile && !attributes.isSymbolicLink) {
+                                    "Refusing to delete a linked or non-file rollback journal entry."
+                                }
+                            }
+                            for (entry in entries) journalDirectory.deleteFile(entry.fileName)
+                        }
+                        noBackup.deleteDirectory(journalName)
+                    }
+                }
+            }
+        }
+        syncMarkerDirectory(expectedNoBackupRoot.toFile())
+        afterJournalDeletion()
+    }
+
     private fun deleteTreeWithoutFollowingLinks(root: Path) {
         check(!Files.isSymbolicLink(root)) { "Refusing to recursively delete a symbolic-link fixture root." }
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
@@ -624,6 +732,19 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun ownedRollbackJournalCleanupUsesSecureDirectoryHandles() = runBlocking {
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        withOwnedRollbackKey {
+            check(journal.mkdir())
+            File(journal, "restore.pending").writeText("GLAFIRA_RESTORE_ROLLBACK_V3")
+            File(journal, "database.db").writeText("encrypted-fixture-placeholder")
+            File(journal, "files.glb").writeText("encrypted-fixture-placeholder")
+        }
+        assertFalse("Owned journal is removed before fixture ownership is cleared", rollbackJournalPathPresent(journal))
+        assertFalse("External rollback owner marker is cleared after durable cleanup", rollbackOwnerMarker().exists())
+    }
+
+    @Test
     fun failedExclusiveMkdirNeverDeletesPreexistingFixtureLookingDirectory() {
         val runId = UUID.randomUUID().toString()
         val existing = File(appContext.cacheDir, "glafira-backup-test-" + runId)
@@ -713,8 +834,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var markerPublished = false
         var primaryFailure: Throwable? = null
         try {
-            // Set the flag inside the protected block: withTimeout can throw after the
-            // block publishes the marker but before withFixtureLocks returns to its caller.
             withFixtureLocks {
                 writeRollbackOwnerMarker(runId)
                 markerPublished = true
@@ -728,22 +847,22 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 try {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                         withFixtureLocks {
-                            val marker = rollbackOwnerMarker()
-                            if (marker.isFile && marker.readText(Charsets.UTF_8) == runId) {
+                            val owner = rollbackOwnerMarker()
+                            if (owner.isFile && !Files.isSymbolicLink(owner.toPath()) &&
+                                owner.readText(Charsets.UTF_8) == runId
+                            ) {
                                 val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-                                val journalOwner = File(journal, "test-owner")
-                                if (primaryFailure != null && (journal.exists() || rollbackKeyExists())) {
+                                if (primaryFailure != null &&
+                                    (rollbackJournalPathPresent(journal) || rollbackKeyExists())
+                                ) {
                                     throw IllegalStateException(
                                         "Preserving fixture root, journal and fixture key after a failed test."
                                     )
                                 }
-                                if (journal.exists()) {
-                                    check(journalOwner.isFile && journalOwner.readText(Charsets.UTF_8) == runId) {
-                                        "Refusing to claim or delete a rollback journal without matching fixture ownership."
+                                if (rollbackJournalPathPresent(journal)) {
+                                    deleteOwnedRollbackJournalWithoutFollowingLinks(journal, runId) {
+                                        if (rollbackKeyExists()) deleteFixtureRollbackKey()
                                     }
-                                    // Keep the ownership journal until Keystore deletion succeeds.
-                                    if (rollbackKeyExists()) deleteFixtureRollbackKey()
-                                    check(journal.deleteRecursively()) { "Could not remove test-owned rollback journal." }
                                 } else {
                                     check(!rollbackKeyExists()) {
                                         "A fixture owner marker without its journal cannot authorize deletion of its fixture key."
@@ -758,9 +877,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 }
             }
         }
-    }
-
-    private suspend fun restoreOwned(
+    }    private suspend fun restoreOwned(
         coordinator: GlafiraCoreBackupCoordinator,
         archive: File,
         passphrase: CharArray
