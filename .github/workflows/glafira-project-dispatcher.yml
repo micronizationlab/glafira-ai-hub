@@ -158,14 +158,23 @@ jobs:
                       boundary_validation_error="$tmp/boundary-validation-$attempt.log"
                       if jq -e --argjson total "$expected_total" --arg boundary "$expected_boundary" '
                         .data.repository.pullRequests.totalCount == $total
-                        and ((.data.repository.pullRequests.nodes[0].number // "") | tostring) == $boundary
+                        and (.data.repository.pullRequests.nodes | type) == "array"
+                        and (
+                          if $total == 0 then
+                            (.data.repository.pullRequests.nodes | length) == 0
+                          else
+                            (.data.repository.pullRequests.nodes | length) == 1
+                            and (.data.repository.pullRequests.nodes[0].number | type) == "number"
+                            and (.data.repository.pullRequests.nodes[0].number | tostring) == $boundary
+                          end
+                        )
                       ' >/dev/null 2>"$boundary_validation_error" <<< "$boundary"; then
                         cat "$projection_file"
                         exit 0
                       else
                         boundary_validation_status=$?
                         if [[ "$boundary_validation_status" -ne 1 ]]; then
-                          boundary_validation_detail="$(tail -n 3 "$boundary_validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
+                          boundary_validation_detail="$(tail -n 3 "$boundary_validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[^[:space:]]+)/[REDACTED]/g')"
                           printf 'UNKNOWN: GraphQL open-PR boundary response validation failed (jq exit %s). %s\n' \
                             "$boundary_validation_status" "${boundary_validation_detail:-No jq validation stderr was captured.}" >&2
                           exit 1
@@ -176,14 +185,14 @@ jobs:
                       fi
                     else
                       boundary_status=$?
-                      boundary_detail="$(tail -n 3 "$boundary_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
+                      boundary_detail="$(tail -n 3 "$boundary_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[^[:space:]]+)/[REDACTED]/g')"
                       printf 'UNKNOWN: GraphQL open-PR boundary verification failed (exit %s). %s\n' \
                         "$boundary_status" "${boundary_detail:-No boundary-query stderr was captured.}" >&2
                       exit 1
                     fi
                   else
                     projection_status=$?
-                    projection_detail="$(tail -n 3 "$projection_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
+                    projection_detail="$(tail -n 3 "$projection_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[^[:space:]]+)/[REDACTED]/g')"
                     printf 'UNKNOWN: GraphQL open-PR projection failed (jq exit %s). %s\n' \
                       "$projection_status" "${projection_detail:-No jq projection stderr was captured.}" >&2
                     exit 1
@@ -191,21 +200,21 @@ jobs:
                 else
                   count_status=$?
                   if [[ "$count_status" -eq 1 && "$attempt" -eq 1 ]]; then continue; fi
-                  count_detail="$(tail -n 3 "$count_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
+                  count_detail="$(tail -n 3 "$count_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[^[:space:]]+)/[REDACTED]/g')"
                   printf 'UNKNOWN: Cursor-page totalCount did not reconcile across both scans (jq exit %s). %s\n' \
                     "$count_status" "${count_detail:-Inventory counts changed or did not match the returned nodes.}" >&2
                   exit 1
                 fi
               else
                 validation_status=$?
-                validation_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
+                validation_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[^[:space:]]+)/[REDACTED]/g')"
                 printf 'UNKNOWN: GraphQL open-PR response failed schema/completeness validation (jq exit %s). %s\n' \
                   "$validation_status" "${validation_detail:-No jq validation stderr was captured.}" >&2
                 exit 1
               fi
             else
               graphql_status=$?
-              graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
+              graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[^[:space:]]+)/[REDACTED]/g')"
               printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
                 "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
               exit 1
@@ -446,7 +455,7 @@ jobs:
           set -euo pipefail
           # An exported gh shell function would override PATH-based fake executables in child Bash processes.
           unset -f gh 2>/dev/null || true
-          trap 'status=$?; failed_command="$(printf "%s" "$BASH_COMMAND" | sed -E "s/(gh[pousr]_[A-Za-z0-9_-]{10,}|github_pat_[A-Za-z0-9_-]{10,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g")"; printf "dispatcher renderer fixture failed (exit %s): %s\\n" "$status" "$failed_command" >&2' ERR
+          trap 'status=$?; failed_command="$(printf "%s" "$BASH_COMMAND" | sed -E "s/(gh[pousr]_[A-Za-z0-9_-]{10,}|github_pat_[A-Za-z0-9_-]{10,}|[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[^[:space:]]+)/[REDACTED]/g")"; printf "dispatcher renderer fixture failed (exit %s): %s\\n" "$status" "$failed_command" >&2' ERR
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
