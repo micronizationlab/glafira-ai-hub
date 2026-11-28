@@ -50,6 +50,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failCommittedCleanupOnce = false
         var failCommittedCleanupCount = 0
         var failCommittedDirectoryCleanupOnce = false
+        var failCommittedDirectoryCleanupCount = 0
         var pauseCount = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
@@ -65,8 +66,9 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
         override fun beforeCommittedJournalDirectoryCleanup() {
-            if (failCommittedDirectoryCleanupOnce) {
+            if (failCommittedDirectoryCleanupOnce || failCommittedDirectoryCleanupCount > 0) {
                 failCommittedDirectoryCleanupOnce = false
+                if (failCommittedDirectoryCleanupCount > 0) failCommittedDirectoryCleanupCount--
                 throw IOException("injected interruption after committed markers were removed")
             }
         }
@@ -1569,7 +1571,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         try {
             withOwnedRollbackKey {
-                fixtureRuntimeHooks.failCommittedDirectoryCleanupOnce = true
+                // Fail once during the initial cleanup and once during its immediate retry.
+                fixtureRuntimeHooks.failCommittedDirectoryCleanupCount = 2
                 val verification = coordinator.restore(archive, passphrase)
                 assertTrue("Committed restore reports pending journal cleanup", verification.recoveryRequired)
                 assertTrue("Markerless journal remains a blocking recovery condition", GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
@@ -1584,6 +1587,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         } finally {
             fixtureRuntimeHooks.failCommittedDirectoryCleanupOnce = false
+            fixtureRuntimeHooks.failCommittedDirectoryCleanupCount = 0
             archive.delete()
             passphrase.fill('\u0000')
         }
