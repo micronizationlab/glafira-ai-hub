@@ -17,16 +17,37 @@ internal object UiSmokeTestPreferenceLock {
 }
 
 internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
-    val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
-    if (journal.exists() && !journal.deleteRecursively()) {
-        error("Could not reset interrupted-restore journal for UI smoke test")
+    val app = context.applicationContext
+    val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
+    val snapshot = File(app.filesDir, ".glafira-core-snapshot")
+    val registry = File(app.noBackupFilesDir, ".glafira-restore-temp-registry.json")
+    check(!Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+        "Unexpected recovery journal; UI smoke-test setup will not delete recovery evidence."
     }
-    check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
-        "Interrupted-restore state leaked into UI smoke test"
+    check(!Files.exists(snapshot.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+        "Unexpected plaintext snapshot; UI smoke-test setup will not delete recovery evidence."
+    }
+    check(!Files.exists(registry.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+        "Unexpected restore-temp registry; UI smoke-test setup will not delete recovery evidence."
+    }
+    val replacementTemps = runCatching {
+        Files.walk(app.filesDir.toPath()).use { paths ->
+            paths.anyMatch { path ->
+                path.fileName?.toString()?.endsWith(".restore-tmp") == true &&
+                    Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+            }
+        }
+    }.getOrDefault(true)
+    check(!replacementTemps) { "Unexpected restore replacement temp; UI smoke-test setup will not delete it." }
+    val stale = app.cacheDir.listFiles { file ->
+        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+    }
+    check(stale != null && stale.none { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }) {
+        "Unexpected decrypted rollback temp; UI smoke-test setup will not delete it."
     }
 }
 
-/** Restore the preference, then recreate the task so MainActivity applies the restored lock state. */
+/** Preference file holding the original biometric value until relaunch succeeds. */
 private const val UI_SMOKE_RECOVERY_PREFS = "glafira_ui_smoke_recovery"
 
 internal fun recoverInterruptedBiometricPreference(
@@ -82,8 +103,35 @@ internal fun restoreBiometricPreferenceAndRelock(
 }
 
 /** Read recovery indicators without deleting a temp file that an active recovery may own. */
-internal fun recoveryPendingForDiagnostics(context: Context): Boolean =
-    GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)
+internal fun recoveryPendingForDiagnostics(context: Context): Boolean {
+    val app = context.applicationContext
+    val journal = File(app.noBackupFilesDir, "glafira-restore-journal")
+    val markers = listOf(
+        File(journal, "restore.pending"),
+        File(journal, "restore.committed"),
+        File(app.filesDir, ".glafira-core-snapshot")
+    )
+    if (Files.isSymbolicLink(journal.toPath()) ||
+        markers.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) } ||
+        Files.exists(
+            File(app.noBackupFilesDir, ".glafira-restore-temp-registry.json").toPath(),
+            LinkOption.NOFOLLOW_LINKS
+        )
+    ) return true
+    val replacementTemps = runCatching {
+        Files.walk(app.filesDir.toPath()).use { paths ->
+            paths.anyMatch { path ->
+                path.fileName?.toString()?.endsWith(".restore-tmp") == true &&
+                    Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+            }
+        }
+    }.getOrDefault(true)
+    if (replacementTemps) return true
+    val stale = app.cacheDir.listFiles { file ->
+        file.name.startsWith("glafira-rollback-recovery-") && file.name.endsWith(".tmp")
+    } ?: return true
+    return stale.any { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+}
 
 /** Capture only structural accessibility metadata; never read text or content descriptions. */
 internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacters: Int = 12_000): String {
