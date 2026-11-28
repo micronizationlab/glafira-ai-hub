@@ -513,6 +513,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 "restore.pending",
                                 "restore.pending.tmp",
                                 "restore.committed",
+                                "restore.committed.tmp",
                                 "database.db",
                                 "files.glb",
                                 "test-owner"
