@@ -119,7 +119,9 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     }
                 } finally {
                     selected.delete()
-                    File(app.filesDir, ".glafira-core-snapshot").deleteRecursively()
+                    // Remove only our known plaintext export. Never recursively erase unexpected
+                    // entries that appeared in the staging directory during restore cleanup.
+                    runCatching { cleanupPortableSnapshotPreservingUnexpected() }
                 }
             } }
         }
@@ -273,6 +275,35 @@ class GlafiraCoreBackupCoordinator internal constructor(
         syncDirectory(app.noBackupFilesDir)
     }
 
+    /**
+     * Best-effort restore-finally cleanup. Delete only the known regular export and remove
+     * the directory only when it is empty; never follow links or recursively delete unknown data.
+     */
+    private fun cleanupPortableSnapshotPreservingUnexpected() {
+        val directory = File(app.filesDir, ".glafira-core-snapshot").toPath().toAbsolutePath().normalize()
+        val export = File(app.filesDir, GlafiraPortableCoreSnapshot.PATH).toPath().toAbsolutePath().normalize()
+        if (export.parent != directory) throw IOException("Некорректный путь переносимого снимка Core.")
+        if (Files.notExists(directory, LinkOption.NOFOLLOW_LINKS)) return
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(directory)) {
+            throw IOException("Каталог переносимого снимка Core заменён ссылкой или файлом.")
+        }
+        val exportExists = Files.exists(export, LinkOption.NOFOLLOW_LINKS)
+        val exportAbsent = Files.notExists(export, LinkOption.NOFOLLOW_LINKS)
+        if (!exportExists && !exportAbsent) throw IOException("Не удалось определить состояние файла снимка Core.")
+        if (exportExists) {
+            if (!Files.isRegularFile(export, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(export)) {
+                throw IOException("Файл переносимого снимка Core заменён ссылкой или каталогом.")
+            }
+            Files.delete(export)
+            syncDirectory(directory.toFile())
+        }
+        val empty = Files.newDirectoryStream(directory).use { entries -> !entries.iterator().hasNext() }
+        if (empty) {
+            Files.delete(directory)
+            syncDirectory(app.filesDir)
+        }
+    }
+
     /** Remove only the known plaintext portable export; preserve unexpected staging data. */
     private fun deleteCommittedPortableSnapshot() {
         val directory = File(app.filesDir, ".glafira-core-snapshot").toPath().toAbsolutePath().normalize()
@@ -291,14 +322,17 @@ class GlafiraCoreBackupCoordinator internal constructor(
             if (exportExists && (!Files.isRegularFile(export, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(export))) {
                 throw IOException("Файл переносимого снимка Core заменён ссылкой или каталогом.")
             }
+            // Delete the known plaintext export before reporting unexpected siblings. This
+            // prevents unrelated staging data from keeping decrypted task/result data on disk.
+            if (exportExists) {
+                Files.delete(export)
+                syncDirectory(directory.toFile())
+            }
             Files.newDirectoryStream(directory).use { entries ->
                 for (entry in entries) {
-                    if (entry.toAbsolutePath().normalize() != export) {
-                        throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные.")
-                    }
+                    throw IOException("В каталоге переносимого снимка Core обнаружены посторонние данные.")
                 }
             }
-            if (exportExists) Files.delete(export)
             Files.delete(directory)
         }
         syncDirectory(app.filesDir)
