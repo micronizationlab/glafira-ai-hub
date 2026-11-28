@@ -17,6 +17,11 @@ import java.nio.file.SimpleFileVisitor
 import java.nio.file.FileVisitResult
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.Path
+import java.nio.file.OpenOption
+import java.nio.file.SecureDirectoryStream
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributeView
+import java.nio.channels.Channels
 import java.security.KeyStore
 import java.util.UUID
 import javax.crypto.AEADBadTagException
@@ -410,6 +415,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         return true
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun openSecureDirectory(path: Path): SecureDirectoryStream<Path> {
+        val stream = Files.newDirectoryStream(path)
+        if (stream !is SecureDirectoryStream<*>) {
+            stream.close()
+            throw IOException("The filesystem does not support race-free directory operations.")
+        }
+        return stream as SecureDirectoryStream<Path>
+    }
+
     private fun deleteTreeWithoutFollowingLinks(root: Path) {
         check(!Files.isSymbolicLink(root)) { "Refusing to recursively delete a symbolic-link fixture root." }
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
@@ -464,14 +479,65 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         check(Files.isRegularFile(ownerMarker, LinkOption.NOFOLLOW_LINKS) &&
             !Files.isSymbolicLink(ownerMarker)
         ) { "Refusing to delete a rollback journal without a regular owner marker." }
-        val recordedOwner = Files.newInputStream(ownerMarker, LinkOption.NOFOLLOW_LINKS)
-            .bufferedReader(Charsets.UTF_8).use { it.readText() }
-        check(recordedOwner == runId) {
-            "Refusing to delete a rollback journal owned by another fixture."
+
+        // Open each path component relative to a secured directory handle. The journal
+        // and its children are then validated/deleted relative to the opened directory,
+        // so replacing a parent path cannot redirect cleanup outside this fixture.
+        val dataDirectory = openSecureDirectory(dataRoot)
+        dataDirectory.use { data ->
+            data.newDirectoryStream(dataRoot.fileSystem.getPath("cache"), LinkOption.NOFOLLOW_LINKS).use { cache ->
+                cache.newDirectoryStream(fixtureRoot.fileName, LinkOption.NOFOLLOW_LINKS).use { fixture ->
+                    fixture.newDirectoryStream(dataRoot.fileSystem.getPath("no-backup"), LinkOption.NOFOLLOW_LINKS).use { noBackup ->
+                        val journalName = dataRoot.fileSystem.getPath("glafira-restore-journal")
+                        noBackup.newDirectoryStream(journalName, LinkOption.NOFOLLOW_LINKS).use { journalDirectory ->
+                            val ownerName = dataRoot.fileSystem.getPath("test-owner")
+                            val ownerAttributes = journalDirectory
+                                .getFileAttributeView(ownerName, BasicFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)
+                                ?.readAttributes()
+                                ?: throw IOException("Rollback owner marker attributes are unavailable.")
+                            check(ownerAttributes.isRegularFile && !ownerAttributes.isSymbolicLink) {
+                                "Refusing to delete a rollback journal without a regular owner marker."
+                            }
+                            val ownerChannel = journalDirectory.newByteChannel(
+                                ownerName,
+                                setOf<OpenOption>(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)
+                            )
+                            val recordedOwner = Channels.newInputStream(ownerChannel)
+                                .bufferedReader(Charsets.UTF_8).use { it.readText() }
+                            check(recordedOwner == runId) {
+                                "Refusing to delete a rollback journal owned by another fixture."
+                            }
+
+                            val entries = journalDirectory.toList()
+                            val allowedNames = setOf(
+                                "restore.pending",
+                                "restore.pending.tmp",
+                                "restore.committed",
+                                "database.db",
+                                "files.glb",
+                                "test-owner"
+                            )
+                            for (entry in entries) {
+                                val name = entry.fileName
+                                check(name.toString() in allowedNames) {
+                                    "Refusing to delete unexpected rollback journal content: $name"
+                                }
+                                val attributes = journalDirectory
+                                    .getFileAttributeView(name, BasicFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)
+                                    ?.readAttributes()
+                                    ?: throw IOException("Rollback journal entry attributes are unavailable.")
+                                check(attributes.isRegularFile && !attributes.isSymbolicLink) {
+                                    "Refusing to delete a linked or non-file rollback journal entry."
+                                }
+                            }
+                            for (entry in entries) journalDirectory.deleteFile(entry.fileName)
+                        }
+                        // Keep the key until this directory-relative removal and parent fsync succeed.
+                        noBackup.deleteDirectory(journalName)
+                    }
+                }
+            }
         }
-        // Keep the key until the journal is durably removed. Root/alias owner markers
-        // live outside the journal and remain until the caller clears them after key deletion.
-        deleteTreeWithoutFollowingLinks(expectedJournal)
         syncMarkerDirectory(expectedNoBackupRoot.toFile())
         afterJournalDeletion()
     }
