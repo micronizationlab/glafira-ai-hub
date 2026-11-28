@@ -1567,6 +1567,32 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun prepareRollbackRejectsDanglingJournalSymlinkWithoutCreatingKeyOrTouchingCanary() {
+        val runId = testRunId
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val missingTarget = File(context.cacheDir, "missing-journal-target-$runId")
+        val canary = File(context.cacheDir, "dangling-journal-canary-$runId").apply {
+            writeText("must-survive")
+        }
+        val passphrase = "GLAFIRA-dangling-journal-link".toCharArray()
+        try {
+            Files.createSymbolicLink(journal.toPath(), missingTarget.toPath())
+            assertFalse("The symlink target is intentionally missing", journal.exists())
+            assertTrue("The journal path itself is still a symlink", Files.isSymbolicLink(journal.toPath()))
+            assertThrows(IllegalStateException::class.java) {
+                isolatedCoordinator().prepareRollback(passphrase)
+            }
+            assertTrue("The dangling journal link is preserved for owner recovery", Files.isSymbolicLink(journal.toPath()))
+            assertEquals("must-survive", canary.readText())
+            assertFalse("No rollback key may be created for a rejected journal path", rollbackCipher.keyExists())
+        } finally {
+            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
+            canary.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun committedCleanupFsyncsFilesDirectoryEvenWhenPlaintextSnapshotIsAlreadyAbsent() = runBlocking {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
         val pending = File(journal, "restore.pending").apply { writeText("GLAFIRA_RESTORE_ROLLBACK_V3") }
