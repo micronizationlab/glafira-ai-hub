@@ -164,14 +164,14 @@ jobs:
                       exit 1
                     else
                       boundary_status=$?
-                      boundary_detail="$(tail -n 3 "$boundary_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                      boundary_detail="$(tail -n 3 "$boundary_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
                       printf 'UNKNOWN: GraphQL open-PR boundary verification failed (exit %s). %s\n' \
                         "$boundary_status" "${boundary_detail:-No boundary-query stderr was captured.}" >&2
                       exit 1
                     fi
                   else
                     projection_status=$?
-                    projection_detail="$(tail -n 3 "$projection_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                    projection_detail="$(tail -n 3 "$projection_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
                     printf 'UNKNOWN: GraphQL open-PR projection failed (jq exit %s). %s\n' \
                       "$projection_status" "${projection_detail:-No jq projection stderr was captured.}" >&2
                     exit 1
@@ -179,21 +179,21 @@ jobs:
                 else
                   count_status=$?
                   if [[ "$count_status" -eq 1 && "$attempt" -eq 1 ]]; then continue; fi
-                  count_detail="$(tail -n 3 "$count_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                  count_detail="$(tail -n 3 "$count_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
                   printf 'UNKNOWN: Cursor-page totalCount did not reconcile across both scans (jq exit %s). %s\n' \
                     "$count_status" "${count_detail:-Inventory counts changed or did not match the returned nodes.}" >&2
                   exit 1
                 fi
               else
                 validation_status=$?
-                validation_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                validation_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
                 printf 'UNKNOWN: GraphQL open-PR response failed schema/completeness validation (jq exit %s). %s\n' \
                   "$validation_status" "${validation_detail:-No jq validation stderr was captured.}" >&2
                 exit 1
               fi
             else
               graphql_status=$?
-              graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+              graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
               printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
                 "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
               exit 1
@@ -395,7 +395,7 @@ jobs:
               echo ""
               echo "$reconciliation_note"
               echo "$final_note"
-              echo "Policy: `NO MATCHING RUN FOR EXACT PR/HEAD/BASE` is UNKNOWN, not a pass. Fallback Actions history is bounded to the newest 1,000 runs."
+              echo "Policy: \`NO MATCHING RUN FOR EXACT PR/HEAD/BASE\` is UNKNOWN, not a pass. Fallback Actions history is bounded to the newest 1,000 runs."
             } >> "$summary"
             exit 0
           fi
@@ -412,7 +412,7 @@ jobs:
             echo "|---:|---|---|---|:---:|"
             bash "$RUNNER_TEMP/render-dispatcher-status.sh" "$final" "$runs"
             echo ""
-            echo "Policy: GraphQL cursor pagination is authoritative; REST offset fallback is disabled. Fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. `NO MATCHING RUN FOR EXACT PR/HEAD/BASE` is UNKNOWN, not a pass; fallback history is bounded to the newest 1,000 runs. Skipped, cancelled, queued, partial or unknown states are not acceptance passes."
+            echo "Policy: GraphQL cursor pagination is authoritative; REST offset fallback is disabled. Fallback Actions runs require exact PR number, head SHA, and non-empty current base SHA. \`NO MATCHING RUN FOR EXACT PR/HEAD/BASE\` is UNKNOWN, not a pass; fallback history is bounded to the newest 1,000 runs. Skipped, cancelled, queued, partial or unknown states are not acceptance passes."
           } >> "$summary"
           REPORT
           chmod +x "$RUNNER_TEMP/build-dispatcher-status-report.sh"
@@ -421,7 +421,7 @@ jobs:
           set -euo pipefail
           # An exported gh shell function would override PATH-based fake executables in child Bash processes.
           unset -f gh 2>/dev/null || true
-          trap 'status=$?; failed_command="$(printf "%s" "$BASH_COMMAND" | sed -E "s/(gh[pousr]_[A-Za-z0-9_-]{10,}|github_pat_[A-Za-z0-9_-]{10,}|Bearer [^ ]+)/[REDACTED]/g")"; printf "dispatcher renderer fixture failed (exit %s): %s\\n" "$status" "$failed_command" >&2' ERR
+          trap 'status=$?; failed_command="$(printf "%s" "$BASH_COMMAND" | sed -E "s/(gh[pousr]_[A-Za-z0-9_-]{10,}|github_pat_[A-Za-z0-9_-]{10,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g")"; printf "dispatcher renderer fixture failed (exit %s): %s\\n" "$status" "$failed_command" >&2' ERR
           renderer="$RUNNER_TEMP/render-dispatcher-status.sh"
           fetch_prs="$RUNNER_TEMP/fetch-open-prs.sh"
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
