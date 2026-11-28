@@ -1107,12 +1107,16 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         fixtureRuntimeHooks.journalDirectorySyncCalls = 0
         fixtureRuntimeHooks.failJournalDirectorySyncAfterSnapshotCleanupCount = 2
         try {
-            val failure = assertThrows(IOException::class.java) {
+            val failure = assertThrows(CommittedRestoreCleanupPendingException::class.java) {
                 runBlocking { coordinator.restore(archive, passphrase) }
             }
             assertTrue(
+                "The distinct result must carry the committed restore verification",
+                failure.verification.fileCount > 0
+            )
+            assertTrue(
                 "A committed restore with incomplete journal cleanup must not be reported as success",
-                failure.message.orEmpty().contains("Восстановление зафиксировано")
+                failure.message.orEmpty().contains("Восстановление завершено")
             )
             val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
             assertTrue(
