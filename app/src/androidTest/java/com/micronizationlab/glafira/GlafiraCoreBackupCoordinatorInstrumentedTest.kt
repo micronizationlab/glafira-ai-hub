@@ -1103,10 +1103,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             check(snapshotDirectory.mkdirs())
             plaintextExport.writeText("known plaintext export")
             unknown.writeText("operator data must survive")
-            val failure = assertThrows(IOException::class.java) {
+            val failure = assertThrows(IllegalStateException::class.java) {
                 runBlocking { coordinator.recover(passphrase) }
             }
-            assertTrue(failure.message.orEmpty().contains("неизвестные данные"))
+            assertTrue("Recovery exposes the preserved unknown-snapshot IOException",
+                failure.cause is IOException &&
+                    failure.cause?.message.orEmpty().contains("неизвестные данные"))
             assertFalse("Known plaintext export is removed before safety restore", plaintextExport.exists())
             assertEquals("operator data must survive", unknown.readText(Charsets.UTF_8))
             assertTrue("Unknown staging data remains and keeps the journal", snapshotDirectory.isDirectory)
@@ -1329,18 +1331,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val archive = coordinator.create(passphrase)
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         try {
-            fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 2
-            assertThrows(IOException::class.java) {
-                runBlocking { coordinator.restore(archive, passphrase) }
-            }
-            assertTrue("The incomplete journal directory must remain", journal.isDirectory)
-            assertTrue(
-                "The committed marker must be restored after directory deletion fails",
-                File(journal, "restore.committed").isFile
-            )
-            fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 0
-            isolatedCoordinator().recover(passphrase)
-            assertFalse("A later recovery pass removes the fully cleaned journal", journal.exists())
+            fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 1
+            val verification = coordinator.restore(archive, passphrase)
+            assertTrue("The completed restore verification is returned after cleanup retry",
+                verification.fileCount > 0)
+            assertEquals("The injected directory-delete failure is consumed by the retry",
+                0, fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount)
+            assertFalse("The retry removes the committed journal before restore returns", journal.exists())
             assertTrue("The restored task remains committed", store.getTask("committed-journal-directory-delete") != null)
         } finally {
             fixtureRuntimeHooks.failCommittedJournalDirectoryDeleteCount = 0
