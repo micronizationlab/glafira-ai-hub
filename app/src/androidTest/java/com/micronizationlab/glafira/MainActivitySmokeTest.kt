@@ -10,9 +10,10 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
-import java.io.File
 import androidx.test.uiautomator.Until
+import java.io.File
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -58,21 +59,73 @@ class MainActivitySmokeTest {
         }
     }
 
-
     @Test
     fun homeScreenWaitFailureStillCollectsStartupDiagnostics() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         prepareUnlockedHome(context)
         val device = UiDevice.getInstance(instrumentation)
+        val injectedFailure = IllegalStateException("injected accessibility wait failure")
         val failure = assertThrows(IllegalStateException::class.java) {
             awaitHomeScreen(device, context, waitForWorkspace = {
-                throw IllegalStateException("injected accessibility wait failure")
+                throw injectedFailure
             })
         }
+        assertSame(injectedFailure, failure.cause)
         assertTrue(failure.message.orEmpty().contains("recovery=false"))
         assertTrue(failure.message.orEmpty().contains("biometric=false"))
         assertTrue(failure.message.orEmpty().contains("injected accessibility wait failure"))
+    }
+
+    @Test
+    fun idleWaitFailureIsReportedAndAccessibilityFailureRemainsCause() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        prepareUnlockedHome(context)
+        val device = UiDevice.getInstance(instrumentation)
+        val idleFailure = IllegalStateException("injected idle timeout")
+        val accessibilityFailure = IllegalArgumentException("injected accessibility failure")
+
+        val failure = assertThrows(IllegalStateException::class.java) {
+            awaitHomeScreen(
+                device = device,
+                context = context,
+                waitForIdle = { throw idleFailure },
+                waitForWorkspace = { throw accessibilityFailure }
+            )
+        }
+
+        assertSame(accessibilityFailure, failure.cause)
+        assertTrue(failure.message.orEmpty().contains("idle=error: IllegalStateException: injected idle timeout"))
+        assertTrue(failure.message.orEmpty().contains("accessibility=error: IllegalArgumentException"))
+    }
+
+    @Test
+    fun preferenceRestoreFailureIsSuppressedInsteadOfReplacingPrimaryFailure() {
+        val primaryFailure = IllegalStateException("original smoke-test failure")
+
+        restorePreferencePreservingFailure(primaryFailure) { false }
+
+        assertTrue(primaryFailure.suppressed.single().message.orEmpty().contains("Could not restore preference"))
+    }
+
+    @Test
+    fun fixtureCleanupFailureStillRestoresBiometricPreference() {
+        var preferenceRestored = false
+
+        val cleanupFailure = assertThrows(IllegalStateException::class.java) {
+            cleanupAndRestorePreservingFailure(
+                primaryFailure = null,
+                cleanup = { error("injected fixture cleanup failure") },
+                restore = {
+                    preferenceRestored = true
+                    true
+                }
+            )
+        }
+
+        assertTrue(preferenceRestored)
+        assertTrue(cleanupFailure.message.orEmpty().contains("injected fixture cleanup failure"))
     }
 
     @Test
@@ -91,15 +144,15 @@ class MainActivitySmokeTest {
     fun startupDiagnosticsRetainGatesWhenWindowHierarchyCannotBeWritten() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        prepareUnlockedHome(context)
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
         val previousBiometric = preferences.getBoolean("biometric_enabled", false)
-        assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
-        val device = UiDevice.getInstance(instrumentation)
-        val parentFile = File(context.cacheDir, "ui-smoke-hierarchy-parent-file").apply {
-            writeText("not a directory", Charsets.UTF_8)
-        }
+        val parentFile = File(context.cacheDir, "ui-smoke-hierarchy-parent-file")
+        var primaryFailure: Throwable? = null
         try {
+            prepareUnlockedHome(context)
+            assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
+            parentFile.writeText("not a directory", Charsets.UTF_8)
+            val device = UiDevice.getInstance(instrumentation)
             val impossibleHierarchy = File(parentFile, "window.xml")
             val diagnostics = collectHomeScreenDiagnostics(device, context, impossibleHierarchy)
             assertTrue("Recovery gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("recovery=false"))
@@ -107,9 +160,21 @@ class MainActivitySmokeTest {
             assertTrue(diagnostics.contains("wait=not recorded"))
             assertTrue(diagnostics.contains("hierarchyPath="))
             assertTrue(diagnostics.contains("dump failed:") || diagnostics.contains("read failed:"))
+        } catch (failure: Throwable) {
+            primaryFailure = failure
+            throw failure
         } finally {
-            parentFile.delete()
-            preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
+            cleanupAndRestorePreservingFailure(
+                primaryFailure = primaryFailure,
+                cleanup = {
+                    if (parentFile.exists() && !parentFile.delete()) {
+                        error("Could not remove startup diagnostics fixture")
+                    }
+                },
+                restore = {
+                    preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
+                }
+            )
         }
     }
 
