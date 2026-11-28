@@ -63,7 +63,7 @@ internal fun collectHomeScreenDiagnostics(
         } else {
             val readResult = runCatching {
                 val raw = hierarchyFile.readText(Charsets.UTF_8)
-                val redacted = Regex("""((?:text|content-desc)="Пароль:\\s*)[^"]*(")""")
+                val redacted = Regex("""((?:text|content-desc)="Пароль:\s*)[^"]*(")""")
                     .replace(raw) { match -> "${match.groupValues[1]}[REDACTED]${match.groupValues[2]}" }
                 summarizeWindowHierarchy(redacted)
             }
