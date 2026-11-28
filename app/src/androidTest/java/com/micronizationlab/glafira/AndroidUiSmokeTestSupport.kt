@@ -57,12 +57,23 @@ internal fun collectHomeScreenDiagnostics(
     waitStatus: String = "not recorded"
 ): String {
     val captureFailure = runCatching { device.dumpWindowHierarchy(hierarchyFile) }.exceptionOrNull()
-    val hierarchy = if (captureFailure != null) {
-        "<dump failed: ${captureFailure.javaClass.simpleName}: ${captureFailure.message}>"
-    } else {
-        val readResult = runCatching { summarizeWindowHierarchy(hierarchyFile.readText(Charsets.UTF_8)) }
-        readResult.getOrNull()
-            ?: "<read failed: ${readResult.exceptionOrNull()?.javaClass?.simpleName}: ${readResult.exceptionOrNull()?.message}>"
+    val hierarchy = try {
+        if (captureFailure != null) {
+            "<dump failed: ${captureFailure.javaClass.simpleName}: ${captureFailure.message}>"
+        } else {
+            val readResult = runCatching {
+                val raw = hierarchyFile.readText(Charsets.UTF_8)
+                val redacted = Regex("""((?:text|content-desc)="Пароль:\\s*)[^"]*(")""")
+                    .replace(raw) { match -> "${match.groupValues[1]}[REDACTED]${match.groupValues[2]}" }
+                summarizeWindowHierarchy(redacted)
+            }
+            readResult.getOrNull()
+                ?: "<read failed: ${readResult.exceptionOrNull()?.javaClass?.simpleName}: ${readResult.exceptionOrNull()?.message}>"
+        }
+    } finally {
+        check(!hierarchyFile.exists() || hierarchyFile.delete()) {
+            "Could not remove temporary UI hierarchy diagnostic."
+        }
     }
     val recoveryState = runCatching { GlafiraCoreBackupCoordinator.hasInterruptedRestore(context).toString() }
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
@@ -90,7 +101,7 @@ internal fun awaitHomeScreen(
     val idleStatus = idleWait.exceptionOrNull()?.let { "error: ${it.javaClass.simpleName}: ${it.message}" } ?: "completed"
     val accessibilityStatus = accessibilityWait.exceptionOrNull()?.let { "error: ${it.javaClass.simpleName}: ${it.message}" } ?: "timed out"
     val waitStatus = "idle=$idleStatus, accessibility=$accessibilityStatus"
-    val hierarchyFile = File(context.cacheDir, "android-ui-smoke-window-hierarchy.xml")
+    val hierarchyFile = File.createTempFile("android-ui-smoke-window-", ".xml", context.cacheDir)
     val diagnostics = collectHomeScreenDiagnostics(device, context, hierarchyFile, waitStatus)
     throw IllegalStateException("Home workspace did not become accessible. $diagnostics", accessibilityWait.exceptionOrNull())
 }
