@@ -1514,6 +1514,17 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
     }
     @Test
+    fun backupVerificationKeepsLegacyThreeArgumentJavaConstructor() {
+        val constructor = BackupVerification::class.java.getConstructor(
+            String::class.java,
+            Int::class.javaPrimitiveType,
+            Long::class.javaPrimitiveType
+        )
+        val verification = constructor.newInstance("2026-11-28T00:00:00Z", 1, 2L)
+        assertFalse("Legacy Java constructor defaults recoveryRequired to false", verification.recoveryRequired)
+    }
+
+    @Test
     fun committedRestoreReportsSuccessWhenJournalCleanupMustBeRetried() = runBlocking {
         store.enqueue(task("restore-cleanup-pending"))
         val coordinator = isolatedCoordinator()
