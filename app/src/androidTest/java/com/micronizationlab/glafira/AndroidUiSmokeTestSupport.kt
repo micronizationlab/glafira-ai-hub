@@ -168,16 +168,18 @@ private fun eraseAndDelete(file: File) {
         return
     }
     if (file.isFile) {
-        RandomAccessFile(file, "rw").use { target ->
-            val zeros = ByteArray(8_192)
-            var remaining = target.length()
-            target.seek(0L)
-            while (remaining > 0L) {
-                val count = minOf(remaining, zeros.size.toLong()).toInt()
-                target.write(zeros, 0, count)
-                remaining -= count
+        runCatching {
+            RandomAccessFile(file, "rw").use { target ->
+                val zeros = ByteArray(8_192)
+                var remaining = target.length()
+                target.seek(0L)
+                while (remaining > 0L) {
+                    val count = minOf(remaining, zeros.size.toLong()).toInt()
+                    target.write(zeros, 0, count)
+                    remaining -= count
+                }
+                target.fd.sync()
             }
-            target.fd.sync()
         }
     }
     check(file.delete()) { "Could not remove hierarchy diagnostic file." }
