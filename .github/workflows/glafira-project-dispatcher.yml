@@ -378,26 +378,33 @@ jobs:
           bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$reconciled" "$final"
           final_comparison_status=$?
           set -e
+          final_count="$(jq 'length' "$final")"
           case "$final_comparison_status" in
             0) final_note="PR inventory remained stable during Actions history retrieval." ;;
-            1) final_note="PR inventory changed during Actions history retrieval; rendering the final snapshot." ;;
+            1)
+              if [[ "$latest_count" -eq 0 && "$final_count" -gt 0 ]]; then
+                final_note="PRs appeared after the initially empty inventory; fetching their Actions history and confirming a second stable snapshot."
+              else
+                fail "PR identity changed during Actions history retrieval; the fetched Actions history may be stale. Current identity is UNKNOWN."
+              fi
+              ;;
             *) fail "Final PR inventory comparison failed (exit $final_comparison_status)." ;;
           esac
 
-          final_count="$(jq 'length' "$final")"
           if [[ "$final_count" -gt 0 && "$latest_count" -eq 0 ]]; then
+            final_before_late_history="$report_tmp/open-prs.before-late-history.json"
+            cp "$final" "$final_before_late_history" || fail "Cannot preserve the pre-history PR snapshot."
             if ! bash "$RUNNER_TEMP/fetch-workflow-runs.sh" "$repo" > "$runs"; then
-              fail "Actions run inventory fetch failed after new PRs appeared; no status is reported as passing."
+              fail "Actions run inventory fetch failed after new PRs appeared; no PR status is reported as passing."
             fi
             : > "$final" || fail "Cannot reopen final PR snapshot '$final'."
             if ! bash "$RUNNER_TEMP/fetch-open-prs.sh" "$repo" > "$final"; then
               fail "Final PR inventory refresh after late Actions history retrieval failed."
             fi
-            if ! jq -e 'type == "array"' "$final" >/dev/null; then
-              fail "Final PR snapshot after late history retrieval is malformed."
+            if ! bash "$RUNNER_TEMP/compare-pr-inventory.sh" "$final_before_late_history" "$final"; then
+              fail "PR identity changed during late Actions history retrieval; current identity is UNKNOWN."
             fi
           fi
-
           final_count="$(jq 'length' "$final")"
           if [[ "$final_count" -eq 0 ]]; then
             {
