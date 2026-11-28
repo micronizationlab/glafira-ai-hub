@@ -272,7 +272,14 @@ object BackupArchive {
                     throw IOException("Зарегистрированный временный файл восстановления заменён ссылкой или каталогом: $relative")
                 }
                 Files.delete(target)
-                syncRestoreDirectory(target.parent.toFile())
+            }
+            // Keep the registry entry until the parent directory deletion is durable.
+            // A previous attempt may have deleted the file but failed its directory fsync.
+            val parent = target.parent
+            if (parent != null && Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS) &&
+                !Files.isSymbolicLink(parent)
+            ) {
+                syncRestoreDirectory(parent.toFile())
             }
         }
         if (Files.exists(registry.toPath(), LinkOption.NOFOLLOW_LINKS)) {
