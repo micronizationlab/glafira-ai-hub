@@ -124,7 +124,7 @@ internal fun readBoundedWindowHierarchy(file: File, maximumCharacters: Int = 12_
     if (length <= maximumBytes) {
         return summarizeWindowHierarchy(file.readText(Charsets.UTF_8), maximumCharacters)
     }
-    val marker = "\\n<... hierarchy middle omitted to bound diagnostic memory ...>\\n"
+    val marker = "\n<... hierarchy middle omitted to bound diagnostic memory ...>\n"
     val contentBytes = (maximumBytes - marker.toByteArray(Charsets.UTF_8).size).toInt()
     require(contentBytes > 0) { "Hierarchy summary limit is too small." }
     val headBytes = contentBytes / 2
@@ -143,7 +143,7 @@ internal fun readBoundedWindowHierarchy(file: File, maximumCharacters: Int = 12_
 
 /** Remove revealed password-vault values before hierarchy text can enter JUnit artifacts. */
 internal fun redactSensitiveHierarchyText(hierarchy: String): String {
-    val revealedPassword = Regex("""((?:text|content-desc)="Пароль:\\s*)[^"]*(")""")
+    val revealedPassword = Regex("""((?:text|content-desc)="Пароль:\s*)[^"]*(")""")
     return revealedPassword.replace(hierarchy) { match ->
         "${match.groupValues[1]}[REDACTED]${match.groupValues[2]}"
     }
