@@ -10,6 +10,7 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
+import java.io.File
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -52,11 +53,30 @@ class MainActivitySmokeTest {
         )
         context.startActivity(intent)
         return UiDevice.getInstance(instrumentation).also {
-            assertTrue("GLAFIRA home screen did not open",
-                it.wait(Until.hasObject(By.descContains("Открыть очередь задач")), 20_000))
+            awaitHomeScreen(it, context)
         }
     }
 
+
+    @Test
+    fun startupDiagnosticsRetainGatesWhenWindowHierarchyCannotBeWritten() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        prepareUnlockedHome(context)
+        val device = UiDevice.getInstance(instrumentation)
+        val parentFile = File(context.cacheDir, "ui-smoke-hierarchy-parent-file").apply {
+            writeText("not a directory", Charsets.UTF_8)
+        }
+        try {
+            val impossibleHierarchy = File(parentFile, "window.xml")
+            val diagnostics = collectHomeScreenDiagnostics(device, context, impossibleHierarchy)
+            assertTrue("Recovery gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("recovery=false"))
+            assertTrue("Biometric gate must be false in the prepared fixture: $diagnostics", diagnostics.contains("biometric=false"))
+            assertTrue(diagnostics.contains("dump failed:"))
+        } finally {
+            parentFile.delete()
+        }
+    }
 
     @Test
     fun chatWorkspaceProjectSelectorSwitchesAndDeleteCancelPreservesProject() {
