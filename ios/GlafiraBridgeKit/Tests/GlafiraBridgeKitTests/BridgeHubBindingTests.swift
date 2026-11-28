@@ -39,6 +39,19 @@ final class BridgeHubBindingTests: XCTestCase {
         XCTAssertEqual(value.transportOrigin, "https://192.168.1.20:8443")
     }
 
+    func testRejectsPercentEncodedAliasesOfCanonicalHubPath() {
+        for path in [
+            "/b%72idge/v1",
+            "/bridge/%76%31",
+            "/%62ridge/v1"
+        ] {
+            XCTAssertThrowsError(
+                try binding(endpoint: "https://192.168.1.20:8443\\(path)"),
+                "Unexpectedly accepted noncanonical encoded path: \\(path)"
+            )
+        }
+    }
+
     func testCanonicalizesEquivalentIPv6SpellingsAndChecksUniqueLocalPrefixBits() throws {
         let compressed = try binding(endpoint: "HTTPS://[FD12:3456:789A::1]:8443/bridge/v1")
         let expanded = try binding(endpoint: "https://[fd12:3456:789a:0000:0000:0000:0000:0001]:8443/bridge/v1")
@@ -330,6 +343,21 @@ final class BridgeHubBindingTests: XCTestCase {
         let decoded = try BridgeHubBindingPersistence.decode(JSONSerialization.data(withJSONObject: envelope))
         XCTAssertEqual(decoded.endpoint, endpoint)
         XCTAssertEqual(decoded.transportOrigin, "https://192.168.1.20:8443")
+    }
+
+    func testPersistenceRejectsPercentEncodedEndpointAliasesBeforeCanonicalStorage() throws {
+        let encoded = try BridgeHubBindingPersistence.encode(binding())
+        for path in ["/b%72idge/v1", "/bridge/%76%31"] {
+            var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+            var nested = try XCTUnwrap(envelope["binding"] as? [String: Any])
+            nested["endpoint"] = "https://192.168.1.20:8443\\(path)"
+            envelope["binding"] = nested
+            let payload = try JSONSerialization.data(withJSONObject: envelope)
+            XCTAssertThrowsError(
+                try BridgeHubBindingPersistence.decode(payload),
+                "Unexpectedly decoded noncanonical endpoint path: \\(path)"
+            )
+        }
     }
 
 }
