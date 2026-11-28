@@ -1228,6 +1228,36 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun invalidCommittedMarkerNeverConfirmsRestoreCommit() = runBlocking {
+        val coordinator = isolatedCoordinator()
+        val passphrase = disposablePassphrase()
+        val archive = coordinator.create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val committed = File(journal, "restore.committed")
+        val database = File(journal, "database.db")
+        val safetyArchive = File(journal, "files.glb")
+        try {
+            check(journal.mkdirs())
+            committed.writeText("not-a-committed-marker")
+            database.writeText("rollback database evidence")
+            safetyArchive.writeText("rollback archive evidence")
+            val failure = assertThrows(IOException::class.java) {
+                runBlocking { coordinator.restore(archive, passphrase) }
+            }
+            assertFalse("An invalid marker must not be promoted to a committed-cleanup result",
+                failure is CommittedRestoreCleanupPendingException)
+            assertTrue(committed.isFile)
+            assertEquals("rollback database evidence", database.readText())
+            assertEquals("rollback archive evidence", safetyArchive.readText())
+            assertTrue(GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+        } finally {
+            check(!journal.exists() || journal.deleteRecursively())
+            archive.delete()
+            passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
     fun recoverRejectsDanglingCommittedMarkerWithoutDeletingRollbackEvidence() = runBlocking {
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal").apply { check(mkdirs()) }
         val marker = File(journal, "restore.committed")
