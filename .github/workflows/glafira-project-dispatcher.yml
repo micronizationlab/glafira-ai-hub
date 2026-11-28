@@ -565,7 +565,10 @@ jobs:
           [[ ! -s "$tmp/graphql-aggregation.out" ]]
           grep -Fq "GraphQL response aggregation failed (jq exit 42)" "$tmp/graphql-aggregation.err"
           [[ "$(cat "$tmp/graphql-aggregation-calls.log")" == "graphql" ]]
-          [[ "$(cat "$tmp/aggregation-jq-stages.log")" ==  ]]
+          validator_count="$(grep -Fxc validator "$tmp/aggregation-jq-stages.log" || true)"
+          aggregator_count="$(grep -Fxc aggregator "$tmp/aggregation-jq-stages.log" || true)"
+          [[ "$validator_count" -eq 1 && "$aggregator_count" -eq 1 ]]
+          [[ "$(wc -l < "$tmp/aggregation-jq-stages.log")" -eq 2 ]]
           echo "GraphQL aggregation failure is distinct from validation failure, emits no partial output and fails closed: PASS"
 
           mkdir -p "$tmp/failing-tail"
