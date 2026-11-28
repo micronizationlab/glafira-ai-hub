@@ -2037,6 +2037,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                                 clearRollbackOwnerMarker(runId)
                                 check(!knownGood.exists() || knownGood.delete())
                                 check(!createdAfterMarker.exists() || createdAfterMarker.delete())
+                                check(!journalOwner.exists() || journalOwner.delete())
                                 check(owner.delete())
                             }
                         }
