@@ -172,7 +172,9 @@ class MainActivitySmokeTest {
                 requestedByteCounts += byteCount
                 RandomAccessFile(sourceFile, "r").use { source ->
                     source.seek(offset)
-                    ByteArray(byteCount).also(source::readFully).toString(Charsets.UTF_8)
+                    val bytes = ByteArray(byteCount)
+                    source.readFully(bytes)
+                    String(bytes, Charsets.UTF_8)
                 }
             })
             assertTrue(summary.contains(head))
