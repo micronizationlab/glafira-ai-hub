@@ -294,8 +294,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
             }
             // Remove the known plaintext file before inspecting unrelated entries. An
             // unexpected file must never keep decrypted task/result data on disk.
-            if (exportExists) Files.delete(export)
-            syncDirectory(app.filesDir)
+            if (exportExists) {
+                Files.delete(export)
+                syncDirectory(directory.toFile())
+            }
             var unexpectedEntry = false
             Files.newDirectoryStream(directory).use { entries ->
                 for (entry in entries) {
