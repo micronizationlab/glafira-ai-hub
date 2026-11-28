@@ -61,7 +61,9 @@ internal fun awaitHomeScreen(
         device.wait(Until.hasObject(By.descContains("Открыть очередь задач")), timeoutMillis)
     }
 ) {
-    val idleWait = runCatching { device.waitForIdle(5_000) }
+    val idleWait = runCatching {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 5_000)
+    }
     val accessibilityWait = runCatching(waitForWorkspace)
     if (accessibilityWait.getOrNull() == true) return
 
