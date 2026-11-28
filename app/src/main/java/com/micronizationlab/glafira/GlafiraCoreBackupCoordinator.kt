@@ -13,6 +13,8 @@ internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
+    fun beforeDirectorySync(directory: File) = Unit
+    fun afterDirectorySync(directory: File) = Unit
 }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
@@ -364,8 +366,10 @@ class GlafiraCoreBackupCoordinator internal constructor(
 
     private fun sync(file: File) { FileOutputStream(file, true).use { it.fd.sync() } }
     private fun syncDirectory(directory: File) {
+        runtimeHooks.beforeDirectorySync(directory)
         val fd = android.system.Os.open(directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
         try { android.system.Os.fsync(fd) } finally { android.system.Os.close(fd) }
+        runtimeHooks.afterDirectorySync(directory)
     }
 
     companion object {
