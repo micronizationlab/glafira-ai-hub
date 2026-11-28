@@ -100,9 +100,23 @@ jobs:
           }'
           graphql_error="$RUNNER_TEMP/glafira-open-prs-graphql-error.log"
           validation_error="$RUNNER_TEMP/glafira-open-prs-graphql-validation-error.log"
-          if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
-            if jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null 2>"$validation_error" <<< "$pages"; then
-              if aggregated="$(jq -s '[
+          aggregation_error="$RUNNER_TEMP/glafira-open-prs-graphql-aggregation-error.log"
+          pages_file="$(mktemp "$RUNNER_TEMP/glafira-open-prs-pages.XXXXXX")"
+          aggregated_file="$(mktemp "$RUNNER_TEMP/glafira-open-prs-aggregated.XXXXXX")"
+          trap 'rm -f "$pages_file" "$aggregated_file"' EXIT
+
+          redacted_detail() {
+            local error_file="$1"
+            local detail=""
+            if [[ -r "$error_file" ]]; then
+              detail="$(tail -n 3 "$error_file" 2>/dev/null || true)"
+            fi
+            printf '%s' "$detail" | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g; s/[[:space:]]+$//' || true
+          }
+
+          if gh api graphql --paginate -f query="$query" >"$pages_file" 2>"$graphql_error"; then
+            if jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' "$pages_file" >/dev/null 2>"$validation_error"; then
+              if jq -s '[
                 .[].data.repository.pullRequests.nodes[] |
                 {
                   number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
@@ -116,26 +130,26 @@ jobs:
                     }
                   ]
                 }
-              ]' <<< "$pages" 2>"$RUNNER_TEMP/glafira-open-prs-graphql-aggregation-error.log")"; then
-                printf '%s\n' "$aggregated"
+              ]' "$pages_file" >"$aggregated_file" 2>"$aggregation_error"; then
+                cat "$aggregated_file"
                 exit 0
               else
                 aggregation_status=$?
-                aggregation_detail="$(tail -n 3 "$RUNNER_TEMP/glafira-open-prs-graphql-aggregation-error.log" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g; s/[[:space:]]+$//')"
+                aggregation_detail="$(redacted_detail "$aggregation_error")"
                 printf 'UNKNOWN: GraphQL response aggregation failed (jq exit %s); REST offset fallback is disabled. %s\n' \
                   "$aggregation_status" "${aggregation_detail:-jq aggregation failed without stderr.}" >&2
                 exit 1
               fi
             else
               jq_status=$?
-              graphql_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g; s/[[:space:]]+$//')"
+              graphql_detail="$(redacted_detail "$validation_error")"
               printf 'UNKNOWN: GraphQL response validation failed (jq exit %s); REST offset fallback is disabled. %s\n' \
                 "$jq_status" "${graphql_detail:-jq rejected the GraphQL response without stderr.}" >&2
               exit 1
             fi
           else
             gh_status=$?
-            graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g; s/[[:space:]]+$//')"
+            graphql_detail="$(redacted_detail "$graphql_error")"
             printf 'UNKNOWN: GraphQL cursor-based open-PR request failed (gh exit %s); REST offset fallback is disabled. %s\n' \
               "$gh_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
             exit 1
