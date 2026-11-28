@@ -120,7 +120,7 @@ class BackupSettingsSmokeTest {
             device.click(bounds.centerX(), bounds.centerY())
             device.waitForIdle()
             val guidance = device.wait(
-                Until.findObject(By.desc("Сначала выбери папку Google Drive или Яндекс Диска.")), 10_000
+                Until.findObject(By.descContains("Сначала выбери папку Google Drive или Яндекс Диска.")), 10_000
             )
             assertNotNull(
                 "Missing-folder guidance was not shown after the manual backup action",
