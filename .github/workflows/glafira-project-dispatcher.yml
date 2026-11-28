@@ -116,14 +116,9 @@ jobs:
               }
             ]' <<< "$pages"
             exit 0
-          fi
-          # REST offset pagination can omit still-open PRs during concurrent closes.
-          # GraphQL cursor pagination is the only accepted inventory source.
           else
-            # REST offset pagination can omit still-open PRs during concurrent closes.
-            # GraphQL cursor pagination is the only accepted inventory source.
             graphql_status=$?
-            graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+            graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
             printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
               "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
             exit 1
@@ -328,12 +323,14 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            [[ " $* " == *" --paginate "* ]]
+            [[ "$*" == *"pageInfo"* && "$*" == *"endCursor"* ]]
             echo graphql >> "$CALL_LOG"
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-one"},"nodes":[{"number":1,"title":"partial","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
-            echo "injected GraphQL page two failure (ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ)" >&2
-            exit 1
+            echo "injected GraphQL page two failure (ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ github_pat_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789)" >&2
+            exit 23
           fi
           echo unexpected-rest >> "$CALL_LOG"
           exit 99
@@ -347,8 +344,12 @@ jobs:
           [[ -z "$output" ]]
           [[ "$(cat "$tmp/gh-calls.log")" == "graphql" ]]
           grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
+          grep -Fq "exit 23" "$tmp/graphql-outage.err"
           grep -Fq "[REDACTED]" "$tmp/graphql-outage.err"
-          ! grep -Fq "ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" "$tmp/graphql-outage.err"
+          if grep -Eq 'ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ|github_pat_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789' "$tmp/graphql-outage.err"; then
+            echo "raw synthetic credential reached the sanitized diagnostic" >&2; exit 1
+          fi
+          echo "validated sanitized GraphQL outage diagnostic: $(cat "$tmp/graphql-outage.err")"
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
