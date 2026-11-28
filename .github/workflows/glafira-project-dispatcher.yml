@@ -152,16 +152,25 @@ jobs:
                     expected_total="$(jq -s -r '.[0].data.repository.pullRequests.totalCount' <<< "$pages")"
                     expected_boundary="$(jq -s -r '.[0].data.repository.pullRequests.nodes[0].number // empty' <<< "$pages")"
                     if boundary="$("$gh_bin" api graphql -f query="$boundary_query" 2>"$boundary_error")"; then
+                      boundary_validation_error="$tmp/boundary-validation-$attempt.log"
                       if jq -e --argjson total "$expected_total" --arg boundary "$expected_boundary" '
                         .data.repository.pullRequests.totalCount == $total
                         and ((.data.repository.pullRequests.nodes[0].number // "") | tostring) == $boundary
-                      ' >/dev/null <<< "$boundary"; then
+                      ' >/dev/null 2>"$boundary_validation_error" <<< "$boundary"; then
                         cat "$projection_file"
                         exit 0
+                      else
+                        boundary_validation_status=$?
+                        if [[ "$boundary_validation_status" -ne 1 ]]; then
+                          boundary_validation_detail="$(tail -n 3 "$boundary_validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
+                          printf 'UNKNOWN: GraphQL open-PR boundary response validation failed (jq exit %s). %s\n' \
+                            "$boundary_validation_status" "${boundary_validation_detail:-No jq validation stderr was captured.}" >&2
+                          exit 1
+                        fi
+                        if [[ "$attempt" -eq 1 ]]; then continue; fi
+                        printf 'UNKNOWN: Open-PR inventory boundary changed during both cursor scans; no complete stable snapshot is available.\n' >&2
+                        exit 1
                       fi
-                      if [[ "$attempt" -eq 1 ]]; then continue; fi
-                      printf 'UNKNOWN: Open-PR inventory boundary changed during both cursor scans; no complete stable snapshot is available.\n' >&2
-                      exit 1
                     else
                       boundary_status=$?
                       boundary_detail="$(tail -n 3 "$boundary_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|[Bb][Ee][Aa][Rr][Ee][Rr] [^ ]+)/[REDACTED]/g')"
