@@ -650,7 +650,7 @@ jobs:
           if [[ -n "${FETCH_CALL_LOG:-}" ]]; then
             printf 'invoked\n' >> "$FETCH_CALL_LOG"
           fi
-          cat "$FETCH_DISTINCT_SOURCE"
+          cat "\${FETCH_DISTINCT_SOURCE:-$1}"
           FETCH_DISTINCT
           chmod +x "$tmp/fetch-distinct-prs.sh"
           env -u FETCH_CALL_LOG bash "$tmp/fetch-distinct-prs.sh" "$tmp/large-prs-head-delta.json" > "$tmp/distinct-without-log.json"
