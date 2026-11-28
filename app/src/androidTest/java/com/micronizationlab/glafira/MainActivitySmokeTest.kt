@@ -1,6 +1,7 @@
 package com.micronizationlab.glafira
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.Intent
 import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
@@ -116,6 +117,48 @@ class MainActivitySmokeTest {
     }
 
     @Test
+    fun hierarchySummaryDoesNotMarkExactNodeOrCharacterLimitsAsTruncated() {
+        val nodeExact = formatHierarchySummary(
+            lines = listOf("first", "second"),
+            maximumNodes = 2,
+            maximumCharacters = 256,
+            nodesOmitted = false
+        )
+        assertEquals("firstsecond", nodeExact)
+        assertFalse(nodeExact.contains("hierarchy summary bounded"))
+
+        val notice = "<hierarchy summary bounded; nodes=2>\\n"
+        val characterExact = formatHierarchySummary(
+            lines = listOf("ab", "cd"),
+            maximumNodes = 2,
+            maximumCharacters = notice.length + 4,
+            nodesOmitted = false
+        )
+        assertEquals("abcd", characterExact)
+        assertFalse(characterExact.contains("hierarchy summary bounded"))
+    }
+
+    @Test
+    fun hierarchySummaryMarksOnlyActualNodeOrCharacterOmission() {
+        val nodeOmitted = formatHierarchySummary(
+            lines = listOf("first", "second"),
+            maximumNodes = 2,
+            maximumCharacters = 256,
+            nodesOmitted = true
+        )
+        assertTrue(nodeOmitted.endsWith("<hierarchy summary bounded; nodes=2>\\n"))
+
+        val characterOmitted = formatHierarchySummary(
+            lines = listOf("abc", "de"),
+            maximumNodes = 2,
+            maximumCharacters = "<hierarchy summary bounded; nodes=2>\\n".length + 4,
+            nodesOmitted = false
+        )
+        assertTrue(characterOmitted.endsWith("<hierarchy summary bounded; nodes=2>\\n"))
+        assertEquals(4 + "<hierarchy summary bounded; nodes=2>\\n".length, characterOmitted.length)
+    }
+
+    @Test
     fun idleWaitFailureIsReportedAndAccessibilityFailureRemainsCause() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -170,15 +213,50 @@ class MainActivitySmokeTest {
     fun interruptedBiometricPreferenceIsRecoveredBeforeTheNextSmokeTest() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+        val state = context.getSharedPreferences("glafira_ui_smoke_recovery", Context.MODE_PRIVATE)
         val original = preferences.getBoolean("biometric_enabled", false)
         try {
-            persistOriginalBiometricPreference(context, true)
-            assertTrue(preferences.edit().putBoolean("biometric_enabled", false).commit())
+            assertTrue("The @Before hook persisted the real original preference",
+                state.getBoolean("pending", false))
+            assertTrue(preferences.edit().putBoolean("biometric_enabled", !original).commit())
             recoverInterruptedBiometricPreference(context, preferences)
-            assertTrue("A later smoke test must recover the persisted original preference",
-                preferences.getBoolean("biometric_enabled", false))
+            assertEquals(original, preferences.getBoolean("biometric_enabled", false))
+            assertFalse("Successful recovery clears the persisted snapshot", state.getBoolean("pending", false))
+
+            // Simulate a second interrupted teardown using the real captured value, not a synthetic one.
+            persistOriginalBiometricPreference(context, original)
+            val failingPreferences = object : SharedPreferences by preferences {
+                override fun edit(): SharedPreferences.Editor {
+                    val editor = preferences.edit()
+                    return object : SharedPreferences.Editor by editor {
+                        override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor {
+                            editor.putBoolean(key, value)
+                            return this
+                        }
+                        override fun commit(): Boolean = false
+                    }
+                }
+            }
+            var relaunchAttempted = false
+            assertThrows(IllegalStateException::class.java) {
+                restoreBiometricPreferenceAndRelock(context, failingPreferences, original) {
+                    relaunchAttempted = true
+                }
+            }
+            assertTrue("Relaunch must still be attempted after preference commit failure", relaunchAttempted)
+            assertTrue("Failed restoration must retain the real original snapshot", state.getBoolean("pending", false))
+
+            assertThrows(IllegalStateException::class.java) {
+                restoreBiometricPreferenceAndRelock(context, preferences, original) {
+                    throw IllegalStateException("injected MainActivity relaunch failure")
+                }
+            }
+            assertTrue("Relaunch failure must also retain the recovery snapshot", state.getBoolean("pending", false))
+            recoverInterruptedBiometricPreference(context, preferences)
+            assertEquals(original, preferences.getBoolean("biometric_enabled", false))
+            assertFalse(state.getBoolean("pending", false))
         } finally {
-            check(preferences.edit().putBoolean("biometric_enabled", original).commit())
+            restoreBiometricPreferenceAndRelock(context, preferences, original)
         }
     }
 
