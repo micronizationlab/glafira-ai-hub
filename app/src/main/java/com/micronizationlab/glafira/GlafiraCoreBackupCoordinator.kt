@@ -116,7 +116,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         // re-confirmed by recovery before success can be reported.
                         if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
                             val verification = completedVerification ?: throw error
-                            verification.copy(recoveryRequired = journal.exists())
+                            verification.copy(recoveryRequired = Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS))
                         } else throw error
                     }
                 } finally {
