@@ -537,11 +537,11 @@ jobs:
             printf '%s\n' "$count" > "$scan_counter"
             if [[ "$count" -eq 1 ]]; then
               cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}},{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":false,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}},{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":false,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
             else
               cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"totalCount":3,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":3,"title":"new","headRefName":"c","headRefOid":"h3","baseRefOid":"b3","isDraft":false,"url":"https://example.test/3","statusCheckRollup":{"contexts":{"nodes":[]}}},{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[]}}},{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":false,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
+          {"data":{"repository":{"pullRequests":{"totalCount":3,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"number":3,"title":"new","headRefName":"c","headRefOid":"h3","baseRefOid":"b3","isDraft":false,"url":"https://example.test/3","statusCheckRollup":{"contexts":{"nodes":[]}}},{"number":1,"title":"one","headRefName":"a","headRefOid":"h1","baseRefOid":"b1","isDraft":false,"url":"https://example.test/1","statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"Android CI","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://example.test/check"}]}}},{"number":2,"title":"two","headRefName":"b","headRefOid":"h2","baseRefOid":"b2","isDraft":false,"url":"https://example.test/2","statusCheckRollup":{"contexts":{"nodes":[]}}}]}}}}
           JSON
             fi
             exit 0
@@ -558,7 +558,7 @@ jobs:
           : > "$tmp/stable-boundary.log"
           stable_boundary_prs="$(CALL_LOG="$tmp/stable-boundary.log" GLAFIRA_GH_BIN="$tmp/fake-bin/gh" env -u 'BASH_FUNC_gh%%' PATH="$tmp/fake-bin:$PATH" bash "$fetch_prs" micronizationlab/glafira-ai-hub)"
           printf 'stable-boundary fixture returned PR numbers: %s; scans=%s; boundary checks=%s\n' "$(jq -c '[.[].number]' <<< "$stable_boundary_prs")" "$(cat "$tmp/stable-boundary.log.scan-count")" "$(cat "$tmp/stable-boundary.log.boundary-count")"
-          jq -e 'length == 3 and .[0].number == 3 and .[1].number == 1 and .[2].number == 2' <<< "$stable_boundary_prs" >/dev/null
+          jq -e 'length == 3 and .[0].number == 3 and .[1].number == 1 and .[2].number == 2 and .[1].baseRefOid == "b1" and .[1].statusCheckRollup[0].name == "Android CI" and .[1].statusCheckRollup[0].conclusion == "SUCCESS"' <<< "$stable_boundary_prs" >/dev/null
           [[ "$(cat "$tmp/stable-boundary.log.scan-count")" == "2" ]]
           [[ "$(cat "$tmp/stable-boundary.log.boundary-count")" == "2" ]]
           # A later-page GraphQL failure must discard partial stdout and never call REST.
