@@ -33,6 +33,13 @@ final class BridgeHubBindingTests: XCTestCase {
         XCTAssertEqual(value.transportOrigin, "https://192.168.1.20:8443")
     }
 
+    func testDeprecatedCodableCompatibilityRoundTripsValidatedBinding() throws {
+        let original = try binding()
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(BridgeHubBinding.self, from: encoded)
+        XCTAssertEqual(decoded, original)
+    }
+
     func testCanonicalizesSchemeAndHostAndProvidesTransportOrigin() throws {
         let value = try binding(endpoint: "HTTPS://192.168.1.20:8443/bridge/v1")
         XCTAssertEqual(value.endpoint, endpoint)
