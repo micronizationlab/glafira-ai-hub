@@ -587,7 +587,7 @@ jobs:
           grep -Fq "GraphQL response aggregation failed (jq exit 42); REST offset fallback is disabled. jq aggregation failed without stderr." "$tmp/graphql-aggregation-tail.err"
 
           grep -Fq 'gh api graphql --paginate -f query="$query" >"$pages_file"' "$fetch_prs"
-          grep -Fq "jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' \"$pages_file\"" "$fetch_prs"
+          grep -Fq "jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' \"\$pages_file\"" "$fetch_prs"
           ! grep -Fq 'pages="$(gh api graphql' "$fetch_prs"
           ! grep -Fq 'aggregated="$(jq -s' "$fetch_prs"
 
@@ -772,7 +772,7 @@ jobs:
           cat > "$tmp/comparator-call-logged.sh" <<'CALL_LOGGED_COMPARATOR'
           #!/usr/bin/env bash
           set -euo pipefail
-          printf 'called\\n' >> "$COMPARATOR_CALL_LOG"
+          printf 'called\n' >> "$COMPARATOR_CALL_LOG"
           exec bash "$REAL_COMPARATOR_SCRIPT" "$@"
           CALL_LOGGED_COMPARATOR
           chmod +x "$tmp/capturing-comparator.sh" "$tmp/comparator-call-logged.sh"
