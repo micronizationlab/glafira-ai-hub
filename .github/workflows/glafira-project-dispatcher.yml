@@ -357,10 +357,33 @@ jobs:
           grep -Fq "GraphQL cursor-based open-PR request failed (gh exit 23)" "$tmp/graphql-outage.err"
           grep -Fq "injected GraphQL page two failure" "$tmp/graphql-outage.err"
           grep -Fq "[REDACTED] [REDACTED]" "$tmp/graphql-outage.err"
-          grep -Eq '\\[REDACTED\\] \\[REDACTED\\]
+          grep -Eq '\[REDACTED\] \[REDACTED\]$' "$tmp/graphql-outage.err"
             echo "raw synthetic credential reached the sanitized diagnostic" >&2; exit 1
           fi
           echo "validated sanitized GraphQL outage diagnostic: $(cat "$tmp/graphql-outage.err")"
+          # A valid gh response followed by jq validation failure must have a distinct diagnostic.
+          mkdir -p "$tmp/fake-gh" "$tmp/failing-validation-jq"
+          cat > "$tmp/fake-gh/gh" <<'GH_VALID'
+          #!/usr/bin/env bash
+          if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+            printf '%s\n' '{"data":{"repository":{"pullRequests":{"nodes":[]}}}}'
+            exit 0
+          fi
+          exit 99
+          GH_VALID
+          cat > "$tmp/failing-validation-jq/jq" <<'JQ_VALIDATE'
+          #!/usr/bin/env bash
+          exit 42
+          JQ_VALIDATE
+          chmod +x "$tmp/fake-gh/gh" "$tmp/failing-validation-jq/jq"
+          if PATH="$tmp/fake-gh:$tmp/failing-validation-jq:$PATH" bash "$fetch_prs" "$repo" > "$tmp/graphql-validation.out" 2>"$tmp/graphql-validation.err"; then
+            echo "jq response-validation failure was incorrectly accepted" >&2; exit 1
+          else
+            [[ "$?" -eq 1 ]]
+          fi
+          [[ ! -s "$tmp/graphql-validation.out" ]]
+          grep -Fq "GraphQL response validation failed (jq exit 42)" "$tmp/graphql-validation.err"
+          echo "GraphQL request and jq response-validation failures are distinguished: PASS"
           # The run inventory is capped at ten pages. Exercise the exact production
           # jq projection against both an associated run and a null pull_requests run.
           grep -Fq 'for page in $(seq 1 10)' "$fetch_runs"
@@ -470,7 +493,7 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           if [[ -n "${FETCH_CALL_LOG:-}" ]]; then
-            printf 'invoked\\n' >> "$FETCH_CALL_LOG"
+            printf 'invoked\n' >> "$FETCH_CALL_LOG"
           fi
           cat "$1"
           FETCH_SAME
