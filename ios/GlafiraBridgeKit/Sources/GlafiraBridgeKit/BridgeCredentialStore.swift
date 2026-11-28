@@ -390,7 +390,8 @@ private struct StrictJSONStructureValidator {
         }
         guard index > start else { throw BridgeHubBindingPersistenceError.invalidPayload }
         let token = String(decoding: bytes[start..<index], as: UTF8.self)
-        guard token == "true" || token == "false" || token == "null" || isValidJSONNumber(token) else {
+        guard token == "true" || token == "false" || token == "null" ||
+                (isValidJSONNumber(token) && !token.contains(".") && !token.contains("e") && !token.contains("E")) else {
             throw BridgeHubBindingPersistenceError.invalidPayload
         }
     }
