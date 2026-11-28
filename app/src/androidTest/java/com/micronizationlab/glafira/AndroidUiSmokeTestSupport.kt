@@ -6,6 +6,14 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
+import java.io.RandomAccessFile
+
+/** Serialize UI suites that temporarily change the same app-wide biometric preference. */
+internal object UiSmokeTestPreferenceLock {
+    private val lock = java.util.concurrent.locks.ReentrantLock(true)
+    fun acquire() = lock.lock()
+    fun release() = lock.unlock()
+}
 
 internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
@@ -14,35 +22,6 @@ internal fun resetRecoveryJournalForUiSmokeTest(context: Context) {
     }
     check(!GlafiraCoreBackupCoordinator.hasInterruptedRestore(context)) {
         "Interrupted-restore state leaked into UI smoke test"
-    }
-}
-
-/** Preserve the primary test failure if restoring a fixture preference also fails. */
-internal fun restorePreferencePreservingFailure(primaryFailure: Throwable?, restore: () -> Boolean) {
-    val restoreFailure = runCatching {
-        check(restore()) { "Could not restore preference after startup diagnostics test" }
-    }.exceptionOrNull() ?: return
-    if (primaryFailure != null) {
-        primaryFailure.addSuppressed(restoreFailure)
-    } else {
-        throw restoreFailure
-    }
-}
-
-/** Always attempt preference restoration, even when fixture cleanup fails. */
-internal fun cleanupAndRestorePreservingFailure(
-    primaryFailure: Throwable?,
-    cleanup: () -> Unit,
-    restore: () -> Boolean
-) {
-    val cleanupFailure = runCatching(cleanup).exceptionOrNull()
-    val failureToPreserve = primaryFailure ?: cleanupFailure
-    if (primaryFailure != null && cleanupFailure != null) {
-        primaryFailure.addSuppressed(cleanupFailure)
-    }
-    restorePreferencePreservingFailure(failureToPreserve, restore)
-    if (primaryFailure == null && cleanupFailure != null) {
-        throw cleanupFailure
     }
 }
 
@@ -57,30 +36,29 @@ internal fun collectHomeScreenDiagnostics(
     waitStatus: String = "not recorded"
 ): String {
     val captureFailure = runCatching { device.dumpWindowHierarchy(hierarchyFile) }.exceptionOrNull()
+    var cleanupFailure: Throwable? = null
     val hierarchy = try {
         if (captureFailure != null) {
             "<dump failed: ${captureFailure.javaClass.simpleName}: ${captureFailure.message}>"
         } else {
-            val readResult = runCatching {
-                val raw = hierarchyFile.readText(Charsets.UTF_8)
-                val redacted = Regex("""((?:text|content-desc)="Пароль:\s*)[^"]*(")""")
-                    .replace(raw) { match -> "${match.groupValues[1]}[REDACTED]${match.groupValues[2]}" }
-                summarizeWindowHierarchy(redacted)
+            runCatching { readRedactedHierarchySummary(hierarchyFile) }.getOrElse {
+                "<read failed: ${it.javaClass.simpleName}: ${it.message}>"
             }
-            readResult.getOrNull()
-                ?: "<read failed: ${readResult.exceptionOrNull()?.javaClass?.simpleName}: ${readResult.exceptionOrNull()?.message}>"
         }
     } finally {
-        check(!hierarchyFile.exists() || hierarchyFile.delete()) {
-            "Could not remove temporary UI hierarchy diagnostic."
-        }
+        cleanupFailure = runCatching {
+            check(!hierarchyFile.exists() || hierarchyFile.delete()) {
+                "Could not remove temporary UI hierarchy diagnostic."
+            }
+        }.exceptionOrNull()
     }
     val recoveryState = runCatching { GlafiraCoreBackupCoordinator.hasInterruptedRestore(context).toString() }
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
     val biometricState = runCatching { isBiometricEnabled(context).toString() }
         .getOrElse { "error: ${it.javaClass.simpleName}: ${it.message}" }
     val hierarchyPath = "hierarchyPath=${hierarchyFile.absolutePath}"
-    return "recovery=$recoveryState, biometric=$biometricState, wait=$waitStatus, $hierarchyPath. Window hierarchy: $hierarchy"
+    val cleanupStatus = cleanupFailure?.let { "hierarchyCleanup=error: ${it.javaClass.simpleName}: ${it.message}, " } ?: ""
+    return "recovery=$recoveryState, biometric=$biometricState, wait=$waitStatus, ${cleanupStatus}$hierarchyPath. Window hierarchy: $hierarchy"
 }
 
 internal fun awaitHomeScreen(
@@ -104,6 +82,31 @@ internal fun awaitHomeScreen(
     val hierarchyFile = File.createTempFile("android-ui-smoke-window-", ".xml", context.cacheDir)
     val diagnostics = collectHomeScreenDiagnostics(device, context, hierarchyFile, waitStatus)
     throw IllegalStateException("Home workspace did not become accessible. $diagnostics", accessibilityWait.exceptionOrNull())
+}
+
+/** Read only bounded head/tail slices and redact every user-controlled XML text attribute. */
+internal fun readRedactedHierarchySummary(file: File, maximumCharacters: Int = 12_000): String {
+    require(maximumCharacters > 0) { "Hierarchy summary limit must be positive." }
+    val maximumBytes = maximumCharacters.toLong() * 4L
+    val length = file.length()
+    val raw = if (length <= maximumBytes) {
+        file.readText(Charsets.UTF_8)
+    } else {
+        val marker = "\\n<... hierarchy middle omitted ...>\\n"
+        val available = (maximumBytes - marker.toByteArray(Charsets.UTF_8).size).toInt()
+        require(available > 0) { "Hierarchy summary limit is too small." }
+        val headBytes = available / 2
+        val tailBytes = available - headBytes
+        RandomAccessFile(file, "r").use { source ->
+            val head = ByteArray(headBytes).also { source.readFully(it) }
+            source.seek((length - tailBytes).coerceAtLeast(0L))
+            val tail = ByteArray(tailBytes).also { source.readFully(it) }
+            String(head, Charsets.UTF_8) + marker + String(tail, Charsets.UTF_8)
+        }
+    }
+    val redacted = Regex("""((?:text|content-desc)=")[^"]*(")""")
+        .replace(raw) { match -> "${match.groupValues[1]}[REDACTED]${match.groupValues[2]}" }
+    return summarizeWindowHierarchy(redacted, maximumCharacters)
 }
 
 /** Keep both the start and end of large UI hierarchies; screen identity often appears near the tail. */
