@@ -520,6 +520,9 @@ jobs:
           cat > "$tmp/fetch-distinct-prs.sh" <<'FETCH_DISTINCT'
           #!/usr/bin/env bash
           set -euo pipefail
+          if [[ -n "${FETCH_CALL_LOG:-}" ]]; then
+            printf 'invoked\n' >> "$FETCH_CALL_LOG"
+          fi
           cat "$1"
           FETCH_DISTINCT
           chmod +x "$tmp/fetch-distinct-prs.sh"
