@@ -1556,6 +1556,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val committed = File(journal, "restore.committed").apply { writeText("GLAFIRA_RESTORE_COMMITTED_V1") }
         val database = File(journal, "database.db").apply { writeText("encrypted-fixture-placeholder") }
         val archive = File(journal, "files.glb").apply { writeText("encrypted-fixture-placeholder") }
+        val plaintextSnapshot = File(context.filesDir, ".glafira-core-snapshot").apply { check(mkdirs()) }
+        val plaintextExport = File(plaintextSnapshot, "core-portable-v2.json").apply {
+            writeText("fixture-only plaintext task/result data")
+        }
         val passphrase = "committed-cleanup-reentry".toCharArray()
         try {
             fixtureRuntimeHooks.failCommittedCleanupOnce = true
@@ -1566,8 +1570,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             assertTrue("Pending marker is retained until cleanup completes", pending.exists())
             assertTrue("Rollback database is retained while cleanup is interrupted", database.exists())
             assertTrue("Rollback archive is retained while cleanup is interrupted", archive.exists())
+            assertTrue("Plaintext export remains until committed cleanup can run", plaintextExport.exists())
 
             isolatedCoordinator().recover(passphrase)
+            assertFalse("Crash-left plaintext export is removed during committed recovery", plaintextExport.exists())
+            assertFalse("Plaintext export directory is removed", plaintextSnapshot.exists())
             assertFalse(pending.exists())
             assertFalse(committed.exists())
             assertFalse(database.exists())
