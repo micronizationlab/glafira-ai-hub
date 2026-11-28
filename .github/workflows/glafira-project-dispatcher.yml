@@ -483,8 +483,8 @@ jobs:
           if [[ "$1" == "api" && "$2" == "graphql" ]]; then
             echo graphql >> "$CALL_LOG"
             cat <<'JSON'
-          {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
-          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"cursor-one"}}}}}
+          {"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}
           JSON
             exit 0
           fi
