@@ -131,8 +131,11 @@ jobs:
                   . as $pages
                   | ($pages[0].data.repository.pullRequests.totalCount) as $total
                   | ([$pages[].data.repository.pullRequests.nodes[]] | length) as $node_count
+                  | ([$pages[].data.repository.pullRequests.nodes[].number]) as $numbers
                   | all($pages[]; .data.repository.pullRequests.totalCount == $total)
                   and ($node_count == $total)
+                  and all($numbers[]; type == "number" and . >= 1 and . == floor)
+                  and (($numbers | unique | length) == $node_count)
                 ' >/dev/null 2>"$count_error" <<< "$pages"; then
                   if jq -s '[
                     .[].data.repository.pullRequests.nodes[] |
