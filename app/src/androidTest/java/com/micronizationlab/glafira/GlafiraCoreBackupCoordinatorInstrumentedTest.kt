@@ -1688,7 +1688,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "GLAFIRA-committed-journal-link".toCharArray()
         try {
             Files.createSymbolicLink(journal.toPath(), target.toPath())
-            val failure = assertThrows(IllegalStateException::class.java) {
+            val failure = assertThrows(IOException::class.java) {
                 runBlocking { isolatedCoordinator().recover(passphrase) }
             }
             assertTrue("Recovery must stop at the explicit journal symlink guard",
