@@ -99,37 +99,58 @@ jobs:
             }
           }'
           graphql_error="$RUNNER_TEMP/glafira-open-prs-graphql-error.log"
-          if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")" && jq -s -e 'all(.[]; .data.repository.pullRequests.nodes != null)' >/dev/null <<< "$pages"; then
-            jq -s '[
-              .[].data.repository.pullRequests.nodes[] |
-              {
-                number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
-                statusCheckRollup: [
-                  .statusCheckRollup.contexts.nodes[]? |
-                  {
-                    name: (.name // .context // "check"),
-                    status: (.status // .state // "unknown"),
-                    conclusion: (.conclusion // null),
-                    detailsUrl: (.detailsUrl // .targetUrl // "")
-                  }
-                ]
-              }
-            ]' <<< "$pages"
-            exit 0
-          fi
+          validation_error="$RUNNER_TEMP/glafira-open-prs-graphql-validation-error.log"
+          projection_error="$RUNNER_TEMP/glafira-open-prs-graphql-projection-error.log"
+          projection_file="$RUNNER_TEMP/glafira-open-prs-projection.json"
+
           # REST offset pagination can omit still-open PRs during concurrent closes.
           # GraphQL cursor pagination is the only accepted inventory source.
+          if pages="$(gh api graphql --paginate -f query="$query" 2>"$graphql_error")"; then
+            if jq -s -e '
+              length > 0
+              and all(.[]; (.data.repository.pullRequests.nodes | type) == "array"
+                and .data.repository.pullRequests.pageInfo != null)
+              and (.[-1].data.repository.pullRequests.pageInfo.hasNextPage == false)
+            ' >/dev/null 2>"$validation_error" <<< "$pages"; then
+              if jq -s '[
+                .[].data.repository.pullRequests.nodes[] |
+                {
+                  number, title, headRefName, headRefOid, baseRefOid, isDraft, url,
+                  statusCheckRollup: [
+                    .statusCheckRollup.contexts.nodes[]? |
+                    {
+                      name: (.name // .context // "check"),
+                      status: (.status // .state // "unknown"),
+                      conclusion: (.conclusion // null),
+                      detailsUrl: (.detailsUrl // .targetUrl // "")
+                    }
+                  ]
+                }
+              ]' <<< "$pages" > "$projection_file" 2>"$projection_error"; then
+                cat "$projection_file"
+                exit 0
+              else
+                projection_status=$?
+                projection_detail="$(tail -n 3 "$projection_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+                printf 'UNKNOWN: GraphQL open-PR projection failed (jq exit %s). %s\n' \
+                  "$projection_status" "${projection_detail:-No jq projection stderr was captured.}" >&2
+                exit 1
+              fi
+            else
+              validation_status=$?
+              validation_detail="$(tail -n 3 "$validation_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+              printf 'UNKNOWN: GraphQL open-PR response failed schema/completeness validation (jq exit %s). %s\n' \
+                "$validation_status" "${validation_detail:-No jq validation stderr was captured.}" >&2
+              exit 1
+            fi
           else
-            # REST offset pagination can omit still-open PRs during concurrent closes.
-            # GraphQL cursor pagination is the only accepted inventory source.
             graphql_status=$?
-            graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
+            graphql_detail="$(tail -n 3 "$graphql_error" 2>/dev/null | tr '\n' ' ' | sed -E 's/(gh[pousr]_[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_-]{20,}|Bearer [^ ]+)/[REDACTED]/g')"
             printf 'UNKNOWN: GraphQL cursor-based open-PR inventory unavailable (exit %s); REST offset fallback is disabled. %s\n' \
               "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
             exit 1
           fi
-          FETCH
-          cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
+          FETCH          cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
           #!/usr/bin/env bash
           set -euo pipefail
           repo="$1"
