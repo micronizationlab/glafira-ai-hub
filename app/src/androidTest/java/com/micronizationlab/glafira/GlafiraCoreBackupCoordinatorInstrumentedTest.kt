@@ -1269,7 +1269,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 assertEquals("must-survive-invalid-snapshot", store.getTask("must-survive-invalid-snapshot")?.taskId)
                 assertFalse("Invalid archive must not create a pending restore marker.", File(journal, "restore.pending").exists())
                 assertFalse("The empty markerless journal is reconciled before archive validation.", journal.exists())
-                assertFalse("Invalid archive must not leave rollback archive artifacts.", File(context.noBackupFilesDir, "glafira-restore-safety.glb").exists())
+                assertFalse("Invalid archive must not leave rollback archive artifacts.", File(journal, "files.glb").exists() || File(journal, "database.db").exists())
             }
         } finally {
             archive.delete()
