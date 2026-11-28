@@ -12,7 +12,7 @@ internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
     fun beforeCommittedJournalCleanup()
-    fun beforeCommittedJournalDirectoryCleanup()
+    fun beforeCommittedJournalDirectoryCleanup() = Unit
 }
 
 private object ProductionGlafiraBackupRuntimeHooks : GlafiraBackupRuntimeHooks {
