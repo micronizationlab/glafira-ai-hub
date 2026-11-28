@@ -83,11 +83,13 @@ class GlafiraCoreBackupCoordinator internal constructor(
     suspend fun restore(archive: File, passphrase: CharArray): BackupVerification = GlafiraCoreMaintenanceGate.withExclusive {
         runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
-                recoverInterruptedRestore(passphrase)
                 var committedThisAttempt = false
                 var primaryRestoreFailure: Exception? = null
                 val selected = File(app.cacheDir, "glafira-selected-${UUID.randomUUID()}.glb")
                 try {
+                    // Preflight is inside the protected try/finally: even a failed recovery
+                    // must still attempt plaintext-export and selected-archive cleanup.
+                    recoverInterruptedRestore(passphrase)
                     require(archive.isFile && archive.length() in 1..MAX_ARCHIVE_BYTES)
                     archive.inputStream().use { input -> selected.outputStream().use { output ->
                         BackupArchive.copyBounded(input, output)
@@ -112,12 +114,12 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         )
                         verification
                     } catch (error: Exception) {
-                        val commitMarkerNeedsReconfirmation = committedMarker.isFile
+                        val commitMarkerNeedsReconfirmation = pathExistsNoFollow(committedMarker.toPath())
                         val cleanupSucceeded = try {
                             recoverInterruptedRestore(passphrase) {
                                 recoveryCleanedSnapshot = true
                             }
-                            !marker.exists() && !committedMarker.exists()
+                            !pathExistsNoFollow(journal.toPath())
                         } catch (rollback: Exception) {
                             error.addSuppressed(rollback)
                             false
@@ -147,12 +149,24 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     primaryRestoreFailure = error
                     throw error
                 } finally {
+                    var cleanupFailure: Exception? = null
+                    fun recordCleanupFailure(failure: Exception) {
+                        val existing = cleanupFailure
+                        if (existing == null) cleanupFailure = failure else existing.addSuppressed(failure)
+                    }
                     try {
-                        if (selected.exists()) check(selected.delete()) {
-                            "Не удалось удалить временную копию выбранного архива."
+                        if (pathExistsNoFollow(selected.toPath())) {
+                            check(selected.delete()) { "Не удалось удалить временную копию выбранного архива." }
                         }
+                    } catch (cleanup: Exception) {
+                        recordCleanupFailure(cleanup)
+                    }
+                    try {
                         cleanupPortableSnapshotPreservingUnexpected()
                     } catch (cleanup: Exception) {
+                        recordCleanupFailure(cleanup)
+                    }
+                    cleanupFailure?.let { cleanup ->
                         val primary = primaryRestoreFailure
                         if (primary != null) {
                             primary.addSuppressed(cleanup)
