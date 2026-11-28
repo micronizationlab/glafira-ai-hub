@@ -524,8 +524,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             if (root.exists()) {
                 if (!Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
                 val rootOwner = fixtureRootOwnerMarker(root)
+                // The fixture-root owner record always names the primary alias.
+                // Secondary and tertiary aliases have their own external marker records.
                 if (!rootOwner.isFile || Files.isSymbolicLink(rootOwner.toPath()) ||
-                    rootOwner.readText(Charsets.UTF_8) != "$runId\n$expectedAlias"
+                    rootOwner.readText(Charsets.UTF_8) != "$runId\n$expected"
                 ) return@forEach
             }
             val journal = File(root, "no-backup/glafira-restore-journal")
