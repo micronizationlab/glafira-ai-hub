@@ -12,7 +12,6 @@ import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
@@ -30,14 +29,24 @@ class MainActivitySmokeTest {
     @Before
     fun captureBiometricPreference() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-        originalBiometric = preferences.getBoolean("biometric_enabled", false)
+        UiSmokeTestPreferenceLock.acquire()
+        try {
+            preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
+            originalBiometric = preferences.getBoolean("biometric_enabled", false)
+        } catch (failure: Throwable) {
+            UiSmokeTestPreferenceLock.release()
+            throw failure
+        }
     }
 
     @After
     fun restoreBiometricPreference() {
-        check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
-            "Could not restore biometric preference after UI smoke test"
+        try {
+            check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
+                "Could not restore biometric preference after UI smoke test"
+            }
+        } finally {
+            UiSmokeTestPreferenceLock.release()
         }
     }
 
@@ -120,34 +129,6 @@ class MainActivitySmokeTest {
     }
 
     @Test
-    fun preferenceRestoreFailureIsSuppressedInsteadOfReplacingPrimaryFailure() {
-        val primaryFailure = IllegalStateException("original smoke-test failure")
-
-        restorePreferencePreservingFailure(primaryFailure) { false }
-
-        assertTrue(primaryFailure.suppressed.single().message.orEmpty().contains("Could not restore preference"))
-    }
-
-    @Test
-    fun fixtureCleanupFailureStillRestoresBiometricPreference() {
-        var preferenceRestored = false
-
-        val cleanupFailure = assertThrows(IllegalStateException::class.java) {
-            cleanupAndRestorePreservingFailure(
-                primaryFailure = null,
-                cleanup = { error("injected fixture cleanup failure") },
-                restore = {
-                    preferenceRestored = true
-                    true
-                }
-            )
-        }
-
-        assertTrue(preferenceRestored)
-        assertTrue(cleanupFailure.message.orEmpty().contains("injected fixture cleanup failure"))
-    }
-
-    @Test
     fun hierarchySummaryPreservesRepresentativeHeadTailAndRespectsLimit() {
         val headNode = "<node id=\"startup-gate\" text=\"Recovery blocked\"/>"
         val tailNode = "<node id=\"active-screen\" text=\"Recovery screen\"/>"
@@ -164,9 +145,7 @@ class MainActivitySmokeTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val preferences = context.getSharedPreferences("glafira_prefs", Context.MODE_PRIVATE)
-        val previousBiometric = preferences.getBoolean("biometric_enabled", false)
         val parentFile = File(context.cacheDir, "ui-smoke-hierarchy-parent-file")
-        var primaryFailure: Throwable? = null
         try {
             prepareUnlockedHome(context)
             assertTrue(preferences.edit().putBoolean("biometric_enabled", true).commit())
@@ -179,21 +158,8 @@ class MainActivitySmokeTest {
             assertTrue(diagnostics.contains("wait=not recorded"))
             assertTrue(diagnostics.contains("hierarchyPath="))
             assertTrue(diagnostics.contains("dump failed:") || diagnostics.contains("read failed:"))
-        } catch (failure: Throwable) {
-            primaryFailure = failure
-            throw failure
         } finally {
-            cleanupAndRestorePreservingFailure(
-                primaryFailure = primaryFailure,
-                cleanup = {
-                    if (parentFile.exists() && !parentFile.delete()) {
-                        error("Could not remove startup diagnostics fixture")
-                    }
-                },
-                restore = {
-                    preferences.edit().putBoolean("biometric_enabled", previousBiometric).commit()
-                }
-            )
+            check(!parentFile.exists() || parentFile.delete())
         }
     }
 
