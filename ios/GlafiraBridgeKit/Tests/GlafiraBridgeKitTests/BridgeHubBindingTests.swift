@@ -46,8 +46,8 @@ final class BridgeHubBindingTests: XCTestCase {
             "/%62ridge/v1"
         ] {
             XCTAssertThrowsError(
-                try binding(endpoint: "https://192.168.1.20:8443\\(path)"),
-                "Unexpectedly accepted noncanonical encoded path: \\(path)"
+                try binding(endpoint: "https://192.168.1.20:8443\(path)"),
+                "Unexpectedly accepted noncanonical encoded path: \(path)"
             )
         }
     }
@@ -350,12 +350,12 @@ final class BridgeHubBindingTests: XCTestCase {
         for path in ["/b%72idge/v1", "/bridge/%76%31"] {
             var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
             var nested = try XCTUnwrap(envelope["binding"] as? [String: Any])
-            nested["endpoint"] = "https://192.168.1.20:8443\\(path)"
+            nested["endpoint"] = "https://192.168.1.20:8443\(path)"
             envelope["binding"] = nested
             let payload = try JSONSerialization.data(withJSONObject: envelope)
             XCTAssertThrowsError(
                 try BridgeHubBindingPersistence.decode(payload),
-                "Unexpectedly decoded noncanonical endpoint path: \\(path)"
+                "Unexpectedly decoded noncanonical endpoint path: \(path)"
             )
         }
     }
