@@ -1224,6 +1224,11 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 assertTrue("Rollback journal remains available for owner recovery", File(journal, "restore.pending").isFile)
                 assertTrue("Original Core task remains present after failed restore",
                     store.getTask("restore-failure-existing-task") != null)
+                fixtureRuntimeHooks.failPauseForRestoreCount = 0
+                isolatedCoordinator().recover(passphrase)
+                assertFalse("Owner recovery clears the retained rollback journal", journal.exists())
+                assertTrue("Original Core task remains present after owner recovery",
+                    store.getTask("restore-failure-existing-task") != null)
             }
         } finally {
             fixtureRuntimeHooks.failPauseForRestoreCount = 0
@@ -2110,7 +2115,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 runBlocking { isolatedCoordinator().recover(passphrase) }
             }
             assertTrue("Recovery must stop at the explicit journal symlink guard",
-                failure.message.orEmpty().contains("символическую ссылку"))
+                failure.message.orEmpty().contains("символическая ссылка"))
             assertTrue("Committed marker in the symlink target is preserved", committed.isFile)
             assertEquals("must-survive", database.readText())
             assertEquals("must-survive-too", archive.readText())
