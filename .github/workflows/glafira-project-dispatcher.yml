@@ -247,7 +247,14 @@ jobs:
           case "$comparison_status" in
             0) echo "UNCHANGED" ;;
             1) echo "CHANGED" ;;
-            *) echo "UNKNOWN: PR inventory comparison failed (exit $comparison_status)." >&2; exit 1 ;;
+            *)
+              if rm -f "$latest_file"; then
+                echo "UNKNOWN: PR inventory comparison failed (exit $comparison_status); candidate snapshot removed." >&2
+              else
+                echo "UNKNOWN: PR inventory comparison failed (exit $comparison_status); candidate snapshot removal also failed." >&2
+              fi
+              exit 1
+              ;;
           esac
           RECONCILE
           cat > "$RUNNER_TEMP/write-dispatcher-error-summary.sh" <<'ERROR_SUMMARY'
@@ -790,6 +797,8 @@ jobs:
           [[ "$(wc -l < "$tmp/jq-failed-fetch.log")" -eq 1 ]]
           cmp -s "$tmp/large-prs-head-delta.json" "$tmp/captured-jq-failure-candidate.json"
           [[ "$(cat "$tmp/comparator-call-log.txt")" == "called" ]]
+          [[ ! -e "$tmp/reconcile-jq-failed.json" ]]
+          grep -Fq "candidate snapshot removed" "$tmp/reconcile-jq-failed.err"
           cmp -s "$tmp/reconcile-baseline-before.json" "$tmp/large-prs.json"
           [[ ! -s "$tmp/reconcile-jq-failed.out" ]]
           mkdir -p "$tmp/unwritable-fetch-log"
