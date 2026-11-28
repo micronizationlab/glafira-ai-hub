@@ -12,6 +12,14 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 
 /** Runtime boundary used by backup maintenance. The production implementation pauses pending delivery and the Core runtime. Only tests that explicitly inject fixture-local hooks bypass those production side effects; tests using the public two-argument constructor still exercise the real pause behavior. */
+internal class CommittedRestoreCleanupPendingException(
+    val verification: BackupVerification,
+    cause: Throwable
+) : IOException(
+    "Восстановление завершено, но очистка временных данных не завершена; Core остаётся заблокирован до recovery.",
+    cause
+)
+
 internal interface GlafiraBackupRuntimeHooks {
     suspend fun <T> withPaused(block: () -> T): T
     fun pauseForRestore(context: Context)
@@ -85,6 +93,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
         runtimeHooks.withPaused {
             GlafiraFileMaintenance.withExclusive { synchronized(taskStore) {
                 var committedThisAttempt = false
+                var completedRestoreVerification: BackupVerification? = null
                 var primaryRestoreFailure: Exception? = null
                 val selected = File(app.cacheDir, "glafira-selected-${UUID.randomUUID()}.glb")
                 try {
@@ -104,6 +113,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                     try {
                         val verification = BackupArchive.restore(app, selected, passphrase)
                         completedVerification = verification
+                        completedRestoreVerification = verification
                         syncRestoredFiles()
                         portable.restore(snapshot)
                         recoverPendingAfterRestore(app)
@@ -141,12 +151,13 @@ class GlafiraCoreBackupCoordinator internal constructor(
                             }
                         }
                         if (committedThisAttempt && !cleanupSucceeded) {
-                            throw IOException(
-                                "Восстановление зафиксировано, но очистка журнала не завершена; Core остаётся заблокирован до recovery.",
+                            throw CommittedRestoreCleanupPendingException(
+                                completedVerification ?: throw error,
                                 error
                             )
                         }
                         if (committedThisAttempt || (commitMarkerNeedsReconfirmation && cleanupSucceeded)) {
+                            committedThisAttempt = true
                             completedVerification ?: throw error
                         } else {
                             throw error
@@ -178,14 +189,14 @@ class GlafiraCoreBackupCoordinator internal constructor(
                         if (primary != null) {
                             primary.addSuppressed(cleanup)
                             if (committedThisAttempt) {
-                                throw IOException(
-                                    "Восстановление зафиксировано, но очистка временных данных не завершена.",
+                                throw CommittedRestoreCleanupPendingException(
+                                    completedRestoreVerification ?: throw primary,
                                     primary
                                 )
                             }
                         } else if (committedThisAttempt) {
-                            throw IOException(
-                                "Восстановление зафиксировано, но очистка временных данных не завершена.",
+                            throw CommittedRestoreCleanupPendingException(
+                                completedRestoreVerification ?: throw cleanup,
                                 cleanup
                             )
                         } else {
