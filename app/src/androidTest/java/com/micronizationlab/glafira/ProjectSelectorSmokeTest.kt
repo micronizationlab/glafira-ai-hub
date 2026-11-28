@@ -34,9 +34,11 @@ class ProjectSelectorSmokeTest {
     @After
     fun restoreBiometricPreference() {
         try {
-            check(preferences.edit().putBoolean("biometric_enabled", originalBiometric).commit()) {
-                "Could not restore biometric preference after UI smoke test"
-            }
+            restoreBiometricPreferenceAndRelock(
+                InstrumentationRegistry.getInstrumentation().targetContext,
+                preferences,
+                originalBiometric
+            )
         } finally {
             UiSmokeTestPreferenceLock.release()
         }
