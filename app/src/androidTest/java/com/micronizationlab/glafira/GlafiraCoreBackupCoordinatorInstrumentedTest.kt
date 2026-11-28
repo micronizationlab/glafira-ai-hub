@@ -586,7 +586,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 ) return@forEach
             }
             val journal = File(root, "no-backup/glafira-restore-journal")
-            if (journal.exists()) return@forEach
+            if (Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
             GlafiraRollbackSnapshotCipher(alias).deleteKey()
             if (root.exists()) {
                 deleteTreeWithoutFollowingLinks(root.toPath())
@@ -616,7 +616,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             if (!owner.isFile || Files.isSymbolicLink(owner.toPath()) ||
                 owner.readText(Charsets.UTF_8) != "$runId\n$alias"
             ) return@forEach
-            if (File(root, "no-backup/glafira-restore-journal").exists()) return@forEach
+            if (Files.exists(File(root, "no-backup/glafira-restore-journal").toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
             GlafiraRollbackSnapshotCipher(alias).deleteKey()
             deleteTreeWithoutFollowingLinks(root.toPath())
             syncMarkerDirectory(appContext.cacheDir)
