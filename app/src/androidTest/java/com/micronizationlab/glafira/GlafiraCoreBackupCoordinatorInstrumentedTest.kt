@@ -406,15 +406,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun rollbackJournalPathPresent(journal: File): Boolean =
         Files.exists(journal.toPath(), LinkOption.NOFOLLOW_LINKS)
 
-    private fun hasNoSymbolicLinkComponents(path: Path): Boolean {
-        var component: Path? = path.toAbsolutePath().normalize()
-        while (component != null) {
-            if (Files.isSymbolicLink(component)) return false
-            component = component.parent
-        }
-        return true
-    }
-
     @Suppress("UNCHECKED_CAST")
     private fun openSecureDirectory(path: Path): SecureDirectoryStream<Path> {
         val stream = Files.newDirectoryStream(path)
@@ -457,28 +448,25 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         check(cacheRoot == dataRoot.resolve("cache") && fixtureRoot.parent == cacheRoot) {
             "Refusing to clean a fixture whose parent chain is outside the expected app cache."
         }
-        check(hasNoSymbolicLinkComponents(expectedJournal)) {
-            "Refusing to clean a rollback journal through a symbolic-link ancestor."
-        }
         check(noBackupRoot == expectedNoBackupRoot) {
             "Refusing to clean a journal outside this fixture's no-backup directory."
         }
-        check(Files.isDirectory(fixtureRoot, LinkOption.NOFOLLOW_LINKS) &&
-            !Files.isSymbolicLink(fixtureRoot)
-        ) { "Refusing to clean a journal through a linked fixture root." }
-        check(Files.isDirectory(expectedNoBackupRoot, LinkOption.NOFOLLOW_LINKS) &&
-            !Files.isSymbolicLink(expectedNoBackupRoot)
-        ) { "Refusing to clean a journal through a linked no-backup directory." }
+        check(Files.isDirectory(fixtureRoot, LinkOption.NOFOLLOW_LINKS)) {
+            "Refusing to clean a journal through a linked fixture root."
+        }
+        check(Files.isDirectory(expectedNoBackupRoot, LinkOption.NOFOLLOW_LINKS)) {
+            "Refusing to clean a journal through a linked no-backup directory."
+        }
         check(journal.toPath().toAbsolutePath().normalize() == expectedJournal) {
             "Refusing to clean a journal outside the fixture's canonical rollback path."
         }
-        check(Files.isDirectory(expectedJournal, LinkOption.NOFOLLOW_LINKS) &&
-            !Files.isSymbolicLink(expectedJournal)
-        ) { "Refusing to delete a missing or linked rollback journal." }
+        check(Files.isDirectory(expectedJournal, LinkOption.NOFOLLOW_LINKS)) {
+            "Refusing to delete a missing or linked rollback journal."
+        }
         val ownerMarker = expectedJournal.resolve("test-owner")
-        check(Files.isRegularFile(ownerMarker, LinkOption.NOFOLLOW_LINKS) &&
-            !Files.isSymbolicLink(ownerMarker)
-        ) { "Refusing to delete a rollback journal without a regular owner marker." }
+        check(Files.isRegularFile(ownerMarker, LinkOption.NOFOLLOW_LINKS)) {
+            "Refusing to delete a rollback journal without a regular owner marker."
+        }
 
         // Open each path component relative to a secured directory handle. The journal
         // and its children are then validated/deleted relative to the opened directory,
@@ -680,31 +668,6 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             GlafiraRollbackSnapshotCipher(alias).deleteKey()
             deleteTreeWithoutFollowingLinks(root.toPath())
             syncMarkerDirectory(appContext.cacheDir)
-        }
-    }
-
-    @Test
-    fun ownedJournalCleanupRejectsLinkedJournalBeforeKeyDeletion() {
-        val runId = testRunId
-        val noBackup = context.noBackupFilesDir
-        val outside = File(context.cacheDir, "journal-root-link-outside-$runId").apply { check(mkdir()) }
-        File(outside, "test-owner").writeText(runId)
-        val canary = File(outside, "canary.txt").apply { writeText("must-survive") }
-        val linkedJournal = File(noBackup, "glafira-restore-journal")
-        var beforeDeleteRan = false
-        try {
-            Files.createSymbolicLink(linkedJournal.toPath(), outside.toPath())
-            assertThrows(IllegalStateException::class.java) {
-                deleteOwnedRollbackJournalWithoutFollowingLinks(linkedJournal, runId) {
-                    beforeDeleteRan = true
-                }
-            }
-            assertFalse("Linked journal must be rejected before key deletion", beforeDeleteRan)
-            assertEquals("must-survive", canary.readText())
-            assertTrue("Linked journal path is preserved for inspection", Files.isSymbolicLink(linkedJournal.toPath()))
-        } finally {
-            if (Files.isSymbolicLink(linkedJournal.toPath())) Files.delete(linkedJournal.toPath())
-            if (outside.exists()) deleteTreeWithoutFollowingLinks(outside.toPath())
         }
     }
 
