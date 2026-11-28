@@ -11,6 +11,8 @@ import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
@@ -127,6 +129,23 @@ class MainActivitySmokeTest {
         assertSame(accessibilityFailure, failure.cause)
         assertTrue(failure.message.orEmpty().contains("idle=error: IllegalStateException: injected idle timeout"))
         assertTrue(failure.message.orEmpty().contains("accessibility=error: IllegalArgumentException"))
+    }
+
+    @Test
+    fun recoveryDiagnosticsAreReadOnlyAndSafeHierarchyOmitsUserText() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val stale = File(context.cacheDir, "glafira-rollback-recovery-ui-diagnostic-${System.nanoTime()}.tmp")
+        try {
+            stale.writeText("diagnostic fixture must remain unchanged")
+            assertTrue(recoveryPendingForDiagnostics(context))
+            assertTrue(stale.isFile)
+            assertTrue(stale.readText() == "diagnostic fixture must remain unchanged")
+            val hierarchy = captureSafeWindowHierarchy()
+            assertFalse(hierarchy.contains("text="))
+            assertFalse(hierarchy.contains("content-desc="))
+        } finally {
+            check(!stale.exists() || stale.delete())
+        }
     }
 
     @Test
