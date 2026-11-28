@@ -54,6 +54,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failPlaintextSnapshotDirectorySyncOnce = false
         var plaintextSnapshotDirectorySyncCalls = 0
         var plaintextSnapshotDirectorySyncCompletedCalls = 0
+        var plaintextExportExistsAtParentSync: Boolean? = null
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
             return block()
@@ -63,6 +64,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             pauseContexts += context
             if (failPauseForRestoreCount > 0) {
                 failPauseForRestoreCount--
+                if (failPauseForRestoreCount == 0) failPlaintextSnapshotDirectorySyncOnce = true
                 throw IOException("injected pause failure after restore")
             }
         }
@@ -76,6 +78,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         override fun beforeDirectorySync(directory: File) {
             if (directory.absoluteFile == context.filesDir.absoluteFile) {
                 plaintextSnapshotDirectorySyncCalls++
+                plaintextExportExistsAtParentSync = File(context.filesDir, GlafiraPortableCoreSnapshot.PATH).exists()
                 if (failPlaintextSnapshotDirectorySyncOnce) {
                     failPlaintextSnapshotDirectorySyncOnce = false
                     throw IOException("injected plaintext snapshot parent-directory fsync failure")
@@ -102,6 +105,7 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fixtureRuntimeHooks.pauseCount = 0
             fixtureRuntimeHooks.failPauseForRestoreCount = 0
             fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
+            fixtureRuntimeHooks.plaintextExportExistsAtParentSync = null
             val aliasSuffix = testRunId.replace("-", "")
             rollbackCipher = GlafiraRollbackSnapshotCipher("glafira_test_rollback_$aliasSuffix")
             check(rollbackCipher.keyAlias != GlafiraRollbackSnapshotCipher.PRODUCTION_KEY_ALIAS)
@@ -829,13 +833,31 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     @Test
     fun failedRestoreRemovesPlaintextExportWhenRollbackAlsoFails() = runBlocking {
-        store.enqueue(task("restore-failure-existing-task"))
+        store.enqueue(task("restore-failure-archive-task"))
         val coordinator = isolatedCoordinator()
         val passphrase = "GLAFIRA-failed-restore-plaintext".toCharArray()
         val archive = coordinator.create(passphrase)
+        assertTrue("The archive-only task is marked finished before removal",
+            store.transition(
+                "restore-failure-archive-task",
+                setOf(GlafiraTaskState.QUEUED),
+                GlafiraTaskState.CANCELLED,
+                System.currentTimeMillis(),
+                null,
+                "removed from rollback fixture"
+            ))
+        store.deleteFinishedProject("backup-project")
+        store.enqueue(task("restore-failure-preexisting-task").copy(
+            projectId = "pre-restore-project",
+            idempotencyKey = "pre-restore-project:restore-failure-preexisting-task"
+        ))
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
         val snapshotDirectory = File(context.filesDir, ".glafira-core-snapshot")
         try {
+            assertNull("Archive-only task is absent from the live pre-restore database",
+                store.getTask("restore-failure-archive-task"))
+            assertTrue("Pre-restore-only task is present before restore",
+                store.getTask("restore-failure-preexisting-task") != null)
             withOwnedRollbackKey {
                 fixtureRuntimeHooks.failPauseForRestoreCount = 2
                 val failure = assertThrows(IOException::class.java) {
@@ -843,15 +865,24 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
                 }
                 assertTrue("The rollback failure remains attached to the original restore failure",
                     failure.suppressed.any { it is IllegalStateException })
+                assertTrue("The catch-path snapshot fsync failure remains attached to the original restore failure",
+                    failure.suppressed.any { it is IOException && it.message.orEmpty().contains("plaintext snapshot parent-directory fsync failure") })
+                assertEquals("Catch-path cleanup removes plaintext before its parent fsync and before finally runs",
+                    false, fixtureRuntimeHooks.plaintextExportExistsAtParentSync)
                 assertFalse("Failed restore must not leave its plaintext snapshot directory", snapshotDirectory.exists())
                 assertTrue("Rollback journal remains available for owner recovery", File(journal, "restore.pending").isFile)
-                assertTrue("Original Core task remains present after failed restore",
-                    store.getTask("restore-failure-existing-task") != null)
+                assertTrue("Pre-restore task state is restored after failure",
+                    store.getTask("restore-failure-preexisting-task") != null)
+                assertNull("Task from the selected archive must not replace pre-restore state",
+                    store.getTask("restore-failure-archive-task"))
                 fixtureRuntimeHooks.failPauseForRestoreCount = 0
+                fixtureRuntimeHooks.failPlaintextSnapshotDirectorySyncOnce = false
                 isolatedCoordinator().recover(passphrase)
                 assertFalse("Owner recovery clears the retained rollback journal", journal.exists())
-                assertTrue("Original Core task remains present after owner recovery",
-                    store.getTask("restore-failure-existing-task") != null)
+                assertTrue("Pre-restore task remains present after owner recovery",
+                    store.getTask("restore-failure-preexisting-task") != null)
+                assertNull("Selected-archive-only task remains absent after owner recovery",
+                    store.getTask("restore-failure-archive-task"))
             }
         } finally {
             fixtureRuntimeHooks.failPauseForRestoreCount = 0
@@ -1609,6 +1640,12 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     }
 
     @Test
+    fun recoverRetainsUnitReturningSuspendFunctionType() {
+        val recovery: suspend (CharArray) -> Unit = isolatedCoordinator()::recover
+        assertTrue("The Unit-returning recovery function reference is available", recovery.toString().isNotBlank())
+    }
+
+    @Test
     fun recoveryRejectsCommittedJournalSymlinkWithoutTouchingTargetArtifacts() = runBlocking {
         val runId = testRunId
         val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
@@ -1619,6 +1656,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         val passphrase = "GLAFIRA-committed-journal-link".toCharArray()
         try {
             Files.createSymbolicLink(journal.toPath(), target.toPath())
+            assertTrue("Shared Core preflight reports recovery required without crashing startup",
+                GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
             val failure = assertThrows(IllegalStateException::class.java) {
                 runBlocking { isolatedCoordinator().recover(passphrase) }
             }
