@@ -92,7 +92,7 @@ internal fun captureSafeWindowHierarchy(maximumNodes: Int = 300, maximumCharacte
     val truncationNoticeSuffix = ">\n"
     val truncationNoticeReserve =
         truncationNoticePrefix.length + maximumNodes.toString().length + truncationNoticeSuffix.length
-    require(maximumCharacters > truncationNoticeReserve) {
+    require(maximumCharacters >= truncationNoticeReserve + 2) {
         "Hierarchy character limit must leave room for the truncation notice."
     }
     val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
