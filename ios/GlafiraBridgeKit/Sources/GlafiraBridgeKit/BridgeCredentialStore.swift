@@ -173,8 +173,11 @@ public enum BridgeHubBindingPersistenceError: Error, Equatable, Sendable {
     case duplicateJSONKey
 }
 
-/// Strict, bounded persistence envelope. This is the only supported decoding route for persisted bindings.
+/// Versioned migration replacement for the former Codable model API.
+/// Replace JSONEncoder encoding with `encode(_:)` and JSONDecoder decoding with `decode(_:)`;
+/// callers must not decode persisted bindings directly through JSONDecoder.
 public enum BridgeHubBindingPersistence {
+    public static let currentSchemaVersion = 1
     static let maximumPayloadBytes = 4_096
     static let maximumJSONNestingDepth = 16
 
@@ -189,7 +192,7 @@ public enum BridgeHubBindingPersistence {
                 "enrolledAtEpochMs": binding.enrolledAtEpochMs,
                 "expiresAtEpochMs": binding.expiresAtEpochMs
             ]
-            let envelope: [String: Any] = ["schemaVersion": 1, "binding": bindingObject]
+            let envelope: [String: Any] = ["schemaVersion": currentSchemaVersion, "binding": bindingObject]
             let data = try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys, .withoutEscapingSlashes])
             try validatePayloadSize(data)
             return data
