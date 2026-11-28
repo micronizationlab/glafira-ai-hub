@@ -11,6 +11,10 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.StandardOpenOption
 import java.io.OutputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -214,6 +218,31 @@ object BackupArchive {
         }
     }
 
+    /** A crash-left replacement is decrypted staging data and must keep Core gated until recovery. */
+    internal fun hasRestoreReplacementTemps(context: Context): Boolean {
+        val root = context.filesDir.toPath()
+        return Files.walk(root).use { paths ->
+            paths.anyMatch { path ->
+                path.fileName?.toString()?.endsWith(".restore-tmp") == true &&
+                    Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+            }
+        }
+    }
+
+    /** Remove only regular, app-private replacement temps; never follow or delete linked paths. */
+    internal fun cleanupRestoreReplacementTemps(context: Context) {
+        val root = context.filesDir.toPath()
+        Files.walk(root).use { paths ->
+            paths.filter { it.fileName?.toString()?.endsWith(".restore-tmp") == true }
+                .forEach { path ->
+                    if (Files.isSymbolicLink(path) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                        throw IOException("Обнаружен небезопасный временный файл восстановления: $path")
+                    }
+                    Files.delete(path)
+                }
+        }
+    }
+
     private fun applyStaged(context: Context, files: List<StagedFile>, safePreferences: JSONObject) {
         val targetRoot = context.filesDir.canonicalFile
         val restoredPaths = files.map { it.relativePath }.toSet()
@@ -224,14 +253,36 @@ object BackupArchive {
             require(target.path.startsWith(targetRoot.path + File.separator)) { "Недопустимый путь в архиве." }
             target.parentFile?.mkdirs()
             val replacement = File(target.parentFile, target.name + ".restore-tmp")
-            staged.file.copyTo(replacement, overwrite = true)
-            if (target.exists() && !target.delete()) {
-                replacement.delete()
-                throw IllegalStateException("Не удалось заменить файл ${staged.relativePath}")
-            }
-            if (!replacement.renameTo(target)) {
-                replacement.delete()
-                throw IllegalStateException("Не удалось восстановить файл ${staged.relativePath}")
+            var replacementCreated = false
+            var primaryFailure: Exception? = null
+            try {
+                Files.newOutputStream(
+                    replacement.toPath(),
+                    StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE
+                ).use { output ->
+                    replacementCreated = true
+                    staged.file.inputStream().use { input -> input.copyTo(output) }
+                }
+                if (target.exists() && !target.delete()) {
+                    throw IllegalStateException("Не удалось заменить файл ${staged.relativePath}")
+                }
+                if (!replacement.renameTo(target)) {
+                    throw IllegalStateException("Не удалось восстановить файл ${staged.relativePath}")
+                }
+                replacementCreated = false
+            } catch (failure: Exception) {
+                primaryFailure = failure
+                throw failure
+            } finally {
+                if (replacementCreated && Files.exists(replacement.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    try {
+                        Files.delete(replacement.toPath())
+                    } catch (cleanup: Exception) {
+                        val primary = primaryFailure
+                        if (primary != null) primary.addSuppressed(cleanup) else throw cleanup
+                    }
+                }
             }
         }
 
