@@ -13,6 +13,7 @@ import java.io.IOException
 import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.StandardCopyOption
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.FileVisitResult
 import java.nio.file.attribute.BasicFileAttributes
@@ -376,21 +377,28 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
     private fun writeRollbackOwnerMarker(runId: String, beforePublish: () -> Unit = {}) {
         val marker = rollbackOwnerMarker()
         val parent = checkNotNull(marker.parentFile)
-        // createNewFile is exclusive; from this point the fixture owns this marker.
-        check(marker.createNewFile()) { "A previous test-owned rollback operation must be recovered first." }
+        check(!Files.exists(marker.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "A previous test-owned rollback operation must be recovered first."
+        }
+        val temporary = File(parent, ".${marker.name}.$runId.tmp")
+        check(temporary.createNewFile()) { "Could not exclusively create temporary rollback owner marker." }
         try {
-            beforePublish()
-            FileOutputStream(marker, false).use { output ->
+            FileOutputStream(temporary, false).use { output ->
                 output.write(runId.toByteArray(Charsets.UTF_8))
                 output.fd.sync()
             }
+            // Fault injection occurs only after the complete temporary marker is synced.
+            beforePublish()
+            Files.move(temporary.toPath(), marker.toPath(), StandardCopyOption.ATOMIC_MOVE)
             syncMarkerDirectory(parent)
         } catch (error: Throwable) {
-            try {
-                check(!marker.exists() || marker.delete()) { "Could not remove failed owner marker." }
-                syncMarkerDirectory(parent)
-            } catch (cleanup: Throwable) {
-                error.addSuppressed(cleanup)
+            if (temporary.exists()) {
+                try {
+                    check(temporary.delete()) { "Could not remove failed temporary owner marker." }
+                    syncMarkerDirectory(parent)
+                } catch (cleanup: Throwable) {
+                    error.addSuppressed(cleanup)
+                }
             }
             throw error
         }
@@ -411,8 +419,14 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         if (!createdByThisSetup || root == null || runId == null) return
         check(root.isDirectory && !Files.isSymbolicLink(root.toPath()))
         deleteTreeWithoutFollowingLinks(root.toPath())
-        if (::rollbackCipher.isInitialized && rollbackCipher.keyExists()) rollbackCipher.deleteKey()
-        if (::rollbackCipher.isInitialized) clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, runId)
+        if (::rollbackCipher.isInitialized) {
+            val alias = rollbackCipher.keyAlias
+            val owner = fixtureKeyOwnerMarker(alias, runId)
+            val ownedAlias = owner.isFile && !Files.isSymbolicLink(owner.toPath()) &&
+                owner.readText(Charsets.UTF_8) == alias
+            if (ownedAlias && rollbackCipher.keyExists()) rollbackCipher.deleteKey()
+            if (ownedAlias) clearFixtureKeyAliasOwner(alias, runId)
+        }
         syncMarkerDirectory(appContext.cacheDir)
     }
 
@@ -420,15 +434,18 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
 
     private fun writeFixtureRootOwnerMarker(runId: String, root: File, alias: String) {
         val marker = fixtureRootOwnerMarker(root)
-        check(marker.createNewFile()) { "Fixture root ownership marker already exists." }
+        check(!Files.exists(marker.toPath(), LinkOption.NOFOLLOW_LINKS))
+        val temporary = File(root, ".fixture.owner.$runId.tmp")
+        check(temporary.createNewFile()) { "Fixture root ownership temporary marker already exists." }
         try {
-            FileOutputStream(marker, false).use { output ->
+            FileOutputStream(temporary, false).use { output ->
                 output.write("$runId\n$alias".toByteArray(Charsets.UTF_8))
                 output.fd.sync()
             }
+            Files.move(temporary.toPath(), marker.toPath(), StandardCopyOption.ATOMIC_MOVE)
             syncMarkerDirectory(root)
         } catch (error: Throwable) {
-            if (marker.exists()) marker.delete()
+            if (temporary.exists()) temporary.delete()
             throw error
         }
     }
@@ -562,8 +579,10 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             if (root.exists()) {
                 if (!Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
                 val rootOwner = fixtureRootOwnerMarker(root)
+                // The root owner always records the primary alias, even while
+                // secondary alias markers are being reclaimed.
                 if (!rootOwner.isFile || Files.isSymbolicLink(rootOwner.toPath()) ||
-                    rootOwner.readText(Charsets.UTF_8) != "$runId\n$expectedAlias"
+                    rootOwner.readText(Charsets.UTF_8) != "$runId\n$expected"
                 ) return@forEach
             }
             val journal = File(root, "no-backup/glafira-restore-journal")
@@ -783,6 +802,63 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         }
         assertFalse(marker.exists())
         assertTrue(marker.parentFile?.listFiles { file -> file.name.startsWith(".${marker.name}.") }?.isEmpty() != false)
+    }
+
+    @Test
+    fun unclaimedFixtureCleanupDoesNotDeleteAliasWithoutItsOwnerMarker() {
+        val alias = rollbackCipher.keyAlias
+        clearFixtureKeyAliasOwner(alias, testRunId)
+        val source = File(context.cacheDir, "unclaimed-alias-source-$testRunId").apply { writeText("fixture-key-canary") }
+        val encrypted = File(context.cacheDir, "unclaimed-alias-encrypted-$testRunId")
+        val root = File(appContext.cacheDir, ".unclaimed-fixture-$testRunId").apply { check(mkdir()) }
+        try {
+            rollbackCipher.encrypt(source, encrypted)
+            cleanupUnclaimedFixtureRoot(root, createdByThisSetup = true, runId = testRunId)
+            assertFalse("The directory exclusively created by this setup is removed", root.exists())
+            assertTrue("A key without this setup's published owner marker is preserved", rollbackCipher.keyExists())
+        } finally {
+            rollbackCipher.deleteKey()
+            source.delete()
+            encrypted.delete()
+        }
+    }
+
+    @Test
+    fun orphanCleanupReclaimsSecondaryKeysUsingPrimaryRootOwnerRecord() {
+        val staleRunId = UUID.randomUUID().toString()
+        val primaryAlias = "glafira_test_rollback_" + staleRunId.replace("-", "")
+        val secondAlias = primaryAlias + "_second"
+        val thirdAlias = primaryAlias + "_third"
+        val root = File(appContext.cacheDir, "glafira-backup-test-$staleRunId").apply { check(mkdir()) }
+        val source = File(appContext.cacheDir, "orphan-key-source-$staleRunId").apply { writeText("orphan-fixture") }
+        val secondCipher = GlafiraRollbackSnapshotCipher(secondAlias)
+        val thirdCipher = GlafiraRollbackSnapshotCipher(thirdAlias)
+        val secondEncrypted = File(appContext.cacheDir, "orphan-second-$staleRunId.enc")
+        val thirdEncrypted = File(appContext.cacheDir, "orphan-third-$staleRunId.enc")
+        try {
+            writeFixtureRootOwnerMarker(staleRunId, root, primaryAlias)
+            registerFixtureKeyAlias(secondAlias, staleRunId)
+            registerFixtureKeyAlias(thirdAlias, staleRunId)
+            secondCipher.encrypt(source, secondEncrypted)
+            thirdCipher.encrypt(source, thirdEncrypted)
+
+            cleanupOwnedLeftoverRollbackFixture()
+
+            assertFalse("Stale fixture root is reclaimed", root.exists())
+            assertFalse("Secondary alias key is reclaimed", secondCipher.keyExists())
+            assertFalse("Third alias key is reclaimed", thirdCipher.keyExists())
+            assertFalse("Secondary owner marker is reclaimed", fixtureKeyOwnerMarker(secondAlias, staleRunId).exists())
+            assertFalse("Third owner marker is reclaimed", fixtureKeyOwnerMarker(thirdAlias, staleRunId).exists())
+        } finally {
+            secondCipher.deleteKey()
+            thirdCipher.deleteKey()
+            fixtureKeyOwnerMarker(secondAlias, staleRunId).delete()
+            fixtureKeyOwnerMarker(thirdAlias, staleRunId).delete()
+            if (root.exists()) deleteTreeWithoutFollowingLinks(root.toPath())
+            source.delete()
+            secondEncrypted.delete()
+            thirdEncrypted.delete()
+        }
     }
 
     @Test
