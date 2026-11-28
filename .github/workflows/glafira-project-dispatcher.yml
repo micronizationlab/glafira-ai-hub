@@ -98,10 +98,12 @@ jobs:
               }
             }
           }'
-          graphql_error="$RUNNER_TEMP/glafira-open-prs-graphql-error.log"
-          validation_error="$RUNNER_TEMP/glafira-open-prs-graphql-validation-error.log"
-          projection_error="$RUNNER_TEMP/glafira-open-prs-graphql-projection-error.log"
-          projection_file="$RUNNER_TEMP/glafira-open-prs-projection.json"
+          tmp="$(mktemp -d "$RUNNER_TEMP/glafira-open-prs.XXXXXX")"
+          trap 'rm -rf "$tmp"' EXIT
+          graphql_error="$tmp/graphql-error.log"
+          validation_error="$tmp/validation-error.log"
+          projection_error="$tmp/projection-error.log"
+          projection_file="$tmp/projection.json"
 
           # REST offset pagination can omit still-open PRs during concurrent closes.
           # GraphQL cursor pagination is the only accepted inventory source.
@@ -150,7 +152,9 @@ jobs:
               "$graphql_status" "${graphql_detail:-No GraphQL stderr was captured.}" >&2
             exit 1
           fi
-          FETCH          cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
+          FETCH
+
+          cat > "$RUNNER_TEMP/fetch-workflow-runs.sh" <<'RUNS'
           #!/usr/bin/env bash
           set -euo pipefail
           repo="$1"
