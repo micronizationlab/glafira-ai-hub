@@ -332,7 +332,9 @@ jobs:
           if grep -q 'evil.test' <<< "$output"; then
             echo "untrusted PR title URL was not escaped" >&2; exit 1
           fi
-          ! grep -q '\[link\]' <<< "$output"
+          if grep -q '\\[link\\]' <<< "$output"; then
+            echo "untrusted Markdown title was not escaped" >&2; exit 1
+          fi
 
           mkdir -p "$tmp/fake-bin"
           # GraphQL pagination preserves base SHA and check-rollup data.
