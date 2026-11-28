@@ -516,7 +516,6 @@ jobs:
           fi
           exit 23
           FETCH_FAIL
-          FETCH_FAIL
           chmod +x "$tmp/fetch-same-prs.sh" "$tmp/fetch-failed-prs.sh"
           cat > "$tmp/fetch-distinct-prs.sh" <<'FETCH_DISTINCT'
           #!/usr/bin/env bash
