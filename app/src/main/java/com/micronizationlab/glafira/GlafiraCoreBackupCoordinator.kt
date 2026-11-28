@@ -300,8 +300,8 @@ class GlafiraCoreBackupCoordinator internal constructor(
     /** Returns true when journal recovery already performed portable-snapshot cleanup. */
     private fun recoverInterruptedRestore(
         passphrase: CharArray,
-        onSnapshotCleaned: () -> Unit = {},
-        allowUnknownMarkerlessJournal: Boolean = false
+        allowUnknownMarkerlessJournal: Boolean = false,
+        onSnapshotCleaned: () -> Unit = {}
     ): Boolean {
         val journalPath = journal.toPath()
         if (pathExistsNoFollow(journalPath) &&
