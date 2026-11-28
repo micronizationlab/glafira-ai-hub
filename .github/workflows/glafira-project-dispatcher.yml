@@ -260,12 +260,16 @@ jobs:
           fetch_runs="$RUNNER_TEMP/fetch-workflow-runs.sh"
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
-          maybe_force_probe_failure() {
-            if [[ "${GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE:-0}" == "1" ]]; then
-              run_probe "injected top-level failure" bash -c 'exit 37'
-            fi
+          force_probe_failure() {
+            run_probe "injected top-level failure" bash -c 'exit 37'
           }
-          maybe_force_probe_failure
+          no_probe_failure() { return 0; }
+          if [[ "${GLAFIRA_FIXTURE_FORCE_PROBE_FAILURE:-0}" == "1" ]]; then
+            forced_probe_command=force_probe_failure
+          else
+            forced_probe_command=no_probe_failure
+          fi
+          "$forced_probe_command"
           cat > "$tmp/prs.json" <<'JSON'
           [
             {"number":553,"title":"current [link](https://evil.test) | title","headRefName":"docs/reconcile","headRefOid":"sha-current","baseRefOid":"base-current","isDraft":false,"url":"https://example.test/pr/553","statusCheckRollup":[]},
@@ -601,7 +605,7 @@ jobs:
           set -e
           [[ "$forced_failure_status" -eq 37 ]]
           grep -Fq "Probe injected top-level failure returned exit 37" "$RUNNER_TEMP/dispatcher-forced-failure.err"
-          grep -Fq "Dispatcher fixture failed (exit 37): maybe_force_probe_failure" "$RUNNER_TEMP/dispatcher-forced-failure.err"
+          grep -Fq "Dispatcher fixture failed (exit 37): \"$forced_probe_command\"" "$RUNNER_TEMP/dispatcher-forced-failure.err"
           echo "dispatcher ERR trap preserves originating probe name and exit 37: PASS"
           bash "$RUNNER_TEMP/test-renderer.sh"
           echo "dispatcher exact-match, newest-run, metadata, Markdown, pagination, null-association and history-cap fixtures: PASS"
