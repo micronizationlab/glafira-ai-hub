@@ -360,8 +360,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         if (!createdByThisSetup || root == null || runId == null) return
         check(root.isDirectory && !Files.isSymbolicLink(root.toPath()))
         deleteTreeWithoutFollowingLinks(root.toPath())
-        if (::rollbackCipher.isInitialized && rollbackCipher.keyExists()) rollbackCipher.deleteKey()
-        if (::rollbackCipher.isInitialized) clearFixtureKeyAliasOwner(rollbackCipher.keyAlias, runId)
+        // This path runs before fixture-key registration. The alias is deterministic from
+        // runId, so a collision can refer to another live fixture's key; never delete it here.
         syncMarkerDirectory(appContext.cacheDir)
     }
 
@@ -550,6 +550,40 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             GlafiraRollbackSnapshotCipher(alias).deleteKey()
             deleteTreeWithoutFollowingLinks(root.toPath())
             syncMarkerDirectory(appContext.cacheDir)
+        }
+    }
+
+    @Test
+    fun failedSetupCollisionPreservesExistingRollbackKeyAndOwnerEvidence() {
+        val runId = UUID.randomUUID().toString()
+        val alias = "glafira_test_rollback_" + runId.replace("-", "")
+        val existing = File(appContext.cacheDir, "glafira-backup-test-$runId")
+        val staging = File(appContext.cacheDir, ".glafira-backup-test-staging-$runId")
+        val source = File(appContext.cacheDir, "collision-source-$runId").apply { writeText("rollback fixture") }
+        val encrypted = File(appContext.cacheDir, "collision-encrypted-$runId")
+        val cipher = GlafiraRollbackSnapshotCipher(alias)
+        try {
+            assertTrue(existing.mkdir())
+            writeFixtureRootOwnerMarker(runId, existing, alias)
+            registerFixtureKeyAlias(alias, runId)
+            cipher.encrypt(source, encrypted)
+            assertTrue("Pre-existing fixture owns the deterministic alias", cipher.keyExists())
+            assertTrue(staging.mkdir())
+            writeFixtureRootOwnerMarker(runId, staging, alias)
+
+            cleanupUnclaimedFixtureRoot(staging, createdByThisSetup = true, runId = runId)
+
+            assertTrue("Failed setup must preserve the pre-existing rollback key", cipher.keyExists())
+            assertTrue("Failed setup must preserve the existing alias owner marker", fixtureKeyOwnerMarker(alias, runId).isFile)
+            assertTrue("Failed setup must preserve the pre-existing fixture root", existing.isDirectory)
+            assertTrue("Failed setup must preserve the existing fixture ownership record", fixtureRootOwnerMarker(existing).isFile)
+        } finally {
+            cipher.deleteKey()
+            clearFixtureKeyAliasOwner(alias, runId)
+            if (staging.exists()) deleteTreeWithoutFollowingLinks(staging.toPath())
+            if (existing.exists()) deleteTreeWithoutFollowingLinks(existing.toPath())
+            source.delete()
+            encrypted.delete()
         }
     }
 
