@@ -199,6 +199,7 @@ class GlafiraCoreBackupCoordinator internal constructor(
                 require(remaining.isEmpty()) {
                     "В каталоге журнала восстановления остались неизвестные данные; они сохранены, Core заблокирован."
                 }
+                runtimeHooks.beforeCommittedJournalDirectoryCleanup()
                 check(journal.delete()) { "Не удалось удалить пустой каталог журнала восстановления; Core заблокирован." }
                 syncDirectory(app.noBackupFilesDir)
             }
