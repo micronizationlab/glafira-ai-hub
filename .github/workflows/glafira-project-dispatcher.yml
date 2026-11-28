@@ -164,7 +164,7 @@ jobs:
               fi
             fi
             printf '%s\n' "$page_response" >> "$pages_file"
-            if ! jq -s -e '
+            if jq -s -e '
               length == 1
               and (.[0].errors // []) == []
               and (.[0].data.repository.pullRequests.nodes | type) == "array"
@@ -198,6 +198,8 @@ jobs:
                 )
               )
             ' <<< "$page_response" >/dev/null 2>"$validation_error"; then
+              :
+            else
               jq_status=$?
               graphql_detail="$(redacted_detail "$validation_error")"
               printf 'UNKNOWN: GraphQL page validation failed (jq exit %s); REST offset fallback is disabled. %s\n' \
