@@ -204,8 +204,9 @@ public enum BridgeHubBindingPersistence {
 
     public static func decode(_ data: Data) throws -> BridgeHubBinding {
         do {
-            // Validate and parse one owned snapshot so externally mutable Data storage
-            // cannot change between structural validation and Foundation decoding.
+            // Reject oversized input before allocating an owned copy, then validate and
+            // parse one bounded snapshot so mutable backing storage cannot race the parser.
+            try validatePayloadSize(data)
             let ownedData = Data(Array(data))
             try validatePayloadSize(ownedData)
             try validateJSONStructure(ownedData)
