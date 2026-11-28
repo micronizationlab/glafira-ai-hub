@@ -51,6 +51,8 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
         var failCommittedCleanupCount = 0
         var failCommittedDirectoryCleanupOnce = false
         var failCommittedDirectoryCleanupCount = 0
+        var danglingSymlinkJournal: File? = null
+        var danglingSymlinkTarget: File? = null
         var pauseCount = 0
         override suspend fun <T> withPaused(block: () -> T): T {
             pauseCount++
@@ -66,6 +68,13 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             }
         }
         override fun beforeCommittedJournalDirectoryCleanup() {
+            val journal = danglingSymlinkJournal
+            val target = danglingSymlinkTarget
+            if (journal != null && target != null) {
+                check(journal.delete()) { "Could not remove empty committed journal before symlink injection." }
+                Files.createSymbolicLink(journal.toPath(), target.toPath())
+                throw IOException("injected dangling journal symlink after committed restore")
+            }
             if (failCommittedDirectoryCleanupOnce || failCommittedDirectoryCleanupCount > 0) {
                 failCommittedDirectoryCleanupOnce = false
                 if (failCommittedDirectoryCleanupCount > 0) failCommittedDirectoryCleanupCount--
@@ -1559,6 +1568,29 @@ class GlafiraCoreBackupCoordinatorInstrumentedTest {
             fixtureRuntimeHooks.failCommittedCleanupCount = 0
             archive.delete()
             passphrase.fill(0.toChar())
+        }
+    }
+
+    @Test
+    fun committedRestoreReportsDanglingJournalSymlinkAsRecoveryRequired() = runBlocking {
+        val passphrase = "GLAFIRA-dangling-committed-journal".toCharArray()
+        val archive = isolatedCoordinator().create(passphrase)
+        val journal = File(context.noBackupFilesDir, "glafira-restore-journal")
+        val missingTarget = File(context.cacheDir, "missing-committed-journal-target-$testRunId")
+        try {
+            fixtureRuntimeHooks.danglingSymlinkJournal = journal
+            fixtureRuntimeHooks.danglingSymlinkTarget = missingTarget
+            val verification = isolatedCoordinator().restore(archive, passphrase)
+            assertTrue("A dangling symlink at the committed journal path requires recovery", verification.recoveryRequired)
+            assertTrue("The injected journal path remains a symbolic link", Files.isSymbolicLink(journal.toPath()))
+            assertTrue("Core preflight rejects the dangling journal symlink", GlafiraCoreBackupCoordinator.hasInterruptedRestore(context))
+            assertFalse("The dangling link target is never created or followed", missingTarget.exists())
+        } finally {
+            fixtureRuntimeHooks.danglingSymlinkJournal = null
+            fixtureRuntimeHooks.danglingSymlinkTarget = null
+            if (Files.isSymbolicLink(journal.toPath())) Files.delete(journal.toPath())
+            archive.delete()
+            passphrase.fill('\u0000')
         }
     }
 
